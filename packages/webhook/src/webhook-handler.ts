@@ -15,7 +15,7 @@ interface PullRequestPayload {
     name: string
     full_name: string
   }
-  pull_request: { number: number }
+  pull_request: { number: number, head: { sha: string } }
   installation?: { id: number }
 }
 
@@ -53,8 +53,28 @@ export async function handlePullRequestEvent(
   }
 
   const prContext = await fetchPRContext(octokit, owner, repo, prNumber)
+
+  const checkRun = await (octokit as any).rest.checks.create({
+    owner,
+    repo,
+    name: "Areté AI Code Review",
+    head_sha: payload.pull_request.head.sha,
+    status: "in_progress",
+    output: { title: "Review in progress", summary: "Areté is actively analyzing your code..." }
+  })
+  const checkRunId = checkRun.data.id
+
   const result = await runReviewPipeline(prContext)
   await postReview(octokit, owner, repo, prNumber, result)
+
+  await (octokit as any).rest.checks.update({
+    owner,
+    repo,
+    check_run_id: checkRunId,
+    status: "completed",
+    conclusion: (result.risk_level === "high" || result.risk_level === "critical") ? "action_required" : "success",
+    output: { title: "Review Complete", summary: result.overall_summary }
+  })
 
   // Persist to Prisma
   const [installation, repository, review] = await prisma.$transaction([
@@ -128,7 +148,26 @@ export function registerCheckRunWebhooks(app: any) {
     const prContext = await fetchPRContext(octokit, owner, repo, prNumber)
     prContext.ciLogs = ciLogs
 
+    const checkRun = await (octokit as any).rest.checks.create({
+      owner,
+      repo,
+      name: "Areté AI Code Review",
+      head_sha: payload.check_run.head_sha,
+      status: "in_progress",
+      output: { title: "Diagnosing CI Failure", summary: "Areté is actively analyzing your code..." }
+    })
+    const checkRunId = checkRun.data.id
+
     const result = await runReviewPipeline(prContext)
     await postReview(octokit, owner, repo, prNumber, result)
+
+    await (octokit as any).rest.checks.update({
+      owner,
+      repo,
+      check_run_id: checkRunId,
+      status: "completed",
+      conclusion: (result.risk_level === "high" || result.risk_level === "critical") ? "action_required" : "success",
+      output: { title: "Review Complete", summary: result.overall_summary }
+    })
   })
 }
