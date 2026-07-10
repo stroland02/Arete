@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 
 def test_get_llm_returns_gemini_when_provider_gemini(monkeypatch):

@@ -8,7 +8,8 @@ class PerformanceAgent(BaseReviewAgent):
 
     @property
     def system_prompt(self) -> str:
-        return """You are a senior performance engineer performing a code performance review.
+        return """You are a senior performance engineer \
+performing a code performance review.
 
 Identify performance issues including:
 - N+1 database query patterns (queries inside loops — use batch fetch or ORM join)
