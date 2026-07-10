@@ -2,13 +2,12 @@ import pytest
 from unittest.mock import MagicMock
 
 
-def test_get_llm_returns_gemini_when_provider_gemini():
+def test_get_llm_returns_gemini_when_provider_gemini(monkeypatch):
     from arete_agents.config import get_settings
     get_settings.cache_clear()
-
-    import os
-    os.environ["LLM_PROVIDER"] = "gemini"
-    os.environ["GEMINI_API_KEY"] = "test-key"
+    monkeypatch.setenv("LLM_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
 
     from arete_agents.llm.base import get_llm
     llm = get_llm(get_settings())
@@ -16,14 +15,12 @@ def test_get_llm_returns_gemini_when_provider_gemini():
     assert "google" in module.lower() or "gemini" in type(llm).__name__.lower()
 
 
-def test_get_llm_returns_anthropic_when_provider_anthropic():
+def test_get_llm_returns_anthropic_when_provider_anthropic(monkeypatch):
     from arete_agents.config import get_settings
     get_settings.cache_clear()
-
-    import os
-    os.environ["LLM_PROVIDER"] = "anthropic"
-    os.environ["ANTHROPIC_API_KEY"] = "sk-ant-test"
-    os.environ["GEMINI_API_KEY"] = ""
+    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    monkeypatch.setenv("GEMINI_API_KEY", "")
 
     from arete_agents.llm.base import get_llm
     llm = get_llm(get_settings())
