@@ -5,7 +5,8 @@ export async function runReviewPipeline(prContext: PRContext): Promise<ReviewRes
   const timer = setTimeout(() => { controller.abort() }, 120_000)
 
   try {
-    const res = await fetch('http://127.0.0.1:8000/review', {
+    const baseUrl = process.env.PYTHON_SERVICE_URL ?? 'http://127.0.0.1:8000'
+    const res = await fetch(`${baseUrl}/review`, {
       method: 'POST',
       body: JSON.stringify(prContext),
       headers: { 'Content-Type': 'application/json' },
