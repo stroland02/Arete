@@ -8,6 +8,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from arete_agents.models.pr import FileChange, PRContext
 from arete_agents.models.review import FileReview, ReviewComment
 
+MAX_PATCH_CHARS = 50_000
+
 
 class BaseReviewAgent(ABC):
     @property
@@ -22,16 +24,25 @@ class BaseReviewAgent(ABC):
         self._llm = llm
 
     def _build_user_prompt(self, file: FileChange, pr_context: PRContext) -> str:
+        patch = file.patch
+        truncation_note = ""
+        if len(patch) > MAX_PATCH_CHARS:
+            patch = patch[:MAX_PATCH_CHARS]
+            truncation_note = (
+                f"\n[Diff truncated: showing first {MAX_PATCH_CHARS} chars only]"
+            )
+
         return f"""Review this pull request file for {self.agent_name} issues.
 
+<pr_metadata>
 PR: "{pr_context.title}" in {pr_context.repo}
 Description: {pr_context.description}
 File: {file.path} ({file.language})
+</pr_metadata>
 
-Diff:
-```diff
-{file.patch}
-```
+<diff>
+{patch}{truncation_note}
+</diff>
 
 Return ONLY valid JSON (no markdown, no extra text):
 {{
@@ -51,7 +62,10 @@ If no issues found, return empty comments array."""
 
     def _parse_response(self, path: str, raw: str) -> tuple[list[ReviewComment], str]:
         try:
-            clean = re.sub(r"```(?:json)?\n?", "", raw).strip().rstrip("`").strip()
+            raw_str = raw if isinstance(raw, str) else ""
+            clean = re.sub(
+                r"```(?:json)?\n?|```$", "", raw_str, flags=re.MULTILINE
+            ).strip()
             data = json.loads(clean)
             comments = [ReviewComment(**c) for c in data.get("comments", [])]
             return comments, data.get("summary", "")
@@ -63,6 +77,8 @@ If no issues found, return empty comments array."""
             SystemMessage(content=self.system_prompt),
             HumanMessage(content=self._build_user_prompt(file, pr_context)),
         ]
-        response = self._llm.invoke(messages)
-        comments, summary = self._parse_response(file.path, response.content)
+        llm_with_retry = self._llm.with_retry(stop_after_attempt=2)
+        response = llm_with_retry.invoke(messages)
+        raw = response.content if isinstance(response.content, str) else ""
+        comments, summary = self._parse_response(file.path, raw)
         return FileReview(path=file.path, comments=comments, summary=summary)

@@ -10,6 +10,7 @@ from arete_agents.models.review import FileReview
 def make_mock_llm(json_response: str):
     mock = MagicMock()
     mock.invoke.return_value = AIMessage(content=json_response)
+    mock.with_retry.return_value = mock
     return mock
 
 

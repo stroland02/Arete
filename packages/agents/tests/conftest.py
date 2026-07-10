@@ -38,4 +38,5 @@ def sample_pr():
 def cyclic_llm():
     mock = MagicMock()
     mock.invoke.side_effect = [AIMessage(content=r) for r in [SEC, PERF, QUAL] * 20]
+    mock.with_retry.return_value = mock
     return mock
