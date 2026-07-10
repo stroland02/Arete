@@ -2,10 +2,10 @@ import type { Octokit } from '@octokit/core'
 import { fetchPRContext } from './pr-fetcher.js'
 import { runReviewPipeline } from './review-bridge.js'
 import { postReview } from './comment-poster.js'
-import { PrismaClient } from './generated/prisma/client.js'
+import { prisma } from './db.js'
+import { persistReview } from './persistence.js'
 
 const HANDLED_ACTIONS = new Set(['opened', 'synchronize', 'reopened'])
-const prisma = new PrismaClient()
 
 interface PullRequestPayload {
   action: string
@@ -31,13 +31,13 @@ export async function handlePullRequestEvent(
   const owner = payload.repository.owner.login
   const repo = payload.repository.name
   const prNumber = payload.pull_request.number
-  const installationId = payload.installation?.id || 0
+  const installationId = payload.installation?.id
 
   console.log(`[handler] Reviewing ${owner}/${repo}#${prNumber} (${payload.action})`)
 
   if (installationId) {
-    const installation = await prisma.installation.findFirst({
-      where: { githubInstallationId: installationId }
+    const installation = await prisma.installation.findUnique({
+      where: { provider_externalId: { provider: 'github', externalId: installationId } }
     })
 
     if (installation && (installation.subscriptionStatus === 'canceled' || installation.subscriptionStatus === 'past_due')) {
@@ -94,53 +94,30 @@ export async function handlePullRequestEvent(
     output: { title: "Review Complete", summary: result.overall_summary }
   })
 
-  // Persist to Prisma
-  const [installation, repository, review] = await prisma.$transaction([
-    prisma.installation.upsert({
-      where: { id: installationId.toString() },
-      create: { 
-        id: installationId.toString(),
-        githubInstallationId: installationId, 
-        owner 
-      },
-      update: { owner }
-    }),
-    prisma.repository.upsert({
-      where: { id: payload.repository.id.toString() },
-      create: {
-        id: payload.repository.id.toString(),
-        githubRepoId: payload.repository.id,
+  // Persist to Prisma. The review has already been posted at this point, so
+  // persistence problems (or a missing installation id) must never fail the
+  // review itself — same "never block the review" pattern as telemetry.
+  if (!installationId) {
+    console.warn(
+      `[handler] No installation id on payload for ${owner}/${repo}#${prNumber} — skipping persistence`
+    )
+  } else {
+    try {
+      await persistReview({
+        provider: 'github',
+        installationExternalId: installationId,
+        repositoryExternalId: payload.repository.id,
+        owner,
         name: repo,
         fullName: payload.repository.full_name,
-        installationId: installationId.toString()
-      },
-      update: {
-        name: repo,
-        fullName: payload.repository.full_name
-      }
-    }),
-    prisma.review.create({
-      data: {
-        prNumber: prNumber,
-        repositoryId: payload.repository.id.toString(),
-        riskLevel: result.risk_level,
-        overallSummary: result.overall_summary,
-        comments: {
-          createMany: {
-            data: result.file_reviews.flatMap((fr: any) => 
-              fr.comments.map((c: any) => ({
-                path: fr.path,
-                line: c.line,
-                body: c.body,
-                severity: c.severity,
-                category: c.category
-              }))
-            )
-          }
-        }
-      }
-    })
-  ])
+        prNumber,
+        headSha: payload.pull_request.head.sha,
+        result,
+      })
+    } catch (err) {
+      console.error('[handler] Failed to persist review (review was still posted):', err)
+    }
+  }
 
   console.log(`[handler] Posted review — risk: ${result.risk_level}, comments: ${result.total_comments}`)
 }

@@ -29,12 +29,15 @@ describe('handleGitLabWebhook', () => {
   beforeEach(() => {
     vi.resetModules()
     vi.unstubAllEnvs()
-    vi.doMock('./generated/prisma/client.js', () => {
+    vi.doMock('@arete/db', () => {
       const PrismaClient = vi.fn()
-      PrismaClient.prototype.$transaction = vi.fn().mockResolvedValue([])
-      PrismaClient.prototype.installation = { upsert: vi.fn() }
-      PrismaClient.prototype.repository = { upsert: vi.fn() }
-      PrismaClient.prototype.review = { create: vi.fn() }
+      PrismaClient.prototype.installation = {
+        findUnique: vi.fn().mockResolvedValue(null),
+        upsert: vi.fn().mockResolvedValue({ id: 'inst-uuid-1' }),
+        update: vi.fn().mockResolvedValue({}),
+      }
+      PrismaClient.prototype.repository = { upsert: vi.fn().mockResolvedValue({ id: 'repo-uuid-1' }) }
+      PrismaClient.prototype.review = { findUnique: vi.fn().mockResolvedValue(null), create: vi.fn() }
       return { PrismaClient }
     })
   })

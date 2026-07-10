@@ -29,3 +29,6 @@ Thumbs.db
 
 # SDD ledger (local scratch, not committed)
 .superpowers/
+
+# Prisma generated client (rebuilt by @arete/db prepare script)
+packages/db/src/generated/

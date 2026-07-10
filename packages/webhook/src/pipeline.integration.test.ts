@@ -112,19 +112,27 @@ function makeOctokit() {
 }
 
 function makePrismaMock() {
-  const installationFindFirst = vi.fn().mockResolvedValue(null)
-  const installationUpsert = vi.fn().mockReturnValue({ op: 'installation.upsert' })
-  const repositoryUpsert = vi.fn().mockReturnValue({ op: 'repository.upsert' })
-  const reviewCreate = vi.fn().mockReturnValue({ op: 'review.create' })
-  const $transaction = vi.fn().mockResolvedValue([{}, {}, {}])
+  const installationFindUnique = vi.fn().mockResolvedValue(null)
+  const installationUpsert = vi.fn().mockResolvedValue({ id: 'inst-uuid-1' })
+  const installationUpdate = vi.fn().mockResolvedValue({})
+  const repositoryUpsert = vi.fn().mockResolvedValue({ id: 'repo-uuid-1' })
+  const reviewFindUnique = vi.fn().mockResolvedValue(null)
+  const reviewCreate = vi.fn().mockResolvedValue({ id: 'review-uuid-1' })
 
   class PrismaClient {
-    installation = { findFirst: installationFindFirst, upsert: installationUpsert }
+    installation = { findUnique: installationFindUnique, upsert: installationUpsert, update: installationUpdate }
     repository = { upsert: repositoryUpsert }
-    review = { create: reviewCreate }
-    $transaction = $transaction
+    review = { findUnique: reviewFindUnique, create: reviewCreate }
   }
-  return { PrismaClient, installationFindFirst, installationUpsert, repositoryUpsert, reviewCreate, $transaction }
+  return {
+    PrismaClient,
+    installationFindUnique,
+    installationUpsert,
+    installationUpdate,
+    repositoryUpsert,
+    reviewFindUnique,
+    reviewCreate,
+  }
 }
 
 type Mocks = {
@@ -219,7 +227,7 @@ async function buildApp(mocks: Mocks): Promise<Application> {
     },
   }))
 
-  vi.doMock('./generated/prisma/client.js', () => ({ PrismaClient: mocks.prisma.PrismaClient }))
+  vi.doMock('@arete/db', () => ({ PrismaClient: mocks.prisma.PrismaClient }))
 
   vi.stubGlobal('fetch', mocks.fetchMock)
 
@@ -283,16 +291,36 @@ describe('pipeline integration: webhook → review → post', () => {
       expect.objectContaining({ check_run_id: 555, status: 'completed', conclusion: 'success' })
     )
 
-    // 5. Persistence: single $transaction with installation + repository + review
-    expect(mocks.prisma.$transaction).toHaveBeenCalledTimes(1)
+    // 5. Persistence: provider-scoped upserts (UUID PKs, no manual ids)
     expect(mocks.prisma.installationUpsert).toHaveBeenCalledWith(
-      expect.objectContaining({ create: expect.objectContaining({ githubInstallationId: 777, owner: 'acme' }) })
+      expect.objectContaining({
+        where: { provider_externalId: { provider: 'github', externalId: 777 } },
+        create: expect.objectContaining({ provider: 'github', externalId: 777, owner: 'acme' }),
+      })
     )
     expect(mocks.prisma.repositoryUpsert).toHaveBeenCalledWith(
-      expect.objectContaining({ create: expect.objectContaining({ githubRepoId: 9001, fullName: 'acme/api' }) })
+      expect.objectContaining({
+        where: { provider_externalId: { provider: 'github', externalId: 9001 } },
+        create: expect.objectContaining({
+          provider: 'github',
+          externalId: 9001,
+          fullName: 'acme/api',
+          installationId: 'inst-uuid-1',
+        }),
+      })
     )
     const reviewCreateArgs = mocks.prisma.reviewCreate.mock.calls[0][0]
-    expect(reviewCreateArgs.data).toMatchObject({ prNumber: 42, riskLevel: 'medium' })
+    expect(reviewCreateArgs.data).toMatchObject({
+      prNumber: 42,
+      riskLevel: 'medium',
+      repositoryId: 'repo-uuid-1',
+      headSha: 'headsha123',
+      analysisStatus: 'complete',
+    })
+    // Usage counter incremented for the billing scaffolding
+    expect(mocks.prisma.installationUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { usageCount: { increment: 1 } } })
+    )
     expect(reviewCreateArgs.data.comments.createMany.data).toHaveLength(1)
     expect(reviewCreateArgs.data.comments.createMany.data[0]).toMatchObject({
       path: 'src/limiter.ts',
@@ -303,9 +331,10 @@ describe('pipeline integration: webhook → review → post', () => {
   })
 
   it('subscription gate: canceled installation posts "paused" comment and skips the review', async () => {
-    mocks.prisma.installationFindFirst.mockResolvedValue({
+    mocks.prisma.installationFindUnique.mockResolvedValue({
       id: 'inst-1',
-      githubInstallationId: 777,
+      provider: 'github',
+      externalId: 777,
       subscriptionStatus: 'canceled',
     })
     const app = await buildApp(mocks)
@@ -332,7 +361,7 @@ describe('pipeline integration: webhook → review → post', () => {
     expect(mocks.octokit.rest.pulls.get).not.toHaveBeenCalled()
     expect(mocks.fetchMock).not.toHaveBeenCalled()
     expect(mocks.octokit.rest.pulls.createReview).not.toHaveBeenCalled()
-    expect(mocks.prisma.$transaction).not.toHaveBeenCalled()
+    expect(mocks.prisma.reviewCreate).not.toHaveBeenCalled()
   })
 
   it('FastAPI timeout: AbortError is caught upstream, check run marked failed, no crash', async () => {
@@ -355,7 +384,7 @@ describe('pipeline integration: webhook → review → post', () => {
 
     // No review is posted and nothing is persisted...
     expect(mocks.octokit.rest.pulls.createReview).not.toHaveBeenCalled()
-    expect(mocks.prisma.$transaction).not.toHaveBeenCalled()
+    expect(mocks.prisma.reviewCreate).not.toHaveBeenCalled()
 
     // ...but the check run must be resolved to "failure" rather than left
     // stuck "in_progress" forever on the PR (see fix(webhook): mark check
@@ -382,15 +411,15 @@ describe('pipeline integration: webhook → review → post', () => {
 
     // Pipeline is fire-and-forget: wait for the async chain to finish
     // (GitLab changes fetch -> FastAPI -> discussion posts -> Prisma).
-    await vi.waitFor(() => expect(mocks.prisma.$transaction).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(mocks.prisma.reviewCreate).toHaveBeenCalledTimes(1))
 
     // 1. MR diff fetched from GitLab's REST API
-    const changesCall = mocks.fetchMock.mock.calls.find(([u]: [string]) => u.endsWith('/changes'))
+    const changesCall = mocks.fetchMock.mock.calls.find(([u]: any[]) => u.endsWith('/changes'))
     expect(changesCall).toBeDefined()
     expect(changesCall![0]).toBe('https://gitlab.com/api/v4/projects/555/merge_requests/5/changes')
 
     // 2. FastAPI bridge called with the diff-derived PRContext
-    const reviewCall = mocks.fetchMock.mock.calls.find(([u]: [string]) => u === 'http://127.0.0.1:8000/review')
+    const reviewCall = mocks.fetchMock.mock.calls.find(([u]: any[]) => u === 'http://127.0.0.1:8000/review')
     expect(reviewCall).toBeDefined()
     const sentContext = JSON.parse(reviewCall![1].body)
     expect(sentContext.repo).toBe('acme/gitlab-api')
@@ -400,7 +429,7 @@ describe('pipeline integration: webhook → review → post', () => {
     expect(sentContext.files[0]).toMatchObject({ path: 'src/limiter.ts', language: 'typescript' })
 
     // 3. Review posted back as GitLab discussions: one per inline comment, plus a summary note
-    const discussionCalls = mocks.fetchMock.mock.calls.filter(([u]: [string]) => u.endsWith('/discussions'))
+    const discussionCalls = mocks.fetchMock.mock.calls.filter(([u]: any[]) => u.endsWith('/discussions'))
     expect(discussionCalls).toHaveLength(2)
     const inlineBody = JSON.parse(discussionCalls[0][1].body)
     expect(inlineBody.position).toMatchObject({
@@ -448,6 +477,6 @@ describe('pipeline integration: webhook → review → post', () => {
     const retryArgs = mocks.octokit.rest.pulls.createReview.mock.calls[1][0]
     expect(retryArgs.comments).toEqual([])
     // Pipeline continued to completion after the fallback
-    expect(mocks.prisma.$transaction).toHaveBeenCalledTimes(1)
+    expect(mocks.prisma.reviewCreate).toHaveBeenCalledTimes(1)
   })
 })
