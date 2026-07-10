@@ -1,6 +1,9 @@
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from arete_agents.agents.base import escape_for_prompt
+
+
 class ChatAgent:
     def __init__(self, llm: BaseChatModel) -> None:
         self._llm = llm
@@ -18,10 +21,14 @@ class ChatAgent:
             "on a Pull Request. Respond to the user's reply in a helpful, conversational manner using markdown."
         )
         
+        # Metadata and conversational fields are escaped to prevent a malicious
+        # title/comment/reply (e.g. containing "</user_reply>") from breaking
+        # out of its delimiter and injecting fake instructions. diff_hunk is
+        # left as-is: it is source code the assistant must read verbatim.
         user_prompt = f"""<pr_metadata>
-PR: {pr_title}
-Description: {pr_description}
-File: {file_path}
+PR: {escape_for_prompt(pr_title)}
+Description: {escape_for_prompt(pr_description)}
+File: {escape_for_prompt(file_path)}
 </pr_metadata>
 
 <diff_hunk>
@@ -29,11 +36,11 @@ File: {file_path}
 </diff_hunk>
 
 <bot_comment>
-{bot_comment}
+{escape_for_prompt(bot_comment)}
 </bot_comment>
 
 <user_reply>
-{user_reply}
+{escape_for_prompt(user_reply)}
 </user_reply>
 
 Please provide a helpful and conversational response to the user's reply."""
