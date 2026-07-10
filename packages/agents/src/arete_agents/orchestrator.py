@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Literal
 
 from langchain_core.language_models import BaseChatModel
 
@@ -11,7 +12,9 @@ from arete_agents.models.review import FileReview, ReviewResult
 _SEVERITY_WEIGHT = {"error": 3, "warning": 2, "info": 1}
 
 
-def _risk_level(file_reviews: list[FileReview]) -> str:
+def _risk_level(
+    file_reviews: list[FileReview],
+) -> Literal["low", "medium", "high", "critical"]:
     all_comments = [c for fr in file_reviews for c in fr.comments]
     if not all_comments:
         return "low"
