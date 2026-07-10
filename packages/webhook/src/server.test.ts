@@ -13,7 +13,7 @@ describe('server middleware mount', () => {
   let app: Application
 
   beforeAll(async () => {
-    vi.doMock('./generated/prisma/client.js', () => {
+    vi.doMock('@arete/db', () => {
       return { PrismaClient: vi.fn() }
     })
     const { createServer } = await import('./server.js')

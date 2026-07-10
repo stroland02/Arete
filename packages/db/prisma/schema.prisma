@@ -1,0 +1,84 @@
+// Single source of truth for the Areté data model.
+// Owned by @arete/db — both @arete/webhook and @arete/dashboard import the
+// generated client from this package. Do NOT copy this schema elsewhere.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Which SCM platform an Installation/Repository belongs to. External IDs
+/// (GitHub installation ids, GitLab project ids) are only unique *within*
+/// a provider, so every lookup must be scoped by this discriminator.
+enum ScmProvider {
+  github
+  gitlab
+}
+
+model Installation {
+  id                   String       @id @default(uuid())
+  provider             ScmProvider
+  /// Provider-scoped external id: GitHub App installation id for `github`,
+  /// GitLab project id for `gitlab`. Never globally unique on its own.
+  externalId           Int
+  owner                String
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  subscriptionStatus   String       @default("trialing")
+  planTier             String       @default("trialing")
+  usageCount           Int          @default(0)
+  createdAt            DateTime     @default(now())
+  repositories         Repository[]
+
+  @@unique([provider, externalId])
+}
+
+model Repository {
+  id             String       @id @default(uuid())
+  provider       ScmProvider
+  /// Provider-scoped external id: GitHub repository id or GitLab project id.
+  externalId     Int
+  name           String
+  fullName       String
+  installationId String
+  createdAt      DateTime     @default(now())
+  installation   Installation @relation(fields: [installationId], references: [id])
+  reviews        Review[]
+
+  @@unique([provider, externalId])
+}
+
+model Review {
+  id             String          @id @default(uuid())
+  prNumber       Int
+  repositoryId   String
+  riskLevel      String
+  overallSummary String
+  /// Head commit SHA the review was produced for; part of the idempotency key.
+  headSha        String
+  /// "complete" | "failed" — mirrors ReviewResult.analysis_status.
+  analysisStatus String          @default("complete")
+  createdAt      DateTime        @default(now())
+  repository     Repository      @relation(fields: [repositoryId], references: [id])
+  comments       ReviewComment[]
+
+  @@unique([repositoryId, prNumber, headSha])
+  @@index([repositoryId, createdAt])
+}
+
+model ReviewComment {
+  id        String   @id @default(uuid())
+  reviewId  String
+  path      String
+  line      Int
+  body      String
+  severity  String
+  category  String
+  createdAt DateTime @default(now())
+  review    Review   @relation(fields: [reviewId], references: [id])
+}

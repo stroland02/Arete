@@ -1,12 +1,11 @@
 import Stripe from 'stripe';
 import { Request, Response } from 'express';
-import { PrismaClient } from './generated/prisma/client.js';
+import { prisma } from './db.js';
 
-const prisma = new PrismaClient();
 const stripeKey = process.env.STRIPE_SECRET_KEY
 if (!stripeKey) throw new Error('STRIPE_SECRET_KEY env var is required')
 const stripe = new Stripe(stripeKey, {
-  apiVersion: '2025-01-27.acacia',
+  apiVersion: '2026-06-24.dahlia',
 });
 
 export async function handleStripeWebhook(req: Request, res: Response) {
@@ -33,10 +32,13 @@ export async function handleStripeWebhook(req: Request, res: Response) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
         const githubInstallationId = session.client_reference_id ? parseInt(session.client_reference_id) : null;
-        
+
         if (githubInstallationId && session.customer && session.subscription) {
+          // Checkout sessions carry a GitHub App installation id — scope the
+          // update by provider so it can never hit a GitLab row whose
+          // externalId happens to share the same number.
           await prisma.installation.updateMany({
-            where: { githubInstallationId },
+            where: { provider: 'github', externalId: githubInstallationId },
             data: {
               stripeCustomerId: session.customer as string,
               stripeSubscriptionId: session.subscription as string,

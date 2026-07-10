@@ -32,12 +32,15 @@ describe('handlePullRequestEvent', () => {
     vi.doMock('./pr-fetcher.js', () => ({ fetchPRContext: mockFetch }))
     vi.doMock('./review-bridge.js', () => ({ runReviewPipeline: mockRun }))
     vi.doMock('./comment-poster.js', () => ({ postReview: mockPost }))
-    vi.doMock('./generated/prisma/client.js', () => {
+    vi.doMock('@arete/db', () => {
       const PrismaClient = vi.fn()
-      PrismaClient.prototype.$transaction = vi.fn().mockResolvedValue([])
-      PrismaClient.prototype.installation = { findFirst: vi.fn(), upsert: vi.fn() }
-      PrismaClient.prototype.repository = { upsert: vi.fn() }
-      PrismaClient.prototype.review = { create: vi.fn() }
+      PrismaClient.prototype.installation = {
+        findUnique: vi.fn().mockResolvedValue(null),
+        upsert: vi.fn().mockResolvedValue({ id: 'inst-uuid-1' }),
+        update: vi.fn().mockResolvedValue({}),
+      }
+      PrismaClient.prototype.repository = { upsert: vi.fn().mockResolvedValue({ id: 'repo-uuid-1' }) }
+      PrismaClient.prototype.review = { findUnique: vi.fn().mockResolvedValue(null), create: vi.fn() }
       return { PrismaClient }
     })
 
@@ -57,7 +60,7 @@ describe('handlePullRequestEvent', () => {
   it('does not run pipeline for closed PRs', async () => {
     const mockRun = vi.fn()
     vi.doMock('./review-bridge.js', () => ({ runReviewPipeline: mockRun }))
-    vi.doMock('./generated/prisma/client.js', () => {
+    vi.doMock('@arete/db', () => {
       const PrismaClient = vi.fn()
       return { PrismaClient }
     })
@@ -91,7 +94,7 @@ describe('handlePullRequestEvent', () => {
     vi.doMock('./pr-fetcher.js', () => ({ fetchPRContext: mockFetch }))
     vi.doMock('./review-bridge.js', () => ({ runReviewPipeline: mockRun }))
     vi.doMock('./comment-poster.js', () => ({ postReview: mockPost }))
-    vi.doMock('./generated/prisma/client.js', () => {
+    vi.doMock('@arete/db', () => {
       const PrismaClient = vi.fn()
       return { PrismaClient }
     })
