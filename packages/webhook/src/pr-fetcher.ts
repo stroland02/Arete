@@ -45,15 +45,36 @@ export async function fetchAreteYaml(octokit: Octokit, owner: string, repo: stri
   return [];
 }
 
+// GitHub returns changed files in pages of up to 100. PRs touching more than
+// 100 files (common with generated files, lockfiles, or large refactors)
+// would otherwise be silently truncated to the first page.
+async function listAllFiles(octokit: Octokit, owner: string, repo: string, prNumber: number): Promise<any[]> {
+  const allFiles: any[] = []
+  let page = 1
+  while (true) {
+    const { data } = await (octokit as any).rest.pulls.listFiles({
+      owner,
+      repo,
+      pull_number: prNumber,
+      per_page: 100,
+      page,
+    })
+    allFiles.push(...data)
+    if (data.length < 100) break
+    page += 1
+  }
+  return allFiles
+}
+
 export async function fetchPRContext(
   octokit: Octokit,
   owner: string,
   repo: string,
   prNumber: number
 ): Promise<PRContext> {
-  const [{ data: pr }, { data: files }] = await Promise.all([
+  const [{ data: pr }, files] = await Promise.all([
     (octokit as any).rest.pulls.get({ owner, repo, pull_number: prNumber }),
-    (octokit as any).rest.pulls.listFiles({ owner, repo, pull_number: prNumber, per_page: 100 }),
+    listAllFiles(octokit, owner, repo, prNumber),
   ])
 
   const fileChanges: FileChange[] = files
