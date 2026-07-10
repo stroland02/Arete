@@ -6,6 +6,8 @@ export interface FileChange {
   additions: number
   deletions: number
   language: string
+  // Optional change kind (used by the GitLab fetcher); absent in GitHub payloads
+  status?: 'added' | 'removed' | 'renamed' | 'modified'
 }
 
 export interface PRContext {
