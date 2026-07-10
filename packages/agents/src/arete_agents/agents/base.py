@@ -1,3 +1,4 @@
+import html
 import json
 import re
 from abc import ABC, abstractmethod
@@ -9,6 +10,16 @@ from arete_agents.models.pr import FileChange, PRContext
 from arete_agents.models.review import FileReview, ReviewComment
 
 MAX_PATCH_CHARS = 50_000
+
+
+def escape_for_prompt(value: str) -> str:
+    """Neutralize characters that could break out of the XML-style prompt
+    delimiters (e.g. a PR title containing ``</pr_metadata>``). Only used for
+    free-text *metadata* fields — never for the diff/patch itself, which is
+    expected to contain arbitrary code (including angle brackets) that the
+    agent must read verbatim to give accurate line-level feedback.
+    """
+    return html.escape(str(value), quote=False)
 
 
 class BaseReviewAgent(ABC):
@@ -35,9 +46,9 @@ class BaseReviewAgent(ABC):
         return f"""Review this pull request file for {self.agent_name} issues.
 
 <pr_metadata>
-PR: "{pr_context.title}" in {pr_context.repo}
-Description: {pr_context.description}
-File: {file.path} ({file.language})
+PR: "{escape_for_prompt(pr_context.title)}" in {escape_for_prompt(pr_context.repo)}
+Description: {escape_for_prompt(pr_context.description)}
+File: {escape_for_prompt(file.path)} ({file.language})
 </pr_metadata>
 
 <diff>

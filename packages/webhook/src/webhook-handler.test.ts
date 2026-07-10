@@ -72,4 +72,52 @@ describe('handlePullRequestEvent', () => {
 
     expect(mockRun).not.toHaveBeenCalled()
   })
+
+  it('marks the check run as failed instead of leaving it stuck in_progress when the pipeline throws', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(MOCK_PR_CONTEXT)
+    const mockRun = vi.fn().mockRejectedValue(new Error('Python pipeline timed out after 120s'))
+    const mockPost = vi.fn()
+    const mockChecksCreate = vi.fn().mockResolvedValue({ data: { id: 999 } })
+    const mockChecksUpdate = vi.fn().mockResolvedValue({})
+    const mockOctokit = {
+      rest: {
+        checks: {
+          create: mockChecksCreate,
+          update: mockChecksUpdate
+        }
+      }
+    }
+
+    vi.doMock('./pr-fetcher.js', () => ({ fetchPRContext: mockFetch }))
+    vi.doMock('./review-bridge.js', () => ({ runReviewPipeline: mockRun }))
+    vi.doMock('./comment-poster.js', () => ({ postReview: mockPost }))
+    vi.doMock('./generated/prisma/client.js', () => {
+      const PrismaClient = vi.fn()
+      return { PrismaClient }
+    })
+
+    const { handlePullRequestEvent } = await import('./webhook-handler.js')
+
+    await expect(
+      handlePullRequestEvent(mockOctokit as any, {
+        repository: { id: 123, owner: { login: 'acme' }, name: 'api', full_name: 'acme/api' },
+        pull_request: { number: 1, head: { sha: 'abcdef' } },
+        action: 'opened',
+      })
+    ).rejects.toThrow('Python pipeline timed out after 120s')
+
+    expect(mockPost).not.toHaveBeenCalled()
+    expect(mockChecksUpdate).toHaveBeenCalledTimes(1)
+    expect(mockChecksUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        check_run_id: 999,
+        status: 'completed',
+        conclusion: 'failure',
+        output: expect.objectContaining({
+          title: 'Review Failed',
+          summary: expect.stringContaining('Python pipeline timed out after 120s'),
+        }),
+      })
+    )
+  })
 })

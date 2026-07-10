@@ -64,8 +64,26 @@ export async function handlePullRequestEvent(
   })
   const checkRunId = checkRun.data.id
 
-  const result = await runReviewPipeline(prContext)
-  await postReview(octokit, owner, repo, prNumber, result)
+  let result
+  try {
+    result = await runReviewPipeline(prContext)
+    await postReview(octokit, owner, repo, prNumber, result)
+  } catch (err) {
+    // Without this, a failure here (Python pipeline error, GitHub API error, etc.)
+    // leaves the check run stuck "in_progress" forever on the PR.
+    await (octokit as any).rest.checks.update({
+      owner,
+      repo,
+      check_run_id: checkRunId,
+      status: "completed",
+      conclusion: "failure",
+      output: {
+        title: "Review Failed",
+        summary: `Areté encountered an error while reviewing this PR: ${err instanceof Error ? err.message : String(err)}`
+      }
+    })
+    throw err
+  }
 
   await (octokit as any).rest.checks.update({
     owner,
@@ -158,8 +176,24 @@ export function registerCheckRunWebhooks(app: any) {
     })
     const checkRunId = checkRun.data.id
 
-    const result = await runReviewPipeline(prContext)
-    await postReview(octokit, owner, repo, prNumber, result)
+    let result
+    try {
+      result = await runReviewPipeline(prContext)
+      await postReview(octokit, owner, repo, prNumber, result)
+    } catch (err) {
+      await (octokit as any).rest.checks.update({
+        owner,
+        repo,
+        check_run_id: checkRunId,
+        status: "completed",
+        conclusion: "failure",
+        output: {
+          title: "Review Failed",
+          summary: `Areté encountered an error while diagnosing this CI failure: ${err instanceof Error ? err.message : String(err)}`
+        }
+      })
+      throw err
+    }
 
     await (octokit as any).rest.checks.update({
       owner,

@@ -67,7 +67,8 @@ export async function handleReviewCommentEvent(
 }
 
 async function runChatPipeline(context: any): Promise<string> {
-  const res = await fetch('http://127.0.0.1:8000/chat', {
+  const baseUrl = process.env.PYTHON_SERVICE_URL ?? 'http://127.0.0.1:8000'
+  const res = await fetch(`${baseUrl}/chat`, {
     method: 'POST',
     body: JSON.stringify(context),
     headers: { 'Content-Type': 'application/json' },
