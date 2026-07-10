@@ -2,7 +2,7 @@ import type { Octokit } from '@octokit/core'
 import { fetchPRContext } from './pr-fetcher.js'
 import { runReviewPipeline } from './review-bridge.js'
 import { postReview } from './comment-poster.js'
-import { PrismaClient } from './generated/prisma/index.js'
+import { PrismaClient } from './generated/prisma/client.js'
 
 const HANDLED_ACTIONS = new Set(['opened', 'synchronize', 'reopened'])
 const prisma = new PrismaClient()

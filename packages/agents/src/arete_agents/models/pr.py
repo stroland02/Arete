@@ -1,4 +1,4 @@
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel, computed_field, Field
 
 _EXTENSION_MAP: dict[str, str] = {
     ".py": "python", ".ts": "typescript", ".tsx": "typescript",
@@ -27,3 +27,4 @@ class PRContext(BaseModel):
     title: str
     description: str
     files: list[FileChange]
+    custom_rules: list[str] = Field(default_factory=list, alias="customRules")

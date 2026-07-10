@@ -6,12 +6,16 @@ import type { Application } from 'express'
 vi.stubEnv('GITHUB_APP_ID', '12345')
 vi.stubEnv('GITHUB_PRIVATE_KEY', '-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----\n')
 vi.stubEnv('GITHUB_WEBHOOK_SECRET', 'test-secret')
+vi.stubEnv('STRIPE_SECRET_KEY', 'test_stripe_secret')
 vi.stubEnv('PORT', '3000')
 
 describe('server middleware mount', () => {
   let app: Application
 
   beforeAll(async () => {
+    vi.doMock('./generated/prisma/client.js', () => {
+      return { PrismaClient: vi.fn() }
+    })
     const { createServer } = await import('./server.js')
     app = await createServer()
   })

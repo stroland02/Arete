@@ -1,6 +1,6 @@
 import Stripe from 'stripe';
 import { Request, Response } from 'express';
-import { PrismaClient } from './generated/prisma/index.js';
+import { PrismaClient } from './generated/prisma/client.js';
 
 const prisma = new PrismaClient();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {

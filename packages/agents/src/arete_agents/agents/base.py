@@ -73,8 +73,11 @@ If no issues found, return empty comments array."""
             return [], f"Failed to parse agent response: {exc}"
 
     def review_file(self, file: FileChange, pr_context: PRContext) -> FileReview:
+        prompt = self.system_prompt
+        if pr_context.custom_rules:
+            prompt += "\n\nCUSTOM RULES:\n" + "\n".join(f"- {rule}" for rule in pr_context.custom_rules)
         messages = [
-            SystemMessage(content=self.system_prompt),
+            SystemMessage(content=prompt),
             HumanMessage(content=self._build_user_prompt(file, pr_context)),
         ]
         llm_with_retry = self._llm.with_retry(stop_after_attempt=2)

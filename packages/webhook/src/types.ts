@@ -14,6 +14,7 @@ export interface PRContext {
   title: string
   description: string
   files: FileChange[]
+  customRules?: string[]
 }
 
 export interface ReviewComment {

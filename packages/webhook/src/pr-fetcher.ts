@@ -1,5 +1,6 @@
 import type { Octokit } from '@octokit/core'
 import type { FileChange, PRContext } from './types.js'
+import yaml from 'yaml'
 
 const EXTENSION_MAP: Record<string, string> = {
   '.py': 'python', '.ts': 'typescript', '.tsx': 'typescript',
@@ -11,6 +12,37 @@ const EXTENSION_MAP: Record<string, string> = {
 function detectLanguage(filename: string): string {
   const ext = filename.includes('.') ? '.' + filename.split('.').pop()! : ''
   return EXTENSION_MAP[ext] ?? 'other'
+}
+
+export async function fetchAreteYaml(octokit: Octokit, owner: string, repo: string, ref: string): Promise<string[]> {
+  const tryFetch = async (path: string) => {
+    try {
+      const res = await (octokit as any).rest.repos.getContent({
+        owner,
+        repo,
+        path,
+        ref
+      });
+      if (res.data.type === 'file' && res.data.content) {
+        const content = Buffer.from(res.data.content, res.data.encoding || 'base64').toString('utf8');
+        const parsed = yaml.parse(content);
+        return parsed?.custom_rules || [];
+      }
+    } catch (err: any) {
+      if (err.status !== 404) {
+        console.error(`Error fetching ${path}:`, err);
+      }
+    }
+    return null;
+  };
+
+  const yamlResult = await tryFetch('.arete.yml');
+  if (yamlResult !== null) return yamlResult;
+  
+  const yamlResult2 = await tryFetch('.arete.yaml');
+  if (yamlResult2 !== null) return yamlResult2;
+
+  return [];
 }
 
 export async function fetchPRContext(
@@ -34,11 +66,14 @@ export async function fetchPRContext(
       language: detectLanguage(f.filename),
     }))
 
+  const customRules = await fetchAreteYaml(octokit, owner, repo, pr.head.sha);
+
   return {
     repo: `${owner}/${repo}`,
     pr_number: pr.number,
     title: pr.title,
     description: pr.body ?? '',
     files: fileChanges,
+    customRules,
   }
 }

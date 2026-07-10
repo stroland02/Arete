@@ -23,11 +23,19 @@ describe('handlePullRequestEvent', () => {
     vi.doMock('./pr-fetcher.js', () => ({ fetchPRContext: mockFetch }))
     vi.doMock('./review-bridge.js', () => ({ runReviewPipeline: mockRun }))
     vi.doMock('./comment-poster.js', () => ({ postReview: mockPost }))
+    vi.doMock('./generated/prisma/client.js', () => {
+      const PrismaClient = vi.fn()
+      PrismaClient.prototype.$transaction = vi.fn().mockResolvedValue([])
+      PrismaClient.prototype.installation = { findFirst: vi.fn(), upsert: vi.fn() }
+      PrismaClient.prototype.repository = { upsert: vi.fn() }
+      PrismaClient.prototype.review = { create: vi.fn() }
+      return { PrismaClient }
+    })
 
     const { handlePullRequestEvent } = await import('./webhook-handler.js')
 
     await handlePullRequestEvent(mockOctokit as any, {
-      repository: { owner: { login: 'acme' }, name: 'api' },
+      repository: { id: 123, owner: { login: 'acme' }, name: 'api', full_name: 'acme/api' },
       pull_request: { number: 1 },
       action: 'opened',
     })
@@ -40,11 +48,15 @@ describe('handlePullRequestEvent', () => {
   it('does not run pipeline for closed PRs', async () => {
     const mockRun = vi.fn()
     vi.doMock('./review-bridge.js', () => ({ runReviewPipeline: mockRun }))
+    vi.doMock('./generated/prisma/client.js', () => {
+      const PrismaClient = vi.fn()
+      return { PrismaClient }
+    })
 
     const { handlePullRequestEvent } = await import('./webhook-handler.js')
 
     await handlePullRequestEvent({} as any, {
-      repository: { owner: { login: 'acme' }, name: 'api' },
+      repository: { id: 123, owner: { login: 'acme' }, name: 'api', full_name: 'acme/api' },
       pull_request: { number: 1 },
       action: 'closed',
     })

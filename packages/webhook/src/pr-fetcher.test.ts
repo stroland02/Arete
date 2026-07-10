@@ -5,6 +5,7 @@ const mockPR = {
   number: 42,
   title: 'Fix auth bug',
   body: 'Fixes SQL injection in login',
+  head: { sha: 'abcdef123456' },
 }
 
 const mockFiles = [
@@ -31,6 +32,9 @@ function makeOctokit() {
         get: vi.fn().mockResolvedValue({ data: mockPR }),
         listFiles: vi.fn().mockResolvedValue({ data: mockFiles }),
       },
+      repos: {
+        getContent: vi.fn().mockRejectedValue({ status: 404 }),
+      }
     },
   }
 }

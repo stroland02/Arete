@@ -104,6 +104,10 @@ Return ONLY valid JSON with this exact structure:
   "risk_level": "low"
 }"""
 
+        if pr.custom_rules:
+            system_prompt += "\n\nCRITICAL: The user has defined custom Standard Operating Procedures (SOP) rules for this repository in .arete.yml. You MUST ensure the final output strictly obeys these rules:\n"
+            system_prompt += "\n".join(f"- {rule}" for rule in pr.custom_rules)
+
         raw_reviews_json = [fr.model_dump() for fr in raw_reviews]
         
         user_prompt = f"""Synthesize the following raw reviews for PR #{pr.pr_number}:
