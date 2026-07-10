@@ -88,7 +88,7 @@ Your task is to merge raw code reviews from multiple specialist agents.
 2. Remove duplicates and resolve contradictions.
 3. Group the finalized comments by file.
 4. Provide a summarized string for each file.
-5. Provide an overall summary.
+5. Provide an overall summary. IMPORTANT: Your overall summary MUST include a ````mermaid ... ```` block containing an architectural sequence diagram or flow chart that visually maps out the impact of this Pull Request's changes.
 6. Calculate risk level ("low", "medium", "high", "critical") based on severity.
 
 Return ONLY valid JSON with this exact structure:
