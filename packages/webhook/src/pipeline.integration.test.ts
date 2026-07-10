@@ -255,7 +255,7 @@ describe('pipeline integration: webhook → review → post', () => {
 
     // 1. PR context fetched from GitHub
     expect(mocks.octokit.rest.pulls.get).toHaveBeenCalledWith({ owner: 'acme', repo: 'api', pull_number: 42 })
-    expect(mocks.octokit.rest.pulls.listFiles).toHaveBeenCalledWith({ owner: 'acme', repo: 'api', pull_number: 42, per_page: 100 })
+    expect(mocks.octokit.rest.pulls.listFiles).toHaveBeenCalledWith({ owner: 'acme', repo: 'api', pull_number: 42, per_page: 100, page: 1 })
 
     // 2. FastAPI bridge called with the assembled PRContext
     expect(mocks.fetchMock).toHaveBeenCalledTimes(1)
@@ -335,7 +335,7 @@ describe('pipeline integration: webhook → review → post', () => {
     expect(mocks.prisma.$transaction).not.toHaveBeenCalled()
   })
 
-  it('FastAPI timeout: AbortError is caught upstream, no review posted, no crash', async () => {
+  it('FastAPI timeout: AbortError is caught upstream, check run marked failed, no crash', async () => {
     const abortError = new Error('The operation was aborted')
     abortError.name = 'AbortError'
     mocks.fetchMock.mockRejectedValue(abortError)
@@ -353,10 +353,20 @@ describe('pipeline integration: webhook → review → post', () => {
     expect(mocks.octokit.rest.checks.create).toHaveBeenCalledTimes(1)
     expect(mocks.fetchMock).toHaveBeenCalledTimes(1)
 
-    // ...but nothing after the timeout ran.
+    // No review is posted and nothing is persisted...
     expect(mocks.octokit.rest.pulls.createReview).not.toHaveBeenCalled()
-    expect(mocks.octokit.rest.checks.update).not.toHaveBeenCalled()
     expect(mocks.prisma.$transaction).not.toHaveBeenCalled()
+
+    // ...but the check run must be resolved to "failure" rather than left
+    // stuck "in_progress" forever on the PR (see fix(webhook): mark check
+    // run as failed instead of leaving it stuck).
+    expect(mocks.octokit.rest.checks.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        check_run_id: 555,
+        status: 'completed',
+        conclusion: 'failure',
+      })
+    )
   })
 
   it('GitLab happy path: valid MR event → fetch diff → FastAPI → posted discussion → Prisma transaction', async () => {
