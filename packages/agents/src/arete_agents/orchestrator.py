@@ -1,21 +1,23 @@
 import json
-import re
+import logging
 import operator
-from typing import Literal, TypedDict, Annotated
+import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Annotated, Literal, TypedDict
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
-from langgraph.graph import StateGraph, START, END
+from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
 
 from arete_agents.agents.business_logic import BusinessLogicAgent
+from arete_agents.agents.ci_agent import CIAgent
 from arete_agents.agents.deployment_safety import DeploymentSafetyAgent
 from arete_agents.agents.performance import PerformanceAgent
 from arete_agents.agents.quality import QualityAgent
 from arete_agents.agents.security import SecurityAgent
 from arete_agents.agents.test_coverage import TestCoverageAgent
-from arete_agents.agents.ci_agent import CIAgent
-from arete_agents.models.pr import PRContext, FileChange
+from arete_agents.models.pr import FileChange, PRContext
 from arete_agents.models.review import FileReview, ReviewResult
 
 _SEVERITY_WEIGHT = {"error": 3, "warning": 2, "info": 1}
@@ -260,7 +262,21 @@ class ReviewOrchestrator:
                 risk_level="low",
             )}
 
-        final_result = self.synthesizer.synthesize(pr, raw_reviews)
+        try:
+            final_result = self.synthesizer.synthesize(pr, raw_reviews)
+        except Exception as exc:
+            # Catch synthesis failures (e.g. the LLM returned invalid JSON)
+            # here, rather than letting them bubble up to run()'s outer
+            # except. That outer handler re-runs every specialist agent from
+            # scratch, doubling LLM cost/latency for a failure that has
+            # nothing to do with the agents themselves. We already have all
+            # the raw per-agent reviews in hand, so fall back to a blind
+            # merge of them directly.
+            logging.warning(
+                f"Synthesizer failed: {exc}. Falling back to blind merge of "
+                "already-gathered agent reviews (no agent LLM calls re-issued)."
+            )
+            final_result = _fallback_synthesize(pr, raw_reviews)
         return {"final_result": final_result}
 
     def run(self, pr: PRContext) -> ReviewResult:
@@ -276,27 +292,36 @@ class ReviewOrchestrator:
             state = self.graph.invoke({"pr": pr})
             return state["final_result"]
         except Exception as exc:
-            import logging
             logging.warning(f"LangGraph orchestration failed: {exc}. Falling back to blind merge.")
-            
+
             if pr.ci_logs is not None:
                 agents = [CIAgent(self.llm)]
             else:
                 agents = self._agents
-                
+
             tasks = [(file, agent) for file in pr.files for agent in agents]
             flat_results: list[FileReview] = []
 
-            for file, agent in tasks:
-                try:
-                    flat_results.append(agent.review_file(file, pr))
-                except Exception as e:
-                    flat_results.append(
-                        FileReview(
-                            path=file.path,
-                            comments=[],
-                            summary=f"{agent.agent_name} error: {e}",
+            # Agent calls are I/O-bound (network round trips to the LLM
+            # provider), so run this last-resort path in parallel too —
+            # otherwise a genuine graph-level failure degrades into a
+            # sequential, num_files * num_agents round-trip pileup.
+            with ThreadPoolExecutor(max_workers=min(len(tasks), 12)) as pool:
+                futures = {
+                    pool.submit(agent.review_file, file, pr): (file, agent)
+                    for file, agent in tasks
+                }
+                for future in as_completed(futures):
+                    file, agent = futures[future]
+                    try:
+                        flat_results.append(future.result())
+                    except Exception as e:
+                        flat_results.append(
+                            FileReview(
+                                path=file.path,
+                                comments=[],
+                                summary=f"{agent.agent_name} error: {e}",
+                            )
                         )
-                    )
-            
+
             return _fallback_synthesize(pr, flat_results)
