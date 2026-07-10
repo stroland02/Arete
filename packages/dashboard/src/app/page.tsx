@@ -34,17 +34,47 @@ function formatCategory(category: string): string {
     .join(" ");
 }
 
+/**
+ * Week-over-week change badge. Expresses the delta as a percentage of the
+ * prior-week baseline; falls back to a raw count when the baseline is 0 to
+ * avoid divide-by-zero rendering as "Infinity%" / "NaN%".
+ */
+function weeklyChange(current: number, prior: number): { change: string; positive: boolean } {
+  const delta = current - prior;
+  const positive = delta >= 0;
+  const sign = positive ? "+" : "";
+  if (prior === 0) {
+    return { change: `${sign}${delta}`, positive };
+  }
+  return { change: `${sign}${((delta / prior) * 100).toFixed(1)}%`, positive };
+}
+
 export default async function DashboardOverview() {
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
 
-  const [totalPrs, activeRepos, criticalBugs, recentReviews, previousWeekReviews, commentsByCategory, latestReviews] =
+  const [
+    totalPrs,
+    activeRepos,
+    criticalBugs,
+    recentReviews,
+    previousWeekReviews,
+    priorTotalPrs,
+    priorCriticalBugs,
+    priorActiveRepos,
+    commentsByCategory,
+    latestReviews,
+  ] =
     await Promise.all([
       db.review.count(),
       db.repository.count(),
       db.reviewComment.count({ where: { severity: "error" } }),
       db.review.count({ where: { createdAt: { gte: sevenDaysAgo } } }),
       db.review.count({ where: { createdAt: { gte: fourteenDaysAgo, lt: sevenDaysAgo } } }),
+      db.review.count({ where: { createdAt: { lt: sevenDaysAgo } } }),
+      // ReviewComment has no createdAt of its own; comments are created with their review.
+      db.reviewComment.count({ where: { severity: "error", review: { createdAt: { lt: sevenDaysAgo } } } }),
+      db.repository.count({ where: { createdAt: { lt: sevenDaysAgo } } }),
       db.reviewComment.groupBy({
         by: ["category"],
         _count: { category: true },
@@ -58,21 +88,25 @@ export default async function DashboardOverview() {
     ]);
 
   const weeklyDelta = recentReviews - previousWeekReviews;
+  const totalPrsChange = weeklyChange(totalPrs, priorTotalPrs);
+  const criticalBugsChange = weeklyChange(criticalBugs, priorCriticalBugs);
+  // Repo counts are small; a raw week-over-week delta reads better than a percentage.
+  const repoDelta = activeRepos - priorActiveRepos;
   const maxCategoryCount = Math.max(1, ...commentsByCategory.map((c) => c._count.category));
 
   const metrics = [
     {
       title: "Total PRs Reviewed",
       value: totalPrs.toString(),
-      change: "+12.5%",
-      positive: true,
+      change: totalPrsChange.change,
+      positive: totalPrsChange.positive,
       icon: <IconChartBar className="w-6 h-6 text-indigo-400" />,
     },
     {
       title: "Critical Bugs Prevented",
       value: criticalBugs.toString(),
-      change: "+4.2%",
-      positive: true,
+      change: criticalBugsChange.change,
+      positive: criticalBugsChange.positive,
       icon: <IconBug className="w-6 h-6 text-emerald-400" />,
     },
     {
@@ -85,8 +119,8 @@ export default async function DashboardOverview() {
     {
       title: "Active Repositories",
       value: activeRepos.toString(),
-      change: "+2",
-      positive: true,
+      change: `${repoDelta >= 0 ? "+" : ""}${repoDelta}`,
+      positive: repoDelta >= 0,
       icon: <IconActivity className="w-6 h-6 text-purple-400" />,
     },
   ];
