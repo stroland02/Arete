@@ -2,11 +2,12 @@
  * Integration tests for the full webhook → review → post pipeline.
  *
  * Real modules under test (NOT mocked): server.ts, webhook-handler.ts,
- * pr-fetcher.ts, review-bridge.ts, comment-poster.ts, gitlab-handler.ts.
+ * pr-fetcher.ts, review-bridge.ts, comment-poster.ts, gitlab-handler.ts,
+ * gitlab-fetcher.ts, gitlab-comment-poster.ts.
  *
  * Mocked boundaries only:
  *  - @octokit/app + @octokit/webhooks (bypass HMAC, inject mock octokit)
- *  - global fetch (FastAPI POST /review)
+ *  - global fetch (FastAPI POST /review, GitLab REST "changes"/"discussions")
  *  - octokit REST calls (GitHub API)
  *  - generated Prisma client (database)
  *
@@ -35,14 +36,31 @@ const PR_PAYLOAD = {
 
 const GITLAB_MR_PAYLOAD = {
   object_kind: 'merge_request',
-  project: { path_with_namespace: 'acme/gitlab-api' },
+  project: { id: 555, path_with_namespace: 'acme/gitlab-api' },
   object_attributes: {
     iid: 5,
     state: 'opened',
     action: 'open',
     title: 'Add rate limiter',
     description: 'Implements token bucket',
+    diff_refs: { base_sha: 'basesha1', start_sha: 'startsha1' },
+    last_commit: { id: 'headsha1' },
   },
+}
+
+const GITLAB_CHANGES_RESPONSE = {
+  changes: [
+    {
+      new_path: 'src/limiter.ts',
+      old_path: 'src/limiter.ts',
+      diff: '+const bucket = new Map()\n+bucket.set("a", 1)',
+      new_file: false,
+      deleted_file: false,
+      renamed_file: false,
+    },
+  ],
+  title: 'Add rate limiter',
+  description: 'Implements token bucket',
 }
 
 const REVIEW_RESULT = {
@@ -116,6 +134,36 @@ type Mocks = {
 }
 
 /**
+ * A single global-fetch mock has to serve every external HTTP boundary the
+ * pipeline hits (FastAPI /review, GitLab's "changes" and "discussions"
+ * REST endpoints all go through the native fetch()), so this router picks a
+ * canned response based on the request URL.
+ */
+function makeRoutedFetchMock(overrides: { reviewResult?: any } = {}) {
+  const reviewResult = overrides.reviewResult ?? REVIEW_RESULT
+  return vi.fn(async (url: string) => {
+    if (url === 'http://127.0.0.1:8000/review') {
+      return {
+        ok: true,
+        json: async () => reviewResult,
+        text: async () => JSON.stringify(reviewResult),
+      }
+    }
+    if (url.includes('/merge_requests/') && url.endsWith('/changes')) {
+      return {
+        ok: true,
+        json: async () => GITLAB_CHANGES_RESPONSE,
+        text: async () => JSON.stringify(GITLAB_CHANGES_RESPONSE),
+      }
+    }
+    if (url.includes('/discussions')) {
+      return { ok: true, json: async () => ({}), text: async () => '' }
+    }
+    throw new Error(`Unmocked fetch URL in test: ${url}`)
+  })
+}
+
+/**
  * Builds the Express app with all external boundaries mocked.
  * The fake createNodeMiddleware parses the raw JSON body and dispatches to
  * the handlers the real server registered — HMAC validation is bypassed,
@@ -186,11 +234,7 @@ describe('pipeline integration: webhook → review → post', () => {
     mocks = {
       octokit: makeOctokit(),
       prisma: makePrismaMock(),
-      fetchMock: vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => REVIEW_RESULT,
-        text: async () => JSON.stringify(REVIEW_RESULT),
-      }),
+      fetchMock: makeRoutedFetchMock(),
     }
   })
 
@@ -315,7 +359,7 @@ describe('pipeline integration: webhook → review → post', () => {
     expect(mocks.prisma.$transaction).not.toHaveBeenCalled()
   })
 
-  it('GitLab happy path: valid MR event with correct token → FastAPI called, 200 returned', async () => {
+  it('GitLab happy path: valid MR event → fetch diff → FastAPI → posted discussion → Prisma transaction', async () => {
     const app = await buildApp(mocks)
 
     const res = await request(app)
@@ -326,16 +370,43 @@ describe('pipeline integration: webhook → review → post', () => {
     expect(res.status).toBe(200)
     expect(res.text).toBe('OK')
 
-    // Pipeline is fire-and-forget: wait for the async FastAPI call.
-    await vi.waitFor(() => expect(mocks.fetchMock).toHaveBeenCalledTimes(1))
-    const [url, init] = mocks.fetchMock.mock.calls[0]
-    expect(url).toBe('http://127.0.0.1:8000/review')
-    const sentContext = JSON.parse(init.body)
+    // Pipeline is fire-and-forget: wait for the async chain to finish
+    // (GitLab changes fetch -> FastAPI -> discussion posts -> Prisma).
+    await vi.waitFor(() => expect(mocks.prisma.$transaction).toHaveBeenCalledTimes(1))
+
+    // 1. MR diff fetched from GitLab's REST API
+    const changesCall = mocks.fetchMock.mock.calls.find(([u]: [string]) => u.endsWith('/changes'))
+    expect(changesCall).toBeDefined()
+    expect(changesCall![0]).toBe('https://gitlab.com/api/v4/projects/555/merge_requests/5/changes')
+
+    // 2. FastAPI bridge called with the diff-derived PRContext
+    const reviewCall = mocks.fetchMock.mock.calls.find(([u]: [string]) => u === 'http://127.0.0.1:8000/review')
+    expect(reviewCall).toBeDefined()
+    const sentContext = JSON.parse(reviewCall![1].body)
     expect(sentContext.repo).toBe('acme/gitlab-api')
     expect(sentContext.pr_number).toBe(5)
     expect(sentContext.title).toBe('Add rate limiter')
-    // GitLab diff fetching is not implemented yet — handler sends empty files.
-    expect(sentContext.files).toEqual([])
+    expect(sentContext.files).toHaveLength(1)
+    expect(sentContext.files[0]).toMatchObject({ path: 'src/limiter.ts', language: 'typescript' })
+
+    // 3. Review posted back as GitLab discussions: one per inline comment, plus a summary note
+    const discussionCalls = mocks.fetchMock.mock.calls.filter(([u]: [string]) => u.endsWith('/discussions'))
+    expect(discussionCalls).toHaveLength(2)
+    const inlineBody = JSON.parse(discussionCalls[0][1].body)
+    expect(inlineBody.position).toMatchObject({
+      base_sha: 'basesha1',
+      start_sha: 'startsha1',
+      head_sha: 'headsha1',
+      new_path: 'src/limiter.ts',
+      new_line: 3,
+    })
+    const summaryBody = JSON.parse(discussionCalls[1][1].body)
+    expect(summaryBody.body).toContain('Areté Code Review')
+    expect(summaryBody.position).toBeUndefined()
+
+    // 4. Persistence: GitLab entities namespaced with a "gitlab-" prefix
+    const reviewCreateArgs = mocks.prisma.reviewCreate.mock.calls[0][0]
+    expect(reviewCreateArgs.data).toMatchObject({ prNumber: 5, riskLevel: 'medium' })
   })
 
   it('GitLab invalid token: 401, pipeline never invoked', async () => {
