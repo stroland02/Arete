@@ -1,27 +1,44 @@
-from typing import Dict, Any
+import logging
+from typing import Any, Dict
+
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 
+from arete_agents.agents.chat import ChatAgent
 from arete_agents.config import get_settings
 from arete_agents.llm.base import get_llm
 from arete_agents.models.pr import PRContext
 from arete_agents.orchestrator import ReviewOrchestrator
-from arete_agents.agents.chat import ChatAgent
 
 app = FastAPI()
 
+# Module-level singletons — LangGraph graph compilation is expensive;
+# one orchestrator and one chat agent serve all requests. Fail-fast on
+# missing/invalid config is intentional (better to crash at startup than
+# serve requests with a broken LLM client) — but the raw pydantic
+# ValidationError is not actionable on its own, so we log a clear pointer
+# to the required env vars before letting the exception propagate and
+# take down the process.
+try:
+    _settings = get_settings()
+except Exception:
+    logging.critical(
+        "Areté agents server failed to start: invalid or missing configuration. "
+        "Set LLM_PROVIDER (gemini|anthropic) and the matching GEMINI_API_KEY or "
+        "ANTHROPIC_API_KEY in the environment or .env file.",
+        exc_info=True,
+    )
+    raise
+_llm = get_llm(_settings)
+_orchestrator = ReviewOrchestrator(llm=_llm)
+_chat_agent = ChatAgent(llm=_llm)
+
+
 @app.post("/review")
 def review(pr: PRContext):
-    settings = get_settings()
-    llm = get_llm(settings)
-    orch = ReviewOrchestrator(llm=llm)
-    result = orch.run(pr)
-    return result
+    return _orchestrator.run(pr)
+
 
 @app.post("/chat", response_class=PlainTextResponse)
 def chat(context: Dict[str, Any]):
-    settings = get_settings()
-    llm = get_llm(settings)
-    agent = ChatAgent(llm=llm)
-    result = agent.reply(context)
-    return result
+    return _chat_agent.reply(context)
