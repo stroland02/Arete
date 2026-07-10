@@ -1,14 +1,64 @@
-import { IconChartBar, IconBug, IconClock, IconActivity } from "@tabler/icons-react";
+import { IconChartBar, IconBug, IconCalendarStats, IconActivity } from "@tabler/icons-react";
 import { db } from "../lib/db";
 
+function timeAgo(date: Date): string {
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString();
+}
+
+function riskBadgeClasses(riskLevel: string): string {
+  switch (riskLevel.toLowerCase()) {
+    case "critical":
+    case "high":
+      return "bg-rose-500/10 text-rose-400 border-rose-500/20";
+    case "medium":
+      return "bg-amber-500/10 text-amber-400 border-amber-500/20";
+    case "low":
+      return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+    default:
+      return "bg-slate-500/10 text-slate-400 border-slate-500/20";
+  }
+}
+
+function formatCategory(category: string): string {
+  return category
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 export default async function DashboardOverview() {
-  const totalPrs = await db.review.count();
-  const activeRepos = await db.repository.count();
-  const latestReviews = await db.review.findMany({
-    take: 5,
-    orderBy: { createdAt: 'desc' },
-    include: { repository: true }
-  });
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+
+  const [totalPrs, activeRepos, criticalBugs, recentReviews, previousWeekReviews, commentsByCategory, latestReviews] =
+    await Promise.all([
+      db.review.count(),
+      db.repository.count(),
+      db.reviewComment.count({ where: { severity: "error" } }),
+      db.review.count({ where: { createdAt: { gte: sevenDaysAgo } } }),
+      db.review.count({ where: { createdAt: { gte: fourteenDaysAgo, lt: sevenDaysAgo } } }),
+      db.reviewComment.groupBy({
+        by: ["category"],
+        _count: { category: true },
+        orderBy: { _count: { category: "desc" } },
+      }),
+      db.review.findMany({
+        take: 5,
+        orderBy: { createdAt: "desc" },
+        include: { repository: true },
+      }),
+    ]);
+
+  const weeklyDelta = recentReviews - previousWeekReviews;
+  const maxCategoryCount = Math.max(1, ...commentsByCategory.map((c) => c._count.category));
 
   const metrics = [
     {
@@ -20,17 +70,17 @@ export default async function DashboardOverview() {
     },
     {
       title: "Critical Bugs Prevented",
-      value: "42",
+      value: criticalBugs.toString(),
       change: "+4.2%",
       positive: true,
       icon: <IconBug className="w-6 h-6 text-emerald-400" />,
     },
     {
-      title: "Average Review Time",
-      value: "12s",
-      change: "-1.5s",
-      positive: true,
-      icon: <IconClock className="w-6 h-6 text-cyan-400" />,
+      title: "Reviews This Week",
+      value: recentReviews.toString(),
+      change: `${weeklyDelta >= 0 ? "+" : ""}${weeklyDelta} vs last week`,
+      positive: weeklyDelta >= 0,
+      icon: <IconCalendarStats className="w-6 h-6 text-cyan-400" />,
     },
     {
       title: "Active Repositories",
@@ -79,17 +129,35 @@ export default async function DashboardOverview() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 glass-panel p-6">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-white">Review Activity</h2>
-            <button className="text-sm text-indigo-400 hover:text-indigo-300 font-medium transition-colors">
-              View All
-            </button>
+            <h2 className="text-xl font-bold text-white">Comments by Agent</h2>
           </div>
-          <div className="h-64 flex items-center justify-center border border-white/5 rounded-xl bg-white/[0.02] backdrop-blur-sm">
-            <p className="text-slate-500 flex items-center gap-2">
-              <IconActivity className="w-5 h-5" />
-              Chart data will appear here
-            </p>
-          </div>
+          {commentsByCategory.length === 0 ? (
+            <div className="h-64 flex items-center justify-center border border-white/5 rounded-xl bg-white/[0.02] backdrop-blur-sm">
+              <p className="text-slate-500 flex items-center gap-2">
+                <IconActivity className="w-5 h-5" />
+                No review comments yet
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {commentsByCategory.map((entry) => (
+                <div key={entry.category} className="flex items-center gap-4">
+                  <p className="w-40 shrink-0 text-sm font-medium text-slate-300">
+                    {formatCategory(entry.category)}
+                  </p>
+                  <div className="flex-1 h-2.5 rounded-full bg-white/5 border border-white/5 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400"
+                      style={{ width: `${(entry._count.category / maxCategoryCount) * 100}%` }}
+                    />
+                  </div>
+                  <p className="w-10 shrink-0 text-right text-sm font-semibold text-slate-200">
+                    {entry._count.category}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="glass-panel p-6">
@@ -97,12 +165,20 @@ export default async function DashboardOverview() {
             <h2 className="text-xl font-bold text-white">Latest Activity</h2>
           </div>
           <div className="space-y-4">
+            {latestReviews.length === 0 && (
+              <p className="text-sm text-slate-500">No reviews yet.</p>
+            )}
             {latestReviews.map((review) => (
               <div key={review.id} className="flex gap-4 p-3 rounded-xl hover:bg-white/5 transition-colors cursor-pointer border border-transparent hover:border-white/5">
                 <div className="w-2 h-2 mt-2 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.8)]" />
-                <div>
-                  <p className="text-sm font-medium text-slate-200">{review.repository.fullName}</p>
-                  <p className="text-xs text-slate-500 mt-1">PR #{review.prNumber} • {new Date(review.createdAt).toLocaleDateString()}</p>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-slate-200 truncate">{review.repository.fullName}</p>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide border shrink-0 ${riskBadgeClasses(review.riskLevel)}`}>
+                      {review.riskLevel}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">PR #{review.prNumber} • {timeAgo(new Date(review.createdAt))}</p>
                 </div>
               </div>
             ))}
