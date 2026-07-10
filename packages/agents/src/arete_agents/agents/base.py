@@ -61,7 +61,7 @@ Return ONLY valid JSON (no markdown, no extra text):
     {{
       "path": "{file.path}",
       "line": <integer>,
-      "body": "<issue description and how to fix it>",
+      "body": "<issue description and how to fix it. IMPORTANT: You MUST provide the exact code fix by wrapping it in a GitHub markdown ```suggestion block, so the user can one-click commit it.>",
       "severity": "<info|warning|error>",
       "category": "{self.agent_name}"
     }}
