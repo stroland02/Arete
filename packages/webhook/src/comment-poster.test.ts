@@ -57,4 +57,14 @@ describe('postReview', () => {
     await postReview(makeOctokit(createReview) as any, 'acme', 'api', 1, MOCK_RESULT)
     expect(createReview.mock.calls[0][0].event).toBe('COMMENT')
   })
+
+  it('falls back to body-only when createReview returns 422', async () => {
+    const createReview = vi.fn()
+      .mockRejectedValueOnce(Object.assign(new Error('Unprocessable Entity'), { status: 422 }))
+      .mockResolvedValueOnce({})
+    await postReview(makeOctokit(createReview) as any, 'acme', 'api', 1, MOCK_RESULT)
+    expect(createReview).toHaveBeenCalledTimes(2)
+    // Second call must have empty comments
+    expect(createReview.mock.calls[1][0].comments).toHaveLength(0)
+  })
 })

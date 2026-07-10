@@ -13,12 +13,18 @@ export function runReviewPipeline(prContext: PRContext): Promise<ReviewResult> {
     let stdout = ''
     let stderr = ''
 
+    const timer = setTimeout(() => {
+      proc.kill()
+      reject(new Error('Python pipeline timed out after 120s'))
+    }, 120_000)
+
     proc.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString() })
     proc.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString() })
 
     proc.on('error', reject)
 
     proc.on('close', (code) => {
+      clearTimeout(timer)
       if (code !== 0) {
         console.error('[review-bridge] Python stderr:', stderr)
         reject(new Error(`Python pipeline exited with code ${code}: ${stderr.slice(0, 200)}`))

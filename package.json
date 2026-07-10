@@ -3,8 +3,8 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev:webhook": "pnpm --filter webhook dev",
-    "test:webhook": "pnpm --filter webhook test",
+    "dev:webhook": "pnpm --filter @arete/webhook dev",
+    "test:webhook": "pnpm --filter @arete/webhook test",
     "infra:up": "docker compose -f infra/docker-compose.yml up -d",
     "infra:down": "docker compose -f infra/docker-compose.yml down"
   },

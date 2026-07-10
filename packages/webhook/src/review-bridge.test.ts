@@ -44,4 +44,24 @@ describe('runReviewPipeline', () => {
       runReviewPipeline({ repo: 'x/y', pr_number: 1, title: 'T', description: '', files: [] })
     ).rejects.toThrow('exited with code 1')
   })
+
+  it('rejects with timeout error when process takes too long', async () => {
+    vi.useFakeTimers()
+    vi.doMock('node:child_process', () => ({
+      spawn: vi.fn(() => {
+        const proc = new EventEmitter() as any
+        proc.stdout = new EventEmitter()
+        proc.stderr = new EventEmitter()
+        proc.stdin = { write: vi.fn(), end: vi.fn() }
+        proc.kill = vi.fn()
+        // Never emit 'close' — simulates a hung process
+        return proc
+      }),
+    }))
+    const { runReviewPipeline } = await import('./review-bridge.js')
+    const promise = runReviewPipeline({ repo: 'x/y', pr_number: 1, title: 'T', description: '', files: [] })
+    vi.advanceTimersByTime(120_001)
+    await expect(promise).rejects.toThrow('timed out')
+    vi.useRealTimers()
+  })
 })
