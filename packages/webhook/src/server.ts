@@ -2,6 +2,7 @@ import express from 'express'
 import { getConfig } from './config.js'
 import { handlePullRequestEvent } from './webhook-handler.js'
 import { handleStripeWebhook } from './stripe-handler.js'
+import { handleGitLabWebhook } from './gitlab-handler.js'
 
 // @octokit/app and @octokit/webhooks are pure ESM (import-only "exports" maps);
 // this package compiles to CJS, so they must be loaded via dynamic import(),
@@ -38,6 +39,9 @@ export async function createServer(): Promise<express.Application> {
   
   // Stripe webhook needs raw body
   server.post('/stripe-webhook', express.raw({ type: 'application/json' }), handleStripeWebhook)
+  
+  // GitLab webhook needs JSON body
+  server.post('/gitlab-webhook', express.json(), handleGitLabWebhook)
   
   // Mount at root and let createNodeMiddleware own the path matching —
   // Express strips the mount prefix from req.url, so mounting at '/webhook'

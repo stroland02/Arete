@@ -1,10 +1,19 @@
 import { IconChartBar, IconBug, IconClock, IconActivity } from "@tabler/icons-react";
+import { db } from "../lib/db";
 
-export default function DashboardOverview() {
+export default async function DashboardOverview() {
+  const totalPrs = await db.review.count();
+  const activeRepos = await db.repository.count();
+  const latestReviews = await db.review.findMany({
+    take: 5,
+    orderBy: { createdAt: 'desc' },
+    include: { repository: true }
+  });
+
   const metrics = [
     {
       title: "Total PRs Reviewed",
-      value: "1,248",
+      value: totalPrs.toString(),
       change: "+12.5%",
       positive: true,
       icon: <IconChartBar className="w-6 h-6 text-indigo-400" />,
@@ -25,7 +34,7 @@ export default function DashboardOverview() {
     },
     {
       title: "Active Repositories",
-      value: "24",
+      value: activeRepos.toString(),
       change: "+2",
       positive: true,
       icon: <IconActivity className="w-6 h-6 text-purple-400" />,
@@ -85,15 +94,15 @@ export default function DashboardOverview() {
 
         <div className="glass-panel p-6">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-white">Latest Alerts</h2>
+            <h2 className="text-xl font-bold text-white">Latest Activity</h2>
           </div>
           <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="flex gap-4 p-3 rounded-xl hover:bg-white/5 transition-colors cursor-pointer border border-transparent hover:border-white/5">
-                <div className="w-2 h-2 mt-2 rounded-full bg-rose-400 shadow-[0_0_8px_rgba(251,113,133,0.8)]" />
+            {latestReviews.map((review) => (
+              <div key={review.id} className="flex gap-4 p-3 rounded-xl hover:bg-white/5 transition-colors cursor-pointer border border-transparent hover:border-white/5">
+                <div className="w-2 h-2 mt-2 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.8)]" />
                 <div>
-                  <p className="text-sm font-medium text-slate-200">Critical vulnerability found</p>
-                  <p className="text-xs text-slate-500 mt-1">PR #892 • 10m ago</p>
+                  <p className="text-sm font-medium text-slate-200">{review.repository.fullName}</p>
+                  <p className="text-xs text-slate-500 mt-1">PR #{review.prNumber} • {new Date(review.createdAt).toLocaleDateString()}</p>
                 </div>
               </div>
             ))}
