@@ -1,4 +1,4 @@
-from pydantic import BaseModel, computed_field, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 _EXTENSION_MAP: dict[str, str] = {
     ".py": "python", ".ts": "typescript", ".tsx": "typescript",
@@ -22,6 +22,13 @@ class FileChange(BaseModel):
 
 
 class PRContext(BaseModel):
+    # Accept both the TS/JS webhook convention (ciLogs, customRules) and the
+    # Python/CLI convention (ci_logs, custom_rules). Without populate_by_name,
+    # pydantic only recognizes the alias, so a snake_case caller (e.g. the CLI
+    # reading arbitrary stdin JSON) would have ci_logs/custom_rules silently
+    # dropped to their defaults instead of raising a validation error.
+    model_config = ConfigDict(populate_by_name=True)
+
     repo: str
     pr_number: int
     title: str
