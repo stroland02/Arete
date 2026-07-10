@@ -25,7 +25,10 @@ export async function createServer(): Promise<express.Application> {
   })
 
   const server = express()
-  server.use('/webhook', createNodeMiddleware(app.webhooks, { path: '/webhook' }))
+  // Mount at root and let createNodeMiddleware own the path matching —
+  // Express strips the mount prefix from req.url, so mounting at '/webhook'
+  // would make the middleware see '/' and never match its configured path.
+  server.use(createNodeMiddleware(app.webhooks, { path: '/webhook' }))
   server.get('/health', (_req, res) => res.json({ status: 'ok' }))
 
   return server
