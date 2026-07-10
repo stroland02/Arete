@@ -2,9 +2,11 @@ import concurrent.futures
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from arete_agents.agents.base import BaseReviewAgent
+from arete_agents.agents.base import BaseReviewAgent, escape_for_prompt
 from arete_agents.models.pr import FileChange, PRContext
 from arete_agents.models.review import FileReview
+
+MAX_LOG_EXTRACT_WORKERS = 12
 
 
 class CIAgent(BaseReviewAgent):
@@ -44,7 +46,9 @@ Focus solely on issues that directly contributed to the CI failure."""
             else:
                 chunks = [ci_logs[i : i + 4000] for i in range(0, len(ci_logs), 4000)]
                 errors = []
-                with concurrent.futures.ThreadPoolExecutor() as executor:
+                workers = min(len(chunks), MAX_LOG_EXTRACT_WORKERS)
+                pool = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
+                with pool as executor:
                     results = executor.map(self._extract_error, chunks)
                     for res in results:
                         if res and res != "NO_ERROR":
@@ -59,7 +63,12 @@ Focus solely on issues that directly contributed to the CI failure."""
 
         user_content = self._build_user_prompt(file, pr_context)
         if extracted_errors:
-            user_content += f"\n\n<ci_logs>\n{extracted_errors}\n</ci_logs>"
+            # Escaped: CI log text is attacker-influenceable (e.g. a build step
+            # can print arbitrary lines) and must not be able to break out of
+            # the <ci_logs> delimiter.
+            user_content += (
+                f"\n\n<ci_logs>\n{escape_for_prompt(extracted_errors)}\n</ci_logs>"
+            )
 
         messages = [
             SystemMessage(content=prompt),
