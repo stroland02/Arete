@@ -41,5 +41,5 @@ def test_settings_anthropic_requires_api_key():
         "LLM_PROVIDER": "anthropic",
         "ANTHROPIC_API_KEY": "",
     }):
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             get_settings()
