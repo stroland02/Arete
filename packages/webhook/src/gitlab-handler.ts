@@ -86,8 +86,18 @@ async function processMergeRequest(body: any): Promise<void> {
 
 export async function handleGitLabWebhook(req: Request, res: Response): Promise<void> {
   const token = req.headers['x-gitlab-token'];
+  const secret = process.env.GITLAB_WEBHOOK_SECRET;
 
-  if (process.env.GITLAB_WEBHOOK_SECRET && token !== process.env.GITLAB_WEBHOOK_SECRET) {
+  // Fail closed: without a configured secret we cannot verify the request
+  // actually came from GitLab, so refuse to process it rather than trusting
+  // an unauthenticated caller to trigger the (costly) review pipeline.
+  if (!secret) {
+    console.error('[gitlab-handler] GITLAB_WEBHOOK_SECRET is not configured — rejecting request')
+    res.status(401).send('Unauthorized');
+    return;
+  }
+
+  if (token !== secret) {
     res.status(401).send('Unauthorized');
     return;
   }
