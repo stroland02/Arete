@@ -45,6 +45,28 @@ def test_pr_context_holds_files():
     assert ctx.files[0].path == "src/payments.py"
 
 
+def test_pr_context_accepts_camelcase_alias_fields():
+    """The TS/JS webhook sends ciLogs/customRules (camelCase)."""
+    ctx = PRContext.model_validate({
+        "repo": "acme/api", "pr_number": 1, "title": "t", "description": "d",
+        "files": [], "ciLogs": "boom", "customRules": ["no eval()"],
+    })
+    assert ctx.ci_logs == "boom"
+    assert ctx.custom_rules == ["no eval()"]
+
+
+def test_pr_context_accepts_snake_case_fields():
+    """Direct API/CLI callers may send Python-convention snake_case field
+    names (ci_logs, custom_rules) instead of the JS alias — these must not
+    be silently dropped to their defaults."""
+    ctx = PRContext.model_validate({
+        "repo": "acme/api", "pr_number": 1, "title": "t", "description": "d",
+        "files": [], "ci_logs": "boom", "custom_rules": ["no eval()"],
+    })
+    assert ctx.ci_logs == "boom"
+    assert ctx.custom_rules == ["no eval()"]
+
+
 def test_review_comment_rejects_invalid_severity():
     with pytest.raises(Exception):
         ReviewComment(

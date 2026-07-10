@@ -62,4 +62,35 @@ describe('fetchPRContext', () => {
     const result = await fetchPRContext(octokit as any, 'acme', 'api', 42)
     expect(result.description).toBe('')
   })
+
+  it('paginates past the 100-file-per-page limit instead of truncating', async () => {
+    const octokit = makeOctokit()
+    const page1 = Array.from({ length: 100 }, (_, i) => ({
+      filename: `src/file${i}.ts`,
+      patch: `+line${i}`,
+      additions: 1,
+      deletions: 0,
+      status: 'modified',
+    }))
+    const page2 = [
+      { filename: 'src/last.ts', patch: '+final', additions: 1, deletions: 0, status: 'modified' },
+    ]
+    ;(octokit.rest.pulls.listFiles as any)
+      .mockResolvedValueOnce({ data: page1 })
+      .mockResolvedValueOnce({ data: page2 })
+
+    const result = await fetchPRContext(octokit as any, 'acme', 'api', 42)
+
+    expect(octokit.rest.pulls.listFiles).toHaveBeenCalledTimes(2)
+    expect(octokit.rest.pulls.listFiles).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ page: 1, per_page: 100 })
+    )
+    expect(octokit.rest.pulls.listFiles).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ page: 2, per_page: 100 })
+    )
+    expect(result.files).toHaveLength(101)
+    expect(result.files[100].path).toBe('src/last.ts')
+  })
 })

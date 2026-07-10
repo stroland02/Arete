@@ -1,4 +1,8 @@
-from arete_agents.models.review import ReviewResult
+from unittest.mock import MagicMock
+
+from langchain_core.messages import AIMessage
+
+from arete_agents.models.review import FileReview, ReviewComment, ReviewResult
 
 
 def test_orchestrator_returns_review_result(sample_pr, cyclic_llm):
@@ -68,6 +72,90 @@ def test_orchestrator_survives_agent_exception(sample_pr):
     assert isinstance(result.risk_level, str)
     all_summaries = [fr.summary for fr in result.file_reviews]
     assert any("error" in s.lower() or "boom" in s.lower() for s in all_summaries)
+
+
+def _comment(severity: str, line: int = 1) -> ReviewComment:
+    return ReviewComment(
+        path="a.py", line=line, body="issue", severity=severity, category="security"
+    )
+
+
+def test_risk_level_empty_comments_is_low():
+    from arete_agents.orchestrator import _risk_level
+    fr = [FileReview(path="a.py", comments=[], summary="clean")]
+    assert _risk_level(fr) == "low"
+
+
+def test_risk_level_single_error_is_high_not_critical():
+    from arete_agents.orchestrator import _risk_level
+    comments = [_comment("error"), _comment("info")]
+    fr = [FileReview(path="a.py", comments=comments, summary="")]
+    assert _risk_level(fr) == "high"
+
+
+def test_risk_level_two_errors_is_critical():
+    from arete_agents.orchestrator import _risk_level
+    comments = [_comment("error"), _comment("error")]
+    fr = [FileReview(path="a.py", comments=comments, summary="")]
+    assert _risk_level(fr) == "critical"
+
+
+def test_risk_level_warnings_only_is_medium():
+    from arete_agents.orchestrator import _risk_level
+    comments = [_comment("warning"), _comment("info")]
+    fr = [FileReview(path="a.py", comments=comments, summary="")]
+    assert _risk_level(fr) == "medium"
+
+
+def test_risk_level_info_only_is_low():
+    from arete_agents.orchestrator import _risk_level
+    comments = [_comment("info"), _comment("info")]
+    fr = [FileReview(path="a.py", comments=comments, summary="")]
+    assert _risk_level(fr) == "low"
+
+
+def test_risk_level_mixed_across_files_uses_global_max_and_error_count():
+    """Severities spread across multiple FileReviews must be aggregated
+    together, not evaluated per-file."""
+    from arete_agents.orchestrator import _risk_level
+    fr = [
+        FileReview(path="a.py", comments=[_comment("error")], summary=""),
+        FileReview(path="b.py", comments=[_comment("warning")], summary=""),
+        FileReview(path="c.py", comments=[_comment("error")], summary=""),
+    ]
+    # Two errors total across files -> critical, even though no single file
+    # has more than one error comment.
+    assert _risk_level(fr) == "critical"
+
+
+def test_synthesizer_invalid_json_falls_back_without_rerunning_agents(sample_pr):
+    """When the Synthesizer's LLM response isn't valid JSON, the orchestrator
+    must fall back to a blind merge of the reviews it already has — NOT
+    re-invoke every specialist agent from scratch (that would double LLM
+    cost/latency for a failure unrelated to the agents themselves)."""
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    valid_agent_response = '{"comments": [], "summary": "No issues."}'
+    invalid_synth_response = "Sorry, I can't produce JSON right now."
+
+    mock = MagicMock()
+    mock.with_retry.return_value = mock
+    # sample_pr has 1 file -> 6 specialist-agent calls, then 1 synthesizer
+    # call. The synthesizer call is always chronologically last because the
+    # synthesize_reviews node only runs after every execute_agent_review
+    # Send has completed and merged into state.
+    mock.invoke.side_effect = (
+        [AIMessage(content=valid_agent_response)] * 6
+        + [AIMessage(content=invalid_synth_response)] * 10
+    )
+
+    result = ReviewOrchestrator(llm=mock).run(sample_pr)
+
+    assert isinstance(result, ReviewResult)
+    # Exactly 7 calls: 6 agents + 1 (failed) synthesizer. If the old
+    # behavior (full re-run via run()'s outer except) were still present,
+    # this would be 13 (6 + 1 + 6 again).
+    assert mock.invoke.call_count == 7
 
 
 def test_large_patch_is_truncated(cyclic_llm):
