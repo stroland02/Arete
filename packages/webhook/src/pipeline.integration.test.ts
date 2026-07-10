@@ -92,7 +92,7 @@ function makeOctokit() {
     rest: {
       pulls: {
         get: vi.fn().mockResolvedValue({
-          data: { number: 42, title: 'Add rate limiter', body: 'Implements token bucket', head: { sha: 'headsha123' } },
+          data: { number: 42, title: 'Add rate limiter', body: 'Implements token bucket', head: { sha: 'headsha123' }, base: { sha: 'basesha456', ref: 'main' } },
         }),
         listFiles: vi.fn().mockResolvedValue({
           data: [{ filename: 'src/limiter.ts', patch: '+const bucket = new Map()', additions: 1, deletions: 0 }],

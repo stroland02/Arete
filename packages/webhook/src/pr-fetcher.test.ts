@@ -5,7 +5,10 @@ const mockPR = {
   number: 42,
   title: 'Fix auth bug',
   body: 'Fixes SQL injection in login',
-  head: { sha: 'abcdef123456' },
+  // head and base SHAs deliberately differ so any test asserting the ref
+  // used for .arete.yml fails if the code regresses to using head.sha
+  head: { sha: 'headsha-attacker-controlled' },
+  base: { sha: 'basesha-trusted', ref: 'main' },
 }
 
 const mockFiles = [
@@ -54,6 +57,17 @@ describe('fetchPRContext', () => {
     const result = await fetchPRContext(octokit as any, 'acme', 'api', 42)
     expect(result.files).toHaveLength(1)
     expect(result.files[0].path).toBe('src/auth.py')
+  })
+
+  it('fetches .arete.yml from the base branch SHA, never the PR head SHA', async () => {
+    const octokit = makeOctokit()
+    await fetchPRContext(octokit as any, 'acme', 'api', 42)
+    const getContent = octokit.rest.repos.getContent as any
+    expect(getContent).toHaveBeenCalled()
+    for (const [args] of getContent.mock.calls) {
+      expect(args.ref).toBe('basesha-trusted')
+      expect(args.ref).not.toBe('headsha-attacker-controlled')
+    }
   })
 
   it('sets description to empty string when PR body is null', async () => {
