@@ -30,5 +30,16 @@ def test_settings_gemini_requires_api_key():
     with patch.dict("os.environ", {"LLM_PROVIDER": "gemini", "GEMINI_API_KEY": ""}):
         from arete_agents.config import get_settings
         get_settings.cache_clear()
+        with pytest.raises(ValueError):
+            get_settings()
+
+
+def test_settings_anthropic_requires_api_key():
+    from arete_agents.config import get_settings
+    get_settings.cache_clear()
+    with patch.dict("os.environ", {
+        "LLM_PROVIDER": "anthropic",
+        "ANTHROPIC_API_KEY": "",
+    }):
         with pytest.raises(Exception):
             get_settings()
