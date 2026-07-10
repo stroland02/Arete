@@ -18,7 +18,16 @@ describe('handlePullRequestEvent', () => {
     const mockFetch = vi.fn().mockResolvedValue(MOCK_PR_CONTEXT)
     const mockRun = vi.fn().mockResolvedValue(MOCK_RESULT)
     const mockPost = vi.fn().mockResolvedValue(undefined)
-    const mockOctokit = {}
+    const mockChecksCreate = vi.fn().mockResolvedValue({ data: { id: 999 } })
+    const mockChecksUpdate = vi.fn().mockResolvedValue({})
+    const mockOctokit = {
+      rest: {
+        checks: {
+          create: mockChecksCreate,
+          update: mockChecksUpdate
+        }
+      }
+    }
 
     vi.doMock('./pr-fetcher.js', () => ({ fetchPRContext: mockFetch }))
     vi.doMock('./review-bridge.js', () => ({ runReviewPipeline: mockRun }))
@@ -36,7 +45,7 @@ describe('handlePullRequestEvent', () => {
 
     await handlePullRequestEvent(mockOctokit as any, {
       repository: { id: 123, owner: { login: 'acme' }, name: 'api', full_name: 'acme/api' },
-      pull_request: { number: 1 },
+      pull_request: { number: 1, head: { sha: 'abcdef' } },
       action: 'opened',
     })
 
@@ -57,7 +66,7 @@ describe('handlePullRequestEvent', () => {
 
     await handlePullRequestEvent({} as any, {
       repository: { id: 123, owner: { login: 'acme' }, name: 'api', full_name: 'acme/api' },
-      pull_request: { number: 1 },
+      pull_request: { number: 1, head: { sha: 'abcdef' } },
       action: 'closed',
     })
 
