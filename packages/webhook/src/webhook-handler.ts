@@ -57,52 +57,52 @@ export async function handlePullRequestEvent(
   await postReview(octokit, owner, repo, prNumber, result)
 
   // Persist to Prisma
-  const installation = await prisma.installation.upsert({
-    where: { id: installationId.toString() },
-    create: { 
-      id: installationId.toString(),
-      githubInstallationId: installationId, 
-      owner 
-    },
-    update: { owner }
-  })
-
-  const repository = await prisma.repository.upsert({
-    where: { id: payload.repository.id.toString() },
-    create: {
-      id: payload.repository.id.toString(),
-      githubRepoId: payload.repository.id,
-      name: repo,
-      fullName: payload.repository.full_name,
-      installationId: installation.id
-    },
-    update: {
-      name: repo,
-      fullName: payload.repository.full_name
-    }
-  })
-
-  const review = await prisma.review.create({
-    data: {
-      prNumber: prNumber,
-      repositoryId: repository.id,
-      riskLevel: result.risk_level,
-      overallSummary: result.overall_summary,
-      comments: {
-        createMany: {
-          data: result.file_reviews.flatMap((fr: any) => 
-            fr.comments.map((c: any) => ({
-              path: fr.path,
-              line: c.line,
-              body: c.body,
-              severity: c.severity,
-              category: c.category
-            }))
-          )
+  const [installation, repository, review] = await prisma.$transaction([
+    prisma.installation.upsert({
+      where: { id: installationId.toString() },
+      create: { 
+        id: installationId.toString(),
+        githubInstallationId: installationId, 
+        owner 
+      },
+      update: { owner }
+    }),
+    prisma.repository.upsert({
+      where: { id: payload.repository.id.toString() },
+      create: {
+        id: payload.repository.id.toString(),
+        githubRepoId: payload.repository.id,
+        name: repo,
+        fullName: payload.repository.full_name,
+        installationId: installationId.toString()
+      },
+      update: {
+        name: repo,
+        fullName: payload.repository.full_name
+      }
+    }),
+    prisma.review.create({
+      data: {
+        prNumber: prNumber,
+        repositoryId: payload.repository.id.toString(),
+        riskLevel: result.risk_level,
+        overallSummary: result.overall_summary,
+        comments: {
+          createMany: {
+            data: result.file_reviews.flatMap((fr: any) => 
+              fr.comments.map((c: any) => ({
+                path: fr.path,
+                line: c.line,
+                body: c.body,
+                severity: c.severity,
+                category: c.category
+              }))
+            )
+          }
         }
       }
-    }
-  })
+    })
+  ])
 
   console.log(`[handler] Posted review — risk: ${result.risk_level}, comments: ${result.total_comments}`)
 }

@@ -1,8 +1,4 @@
 import type { Octokit } from '@octokit/core'
-import { spawn } from 'child_process'
-import path from 'path'
-
-const AGENTS_DIR = path.resolve(__dirname, '../../agents')
 
 interface PullRequestReviewCommentPayload {
   action: string
@@ -70,28 +66,15 @@ export async function handleReviewCommentEvent(
   })
 }
 
-function runChatPipeline(context: any): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const input = JSON.stringify(context)
-    const proc = spawn('uv', ['run', 'python', '-m', 'arete_agents.cli', '--mode', 'chat'], {
-      cwd: AGENTS_DIR,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    })
-
-    let stdout = ''
-    let stderr = ''
-
-    proc.stdout.on('data', (chunk) => { stdout += chunk.toString() })
-    proc.stderr.on('data', (chunk) => { stderr += chunk.toString() })
-
-    proc.on('close', (code) => {
-      if (code === 0) resolve(stdout.trim())
-      else reject(new Error(`Chat Agent failed (code ${code}): ${stderr}`))
-    })
-
-    proc.on('error', reject)
-
-    proc.stdin.write(input)
-    proc.stdin.end()
+async function runChatPipeline(context: any): Promise<string> {
+  const res = await fetch('http://127.0.0.1:8000/chat', {
+    method: 'POST',
+    body: JSON.stringify(context),
+    headers: { 'Content-Type': 'application/json' },
   })
+  if (!res.ok) {
+    const errorText = await res.text()
+    throw new Error(`Chat Agent failed (code ${res.status}): ${errorText}`)
+  }
+  return (await res.text()).trim()
 }
