@@ -87,7 +87,8 @@ export async function fetchPRContext(
       language: detectLanguage(f.filename),
     }))
 
-  const customRules = await fetchAreteYaml(octokit, owner, repo, pr.head.sha);
+  // Fetch .arete.yml from the base branch, never the PR head: otherwise a PR could edit .arete.yml to weaken the rules used to review itself.
+  const customRules = await fetchAreteYaml(octokit, owner, repo, pr.base.sha);
 
   return {
     repo: `${owner}/${repo}`,
