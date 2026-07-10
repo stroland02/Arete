@@ -62,6 +62,11 @@ def _merge_reviews(reviews_per_file: list[list[FileReview]]) -> list[FileReview]
 class GraphState(TypedDict):
     pr: PRContext
     raw_reviews: Annotated[list[FileReview], operator.add]
+    # Explicit success/failure tallies from the fan-out, so "all agents
+    # errored" can be detected deterministically instead of pattern-matching
+    # error text in FileReview summaries after the fact.
+    agent_successes: Annotated[int, operator.add]
+    agent_failures: Annotated[int, operator.add]
     final_result: ReviewResult
 
 
@@ -234,21 +239,27 @@ class ReviewOrchestrator:
                     break
 
         if not agent:
-            return {"raw_reviews": [FileReview(
-                path=file.path,
-                comments=[],
-                summary=f"Unknown agent: {agent_name}",
-            )]}
+            return {
+                "raw_reviews": [FileReview(
+                    path=file.path,
+                    comments=[],
+                    summary=f"Unknown agent: {agent_name}",
+                )],
+                "agent_failures": 1,
+            }
 
         try:
             result = agent.review_file(file, pr)
-            return {"raw_reviews": [result]}
+            return {"raw_reviews": [result], "agent_successes": 1}
         except Exception as exc:
-            return {"raw_reviews": [FileReview(
-                path=file.path,
-                comments=[],
-                summary=f"{agent.agent_name} error: {exc}",
-            )]}
+            return {
+                "raw_reviews": [FileReview(
+                    path=file.path,
+                    comments=[],
+                    summary=f"{agent.agent_name} error: {exc}",
+                )],
+                "agent_failures": 1,
+            }
 
     def _synthesize_reviews(self, state: GraphState) -> dict:
         pr = state["pr"]
@@ -277,6 +288,11 @@ class ReviewOrchestrator:
                 "already-gathered agent reviews (no agent LLM calls re-issued)."
             )
             final_result = _fallback_synthesize(pr, raw_reviews)
+
+        # "failed" only when every agent errored (total outage) — partial
+        # failures still produced a real (if incomplete) review.
+        if state.get("agent_failures", 0) > 0 and state.get("agent_successes", 0) == 0:
+            final_result.analysis_status = "failed"
         return {"final_result": final_result}
 
     def run(self, pr: PRContext) -> ReviewResult:
@@ -301,6 +317,8 @@ class ReviewOrchestrator:
 
             tasks = [(file, agent) for file in pr.files for agent in agents]
             flat_results: list[FileReview] = []
+            successes = 0
+            failures = 0
 
             # Agent calls are I/O-bound (network round trips to the LLM
             # provider), so run this last-resort path in parallel too —
@@ -315,7 +333,9 @@ class ReviewOrchestrator:
                     file, agent = futures[future]
                     try:
                         flat_results.append(future.result())
+                        successes += 1
                     except Exception as e:
+                        failures += 1
                         flat_results.append(
                             FileReview(
                                 path=file.path,
@@ -324,4 +344,7 @@ class ReviewOrchestrator:
                             )
                         )
 
-            return _fallback_synthesize(pr, flat_results)
+            result = _fallback_synthesize(pr, flat_results)
+            if failures > 0 and successes == 0:
+                result.analysis_status = "failed"
+            return result
