@@ -1,11 +1,12 @@
 import json
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Literal, TypedDict
+import operator
+from typing import Literal, TypedDict, Annotated
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
+from langgraph.types import Send
 
 from arete_agents.agents.business_logic import BusinessLogicAgent
 from arete_agents.agents.deployment_safety import DeploymentSafetyAgent
@@ -14,7 +15,7 @@ from arete_agents.agents.quality import QualityAgent
 from arete_agents.agents.security import SecurityAgent
 from arete_agents.agents.test_coverage import TestCoverageAgent
 from arete_agents.agents.ci_agent import CIAgent
-from arete_agents.models.pr import PRContext
+from arete_agents.models.pr import PRContext, FileChange
 from arete_agents.models.review import FileReview, ReviewResult
 
 _SEVERITY_WEIGHT = {"error": 3, "warning": 2, "info": 1}
@@ -58,8 +59,14 @@ def _merge_reviews(reviews_per_file: list[list[FileReview]]) -> list[FileReview]
 
 class GraphState(TypedDict):
     pr: PRContext
-    raw_reviews: list[FileReview]
+    raw_reviews: Annotated[list[FileReview], operator.add]
     final_result: ReviewResult
+
+
+class ReviewTaskState(TypedDict):
+    pr: PRContext
+    file: FileChange
+    agent_name: str
 
 
 class SynthesizerAgent:
@@ -186,78 +193,60 @@ class ReviewOrchestrator:
     def _build_graph(self):
         workflow = StateGraph(GraphState)
 
-        workflow.add_node("run_review_agents", self._run_review_agents)
-        workflow.add_node("run_ci_agent", self._run_ci_agent)
+        workflow.add_node("execute_agent_review", self._execute_agent_review)
         workflow.add_node("synthesize_reviews", self._synthesize_reviews)
 
-        def route(state: GraphState) -> str:
-            if state["pr"].ci_logs is not None:
-                return "run_ci_agent"
-            return "run_review_agents"
+        def route(state: GraphState):
+            pr = state["pr"]
+            if not pr.files:
+                return "synthesize_reviews"
+            
+            sends = []
+            if pr.ci_logs is not None:
+                for file in pr.files:
+                    sends.append(Send("execute_agent_review", ReviewTaskState(pr=pr, file=file, agent_name="CIAgent")))
+            else:
+                for file in pr.files:
+                    for agent in self._agents:
+                        sends.append(Send("execute_agent_review", ReviewTaskState(pr=pr, file=file, agent_name=agent.agent_name)))
+            return sends
 
-        workflow.add_conditional_edges(START, route)
-        workflow.add_edge("run_review_agents", "synthesize_reviews")
-        workflow.add_edge("run_ci_agent", "synthesize_reviews")
+        workflow.add_conditional_edges(START, route, ["execute_agent_review", "synthesize_reviews"])
+        workflow.add_edge("execute_agent_review", "synthesize_reviews")
         workflow.add_edge("synthesize_reviews", END)
 
         return workflow.compile()
 
-    def _run_ci_agent(self, state: GraphState) -> dict:
+    def _execute_agent_review(self, state: ReviewTaskState) -> dict:
         pr = state["pr"]
-        if not pr.files:
-            return {"raw_reviews": []}
+        file = state["file"]
+        agent_name = state["agent_name"]
 
-        agent = CIAgent(self.llm)
-        tasks = [(file, agent) for file in pr.files]
-        flat_results: list[FileReview] = []
+        agent = None
+        if agent_name == "CIAgent":
+            agent = CIAgent(self.llm)
+        else:
+            for a in self._agents:
+                if a.agent_name == agent_name:
+                    agent = a
+                    break
 
-        with ThreadPoolExecutor(max_workers=min(len(tasks), 12)) as pool:
-            futures = {
-                pool.submit(agent.review_file, file, pr): file
-                for file, _ in tasks
-            }
-            for future in as_completed(futures):
-                file = futures[future]
-                try:
-                    flat_results.append(future.result())
-                except Exception as exc:
-                    flat_results.append(
-                        FileReview(
-                            path=file.path,
-                            comments=[],
-                            summary=f"CIAgent error: {exc}",
-                        )
-                    )
+        if not agent:
+            return {"raw_reviews": [FileReview(
+                path=file.path,
+                comments=[],
+                summary=f"Unknown agent: {agent_name}",
+            )]}
 
-        return {"raw_reviews": flat_results}
-
-    def _run_review_agents(self, state: GraphState) -> dict:
-        pr = state["pr"]
-        if not pr.files:
-            return {"raw_reviews": []}
-
-        tasks = [(file, agent) for file in pr.files for agent in self._agents]
-        flat_results: list[FileReview] = []
-
-        with ThreadPoolExecutor(max_workers=min(len(tasks), 12)) as pool:
-            futures = {
-                pool.submit(agent.review_file, file, pr): (file, agent)
-                for file, agent in tasks
-            }
-            for future in as_completed(futures):
-                file, agent = futures[future]
-                try:
-                    flat_results.append(future.result())
-                except Exception as exc:
-                    flat_results.append(
-                        FileReview(
-                            path=file.path,
-                            comments=[],
-                            summary=f"{agent.agent_name} error: {exc}",
-                        )
-                    )
-
-        return {"raw_reviews": flat_results}
+        try:
+            result = agent.review_file(file, pr)
+            return {"raw_reviews": [result]}
+        except Exception as exc:
+            return {"raw_reviews": [FileReview(
+                path=file.path,
+                comments=[],
+                summary=f"{agent.agent_name} error: {exc}",
+            )]}
 
     def _synthesize_reviews(self, state: GraphState) -> dict:
         pr = state["pr"]
@@ -298,22 +287,16 @@ class ReviewOrchestrator:
             tasks = [(file, agent) for file in pr.files for agent in agents]
             flat_results: list[FileReview] = []
 
-            with ThreadPoolExecutor(max_workers=min(len(tasks), 12)) as pool:
-                futures = {
-                    pool.submit(agent.review_file, file, pr): (file, agent)
-                    for file, agent in tasks
-                }
-                for future in as_completed(futures):
-                    file, agent = futures[future]
-                    try:
-                        flat_results.append(future.result())
-                    except Exception as e:
-                        flat_results.append(
-                            FileReview(
-                                path=file.path,
-                                comments=[],
-                                summary=f"{agent.agent_name} error: {e}",
-                            )
+            for file, agent in tasks:
+                try:
+                    flat_results.append(agent.review_file(file, pr))
+                except Exception as e:
+                    flat_results.append(
+                        FileReview(
+                            path=file.path,
+                            comments=[],
+                            summary=f"{agent.agent_name} error: {e}",
                         )
+                    )
             
             return _fallback_synthesize(pr, flat_results)
