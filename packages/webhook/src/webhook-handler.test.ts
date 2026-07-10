@@ -1,0 +1,54 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+const MOCK_PR_CONTEXT = {
+  repo: 'acme/api', pr_number: 1, title: 'Fix', description: '', files: [],
+}
+const MOCK_RESULT = {
+  pr_context: MOCK_PR_CONTEXT,
+  file_reviews: [],
+  overall_summary: 'OK',
+  risk_level: 'low',
+  total_comments: 0,
+}
+
+describe('handlePullRequestEvent', () => {
+  beforeEach(() => { vi.resetModules() })
+
+  it('fetches PR, runs pipeline, posts review', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(MOCK_PR_CONTEXT)
+    const mockRun = vi.fn().mockResolvedValue(MOCK_RESULT)
+    const mockPost = vi.fn().mockResolvedValue(undefined)
+    const mockOctokit = {}
+
+    vi.doMock('./pr-fetcher.js', () => ({ fetchPRContext: mockFetch }))
+    vi.doMock('./review-bridge.js', () => ({ runReviewPipeline: mockRun }))
+    vi.doMock('./comment-poster.js', () => ({ postReview: mockPost }))
+
+    const { handlePullRequestEvent } = await import('./webhook-handler.js')
+
+    await handlePullRequestEvent(mockOctokit as any, {
+      repository: { owner: { login: 'acme' }, name: 'api' },
+      pull_request: { number: 1 },
+      action: 'opened',
+    })
+
+    expect(mockFetch).toHaveBeenCalledWith(mockOctokit, 'acme', 'api', 1)
+    expect(mockRun).toHaveBeenCalledWith(MOCK_PR_CONTEXT)
+    expect(mockPost).toHaveBeenCalledWith(mockOctokit, 'acme', 'api', 1, MOCK_RESULT)
+  })
+
+  it('does not run pipeline for closed PRs', async () => {
+    const mockRun = vi.fn()
+    vi.doMock('./review-bridge.js', () => ({ runReviewPipeline: mockRun }))
+
+    const { handlePullRequestEvent } = await import('./webhook-handler.js')
+
+    await handlePullRequestEvent({} as any, {
+      repository: { owner: { login: 'acme' }, name: 'api' },
+      pull_request: { number: 1 },
+      action: 'closed',
+    })
+
+    expect(mockRun).not.toHaveBeenCalled()
+  })
+})
