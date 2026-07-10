@@ -22,6 +22,8 @@ def test_orchestrator_merges_comments_from_all_agents(sample_pr, cyclic_llm):
     categories = {c.category for fr in result.file_reviews for c in fr.comments}
     assert "security" in categories
     assert "quality" in categories
+    assert "test_coverage" in categories
+    assert "business_logic" in categories
 
 
 def test_orchestrator_sets_risk_level(sample_pr, cyclic_llm):

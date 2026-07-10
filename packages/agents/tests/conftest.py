@@ -14,6 +14,15 @@ QUAL = (
     '{"comments": [{"path": "src/auth.py", "line": 2, "body": "Use snake_case.", '
     '"severity": "info", "category": "quality"}], "summary": "Naming issue."}'
 )
+TEST_COV = (
+    '{"comments": [{"path": "src/auth.py", "line": 8, "body": "Missing error test.", '
+    '"severity": "warning", "category": "test_coverage"}], "summary": "Untested path."}'
+)
+DEPLOY = '{"comments": [], "summary": "No deployment risks."}'
+BIZ = (
+    '{"comments": [{"path": "src/auth.py", "line": 3, "body": "Missing audit log.", '
+    '"severity": "warning", "category": "business_logic"}], "summary": "Audit gap."}'
+)
 
 
 @pytest.fixture
@@ -37,6 +46,9 @@ def sample_pr():
 @pytest.fixture
 def cyclic_llm():
     mock = MagicMock()
-    mock.invoke.side_effect = [AIMessage(content=r) for r in [SEC, PERF, QUAL] * 20]
+    mock.invoke.side_effect = [
+        AIMessage(content=r)
+        for r in [SEC, PERF, QUAL, TEST_COV, DEPLOY, BIZ] * 20
+    ]
     mock.with_retry.return_value = mock
     return mock

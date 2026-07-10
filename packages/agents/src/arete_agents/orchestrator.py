@@ -3,9 +3,12 @@ from typing import Literal
 
 from langchain_core.language_models import BaseChatModel
 
+from arete_agents.agents.business_logic import BusinessLogicAgent
+from arete_agents.agents.deployment_safety import DeploymentSafetyAgent
 from arete_agents.agents.performance import PerformanceAgent
 from arete_agents.agents.quality import QualityAgent
 from arete_agents.agents.security import SecurityAgent
+from arete_agents.agents.test_coverage import TestCoverageAgent
 from arete_agents.models.pr import PRContext
 from arete_agents.models.review import FileReview, ReviewResult
 
@@ -50,7 +53,14 @@ def _merge_reviews(reviews_per_file: list[list[FileReview]]) -> list[FileReview]
 
 class ReviewOrchestrator:
     def __init__(self, llm: BaseChatModel) -> None:
-        self._agents = [SecurityAgent(llm), PerformanceAgent(llm), QualityAgent(llm)]
+        self._agents = [
+            SecurityAgent(llm),
+            PerformanceAgent(llm),
+            QualityAgent(llm),
+            TestCoverageAgent(llm),
+            DeploymentSafetyAgent(llm),
+            BusinessLogicAgent(llm),
+        ]
 
     def run(self, pr: PRContext) -> ReviewResult:
         if not pr.files:
@@ -97,8 +107,9 @@ class ReviewOrchestrator:
             file_reviews=file_reviews,
             overall_summary=(
                 f"Reviewed {len(pr.files)} file(s). "
-                f"Found {total} issue(s) across security, performance, "
-                f"and quality checks. Risk level: {risk.upper()}."
+                f"Found {total} issue(s) across security, performance, quality, "
+                f"test coverage, deployment safety, and business logic checks. "
+                f"Risk level: {risk.upper()}."
             ),
             risk_level=risk,
         )

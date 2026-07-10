@@ -102,3 +102,52 @@ def test_quality_agent_returns_file_review():
     )
     result = agent.review_file(file, make_pr([file]))
     assert result.comments[0].category == "quality"
+
+
+def test_test_coverage_agent_returns_file_review():
+    from arete_agents.agents.test_coverage import TestCoverageAgent
+    mock_llm = make_mock_llm(
+        '{"comments": [{"path": "src/auth.py", "line": 5, '
+        '"body": "Missing test for error path.", "severity": "warning", '
+        '"category": "test_coverage"}], "summary": "Untested error path."}'
+    )
+    agent = TestCoverageAgent(llm=mock_llm)
+    result = agent.review_file(make_file(), make_pr())
+    assert result.comments[0].category == "test_coverage"
+
+
+def test_deployment_safety_agent_returns_file_review():
+    from arete_agents.agents.deployment_safety import DeploymentSafetyAgent
+    mock_llm = make_mock_llm(
+        '{"comments": [{"path": "src/api.py", "line": 10, '
+        '"body": "Breaking API change: removed field.", "severity": "error", '
+        '"category": "deployment_safety"}], "summary": "Breaking change."}'
+    )
+    agent = DeploymentSafetyAgent(llm=mock_llm)
+    file = FileChange(
+        path="src/api.py",
+        patch="-    name: str\n+    full_name: str",
+        additions=1,
+        deletions=1,
+    )
+    result = agent.review_file(file, make_pr([file]))
+    assert result.comments[0].category == "deployment_safety"
+    assert result.comments[0].severity == "error"
+
+
+def test_business_logic_agent_returns_file_review():
+    from arete_agents.agents.business_logic import BusinessLogicAgent
+    mock_llm = make_mock_llm(
+        '{"comments": [{"path": "src/payments.py", "line": 22, '
+        '"body": "Missing audit log for payment.", "severity": "warning", '
+        '"category": "business_logic"}], "summary": "Audit gap."}'
+    )
+    agent = BusinessLogicAgent(llm=mock_llm)
+    file = FileChange(
+        path="src/payments.py",
+        patch="+def charge(amount):\n+    stripe.charge(amount)",
+        additions=2,
+        deletions=0,
+    )
+    result = agent.review_file(file, make_pr([file]))
+    assert result.comments[0].category == "business_logic"
