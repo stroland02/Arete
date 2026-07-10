@@ -35,6 +35,23 @@ export async function handlePullRequestEvent(
 
   console.log(`[handler] Reviewing ${owner}/${repo}#${prNumber} (${payload.action})`)
 
+  if (installationId) {
+    const installation = await prisma.installation.findFirst({
+      where: { githubInstallationId: installationId }
+    })
+
+    if (installation && (installation.subscriptionStatus === 'canceled' || installation.subscriptionStatus === 'past_due')) {
+      console.log(`[handler] Subscription inactive for installation ${installationId}. Status: ${installation.subscriptionStatus}`)
+      await octokit.request('POST /repos/{owner}/{repo}/issues/{issue_number}/comments', {
+        owner,
+        repo,
+        issue_number: prNumber,
+        body: 'Areté Code Review is paused due to an inactive subscription.'
+      })
+      return
+    }
+  }
+
   const prContext = await fetchPRContext(octokit, owner, repo, prNumber)
   const result = await runReviewPipeline(prContext)
   await postReview(octokit, owner, repo, prNumber, result)

@@ -16,6 +16,9 @@ model Installation {
   id                   String       @id @default(uuid())
   githubInstallationId Int
   owner                String
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  subscriptionStatus   String       @default("trialing")
   createdAt            DateTime     @default(now())
   repositories         Repository[]
 }
