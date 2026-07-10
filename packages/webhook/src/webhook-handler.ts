@@ -106,3 +106,29 @@ export async function handlePullRequestEvent(
 
   console.log(`[handler] Posted review — risk: ${result.risk_level}, comments: ${result.total_comments}`)
 }
+
+export function registerCheckRunWebhooks(app: any) {
+  app.webhooks.on("check_run.completed", async ({ payload, octokit }: any) => {
+    if (payload.check_run.conclusion !== "failure") {
+      return
+    }
+
+    if (!payload.check_run.pull_requests || payload.check_run.pull_requests.length === 0) {
+      return
+    }
+
+    const prNumber = payload.check_run.pull_requests[0].number
+    const owner = payload.repository.owner.login
+    const repo = payload.repository.name
+
+    const ciLogs = payload.check_run.output?.text || "No logs provided by GitHub Actions."
+
+    console.log(`[handler] CI Failure detected for ${owner}/${repo}#${prNumber}`)
+
+    const prContext = await fetchPRContext(octokit, owner, repo, prNumber)
+    prContext.ciLogs = ciLogs
+
+    const result = await runReviewPipeline(prContext)
+    await postReview(octokit, owner, repo, prNumber, result)
+  })
+}

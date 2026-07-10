@@ -15,6 +15,7 @@ export interface PRContext {
   description: string
   files: FileChange[]
   customRules?: string[]
+  ciLogs?: string
 }
 
 export interface ReviewComment {

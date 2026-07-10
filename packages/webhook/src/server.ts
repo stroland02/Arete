@@ -25,6 +25,10 @@ export async function createServer(): Promise<express.Application> {
       console.error('[server] Error handling pull_request event:', err)
     }
   })
+  
+  const { registerCheckRunWebhooks } = await import('./webhook-handler.js')
+  registerCheckRunWebhooks(app)
+
 
   app.webhooks.on('pull_request_review_comment', async ({ octokit, payload }) => {
     const { handleReviewCommentEvent } = await import('./chat-handler.js')

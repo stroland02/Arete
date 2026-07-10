@@ -28,3 +28,4 @@ class PRContext(BaseModel):
     description: str
     files: list[FileChange]
     custom_rules: list[str] = Field(default_factory=list, alias="customRules")
+    ci_logs: str | None = Field(None, alias="ciLogs")

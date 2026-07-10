@@ -13,6 +13,7 @@ from arete_agents.agents.performance import PerformanceAgent
 from arete_agents.agents.quality import QualityAgent
 from arete_agents.agents.security import SecurityAgent
 from arete_agents.agents.test_coverage import TestCoverageAgent
+from arete_agents.agents.ci_agent import CIAgent
 from arete_agents.models.pr import PRContext
 from arete_agents.models.review import FileReview, ReviewResult
 
@@ -186,13 +187,49 @@ class ReviewOrchestrator:
         workflow = StateGraph(GraphState)
 
         workflow.add_node("run_review_agents", self._run_review_agents)
+        workflow.add_node("run_ci_agent", self._run_ci_agent)
         workflow.add_node("synthesize_reviews", self._synthesize_reviews)
 
-        workflow.add_edge(START, "run_review_agents")
+        def route(state: GraphState) -> str:
+            if state["pr"].ci_logs is not None:
+                return "run_ci_agent"
+            return "run_review_agents"
+
+        workflow.add_conditional_edges(START, route)
         workflow.add_edge("run_review_agents", "synthesize_reviews")
+        workflow.add_edge("run_ci_agent", "synthesize_reviews")
         workflow.add_edge("synthesize_reviews", END)
 
         return workflow.compile()
+
+    def _run_ci_agent(self, state: GraphState) -> dict:
+        pr = state["pr"]
+        if not pr.files:
+            return {"raw_reviews": []}
+
+        agent = CIAgent(self.llm)
+        tasks = [(file, agent) for file in pr.files]
+        flat_results: list[FileReview] = []
+
+        with ThreadPoolExecutor(max_workers=min(len(tasks), 12)) as pool:
+            futures = {
+                pool.submit(agent.review_file, file, pr): file
+                for file, _ in tasks
+            }
+            for future in as_completed(futures):
+                file = futures[future]
+                try:
+                    flat_results.append(future.result())
+                except Exception as exc:
+                    flat_results.append(
+                        FileReview(
+                            path=file.path,
+                            comments=[],
+                            summary=f"CIAgent error: {exc}",
+                        )
+                    )
+
+        return {"raw_reviews": flat_results}
 
     def _run_review_agents(self, state: GraphState) -> dict:
         pr = state["pr"]
@@ -253,7 +290,12 @@ class ReviewOrchestrator:
             import logging
             logging.warning(f"LangGraph orchestration failed: {exc}. Falling back to blind merge.")
             
-            tasks = [(file, agent) for file in pr.files for agent in self._agents]
+            if pr.ci_logs is not None:
+                agents = [CIAgent(self.llm)]
+            else:
+                agents = self._agents
+                
+            tasks = [(file, agent) for file in pr.files for agent in agents]
             flat_results: list[FileReview] = []
 
             with ThreadPoolExecutor(max_workers=min(len(tasks), 12)) as pool:
