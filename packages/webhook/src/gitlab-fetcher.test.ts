@@ -127,4 +127,20 @@ describe('fetchGitLabMRContext', () => {
 
     await expect(fetchGitLabMRContext(42, 7, PAYLOAD)).rejects.toThrow(/404/)
   })
+
+  it('detects languages beyond the original short list (rust, java, etc.) instead of falling back to "other"', async () => {
+    const response = {
+      changes: [
+        { new_path: 'src/lib.rs', old_path: 'src/lib.rs', diff: '+fn main() {}', new_file: false, deleted_file: false, renamed_file: false },
+        { new_path: 'src/Main.java', old_path: 'src/Main.java', diff: '+class Main {}', new_file: false, deleted_file: false, renamed_file: false },
+      ],
+    }
+    vi.stubGlobal('fetch', makeFetch(response))
+    const { fetchGitLabMRContext } = await loadFetcher()
+
+    const ctx = await fetchGitLabMRContext(42, 7, PAYLOAD)
+
+    expect(ctx.files.find((f) => f.path === 'src/lib.rs')!.language).toBe('rust')
+    expect(ctx.files.find((f) => f.path === 'src/Main.java')!.language).toBe('java')
+  })
 })

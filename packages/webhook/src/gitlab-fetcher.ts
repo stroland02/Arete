@@ -1,12 +1,15 @@
 import type { FileChange, PRContext } from './types.js'
 
+// Kept in sync with pr-fetcher.ts's EXTENSION_MAP (and the Python
+// _EXTENSION_MAP in packages/agents/src/arete_agents/models/pr.py, which
+// recomputes `language` server-side and ignores whatever this map produces —
+// but this value is still visible on the TS-side FileChange, so it should
+// not silently disagree for languages GitHub PRs already classify correctly).
 const EXTENSION_MAP: Record<string, string> = {
-  '.ts': 'typescript',
-  '.tsx': 'typescript',
-  '.js': 'javascript',
-  '.jsx': 'javascript',
-  '.py': 'python',
-  '.go': 'go',
+  '.py': 'python', '.ts': 'typescript', '.tsx': 'typescript',
+  '.js': 'javascript', '.jsx': 'javascript', '.go': 'go',
+  '.rs': 'rust', '.java': 'java', '.rb': 'ruby', '.php': 'php',
+  '.cs': 'csharp', '.cpp': 'cpp', '.c': 'c', '.sql': 'sql', '.sh': 'shell',
 }
 
 interface GitLabChange {
