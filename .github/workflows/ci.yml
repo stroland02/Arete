@@ -8,23 +8,53 @@ on:
 
 jobs:
   test-agents:
+    name: Python Agents
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: packages/agents
-
     steps:
       - uses: actions/checkout@v4
 
-      - uses: astral-sh/setup-uv@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
 
-      - run: uv sync --extra dev
+      - name: Install dependencies
+        run: uv sync --extra dev
+        working-directory: packages/agents
 
-      - run: uv run ruff check src/ tests/
+      - name: Lint
+        run: uv run ruff check src/ tests/
+        working-directory: packages/agents
 
-      - run: uv run pytest tests/ -v --ignore=tests/test_e2e_smoke.py
+      - name: Test
+        run: uv run pytest tests/ --ignore=tests/test_e2e_smoke.py -v
+        working-directory: packages/agents
         env:
           LLM_PROVIDER: gemini
           GEMINI_API_KEY: test-key-not-real
+
+  test-webhook:
+    name: TypeScript Webhook
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm lint
+        working-directory: packages/webhook
+
+      - name: Test
+        run: pnpm test
+        working-directory: packages/webhook
