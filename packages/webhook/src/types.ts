@@ -40,4 +40,5 @@ export interface ReviewResult {
   overall_summary: string
   risk_level: 'low' | 'medium' | 'high' | 'critical'
   total_comments: number
+  analysis_status?: 'complete' | 'failed'
 }
