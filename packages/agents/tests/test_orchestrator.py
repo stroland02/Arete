@@ -79,3 +79,8 @@ def test_large_patch_is_truncated(cyclic_llm):
     agent = SecurityAgent(llm=cyclic_llm)
     result = agent.review_file(file, pr)
     assert result is not None
+    # Verify the LLM saw a prompt shorter than the raw patch
+    call_args = cyclic_llm.invoke.call_args[0][0]
+    human_content = call_args[1].content  # HumanMessage is index 1
+    assert len(human_content) < len(big_patch)
+    assert "[Diff truncated:" in human_content
