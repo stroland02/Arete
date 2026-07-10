@@ -2,13 +2,21 @@ import type { Octokit } from '@octokit/core'
 import { fetchPRContext } from './pr-fetcher.js'
 import { runReviewPipeline } from './review-bridge.js'
 import { postReview } from './comment-poster.js'
+import { PrismaClient } from './generated/prisma/index.js'
 
 const HANDLED_ACTIONS = new Set(['opened', 'synchronize', 'reopened'])
+const prisma = new PrismaClient()
 
 interface PullRequestPayload {
   action: string
-  repository: { owner: { login: string }; name: string }
+  repository: { 
+    id: number
+    owner: { login: string }
+    name: string
+    full_name: string
+  }
   pull_request: { number: number }
+  installation?: { id: number }
 }
 
 export async function handlePullRequestEvent(
@@ -23,12 +31,61 @@ export async function handlePullRequestEvent(
   const owner = payload.repository.owner.login
   const repo = payload.repository.name
   const prNumber = payload.pull_request.number
+  const installationId = payload.installation?.id || 0
 
   console.log(`[handler] Reviewing ${owner}/${repo}#${prNumber} (${payload.action})`)
 
   const prContext = await fetchPRContext(octokit, owner, repo, prNumber)
   const result = await runReviewPipeline(prContext)
   await postReview(octokit, owner, repo, prNumber, result)
+
+  // Persist to Prisma
+  const installation = await prisma.installation.upsert({
+    where: { id: installationId.toString() },
+    create: { 
+      id: installationId.toString(),
+      githubInstallationId: installationId, 
+      owner 
+    },
+    update: { owner }
+  })
+
+  const repository = await prisma.repository.upsert({
+    where: { id: payload.repository.id.toString() },
+    create: {
+      id: payload.repository.id.toString(),
+      githubRepoId: payload.repository.id,
+      name: repo,
+      fullName: payload.repository.full_name,
+      installationId: installation.id
+    },
+    update: {
+      name: repo,
+      fullName: payload.repository.full_name
+    }
+  })
+
+  const review = await prisma.review.create({
+    data: {
+      prNumber: prNumber,
+      repositoryId: repository.id,
+      riskLevel: result.risk_level,
+      overallSummary: result.overall_summary,
+      comments: {
+        createMany: {
+          data: result.file_reviews.flatMap((fr: any) => 
+            fr.comments.map((c: any) => ({
+              path: fr.path,
+              line: c.line,
+              body: c.body,
+              severity: c.severity,
+              category: c.category
+            }))
+          )
+        }
+      }
+    }
+  })
 
   console.log(`[handler] Posted review — risk: ${result.risk_level}, comments: ${result.total_comments}`)
 }

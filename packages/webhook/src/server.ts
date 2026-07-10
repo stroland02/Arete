@@ -24,6 +24,15 @@ export async function createServer(): Promise<express.Application> {
     }
   })
 
+  app.webhooks.on('pull_request_review_comment', async ({ octokit, payload }) => {
+    const { handleReviewCommentEvent } = await import('./chat-handler.js')
+    try {
+      await handleReviewCommentEvent(octokit as any, payload as any)
+    } catch (err) {
+      console.error('[server] Error handling pull_request_review_comment event:', err)
+    }
+  })
+
   const server = express()
   // Mount at root and let createNodeMiddleware own the path matching —
   // Express strips the mount prefix from req.url, so mounting at '/webhook'
