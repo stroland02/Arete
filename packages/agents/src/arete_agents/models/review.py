@@ -24,6 +24,9 @@ class ReviewResult(BaseModel):
     file_reviews: list[FileReview]
     overall_summary: str
     risk_level: Literal["low", "medium", "high", "critical"]
+    # "failed" means every agent errored and NOTHING was actually reviewed —
+    # distinguishes "no issues found" from "no review ever happened".
+    analysis_status: Literal["complete", "failed"] = "complete"
 
     @computed_field
     @property

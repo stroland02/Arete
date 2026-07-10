@@ -74,6 +74,80 @@ def test_orchestrator_survives_agent_exception(sample_pr):
     assert any("error" in s.lower() or "boom" in s.lower() for s in all_summaries)
 
 
+def test_all_agents_fail_sets_analysis_status_failed(sample_pr):
+    """Total LLM outage: every agent call raises -> analysis_status is
+    'failed' so callers can tell 'never reviewed' from 'reviewed and clean'.
+    risk_level behavior is unchanged (still 'low' with zero comments)."""
+    from arete_agents.orchestrator import ReviewOrchestrator
+    boom = MagicMock()
+    boom.with_retry.return_value = boom
+    boom.invoke.side_effect = RuntimeError("total LLM outage")
+    result = ReviewOrchestrator(llm=boom).run(sample_pr)
+    assert result.analysis_status == "failed"
+    assert result.risk_level == "low"
+
+
+def test_partial_agent_failure_keeps_analysis_status_complete(sample_pr):
+    """If SOME agents succeed, the review is not a total failure."""
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    sec_response = (
+        '{"comments": [{"path": "src/auth.py", "line": 5, "body": "SQL '
+        'injection.", "severity": "error", "category": "security"}], '
+        '"summary": "SQL injection."}'
+    )
+    synth_response = (
+        '{"file_reviews": [{"path": "src/auth.py", "comments": '
+        '[{"path": "src/auth.py", "line": 5, "body": "SQL injection.", '
+        '"severity": "error", "category": "security"}], '
+        '"summary": "SQL injection."}], '
+        '"overall_summary": "One security issue.", "risk_level": "high"}'
+    )
+
+    def fake_invoke(messages, **kwargs):
+        system = messages[0].content
+        if "Synthesizer" in system:
+            return AIMessage(content=synth_response)
+        if "security engineer" in system:
+            return AIMessage(content=sec_response)
+        raise RuntimeError("provider outage for this agent")
+
+    mock = MagicMock()
+    mock.with_retry.return_value = mock
+    mock.invoke.side_effect = fake_invoke
+
+    result = ReviewOrchestrator(llm=mock).run(sample_pr)
+    assert result.analysis_status == "complete"
+
+
+def test_all_agents_succeed_analysis_status_complete(sample_pr, cyclic_llm):
+    """Healthy run: default status stays 'complete' (unchanged behavior)."""
+    from arete_agents.orchestrator import ReviewOrchestrator
+    result = ReviewOrchestrator(llm=cyclic_llm).run(sample_pr)
+    assert result.analysis_status == "complete"
+
+
+def test_empty_pr_analysis_status_complete(cyclic_llm):
+    """No files to review is NOT a failure — there was just nothing to do."""
+    from arete_agents.models.pr import PRContext
+    from arete_agents.orchestrator import ReviewOrchestrator
+    empty = PRContext(repo="x/y", pr_number=1, title="Empty", description="", files=[])
+    result = ReviewOrchestrator(llm=cyclic_llm).run(empty)
+    assert result.analysis_status == "complete"
+
+
+def test_review_result_analysis_status_defaults_to_complete(sample_pr):
+    """Additive field: existing constructors that don't pass analysis_status
+    keep working and get 'complete'."""
+    result = ReviewResult(
+        pr_context=sample_pr,
+        file_reviews=[],
+        overall_summary="ok",
+        risk_level="low",
+    )
+    assert result.analysis_status == "complete"
+
+
 def _comment(severity: str, line: int = 1) -> ReviewComment:
     return ReviewComment(
         path="a.py", line=line, body="issue", severity=severity, category="security"
