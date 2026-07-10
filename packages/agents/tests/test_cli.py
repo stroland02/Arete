@@ -52,10 +52,13 @@ def test_cli_reads_stdin_and_writes_stdout(monkeypatch, capsys):
         from arete_agents.cli import main
         main()
 
-    captured = capsys.readouterr()
-    result = json.loads(captured.out)
-    assert result["risk_level"] in ("low", "medium", "high", "critical")
-    assert "file_reviews" in result
+    try:
+        captured = capsys.readouterr()
+        result = json.loads(captured.out)
+        assert result["risk_level"] in ("low", "medium", "high", "critical")
+        assert "file_reviews" in result
+    finally:
+        get_settings.cache_clear()
 
 
 def test_cli_exits_1_on_invalid_json(monkeypatch):
