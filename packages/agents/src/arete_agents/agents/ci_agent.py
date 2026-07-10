@@ -1,4 +1,10 @@
+import concurrent.futures
+
+from langchain_core.messages import HumanMessage, SystemMessage
+
 from arete_agents.agents.base import BaseReviewAgent
+from arete_agents.models.pr import FileChange, PRContext
+from arete_agents.models.review import FileReview
 
 
 class CIAgent(BaseReviewAgent):
@@ -16,3 +22,52 @@ Your task is to analyze failed GitHub Actions logs and identify the root cause o
 - Provide a concrete fix for the error.
 
 Focus solely on issues that directly contributed to the CI failure."""
+
+    def _extract_error(self, chunk: str) -> str:
+        messages = [
+            SystemMessage(content="You are an expert CI log analyzer."),
+            HumanMessage(
+                content=f"Does this chunk of CI logs contain the failure reason? If yes, extract it. If no, say 'NO_ERROR'.\n\nLogs:\n{chunk}"
+            )
+        ]
+        response = self._llm.with_retry(stop_after_attempt=2).invoke(messages)
+        content = response.content if isinstance(response.content, str) else ""
+        return content.strip()
+
+    def review_file(self, file: FileChange, pr_context: PRContext) -> FileReview:
+        ci_logs = pr_context.ci_logs or ""
+        extracted_errors = ""
+
+        if ci_logs:
+            if len(ci_logs) < 4000:
+                extracted_errors = ci_logs
+            else:
+                chunks = [ci_logs[i : i + 4000] for i in range(0, len(ci_logs), 4000)]
+                errors = []
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    results = executor.map(self._extract_error, chunks)
+                    for res in results:
+                        if res and res != "NO_ERROR":
+                            errors.append(res)
+                extracted_errors = "\n".join(errors)
+
+        prompt = self.system_prompt
+        if pr_context.custom_rules:
+            prompt += "\n\nCUSTOM RULES:\n" + "\n".join(
+                f"- {rule}" for rule in pr_context.custom_rules
+            )
+
+        user_content = self._build_user_prompt(file, pr_context)
+        if extracted_errors:
+            user_content += f"\n\n<ci_logs>\n{extracted_errors}\n</ci_logs>"
+
+        messages = [
+            SystemMessage(content=prompt),
+            HumanMessage(content=user_content),
+        ]
+
+        llm_with_retry = self._llm.with_retry(stop_after_attempt=2)
+        response = llm_with_retry.invoke(messages)
+        raw = response.content if isinstance(response.content, str) else ""
+        comments, summary = self._parse_response(file.path, raw)
+        return FileReview(path=file.path, comments=comments, summary=summary)
