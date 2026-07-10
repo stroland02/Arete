@@ -21,11 +21,11 @@ class BaseReviewAgent(ABC):
     def __init__(self, llm: BaseChatModel) -> None:
         self._llm = llm
 
-    def _build_user_prompt(self, file: FileChange, pr: PRContext) -> str:
+    def _build_user_prompt(self, file: FileChange, pr_context: PRContext) -> str:
         return f"""Review this pull request file for {self.agent_name} issues.
 
-PR: "{pr.title}" in {pr.repo}
-Description: {pr.description}
+PR: "{pr_context.title}" in {pr_context.repo}
+Description: {pr_context.description}
 File: {file.path} ({file.language})
 
 Diff:
@@ -58,10 +58,10 @@ If no issues found, return empty comments array."""
         except Exception as exc:
             return [], f"Failed to parse agent response: {exc}"
 
-    def review_file(self, file: FileChange, pr: PRContext) -> FileReview:
+    def review_file(self, file: FileChange, pr_context: PRContext) -> FileReview:
         messages = [
             SystemMessage(content=self.system_prompt),
-            HumanMessage(content=self._build_user_prompt(file, pr)),
+            HumanMessage(content=self._build_user_prompt(file, pr_context)),
         ]
         response = self._llm.invoke(messages)
         comments, summary = self._parse_response(file.path, response.content)
