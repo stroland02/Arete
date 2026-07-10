@@ -11,7 +11,7 @@
 2. [Problem Statement](#2-problem-statement)
 3. [Market Opportunity](#3-market-opportunity)
 4. [Competitive Landscape](#4-competitive-landscape)
-5. [The Areté Solution](#5-the-tyme-solution)
+5. [The Areté Solution](#5-the-Areté-solution)
 6. [Core Product Features](#6-core-product-features)
 7. [Code Review Service](#7-code-review-service)
 8. [Technical Architecture](#8-technical-architecture)
@@ -35,7 +35,7 @@ Unlike traditional monitoring tools (Datadog, Azure Monitor, Sentry) that tell y
 - Multi-agent orchestration — specialized agents for monitoring, analytics, and codebase maintenance
 - Business-to-code traceability — connects metric drops directly to specific lines of code
 - Transparent reasoning — every suggestion includes full explanation, no black box
-- Human-in-the-loop — all code changes require developer approval; TYME proposes, humans decide
+- Human-in-the-loop — all code changes require developer approval; Areté proposes, humans decide
 
 **Launch wedge:** A standalone AI Code Review Service (competing with CodeRabbit) that installs as a GitHub/GitLab App, reviews every PR automatically with specialized agents, and generates immediate recurring revenue.
 
@@ -75,7 +75,7 @@ Strong VC interest in agentic developer tools from Andreessen Horowitz, Sequoia,
 
 ### AI Code Assistants (Write New Code)
 
-| Tool | What It Does | Gap vs. TYME |
+| Tool | What It Does | Gap vs. Areté |
 |---|---|---|
 | **Cursor** | IDE with AI pair programming | Write-time only; no production awareness |
 | **GitHub Copilot** | Inline autocomplete + code chat | Assists writing, not improving existing code |
@@ -84,7 +84,7 @@ Strong VC interest in agentic developer tools from Andreessen Horowitz, Sequoia,
 
 ### Monitoring & Observability (Watch Production)
 
-| Tool | What It Does | Gap vs. TYME |
+| Tool | What It Does | Gap vs. Areté |
 |---|---|---|
 | **Datadog** | Metrics, logs, traces dashboards | Reactive alerts; no code-level fix suggestions; expensive |
 | **Sentry** | Error tracking and performance | Reactive; identifies errors but does not fix them |
@@ -93,7 +93,7 @@ Strong VC interest in agentic developer tools from Andreessen Horowitz, Sequoia,
 
 ### AI Code Review (PR Analysis)
 
-| Tool | What It Does | Gap vs. TYME |
+| Tool | What It Does | Gap vs. Areté |
 |---|---|---|
 | **CodeRabbit** | AI PR review as GitHub App | No production monitoring context; reviews in isolation |
 | **PR-Agent / Qodo Merge** | Open-source AI PR review | Less sophisticated; no production integration |
@@ -103,9 +103,9 @@ Strong VC interest in agentic developer tools from Andreessen Horowitz, Sequoia,
 
 **SuperLog (YC P26)** — Agentic production monitoring. Key gaps: reactive only (alerts after problems occur), no business metric correlation, no proactive improvement loop, no code-level fix suggestions, reasoning is not transparent.
 
-### TYME's Unique Position
+### Areté's Unique Position
 
-TYME is the only product that:
+Areté is the only product that:
 1. Closes the loop from production telemetry → root cause analysis → specific code fix → PR → approval → merge
 2. Correlates business metrics to code changes
 3. Operates proactively, not reactively
@@ -113,11 +113,11 @@ TYME is the only product that:
 
 ---
 
-## 5. The TYME Solution
+## 5. The Areté Solution
 
 ### Core Concept: The OODA Loop for Software
 
-TYME runs a continuous autonomous improvement loop based on the military decision-making framework:
+Areté runs a continuous autonomous improvement loop based on the military decision-making framework:
 
 ```
 OBSERVE → ORIENT → DECIDE → ACT
@@ -125,8 +125,8 @@ OBSERVE → ORIENT → DECIDE → ACT
 
 - **Observe:** Collect all production telemetry via OpenTelemetry — errors, latency, DB query performance, deployment health, business metrics
 - **Orient:** Multi-agent analysis identifies patterns, root causes, and inefficiencies across the codebase and infrastructure
-- **Decide:** TYME generates specific improvement proposals with full reasoning — ranked by impact and risk
-- **Act:** Developer reviews and approves. TYME opens a PR. Human merges. Loop restarts with updated telemetry.
+- **Decide:** Areté generates specific improvement proposals with full reasoning — ranked by impact and risk
+- **Act:** Developer reviews and approves. Areté opens a PR. Human merges. Loop restarts with updated telemetry.
 
 ### The Master Grid
 
@@ -140,15 +140,15 @@ A unified dashboard that gives engineering teams a single pane of glass for:
 
 ### Human-in-the-Loop
 
-TYME never touches production code without developer approval. Every action follows this flow:
+Areté never touches production code without developer approval. Every action follows this flow:
 
 ```
 Agent identifies issue
     → Generates explanation + proposed fix
     → Opens draft PR with full reasoning in description
     → Developer reviews reasoning, diff, and risk assessment
-    → Developer approves → merge → TYME monitors outcome
-    → Developer rejects → TYME learns and adjusts
+    → Developer approves → merge → Areté monitors outcome
+    → Developer rejects → Areté learns and adjusts
 ```
 
 ---
@@ -180,7 +180,7 @@ Specialized agents running in parallel, each with a defined scope:
 - Agent identifies inefficiency before it causes user-visible impact
 - Generates a PR with: the fix, full reasoning, risk assessment, expected impact, monitoring data that triggered it
 - Safe/unsafe change classification per file and per function
-- One-click approve — TYME handles branch creation, commit, and PR open
+- One-click approve — Areté handles branch creation, commit, and PR open
 
 ### Feature 4: Conversational Interface
 - Developers can ask the system: "Why did latency spike last Tuesday?"
@@ -192,7 +192,7 @@ Specialized agents running in parallel, each with a defined scope:
 
 ## 7. Code Review Service
 
-The Code Review Service is TYME's launch product — a standalone GitHub/GitLab App that competes directly with CodeRabbit, priced at $29–49/developer/month.
+The Code Review Service is Areté's launch product — a standalone GitHub/GitLab App that competes directly with CodeRabbit, priced at $29–49/developer/month.
 
 ### Why Start Here
 
@@ -200,19 +200,19 @@ The Code Review Service is TYME's launch product — a standalone GitHub/GitLab 
 - Immediate revenue with a clear pricing comp (CodeRabbit is $24/dev/month)
 - Viral distribution — every developer who receives a review sees the product
 - Validates the multi-agent approach at PR scale before expanding to monitoring
-- Becomes a core feature of the full TYME platform at no additional cost to customers
+- Becomes a core feature of the full Areté platform at no additional cost to customers
 
 ### What Makes It Different from CodeRabbit
 
 **CodeRabbit** reviews code in isolation — it sees the diff and surrounding code, nothing more.
 
-**TYME Code Review** sees:
+**Areté Code Review** sees:
 - The diff and surrounding code
 - The production telemetry for the functions being changed
 - Historical incident data for those code paths
 - Business metric impact of similar past changes
 
-Example review comment only TYME can produce:
+Example review comment only Areté can produce:
 > *"This change modifies `processPayment()`. That function has a 94th-percentile latency of 1.2s under load and caused 3 incidents in the last 60 days. The added DB query on line 47 runs inside the transaction — consider extracting it. Here's a revised version."*
 
 ### Review Pipeline (Multi-Agent)
@@ -258,7 +258,7 @@ When a PR opens, 6 specialized agents run in parallel:
 
 ```
                     ┌─────────────────────────────────┐
-                    │         TYME Orchestrator        │
+                    │         Areté Orchestrator        │
                     │      (LangGraph Supervisor)      │
                     └────────────┬────────────────────┘
                                  │
@@ -293,7 +293,7 @@ When a PR opens, 6 specialized agents run in parallel:
 ```
 Customer Services
     → OpenTelemetry SDK (language-agnostic instrumentation)
-    → OTLP Collector (TYME-hosted or customer self-hosted)
+    → OTLP Collector (Areté-hosted or customer self-hosted)
     → ClickHouse (time-series storage and analytics)
     → Analytics Agent (continuous pattern analysis)
     → Anomaly or bottleneck detected
@@ -304,7 +304,7 @@ Customer Services
 
 ```
 GitHub/GitLab PR opened
-    → Webhook → TYME API (Go)
+    → Webhook → Areté API (Go)
     → 6 agents triggered in parallel (LangGraph)
     → Each agent: fetches diff + codebase context + production telemetry
     → Each agent: Claude claude-opus-4-8 analysis with adaptive thinking
@@ -332,7 +332,7 @@ GitHub/GitLab PR opened
 | **Pro** | $49/dev/month | Unlimited devs, production monitoring context, conversational interface |
 | **Enterprise** | Custom | Self-hosted option, SSO, audit logs, SLA, dedicated support |
 
-### Full TYME Platform (Phase 2)
+### Full Areté Platform (Phase 2)
 
 | Tier | Price | Includes |
 |---|---|---|
@@ -392,13 +392,13 @@ The Code Review Service is inherently viral: every developer who receives an AI 
 1. Developer opens a PR → receives an unexpectedly excellent AI review
 2. Developer shares the review in team Slack ("look at this AI review I just got")
 3. VP Engineering installs the App for the whole team
-4. TYME surfaces value → team upgrades from free trial to paid
+4. Areté surfaces value → team upgrades from free trial to paid
 
 **Free tier (Code Review):** First 50 PRs free — enough for a team to experience full value before paying. No credit card required.
 
 ### Launch Channels
 
-1. **Hacker News:** "Show HN: TYME — AI code review that knows your production telemetry" targets the technical ICP directly
+1. **Hacker News:** "Show HN: Areté — AI code review that knows your production telemetry" targets the technical ICP directly
 2. **Product Hunt:** Day-1 launch to capture early adopter developers
 3. **GitHub Marketplace:** Listed as a GitHub App — discoverable by anyone searching for code review tools
 4. **Developer communities:** Reddit (r/programming, r/devops), Discord servers, Twitter/X technical community
@@ -406,9 +406,9 @@ The Code Review Service is inherently viral: every developer who receives an AI 
 
 ### Sales Motion (Phase 2)
 
-Once Code Review reaches ~$50K MRR, add outbound for the full TYME Platform:
+Once Code Review reaches ~$50K MRR, add outbound for the full Areté Platform:
 - Target: VP Engineering at Series A/B startups
-- Message: "You are already using TYME for code review. Here is how we extend that to proactively improve your entire production system."
+- Message: "You are already using Areté for code review. Here is how we extend that to proactively improve your entire production system."
 - Channel: LinkedIn outbound + warm intros from existing customers
 
 ---
@@ -438,7 +438,7 @@ Once Code Review reaches ~$50K MRR, add outbound for the full TYME Platform:
 - [ ] Code Review enriched with production context (Business Logic Agent active)
 - [ ] Anomaly detection and alerting
 
-### Phase 3: Full TYME Platform (Months 9–18)
+### Phase 3: Full Areté Platform (Months 9–18)
 **Goal:** 500 paying teams, $200K+ MRR, Series A raise
 
 - [ ] LangGraph multi-agent orchestrator (full OODA loop)
@@ -470,7 +470,7 @@ Three approaches were evaluated. The recommended path is **Phase 1: Code Review 
 
 ### Approach B: Full Standalone Agentic Platform (Day One)
 
-**What:** Build the complete TYME vision immediately — telemetry ingestion, ClickHouse analytics, multi-agent orchestration, master grid UI, code review, proactive improvement loop.
+**What:** Build the complete Areté vision immediately — telemetry ingestion, ClickHouse analytics, multi-agent orchestration, master grid UI, code review, proactive improvement loop.
 
 **Timeline to MVP:** 12–18 months
 **Team required:** 4–5 senior engineers
@@ -546,7 +546,7 @@ Ship the standalone AI code review GitHub App. Focused, scoped-down Approach B t
 **Phase 2 — Raise Pre-Seed (Month 3–4):**
 With 15 paying teams at ~$40/dev/month average (~$5K MRR growing 20–30% month-over-month), pitch YC or angels. Target: $500K–$1.5M pre-seed.
 
-**Phase 3 — Full TYME Platform (Months 4–18):**
+**Phase 3 — Full Areté Platform (Months 4–18):**
 Hire the team, build the full B platform using Phase 1 customers as design partners. Code review customers expand to the full platform. Telemetry from production deployments makes code review dramatically more useful. Full OODA loop live.
 
 **The fundraising math:**
@@ -565,7 +565,7 @@ Hire the team, build the full B platform using Phase 1 customers as design partn
 - Pricing: $24/developer/month
 - Traction: 100K+ repos in Year 1 — proven product-market fit in this category
 - Key gap: reviews code in isolation with no production monitoring context
-- TYME's advantage: production telemetry context makes reviews dramatically more relevant
+- Areté's advantage: production telemetry context makes reviews dramatically more relevant
 
 ### Claude Code /code-review ultra (Anthropic Feature)
 - Runs multi-agent cloud code review on a current branch or specific GitHub PR number
@@ -577,14 +577,14 @@ Hire the team, build the full B platform using Phase 1 customers as design partn
 ### SuperLog (YC P26 — Closest Startup Competitor)
 - GitHub: superloglabs/superlog — agentic production monitoring startup
 - Funded by Y Combinator P26 cohort — category validation signal
-- Key gaps vs. TYME: reactive only (fires alerts when problems occur), no business metric correlation, no proactive improvement loop, no code-level fix generation, reasoning not exposed to users
-- Opportunity: TYME adds the full improvement loop that SuperLog is missing
+- Key gaps vs. Areté: reactive only (fires alerts when problems occur), no business metric correlation, no proactive improvement loop, no code-level fix generation, reasoning not exposed to users
+- Opportunity: Areté adds the full improvement loop that SuperLog is missing
 
 ### Ramp's Internal System (Market Signal)
 - Ramp (fintech unicorn, $8B+ valuation) built an internal agentic monitoring and code improvement system
 - They built it themselves because no commercial product met their needs
 - Strongest market signal: large companies pay $500K+/year in engineering time to build this internally
-- TYME commercializes what Ramp built for themselves
+- Areté commercializes what Ramp built for themselves
 
 ### OODA Loop Reference
 Military decision-making framework applied to continuous software improvement:
