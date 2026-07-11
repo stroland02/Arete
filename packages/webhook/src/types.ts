@@ -20,9 +20,11 @@ export interface TelemetrySnapshot {
 }
 
 export interface TelemetryConnectorConfig {
-  provider: 'github_actions' | 'posthog'
+  provider: 'github_actions' | 'posthog' | 'sentry' | 'vercel' | 'stripe'
   service?: string
   project?: string
+  /** Sentry: organization slug. Vercel: team ID (optional, personal accounts omit it). */
+  org?: string
 }
 
 export interface PRContext {
