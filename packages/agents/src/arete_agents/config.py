@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://arete:arete@localhost:5432/arete"
     redis_url: str = "redis://localhost:6379"
 
+    eval_finder_provider: Literal["gemini", "anthropic"] | None = None
+    eval_judge_provider: Literal["gemini", "anthropic"] | None = None
+    eval_f1_threshold: float = 0.05
+
     @field_validator("gemini_api_key")
     @classmethod
     def gemini_key_required(cls, v: str, info) -> str:

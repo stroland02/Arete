@@ -1,0 +1,28 @@
+{
+  "id": "deploysafety-no-migration",
+  "pr": {
+    "repo": "acme/api",
+    "pr_number": 109,
+    "title": "Add column to model",
+    "description": "Adds a non-null column but no migration.",
+    "files": [
+      {
+        "path": "src/models/user.py",
+        "patch": "@@ -1,3 +1,4 @@\n class User(Base):\n     id = Column(Integer, primary_key=True)\n+    country = Column(String, nullable=False)\n+",
+        "additions": 2,
+        "deletions": 0
+      }
+    ]
+  },
+  "planted_defects": [
+    {
+      "id": "nomig-001",
+      "path": "src/models/user.py",
+      "line": 3,
+      "target_agent": "deployment_safety",
+      "description": "Schema change without migration: a non-nullable 'country' column is added to the User model but no database migration accompanies it, which will break deploys against existing data.",
+      "severity": "error"
+    }
+  ],
+  "clean": false
+}

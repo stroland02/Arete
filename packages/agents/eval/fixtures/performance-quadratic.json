@@ -1,0 +1,28 @@
+{
+  "id": "performance-quadratic",
+  "pr": {
+    "repo": "acme/api",
+    "pr_number": 104,
+    "title": "Deduplicate incoming ids",
+    "description": "Removes duplicate ids from a request.",
+    "files": [
+      {
+        "path": "src/dedupe.py",
+        "patch": "@@ -0,0 +1,7 @@\n+def unique(items):\n+    result = []\n+    for item in items:\n+        if item not in result:\n+            result.append(item)\n+    return result\n+",
+        "additions": 7,
+        "deletions": 0
+      }
+    ]
+  },
+  "planted_defects": [
+    {
+      "id": "quad-001",
+      "path": "src/dedupe.py",
+      "line": 4,
+      "target_agent": "performance",
+      "description": "Quadratic complexity: 'item not in result' scans the growing list on every iteration, making deduplication O(n^2); a set would make it O(n).",
+      "severity": "warning"
+    }
+  ],
+  "clean": false
+}
