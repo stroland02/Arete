@@ -586,4 +586,38 @@ describe('pipeline integration: webhook -> queue -> worker -> review -> post', (
     // Pipeline continued to completion after the fallback
     expect(mocks.prisma.reviewCreate).toHaveBeenCalledTimes(1)
   })
+
+  it('fetches telemetry context and includes it in the PRContext sent to the Python pipeline', async () => {
+    // Registered before buildApp: vi.resetModules() clears the module cache
+    // but not the doMock registry, so these survive and apply when worker.js
+    // is dynamically imported below. Keep this test LAST in the describe
+    // block — these two doMocks are not re-registered by buildApp, so they
+    // would leak into any test that ran after this one.
+    vi.doMock('./telemetry/fetch-telemetry-context.js', () => ({
+      fetchTelemetryContext: vi.fn().mockResolvedValue([
+        { provider: 'github_actions', source_ref: 'acme/api', summary_text: 'ok', metrics: {}, links: [], fetched_at: '2026-07-10T00:00:00Z' },
+      ]),
+    }))
+
+    const runReviewPipelineMock = vi.fn().mockResolvedValue({
+      pr_context: {}, file_reviews: [], overall_summary: 'ok', risk_level: 'low', total_comments: 0,
+    })
+    vi.doMock('./review-bridge.js', () => ({ runReviewPipeline: runReviewPipelineMock }))
+
+    // Reuses the shared boundary mocks (octokit via github-auth, @arete/db,
+    // queue) that buildApp registers, then feeds job data straight into the
+    // worker exactly like runCapturedJob does.
+    await buildApp(mocks)
+
+    const { processReviewJob } = await import('./worker.js')
+    await processReviewJob({
+      provider: 'github', kind: 'pull_request', owner: 'acme', repo: 'api',
+      repositoryExternalId: 1, fullName: 'acme/api', installationId: 42, prNumber: 1, headSha: 'abc',
+    })
+
+    const sentContext = runReviewPipelineMock.mock.calls[0][0]
+    expect(sentContext.telemetry).toEqual([
+      { provider: 'github_actions', source_ref: 'acme/api', summary_text: 'ok', metrics: {}, links: [], fetched_at: '2026-07-10T00:00:00Z' },
+    ])
+  })
 })
