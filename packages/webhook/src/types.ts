@@ -10,6 +10,15 @@ export interface FileChange {
   status?: 'added' | 'removed' | 'renamed' | 'modified'
 }
 
+export interface TelemetrySnapshot {
+  provider: string
+  source_ref: string
+  summary_text: string
+  metrics: Record<string, number>
+  links: string[]
+  fetched_at: string
+}
+
 export interface PRContext {
   repo: string
   pr_number: number
@@ -18,6 +27,7 @@ export interface PRContext {
   files: FileChange[]
   customRules?: string[]
   ciLogs?: string
+  telemetry?: TelemetrySnapshot[]
 }
 
 export interface ReviewComment {
