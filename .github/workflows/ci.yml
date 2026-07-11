@@ -51,10 +51,101 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # @arete/webhook imports the generated Prisma client from @arete/db.
+      # `pnpm install` already triggers @arete/db's `prepare` script (prisma
+      # generate + tsc), but this step makes that dependency explicit and
+      # keeps CI green even if the lifecycle hook is ever skipped (e.g. by a
+      # future --ignore-scripts install).
+      - name: Build @arete/db (prisma generate)
+        run: pnpm --filter @arete/db build
+
       - name: Type check
         run: pnpm lint
+        working-directory: packages/webhook
+
+      # Compiles src/ to dist/ with the real ESM tsconfig (module/moduleResolution
+      # "nodenext"). `tsc` exiting 0 only proves the types check out — it does
+      # NOT prove the compiled output is runnable (a CJS build with a dynamic
+      # import() of an ESM-only package silently produces a require() that
+      # crashes at runtime). The smoke test below is the actual verification.
+      - name: Build
+        run: pnpm build
         working-directory: packages/webhook
 
       - name: Test
         run: pnpm test
         working-directory: packages/webhook
+
+      # Prove the compiled dist/ artifact actually runs under plain `node`
+      # (not tsx/ts-node): boots past getConfig() and the dynamic import()
+      # of the ESM-only @octokit packages, then serves a real HTTP request.
+      - name: Smoke test compiled artifact (node dist/index.js)
+        working-directory: packages/webhook
+        env:
+          GITHUB_APP_ID: "12345"
+          GITHUB_PRIVATE_KEY: "-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----\n"
+          GITHUB_WEBHOOK_SECRET: ci-smoke-test-secret
+          STRIPE_SECRET_KEY: sk_test_ci_smoke
+          PORT: "3000"
+        run: |
+          node dist/index.js &
+          server_pid=$!
+          trap "kill $server_pid" EXIT
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:3000/health; then
+              echo "webhook dist/index.js served /health successfully"
+              exit 0
+            fi
+            sleep 0.5
+          done
+          echo "webhook dist/index.js did not become healthy in time" >&2
+          exit 1
+
+  test-dashboard:
+    name: Next.js Dashboard
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: arete
+          POSTGRES_PASSWORD: arete
+          POSTGRES_DB: arete
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U arete"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://arete:arete@localhost:5432/arete
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply database migrations
+        run: pnpm --filter @arete/db migrate:deploy
+
+      - name: Lint
+        run: pnpm lint
+        working-directory: packages/dashboard
+
+      # `next build` prerenders the dashboard's overview page against the
+      # database (see packages/db/README.md), so this both typechecks and
+      # builds the production bundle against the Postgres service container
+      # above.
+      - name: Build
+        run: pnpm build
+        working-directory: packages/dashboard
