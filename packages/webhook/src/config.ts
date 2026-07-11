@@ -137,3 +137,30 @@ export function getServiceConfig(): ServiceConfig {
     databaseUrl: result.DATABASE_URL,
   }
 }
+
+// -----------------------------------------------------------------------------
+// Telemetry connector credential encryption
+// -----------------------------------------------------------------------------
+
+const TelemetryConfigSchema = z.object({
+  TELEMETRY_ENCRYPTION_KEY: z
+    .string({ required_error: 'TELEMETRY_ENCRYPTION_KEY is required' })
+    .length(64, 'TELEMETRY_ENCRYPTION_KEY must be a 64-character hex string (32 bytes)'),
+})
+
+export interface TelemetryConfig {
+  encryptionKey: string
+}
+
+/** Encryption key for TelemetryConnection.credentials (AES-256-GCM, so a
+ * 32-byte/64-hex-char key). Only read when a telemetry connector is
+ * actually used — connect-time and review-time, not at process startup —
+ * so a deployment with no telemetry connectors configured never needs it. */
+export function getTelemetryConfig(): TelemetryConfig {
+  const result = TelemetryConfigSchema.safeParse(process.env)
+  if (!result.success) {
+    const missing = result.error.issues.map((i) => i.message).join(', ')
+    throw new Error(`Configuration error: ${missing}`)
+  }
+  return { encryptionKey: result.data.TELEMETRY_ENCRYPTION_KEY }
+}
