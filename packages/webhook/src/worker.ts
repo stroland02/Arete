@@ -34,9 +34,13 @@ async function processGitHubPullRequest(octokit: Octokit, data: GitHubPullReques
   const { owner, repo, prNumber, headSha, installationId, repositoryExternalId, fullName } = data
 
   const prContext = await fetchPRContext(octokit, owner, repo, prNumber)
+  // `installationId` here is the GitHub App's numeric installation id
+  // (Installation.externalId), not the internal Installation UUID —
+  // fetchTelemetryContext resolves the UUID itself, like persistReview.
   prContext.telemetry = await fetchTelemetryContext(
     octokit,
-    String(installationId),
+    'github',
+    installationId,
     owner,
     repo,
     prContext.telemetryConnectors ?? []
