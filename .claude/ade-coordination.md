@@ -66,7 +66,7 @@ The finishing agent must:
 |---|---|---|---|
 | `feat/webhook-gitlab-complete` | `webhook` | Full GitLab MR diff fetch + comment posting | Dispatched |
 | `feat/dashboard-real-metrics` | `dashboard` | Real computed metrics, per-agent breakdown | Merged (superseded/rebuilt by auth + @arete/db extraction) |
-| `feat/dashboard-ui-port` | `dashboard` | Port the finished design system (tokens, primitives, motion, agent-orchestration graph) onto main's current auth-scoped dashboard (app/(dashboard)/*, getDashboardViewModel, @arete/db). Presentation layer + one new additive query function (getTrendSeries). | Dispatched |
+| `feat/dashboard-ui-port` | `dashboard` | Port the finished design system (tokens, primitives, motion, agent-orchestration graph) onto main's current auth-scoped dashboard (app/(dashboard)/*, getDashboardViewModel, @arete/db). Presentation layer + one new additive query function (getTrendSeries). NOTE: adds a worktree-root `.npmrc` (virtual-store-dir-max-length=60) + `next.config.ts` turbopack.root pin for Windows nested-worktree builds — requires a fresh `pnpm install` after pulling. | Done — see pre-merge notes below |
 | `main` | `docs` | ADE setup, coordination | Done |
 
 ## Test Baselines (must not regress)
@@ -76,3 +76,16 @@ The finishing agent must:
 | Webhook (vitest) | `pnpm --filter @arete/webhook test` | 18 passed |
 | Agents (pytest) | `cd packages/agents && uv run pytest tests/ --ignore=tests/test_e2e_smoke.py` | 29 passed |
 | Dashboard (next build) | `pnpm --filter @arete/dashboard build` | 0 errors |
+| Dashboard (vitest) | `pnpm --filter @arete/dashboard test` | 23 passed |
+
+## `feat/dashboard-ui-port` pre-merge notes (2026-07-11)
+
+Verification done on this branch:
+- `pnpm --filter @arete/dashboard build` → 0 errors; `/` correctly server-rendered on demand (`ƒ`, force-dynamic), proxy middleware active.
+- `pnpm --filter @arete/dashboard test` → 23/23 passing, incl. the proxy unauthenticated→/login redirect test and the tenancy-scoping tests (getDashboardViewModel + the new getTrendSeries).
+- Every design-system component's data mapping was reviewed field-for-field against the real getDashboardViewModel/getTrendSeries shapes; no `as any`/type-suppression in the page/layout code.
+
+Known / not-yet-done before merge:
+- **Lint is red, but was already red on `main`** for the identical reason: the fake-Prisma test helpers use `as any` (a hand-written Prisma fake can't implement the full generated client type), which trips `@typescript-eslint/no-explicit-any`. eslint config is identical to main's with no test-file override. This branch adds +3 instances of that same pre-existing, pervasive pattern (getTrendSeries's test + its repository.findMany fake). Not introduced by this port; "fixing" only the 3 new ones would make them inconsistent with the 8 identical neighbors. Decide at merge whether to address the whole pattern separately (a test-file eslint override or properly-typed fake) — out of scope for a UI port.
+- **Authenticated render NOT exercised via live OAuth.** The dashboard page is `force-dynamic` + gated by GitHub OAuth (`auth()`), and no OAuth app / `.env.example` is configured in this environment, so a real logged-in render was not driven. What IS proven: the full page tree compiles against the real data shapes, the unauthenticated→/login redirect works (test), and the login page + auth UI reskin compile and are in the route manifest. A human should do one real signed-in smoke test before merge.
+- Given the security-sensitive surface (auth-scoped multi-tenant queries), a human review of the authenticated render is warranted before this touches `main`, despite the nominal auto-merge policy.
