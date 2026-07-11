@@ -83,6 +83,7 @@ function createFakePrisma() {
       },
     },
     repository: {
+      findUnique: async ({ where }: any) => byProviderExternalId(repositories, where) ?? null,
       upsert: async ({ where, create, update }: any) => {
         const existing = byProviderExternalId(repositories, where)
         if (existing) {
@@ -215,10 +216,20 @@ function makeReqRes(headers: Record<string, string>, body: any) {
 
 type Fake = ReturnType<typeof createFakePrisma>
 
-/** Mocks every external boundary and returns the real handlers + fake store. */
+/**
+ * Mocks every external boundary and returns the real handlers + fake store.
+ *
+ * The webhook handlers now only validate + enqueue a `review-pr` job (see
+ * webhook-handler.ts / gitlab-handler.ts); the pipeline itself runs in
+ * worker.ts's processReviewJob(). ./queue.js is mocked to capture enqueued
+ * jobs instead of hitting real Redis, and drainJobs() feeds each captured
+ * job into the real processReviewJob() to simulate the worker — same
+ * pattern as pipeline.integration.test.ts.
+ */
 async function loadHandlers(fake: Fake, opts: { reviewResult?: any; stripeEvent?: () => any } = {}) {
   vi.resetModules()
   const result = opts.reviewResult ?? REVIEW_RESULT
+  const capturedJobs: any[] = []
 
   vi.doMock('@arete/db', () => ({ PrismaClient: vi.fn(() => fake.prisma) }))
   vi.doMock('./pr-fetcher.js', () => ({ fetchPRContext: vi.fn().mockResolvedValue(REVIEW_RESULT.pr_context) }))
@@ -228,6 +239,18 @@ async function loadHandlers(fake: Fake, opts: { reviewResult?: any; stripeEvent?
     fetchGitLabMRContext: vi.fn().mockResolvedValue(REVIEW_RESULT.pr_context),
   }))
   vi.doMock('./gitlab-comment-poster.js', () => ({ postGitLabReview: vi.fn().mockResolvedValue(undefined) }))
+  vi.doMock('./github-auth.js', () => ({
+    createApp: vi.fn(() => ({})),
+    getInstallationOctokit: vi.fn(async () => makeOctokit()),
+  }))
+  vi.doMock('./queue.js', () => ({
+    enqueueReviewJob: vi.fn(async (data: any) => {
+      capturedJobs.push(data)
+      return { id: `job-${capturedJobs.length}` }
+    }),
+    REVIEW_QUEUE_NAME: 'review-pr',
+    REVIEW_QUEUE_CONCURRENCY: 5,
+  }))
   vi.doMock('stripe', () => {
     class FakeStripe {
       webhooks = {
@@ -244,7 +267,17 @@ async function loadHandlers(fake: Fake, opts: { reviewResult?: any; stripeEvent?
   const { handleGitLabWebhook } = await import('./gitlab-handler.js')
   const { handleStripeWebhook } = await import('./stripe-handler.js')
   const { postReview } = (await import('./comment-poster.js')) as any
-  return { handlePullRequestEvent, handleGitLabWebhook, handleStripeWebhook, postReview }
+  const { processReviewJob } = await import('./worker.js')
+
+  /** Simulates the worker draining every job enqueued so far, in order. */
+  async function drainJobs(): Promise<void> {
+    while (capturedJobs.length > 0) {
+      const job = capturedJobs.shift()
+      await processReviewJob(job)
+    }
+  }
+
+  return { handlePullRequestEvent, handleGitLabWebhook, handleStripeWebhook, postReview, capturedJobs, drainJobs }
 }
 
 describe('tenancy: provider-scoped installations', () => {
@@ -279,10 +312,13 @@ describe('tenancy: provider-scoped installations', () => {
     // GitHub PR review for installation 777
     await handlers.handlePullRequestEvent(makeOctokit() as any, githubPayload(COLLIDING_ID) as any)
 
-    // GitLab MR review for project 777 (fire-and-forget inside the handler)
+    // GitLab MR review for project 777
     const { req, res } = makeReqRes({ 'x-gitlab-token': 'gl-secret' }, gitlabBody(COLLIDING_ID))
     await handlers.handleGitLabWebhook(req, res)
-    await vi.waitFor(() => expect(fake.installations).toHaveLength(2))
+
+    // Both handlers only enqueued so far — simulate the worker draining them.
+    await handlers.drainJobs()
+    expect(fake.installations).toHaveLength(2)
 
     // Two distinct rows despite identical numeric external ids
     const github = fake.installations.find((i) => i.provider === 'github')
@@ -324,6 +360,7 @@ describe('tenancy: provider-scoped installations', () => {
     const handlers = await loadHandlers(fake)
     const octokit = makeOctokit()
     await handlers.handlePullRequestEvent(octokit as any, githubPayload(777) as any)
+    await handlers.drainJobs()
 
     // The review ran — it was NOT paused by the GitLab row's canceled status
     expect(handlers.postReview).toHaveBeenCalledTimes(1)
@@ -343,7 +380,12 @@ describe('idempotency: (repositoryId, prNumber, headSha)', () => {
     const handlers = await loadHandlers(fake)
 
     await handlers.handlePullRequestEvent(makeOctokit() as any, githubPayload(777) as any)
+    await handlers.drainJobs()
+    // Second delivery: the early reviewExists() check in handlePullRequestEvent
+    // should skip enqueueing entirely — nothing left for drainJobs to do.
     await handlers.handlePullRequestEvent(makeOctokit() as any, githubPayload(777) as any)
+    expect(handlers.capturedJobs).toHaveLength(0)
+    await handlers.drainJobs()
 
     expect(fake.reviews).toHaveLength(1)
     expect(fake.installations).toHaveLength(1)
@@ -355,10 +397,12 @@ describe('idempotency: (repositoryId, prNumber, headSha)', () => {
     const handlers = await loadHandlers(fake)
 
     await handlers.handlePullRequestEvent(makeOctokit() as any, githubPayload(777) as any)
+    await handlers.drainJobs()
     await handlers.handlePullRequestEvent(
       makeOctokit() as any,
       githubPayload(777, { pull_request: { number: 1, head: { sha: 'sha-github-2' } } }) as any
     )
+    await handlers.drainJobs()
 
     expect(fake.reviews).toHaveLength(2)
     expect(fake.installations[0].usageCount).toBe(2)
@@ -379,6 +423,7 @@ describe('analysisStatus persistence', () => {
     })
 
     await handlers.handlePullRequestEvent(makeOctokit() as any, githubPayload(777) as any)
+    await handlers.drainJobs()
 
     expect(fake.reviews).toHaveLength(1)
     expect(fake.reviews[0].analysisStatus).toBe('failed')
@@ -390,6 +435,7 @@ describe('analysisStatus persistence', () => {
     const handlers = await loadHandlers(fake)
 
     await handlers.handlePullRequestEvent(makeOctokit() as any, githubPayload(777) as any)
+    await handlers.drainJobs()
 
     expect(fake.reviews[0].analysisStatus).toBe('complete')
   })
@@ -402,16 +448,24 @@ describe('missing installation id', () => {
     vi.resetModules()
   })
 
-  it('does NOT create an Installation row (no externalId=0 garbage) and still posts the review', async () => {
+  it('does NOT create an Installation row (no externalId=0 garbage) and does not enqueue a review job', async () => {
     const fake = createFakePrisma()
     const handlers = await loadHandlers(fake)
     const octokit = makeOctokit()
 
+    // Without an installation id, the worker has no way to obtain an
+    // installation-scoped octokit for this job (a separate process — it
+    // can't reuse the octokit instance the webhook handler was called
+    // with), so handlePullRequestEvent must not enqueue anything at all
+    // rather than enqueueing an unrunnable job.
     await expect(
       handlers.handlePullRequestEvent(octokit as any, githubPayload(undefined) as any)
     ).resolves.toBeUndefined()
 
-    expect(handlers.postReview).toHaveBeenCalledTimes(1)
+    expect(handlers.capturedJobs).toHaveLength(0)
+    await handlers.drainJobs()
+
+    expect(handlers.postReview).not.toHaveBeenCalled()
     expect(fake.installations).toHaveLength(0)
     expect(fake.repositories).toHaveLength(0)
     expect(fake.reviews).toHaveLength(0)

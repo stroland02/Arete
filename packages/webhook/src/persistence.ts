@@ -2,6 +2,41 @@ import type { ScmProvider } from '@arete/db'
 import { prisma } from './db.js'
 import type { ReviewResult } from './types.js'
 
+export interface ReviewExistsParams {
+  provider: ScmProvider
+  /** GitHub repository id, or GitLab project id. Unique per provider only. */
+  repositoryExternalId: number
+  prNumber: number
+  headSha: string
+}
+
+/**
+ * Cheap early idempotency check used by the webhook handlers BEFORE
+ * enqueueing a review job: if a Review already exists for this exact
+ * (repository, prNumber, headSha), a duplicate webhook delivery (GitHub does
+ * retry) would otherwise still burn a full LLM pipeline run before hitting
+ * persistReview()'s own DB-level idempotency check at the end. This lets
+ * callers skip enqueueing entirely instead.
+ *
+ * Only needs the repository/PR/headSha triple, which the webhook payload
+ * itself provides — no diff fetch or LLM call required to make this check.
+ */
+export async function reviewExists(params: ReviewExistsParams): Promise<boolean> {
+  const { provider, repositoryExternalId, prNumber, headSha } = params
+
+  const repository = await prisma.repository.findUnique({
+    where: { provider_externalId: { provider, externalId: repositoryExternalId } },
+  })
+  if (!repository) return false
+
+  const existing = await prisma.review.findUnique({
+    where: {
+      repositoryId_prNumber_headSha: { repositoryId: repository.id, prNumber, headSha },
+    },
+  })
+  return existing !== null
+}
+
 export interface PersistReviewParams {
   provider: ScmProvider
   /** GitHub App installation id, or GitLab project id. Unique per provider only. */

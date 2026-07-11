@@ -1,15 +1,28 @@
 /**
- * Integration tests for the full webhook → review → post pipeline.
+ * Integration tests for the full webhook -> queue -> worker -> review -> post
+ * pipeline.
  *
  * Real modules under test (NOT mocked): server.ts, webhook-handler.ts,
- * pr-fetcher.ts, review-bridge.ts, comment-poster.ts, gitlab-handler.ts,
- * gitlab-fetcher.ts, gitlab-comment-poster.ts.
+ * gitlab-handler.ts, worker.ts, pr-fetcher.ts, review-bridge.ts,
+ * comment-poster.ts, gitlab-fetcher.ts, gitlab-comment-poster.ts,
+ * persistence.ts.
  *
  * Mocked boundaries only:
  *  - @octokit/app + @octokit/webhooks (bypass HMAC, inject mock octokit)
  *  - global fetch (FastAPI POST /review, GitLab REST "changes"/"discussions")
  *  - octokit REST calls (GitHub API)
  *  - generated Prisma client (database)
+ *  - ./queue.js (no real Redis/BullMQ in tests — jobs are captured instead
+ *    of enqueued, then fed directly into worker.ts's processReviewJob() to
+ *    simulate what the worker process would do with them)
+ *  - ./github-auth.js (worker.ts builds its own installation-scoped octokit;
+ *    redirected to the same mock octokit the webhook side used)
+ *
+ * This setup deliberately proves the async handoff: the webhook handlers now
+ * only validate + enqueue, so a POST to /webhook or /gitlab-webhook resolves
+ * WITHOUT the FastAPI/GitHub-posting/persistence calls having happened yet.
+ * The pipeline only runs once the test explicitly hands the captured job to
+ * processReviewJob(), mirroring what worker.ts does when BullMQ delivers it.
  *
  * Pattern: vi.doMock + vi.resetModules + dynamic import (vi.mock is hoisted
  * and cannot close over per-test mock instances; vi.doMock can).
@@ -115,13 +128,14 @@ function makePrismaMock() {
   const installationFindUnique = vi.fn().mockResolvedValue(null)
   const installationUpsert = vi.fn().mockResolvedValue({ id: 'inst-uuid-1' })
   const installationUpdate = vi.fn().mockResolvedValue({})
+  const repositoryFindUnique = vi.fn().mockResolvedValue(null)
   const repositoryUpsert = vi.fn().mockResolvedValue({ id: 'repo-uuid-1' })
   const reviewFindUnique = vi.fn().mockResolvedValue(null)
   const reviewCreate = vi.fn().mockResolvedValue({ id: 'review-uuid-1' })
 
   class PrismaClient {
     installation = { findUnique: installationFindUnique, upsert: installationUpsert, update: installationUpdate }
-    repository = { upsert: repositoryUpsert }
+    repository = { findUnique: repositoryFindUnique, upsert: repositoryUpsert }
     review = { findUnique: reviewFindUnique, create: reviewCreate }
   }
   return {
@@ -129,6 +143,7 @@ function makePrismaMock() {
     installationFindUnique,
     installationUpsert,
     installationUpdate,
+    repositoryFindUnique,
     repositoryUpsert,
     reviewFindUnique,
     reviewCreate,
@@ -139,6 +154,7 @@ type Mocks = {
   octokit: ReturnType<typeof makeOctokit>
   prisma: ReturnType<typeof makePrismaMock>
   fetchMock: ReturnType<typeof vi.fn>
+  capturedJobs: any[]
 }
 
 /**
@@ -172,7 +188,11 @@ function makeRoutedFetchMock(overrides: { reviewResult?: any } = {}) {
 }
 
 /**
- * Builds the Express app with all external boundaries mocked.
+ * Builds the Express app with all external boundaries mocked. The queue is
+ * replaced with an in-memory capture array instead of real BullMQ/Redis —
+ * tests explicitly feed captured jobs into worker.ts's processReviewJob() to
+ * simulate the worker consuming them.
+ *
  * The fake createNodeMiddleware parses the raw JSON body and dispatches to
  * the handlers the real server registered — HMAC validation is bypassed,
  * everything downstream is the real code path.
@@ -229,13 +249,34 @@ async function buildApp(mocks: Mocks): Promise<Application> {
 
   vi.doMock('@arete/db', () => ({ PrismaClient: mocks.prisma.PrismaClient }))
 
+  vi.doMock('./queue.js', () => ({
+    enqueueReviewJob: vi.fn(async (data: any) => {
+      mocks.capturedJobs.push(data)
+      return { id: `job-${mocks.capturedJobs.length}` }
+    }),
+    REVIEW_QUEUE_NAME: 'review-pr',
+    REVIEW_QUEUE_CONCURRENCY: 5,
+  }))
+
+  vi.doMock('./github-auth.js', () => ({
+    createApp: vi.fn(() => ({})),
+    getInstallationOctokit: vi.fn(async () => mocks.octokit),
+  }))
+
   vi.stubGlobal('fetch', mocks.fetchMock)
 
   const { createServer } = await import('./server.js')
   return createServer()
 }
 
-describe('pipeline integration: webhook → review → post', () => {
+/** Simulates the worker process picking up the single captured job. */
+async function runCapturedJob(mocks: Mocks): Promise<void> {
+  expect(mocks.capturedJobs).toHaveLength(1)
+  const { processReviewJob } = await import('./worker.js')
+  await processReviewJob(mocks.capturedJobs[0])
+}
+
+describe('pipeline integration: webhook -> queue -> worker -> review -> post', () => {
   let mocks: Mocks
 
   beforeEach(() => {
@@ -243,6 +284,7 @@ describe('pipeline integration: webhook → review → post', () => {
       octokit: makeOctokit(),
       prisma: makePrismaMock(),
       fetchMock: makeRoutedFetchMock(),
+      capturedJobs: [],
     }
   })
 
@@ -251,7 +293,7 @@ describe('pipeline integration: webhook → review → post', () => {
     vi.resetModules()
   })
 
-  it('happy path: pull_request.opened → fetch diff → FastAPI → posted review → Prisma transaction', async () => {
+  it('async handoff: pull_request.opened returns 200 immediately, enqueues a job, and does NOT run the pipeline until the job is processed', async () => {
     const app = await buildApp(mocks)
 
     const res = await request(app)
@@ -260,6 +302,42 @@ describe('pipeline integration: webhook → review → post', () => {
       .set('X-GitHub-Event', 'pull_request')
       .send(JSON.stringify(PR_PAYLOAD))
     expect(res.status).toBe(200)
+
+    // The webhook response resolved without the pipeline having run at all.
+    expect(mocks.capturedJobs).toHaveLength(1)
+    expect(mocks.capturedJobs[0]).toMatchObject({
+      provider: 'github',
+      kind: 'pull_request',
+      owner: 'acme',
+      repo: 'api',
+      prNumber: 42,
+      installationId: 777,
+      headSha: 'headsha123',
+    })
+    expect(mocks.octokit.rest.pulls.get).not.toHaveBeenCalled()
+    expect(mocks.fetchMock).not.toHaveBeenCalled()
+    expect(mocks.octokit.rest.checks.create).not.toHaveBeenCalled()
+
+    // Now simulate the worker picking up the job.
+    await runCapturedJob(mocks)
+
+    expect(mocks.octokit.rest.pulls.get).toHaveBeenCalledWith({ owner: 'acme', repo: 'api', pull_number: 42 })
+    expect(mocks.fetchMock).toHaveBeenCalledTimes(1)
+    expect(mocks.octokit.rest.pulls.createReview).toHaveBeenCalledTimes(1)
+    expect(mocks.prisma.reviewCreate).toHaveBeenCalledTimes(1)
+  })
+
+  it('happy path: pull_request.opened -> job -> fetch diff -> FastAPI -> posted review -> Prisma transaction', async () => {
+    const app = await buildApp(mocks)
+
+    const res = await request(app)
+      .post('/webhook')
+      .set('Content-Type', 'application/json')
+      .set('X-GitHub-Event', 'pull_request')
+      .send(JSON.stringify(PR_PAYLOAD))
+    expect(res.status).toBe(200)
+
+    await runCapturedJob(mocks)
 
     // 1. PR context fetched from GitHub
     expect(mocks.octokit.rest.pulls.get).toHaveBeenCalledWith({ owner: 'acme', repo: 'api', pull_number: 42 })
@@ -330,7 +408,7 @@ describe('pipeline integration: webhook → review → post', () => {
     })
   })
 
-  it('subscription gate: canceled installation posts "paused" comment and skips the review', async () => {
+  it('subscription gate: canceled installation posts "paused" comment and skips enqueueing entirely', async () => {
     mocks.prisma.installationFindUnique.mockResolvedValue({
       id: 'inst-1',
       provider: 'github',
@@ -357,26 +435,50 @@ describe('pipeline integration: webhook → review → post', () => {
       })
     )
 
-    // Review pipeline never ran
+    // No job enqueued, pipeline never ran
+    expect(mocks.capturedJobs).toHaveLength(0)
     expect(mocks.octokit.rest.pulls.get).not.toHaveBeenCalled()
     expect(mocks.fetchMock).not.toHaveBeenCalled()
     expect(mocks.octokit.rest.pulls.createReview).not.toHaveBeenCalled()
     expect(mocks.prisma.reviewCreate).not.toHaveBeenCalled()
   })
 
-  it('FastAPI timeout: AbortError is caught upstream, check run marked failed, no crash', async () => {
-    const abortError = new Error('The operation was aborted')
-    abortError.name = 'AbortError'
-    mocks.fetchMock.mockRejectedValue(abortError)
+  it('duplicate delivery: a redelivered webhook for a head SHA that already has a completed review does not enqueue a second job', async () => {
+    mocks.prisma.repositoryFindUnique.mockResolvedValue({ id: 'repo-uuid-1', provider: 'github', externalId: 9001 })
+    mocks.prisma.reviewFindUnique.mockResolvedValue({
+      id: 'review-uuid-1',
+      repositoryId: 'repo-uuid-1',
+      prNumber: 42,
+      headSha: 'headsha123',
+    })
     const app = await buildApp(mocks)
 
-    // Server catches handler errors, so the webhook endpoint must still respond.
     const res = await request(app)
       .post('/webhook')
       .set('Content-Type', 'application/json')
       .set('X-GitHub-Event', 'pull_request')
       .send(JSON.stringify(PR_PAYLOAD))
     expect(res.status).toBe(200)
+
+    expect(mocks.capturedJobs).toHaveLength(0)
+    expect(mocks.fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('FastAPI timeout: AbortError is caught in the worker, check run marked failed, no crash', async () => {
+    const abortError = new Error('The operation was aborted')
+    abortError.name = 'AbortError'
+    mocks.fetchMock.mockRejectedValue(abortError)
+    const app = await buildApp(mocks)
+
+    const res = await request(app)
+      .post('/webhook')
+      .set('Content-Type', 'application/json')
+      .set('X-GitHub-Event', 'pull_request')
+      .send(JSON.stringify(PR_PAYLOAD))
+    expect(res.status).toBe(200)
+
+    const { processReviewJob } = await import('./worker.js')
+    await expect(processReviewJob(mocks.capturedJobs[0])).rejects.toThrow()
 
     // Pipeline was attempted (check run created before the FastAPI call)...
     expect(mocks.octokit.rest.checks.create).toHaveBeenCalledTimes(1)
@@ -387,8 +489,7 @@ describe('pipeline integration: webhook → review → post', () => {
     expect(mocks.prisma.reviewCreate).not.toHaveBeenCalled()
 
     // ...but the check run must be resolved to "failure" rather than left
-    // stuck "in_progress" forever on the PR (see fix(webhook): mark check
-    // run as failed instead of leaving it stuck).
+    // stuck "in_progress" forever on the PR.
     expect(mocks.octokit.rest.checks.update).toHaveBeenCalledWith(
       expect.objectContaining({
         check_run_id: 555,
@@ -398,7 +499,7 @@ describe('pipeline integration: webhook → review → post', () => {
     )
   })
 
-  it('GitLab happy path: valid MR event → fetch diff → FastAPI → posted discussion → Prisma transaction', async () => {
+  it('GitLab happy path: valid MR event -> job -> fetch diff -> FastAPI -> posted discussion -> Prisma transaction', async () => {
     const app = await buildApp(mocks)
 
     const res = await request(app)
@@ -409,9 +510,12 @@ describe('pipeline integration: webhook → review → post', () => {
     expect(res.status).toBe(200)
     expect(res.text).toBe('OK')
 
-    // Pipeline is fire-and-forget: wait for the async chain to finish
-    // (GitLab changes fetch -> FastAPI -> discussion posts -> Prisma).
-    await vi.waitFor(() => expect(mocks.prisma.reviewCreate).toHaveBeenCalledTimes(1))
+    // Enqueued, not yet run
+    expect(mocks.capturedJobs).toHaveLength(1)
+    expect(mocks.capturedJobs[0]).toMatchObject({ provider: 'gitlab', kind: 'merge_request', projectId: 555, mrIid: 5 })
+    expect(mocks.fetchMock).not.toHaveBeenCalled()
+
+    await runCapturedJob(mocks)
 
     // 1. MR diff fetched from GitLab's REST API
     const changesCall = mocks.fetchMock.mock.calls.find(([u]: any[]) => u.endsWith('/changes'))
@@ -448,7 +552,7 @@ describe('pipeline integration: webhook → review → post', () => {
     expect(reviewCreateArgs.data).toMatchObject({ prNumber: 5, riskLevel: 'medium' })
   })
 
-  it('GitLab invalid token: 401, pipeline never invoked', async () => {
+  it('GitLab invalid token: 401, no job enqueued', async () => {
     const app = await buildApp(mocks)
 
     const res = await request(app)
@@ -457,10 +561,11 @@ describe('pipeline integration: webhook → review → post', () => {
       .set('X-Gitlab-Token', 'wrong-token')
       .send(GITLAB_MR_PAYLOAD)
     expect(res.status).toBe(401)
+    expect(mocks.capturedJobs).toHaveLength(0)
     expect(mocks.fetchMock).not.toHaveBeenCalled()
   })
 
-  it('422 fallback: inline comments rejected → review re-posted body-only', async () => {
+  it('422 fallback: inline comments rejected -> review re-posted body-only', async () => {
     mocks.octokit.rest.pulls.createReview
       .mockRejectedValueOnce(Object.assign(new Error('Unprocessable'), { status: 422 }))
       .mockResolvedValueOnce({})
@@ -472,6 +577,8 @@ describe('pipeline integration: webhook → review → post', () => {
       .set('X-GitHub-Event', 'pull_request')
       .send(JSON.stringify(PR_PAYLOAD))
     expect(res.status).toBe(200)
+
+    await runCapturedJob(mocks)
 
     expect(mocks.octokit.rest.pulls.createReview).toHaveBeenCalledTimes(2)
     const retryArgs = mocks.octokit.rest.pulls.createReview.mock.calls[1][0]
