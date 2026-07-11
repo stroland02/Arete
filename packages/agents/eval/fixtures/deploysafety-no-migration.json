@@ -18,7 +18,7 @@
     {
       "id": "nomig-001",
       "path": "src/models/user.py",
-      "line": 3,
+      "line": 1,
       "target_agent": "deployment_safety",
       "description": "Schema change without migration: a non-nullable 'country' column is added to the User model but no database migration accompanies it, which will break deploys against existing data.",
       "severity": "error"
