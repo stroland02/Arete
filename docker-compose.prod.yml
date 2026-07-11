@@ -1,0 +1,129 @@
+# Local "prod-like" run of all three Areté services from their production
+# Dockerfiles, wired to Postgres/Redis. This is NOT deployed anywhere — it
+# exists to prove the three images build, start, and can reach each other
+# and the database, using the same artifacts CI/deploy would build.
+#
+# It intentionally does not touch infra/docker-compose.yml (the dev compose
+# file); that one is still what `pnpm infra:up` / local `tsx`+`next dev` use.
+#
+# Usage (from the repo root):
+#
+#   docker compose -f docker-compose.prod.yml up -d postgres redis
+#   docker compose -f docker-compose.prod.yml run --rm migrate
+#   docker compose -f docker-compose.prod.yml build dashboard   # needs the
+#     migrated postgres above reachable at build time (see packages/dashboard/
+#     Dockerfile) — that's why dashboard's build.network is "host" and its
+#     DATABASE_URL build arg defaults to localhost:5432, matching postgres's
+#     published port.
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# (`docker compose ... up --build` also works, but remember dashboard's build
+# needs postgres already migrated and reachable — build steps do not respect
+# depends_on ordering.)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: arete
+      POSTGRES_PASSWORD: arete
+      POSTGRES_DB: arete
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arete"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_prod_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # One-off migration runner. Reuses the webhook image's pre-prune "build"
+  # stage (full devDependencies, including the Prisma CLI) instead of a
+  # dedicated Dockerfile — run with `docker compose ... run --rm migrate`.
+  migrate:
+    build:
+      context: .
+      dockerfile: packages/webhook/Dockerfile
+      target: build
+    environment:
+      DATABASE_URL: postgresql://arete:arete@postgres:5432/arete
+    command: ["pnpm", "--filter", "@arete/db", "exec", "prisma", "migrate", "deploy"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: ["tools"]
+
+  agents:
+    build:
+      context: packages/agents
+      dockerfile: Dockerfile
+    environment:
+      LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      DATABASE_URL: postgresql://arete:arete@postgres:5432/arete
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  webhook:
+    build:
+      context: .
+      dockerfile: packages/webhook/Dockerfile
+    environment:
+      GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+      GITHUB_PRIVATE_KEY: ${GITHUB_PRIVATE_KEY:-}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      GITLAB_ACCESS_TOKEN: ${GITLAB_ACCESS_TOKEN:-}
+      GITLAB_WEBHOOK_SECRET: ${GITLAB_WEBHOOK_SECRET:-}
+      GITLAB_URL: ${GITLAB_URL:-https://gitlab.com}
+      PYTHON_SERVICE_URL: http://agents:8000
+      DATABASE_URL: postgresql://arete:arete@postgres:5432/arete
+      PORT: "3000"
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      agents:
+        condition: service_started
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: packages/dashboard/Dockerfile
+      network: host
+      args:
+        DATABASE_URL: postgresql://arete:arete@localhost:5432/arete
+    environment:
+      DATABASE_URL: postgresql://arete:arete@postgres:5432/arete
+      NODE_ENV: production
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_prod_data:
+  redis_prod_data:

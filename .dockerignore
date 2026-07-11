@@ -1,0 +1,37 @@
+# Root .dockerignore — applies to any `docker build` run with the monorepo
+# root as build context (packages/webhook/Dockerfile, packages/dashboard/Dockerfile).
+# packages/agents/Dockerfile uses packages/agents as its own context and is
+# unaffected by this file.
+
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/.cache
+
+# Python (agents package is not needed in the Node build contexts)
+**/__pycache__
+**/*.pyc
+**/.venv
+**/.pytest_cache
+**/.ruff_cache
+**/*.egg-info
+
+# VCS / tooling
+.git
+.github
+.claude
+.vscode
+.idea
+
+# Env / secrets — never bake these into an image layer
+.env
+.env.local
+*.env
+!.env.example
+
+# Misc
+*.log
+npm-debug.log*
+Thumbs.db
+.DS_Store
