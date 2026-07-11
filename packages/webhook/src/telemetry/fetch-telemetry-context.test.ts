@@ -181,6 +181,81 @@ describe('fetchTelemetryContext', () => {
     expect(ghFetch).toHaveBeenCalledTimes(7)
   })
 
+  it('dispatches to the Sentry connector for a sentry connector config', async () => {
+    vi.doMock('./sentry-connector.js', () => ({
+      fetchSentrySnapshot: vi.fn().mockResolvedValue({
+        status: 'ok',
+        snapshot: { provider: 'sentry', source_ref: 'acme/backend', summary_text: 'ok', metrics: {}, links: [], fetched_at: '2026-07-11T00:00:00Z' },
+      }),
+    }))
+    vi.doMock('./credentials.js', () => ({ decryptCredentials: vi.fn().mockReturnValue({ token: 'tok' }) }))
+    vi.doMock('../db.js', () => ({
+      prisma: {
+        installation: { findUnique: vi.fn().mockResolvedValue({ id: 'inst-uuid-1' }) },
+        telemetryConnection: {
+          findUnique: vi.fn().mockResolvedValue({ credentials: 'encrypted', config: { org: 'acme', project: 'backend' } }),
+        },
+      },
+    }))
+
+    const { fetchTelemetryContext } = await import('./fetch-telemetry-context.js')
+    const result = await fetchTelemetryContext({} as any, 'github', 42, 'acme', 'backend', [
+      { provider: 'sentry', org: 'acme', project: 'backend' },
+    ])
+    expect(result).toHaveLength(1)
+    expect(result[0].provider).toBe('sentry')
+  })
+
+  it('dispatches to the Vercel connector for a vercel connector config', async () => {
+    vi.doMock('./vercel-connector.js', () => ({
+      fetchVercelSnapshot: vi.fn().mockResolvedValue({
+        status: 'ok',
+        snapshot: { provider: 'vercel', source_ref: 'prj_123', summary_text: 'ok', metrics: {}, links: [], fetched_at: '2026-07-11T00:00:00Z' },
+      }),
+    }))
+    vi.doMock('./credentials.js', () => ({ decryptCredentials: vi.fn().mockReturnValue({ token: 'tok' }) }))
+    vi.doMock('../db.js', () => ({
+      prisma: {
+        installation: { findUnique: vi.fn().mockResolvedValue({ id: 'inst-uuid-1' }) },
+        telemetryConnection: {
+          findUnique: vi.fn().mockResolvedValue({ credentials: 'encrypted', config: { project: 'prj_123' } }),
+        },
+      },
+    }))
+
+    const { fetchTelemetryContext } = await import('./fetch-telemetry-context.js')
+    const result = await fetchTelemetryContext({} as any, 'github', 42, 'acme', 'backend', [
+      { provider: 'vercel', project: 'prj_123' },
+    ])
+    expect(result).toHaveLength(1)
+    expect(result[0].provider).toBe('vercel')
+  })
+
+  it('dispatches to the Stripe connector for a stripe connector config', async () => {
+    vi.doMock('./stripe-telemetry-connector.js', () => ({
+      fetchStripeSnapshot: vi.fn().mockResolvedValue({
+        status: 'ok',
+        snapshot: { provider: 'stripe', source_ref: 'account', summary_text: 'ok', metrics: {}, links: [], fetched_at: '2026-07-11T00:00:00Z' },
+      }),
+    }))
+    vi.doMock('./credentials.js', () => ({ decryptCredentials: vi.fn().mockReturnValue({ secretKey: 'rk_test' }) }))
+    vi.doMock('../db.js', () => ({
+      prisma: {
+        installation: { findUnique: vi.fn().mockResolvedValue({ id: 'inst-uuid-1' }) },
+        telemetryConnection: {
+          findUnique: vi.fn().mockResolvedValue({ credentials: 'encrypted', config: {} }),
+        },
+      },
+    }))
+
+    const { fetchTelemetryContext } = await import('./fetch-telemetry-context.js')
+    const result = await fetchTelemetryContext({} as any, 'github', 42, 'acme', 'backend', [
+      { provider: 'stripe' },
+    ])
+    expect(result).toHaveLength(1)
+    expect(result[0].provider).toBe('stripe')
+  })
+
   it('still opens the circuit breaker after consecutive real provider errors', async () => {
     const ghFetch = vi.fn().mockResolvedValue({ status: 'error' })
     vi.doMock('./github-actions-connector.js', () => ({ fetchGitHubActionsSnapshot: ghFetch }))

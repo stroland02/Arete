@@ -4,6 +4,9 @@ import type { TelemetryConnectorConfig, TelemetrySnapshot } from '../types.js'
 import type { ConnectorResult } from './connector-result.js'
 import { fetchGitHubActionsSnapshot } from './github-actions-connector.js'
 import { fetchPostHogSnapshot, type PostHogCredentials } from './posthog-connector.js'
+import { fetchSentrySnapshot, type SentryCredentials } from './sentry-connector.js'
+import { fetchVercelSnapshot, type VercelCredentials } from './vercel-connector.js'
+import { fetchStripeSnapshot, type StripeTelemetryCredentials } from './stripe-telemetry-connector.js'
 import { decryptCredentials } from './credentials.js'
 import { getCachedTelemetry, setCachedTelemetry } from './cache.js'
 import { recordTelemetryFailure, recordTelemetrySuccess, isTelemetryCircuitOpen } from './circuit-breaker.js'
@@ -11,6 +14,8 @@ import { prisma } from '../db.js'
 
 function sourceRefFor(owner: string, repo: string, connector: TelemetryConnectorConfig): string {
   if (connector.provider === 'github_actions') return `${owner}/${repo}`
+  if (connector.provider === 'sentry') return `${connector.org}/${connector.project}`
+  if (connector.provider === 'stripe') return 'account'
   return connector.project ?? connector.service ?? `${owner}/${repo}`
 }
 
@@ -46,6 +51,32 @@ async function fetchOneConnector(
       if (!connection) return null
       const credentials = decryptCredentials<PostHogCredentials>(connection.credentials)
       result = await fetchPostHogSnapshot(credentials, sourceRef)
+    } else if (connector.provider === 'sentry') {
+      if (!installationId) return null
+      const connection = await prisma.telemetryConnection.findUnique({
+        where: { installationId_provider: { installationId, provider: 'sentry' } },
+      })
+      if (!connection) return null
+      const credentials = decryptCredentials<SentryCredentials>(connection.credentials)
+      const org = connector.org ?? ''
+      const project = connector.project ?? ''
+      result = await fetchSentrySnapshot(credentials, org, project)
+    } else if (connector.provider === 'vercel') {
+      if (!installationId) return null
+      const connection = await prisma.telemetryConnection.findUnique({
+        where: { installationId_provider: { installationId, provider: 'vercel' } },
+      })
+      if (!connection) return null
+      const credentials = decryptCredentials<VercelCredentials>(connection.credentials)
+      result = await fetchVercelSnapshot(credentials, sourceRef, connector.org)
+    } else if (connector.provider === 'stripe') {
+      if (!installationId) return null
+      const connection = await prisma.telemetryConnection.findUnique({
+        where: { installationId_provider: { installationId, provider: 'stripe' } },
+      })
+      if (!connection) return null
+      const credentials = decryptCredentials<StripeTelemetryCredentials>(connection.credentials)
+      result = await fetchStripeSnapshot(credentials)
     }
   } catch {
     result = { status: 'error' }
