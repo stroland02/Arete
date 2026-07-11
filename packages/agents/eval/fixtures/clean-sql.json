@@ -1,0 +1,19 @@
+{
+  "id": "clean-sql",
+  "pr": {
+    "repo": "acme/api",
+    "pr_number": 203,
+    "title": "Add index",
+    "description": "Adds a concurrent index safely.",
+    "files": [
+      {
+        "path": "migrations/0002_add_index.sql",
+        "patch": "@@ -0,0 +1,2 @@\n+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_email ON users (email);\n+",
+        "additions": 2,
+        "deletions": 0
+      }
+    ]
+  },
+  "planted_defects": [],
+  "clean": true
+}

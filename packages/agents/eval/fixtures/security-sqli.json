@@ -1,0 +1,28 @@
+{
+  "id": "security-sqli",
+  "pr": {
+    "repo": "acme/api",
+    "pr_number": 101,
+    "title": "Add user lookup endpoint",
+    "description": "Looks up a user by id.",
+    "files": [
+      {
+        "path": "src/users.py",
+        "patch": "@@ -0,0 +1,4 @@\n+def get_user(conn, user_id):\n+    query = \"SELECT * FROM users WHERE id = '%s'\" % user_id\n+    return conn.execute(query).fetchone()\n+",
+        "additions": 4,
+        "deletions": 0
+      }
+    ]
+  },
+  "planted_defects": [
+    {
+      "id": "sqli-001",
+      "path": "src/users.py",
+      "line": 2,
+      "target_agent": "security",
+      "description": "SQL injection: user_id is interpolated directly into the SQL string via % formatting instead of using a parameterized query.",
+      "severity": "error"
+    }
+  ],
+  "clean": false
+}

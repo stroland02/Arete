@@ -1,0 +1,28 @@
+{
+  "id": "quality-swallowed-exception",
+  "pr": {
+    "repo": "acme/api",
+    "pr_number": 105,
+    "title": "Parse config file",
+    "description": "Loads optional config.",
+    "files": [
+      {
+        "path": "src/config_loader.py",
+        "patch": "@@ -0,0 +1,6 @@\n+def load(path):\n+    try:\n+        return parse(open(path).read())\n+    except Exception:\n+        pass\n+    return None\n+",
+        "additions": 6,
+        "deletions": 0
+      }
+    ]
+  },
+  "planted_defects": [
+    {
+      "id": "swallow-001",
+      "path": "src/config_loader.py",
+      "line": 4,
+      "target_agent": "quality",
+      "description": "Swallowed exception: a bare 'except Exception: pass' hides all errors and returns None, discarding the failure cause and making debugging impossible.",
+      "severity": "warning"
+    }
+  ],
+  "clean": false
+}

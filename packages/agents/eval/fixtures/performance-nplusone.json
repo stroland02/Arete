@@ -1,0 +1,28 @@
+{
+  "id": "performance-nplusone",
+  "pr": {
+    "repo": "acme/api",
+    "pr_number": 103,
+    "title": "Render order list",
+    "description": "Builds a list of order summaries.",
+    "files": [
+      {
+        "path": "src/orders/report.py",
+        "patch": "@@ -0,0 +1,5 @@\n+def summarize(orders):\n+    rows = []\n+    for order in orders:\n+        rows.append(order.customer.fetch().name)\n+    return rows\n+",
+        "additions": 5,
+        "deletions": 0
+      }
+    ]
+  },
+  "planted_defects": [
+    {
+      "id": "nplus1-001",
+      "path": "src/orders/report.py",
+      "line": 4,
+      "target_agent": "performance",
+      "description": "N+1 query: order.customer.fetch() runs a separate database query on every loop iteration instead of batching or eager-loading customers.",
+      "severity": "warning"
+    }
+  ],
+  "clean": false
+}
