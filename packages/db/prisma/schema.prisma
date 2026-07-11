@@ -53,6 +53,10 @@ model TelemetryConnection {
   /// { "apiKey": "..." } — a loose shape avoids a schema migration when a
   /// different auth model is added for a future provider.
   credentials    String
+  /// "api_key" | "oauth" — which shape `credentials` holds. api_key rows
+  /// store { apiKey/secretKey/token: "..." }; oauth rows store
+  /// { accessToken, refreshToken, expiresAt, tokenType }.
+  authMethod     String       @default("api_key")
   createdAt      DateTime     @default(now())
   installation   Installation @relation(fields: [installationId], references: [id])
 
