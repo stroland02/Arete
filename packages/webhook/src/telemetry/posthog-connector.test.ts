@@ -16,27 +16,34 @@ describe('fetchPostHogSnapshot', () => {
       }),
     }) as any
 
-    const snap = await fetchPostHogSnapshot({ apiKey: 'phc_test' }, 'production-app')
-    expect(snap).not.toBeNull()
-    expect(snap!.provider).toBe('posthog')
-    expect(snap!.source_ref).toBe('production-app')
-    expect(snap!.summary_text.length).toBeGreaterThan(0)
+    const result = await fetchPostHogSnapshot({ apiKey: 'phc_test' }, 'production-app')
+    expect(result.status).toBe('ok')
+    if (result.status !== 'ok') return
+    expect(result.snapshot.provider).toBe('posthog')
+    expect(result.snapshot.source_ref).toBe('production-app')
+    expect(result.snapshot.summary_text.length).toBeGreaterThan(0)
   })
 
-  it('returns null (never throws) on a non-OK response', async () => {
+  it('returns no-data (not an error) when the project has no events in the window', async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ results: [] }) }) as any
+    const result = await fetchPostHogSnapshot({ apiKey: 'phc_test' }, 'production-app')
+    expect(result).toEqual({ status: 'no-data' })
+  })
+
+  it('returns an error result (never throws) on a non-OK response', async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 401, text: async () => 'unauthorized' }) as any
-    const snap = await fetchPostHogSnapshot({ apiKey: 'bad-key' }, 'production-app')
-    expect(snap).toBeNull()
+    const result = await fetchPostHogSnapshot({ apiKey: 'bad-key' }, 'production-app')
+    expect(result).toEqual({ status: 'error' })
   })
 
-  it('returns null (never throws) when the request times out', async () => {
+  it('returns an error result (never throws) when the request times out', async () => {
     global.fetch = vi.fn().mockImplementation(
       () => new Promise((_resolve, reject) => {
         setTimeout(() => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), 10)
       })
     ) as any
-    const snap = await fetchPostHogSnapshot({ apiKey: 'phc_test' }, 'production-app')
-    expect(snap).toBeNull()
+    const result = await fetchPostHogSnapshot({ apiKey: 'phc_test' }, 'production-app')
+    expect(result).toEqual({ status: 'error' })
   })
 
   it('never sends the API key to a non-allowlisted host', async () => {
