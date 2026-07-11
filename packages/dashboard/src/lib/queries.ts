@@ -163,3 +163,44 @@ export async function getDashboardViewModel(
     })),
   };
 }
+
+export interface TrendSeries {
+  reviewDates: Date[];
+  repoDates: Date[];
+}
+
+/**
+ * Supplies the raw per-review/per-repository creation timestamps that
+ * getDashboardViewModel doesn't expose (it only returns pre-aggregated
+ * counts and change strings). Consumers derive 7-day sparkline series from
+ * these via bucketByDay/cumulativeByDay (src/lib/trends.ts). Scoped
+ * identically to getDashboardViewModel — same repoScope shape — so an
+ * installation not in `installationIds` can never contribute a data point
+ * here either.
+ */
+export async function getTrendSeries(
+  db: PrismaClient,
+  installationIds: string[]
+): Promise<TrendSeries> {
+  if (installationIds.length === 0) {
+    return { reviewDates: [], repoDates: [] };
+  }
+
+  const repoScope = { installationId: { in: installationIds } } as const;
+
+  const [reviewDates, repoDates] = await Promise.all([
+    db.review.findMany({
+      where: { repository: repoScope },
+      select: { createdAt: true },
+    }),
+    db.repository.findMany({
+      where: repoScope,
+      select: { createdAt: true },
+    }),
+  ]);
+
+  return {
+    reviewDates: reviewDates.map((r) => r.createdAt),
+    repoDates: repoDates.map((r) => r.createdAt),
+  };
+}
