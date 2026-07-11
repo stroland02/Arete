@@ -142,10 +142,14 @@ jobs:
         run: pnpm lint
         working-directory: packages/dashboard
 
-      # `next build` prerenders the dashboard's overview page against the
+      # `next build` prerenders any statically-eligible pages against the
       # database (see packages/db/README.md), so this both typechecks and
       # builds the production bundle against the Postgres service container
       # above.
       - name: Build
         run: pnpm build
+        working-directory: packages/dashboard
+
+      - name: Test
+        run: pnpm test
         working-directory: packages/dashboard

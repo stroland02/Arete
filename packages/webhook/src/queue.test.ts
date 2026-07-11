@@ -1,8 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // Mock bullmq/ioredis so this is a pure config test — no real Redis needed.
+// queue.ts imports the named `Redis` export (not the default) to avoid a
+// nodenext CJS-interop type error — see the comment in queue.ts — so both
+// bindings are mocked here.
+const RedisMock = vi.fn().mockImplementation(() => ({ quit: vi.fn() }))
 vi.mock('ioredis', () => ({
-  default: vi.fn().mockImplementation(() => ({ quit: vi.fn() })),
+  default: RedisMock,
+  Redis: RedisMock,
 }))
 
 const addMock = vi.fn().mockResolvedValue({ id: 'job-1' })

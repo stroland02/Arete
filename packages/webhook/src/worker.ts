@@ -1,6 +1,10 @@
 import type { Job } from 'bullmq'
 import { Worker } from 'bullmq'
-import IORedis from 'ioredis'
+import { pathToFileURL } from 'node:url'
+// Named import rather than the default export — see the comment in queue.ts:
+// under "moduleResolution": "nodenext", ioredis's default export can't be
+// used as both a value and a type, but its named `Redis` export can.
+import { Redis as IORedis } from 'ioredis'
 import type { Octokit } from '@octokit/core'
 import { createApp, getInstallationOctokit } from './github-auth.js'
 import { fetchPRContext } from './pr-fetcher.js'
@@ -252,8 +256,11 @@ export function startReviewWorker(): Worker<ReviewJobData> {
 }
 
 // Only start the worker when this file is run directly (e.g. `pnpm worker`),
-// not when it's imported by tests.
-if (require.main === module) {
+// not when it's imported by tests. `require.main === module` is the CJS
+// idiom for this and isn't available in ESM (see tsconfig.json: module/
+// moduleResolution "nodenext") — this is the standard ESM equivalent,
+// comparing this module's URL to the URL of the process's entry script.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   console.log(`Areté review worker starting (concurrency: ${REVIEW_QUEUE_CONCURRENCY})...`)
   startReviewWorker()
 }

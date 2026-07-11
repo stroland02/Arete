@@ -1,5 +1,10 @@
 import { Queue, type JobsOptions } from 'bullmq'
-import IORedis from 'ioredis'
+// Named import rather than the default export: under "moduleResolution":
+// "nodenext" (real ESM, see tsconfig.json), TS resolves ioredis's CJS default
+// export as a namespace object rather than the Redis class, so `IORedis` can't
+// be used as both a value and a type. ioredis also exports the same class as
+// a named `Redis` binding, which doesn't have that ambiguity.
+import { Redis as IORedis } from 'ioredis'
 
 // Job queue for the review pipeline. The webhook handlers (webhook-handler.ts,
 // gitlab-handler.ts) only validate the incoming event and enqueue a job here —
