@@ -8,6 +8,7 @@ import { Redis as IORedis } from 'ioredis'
 import type { Octokit } from '@octokit/core'
 import { createApp, getInstallationOctokit } from './github-auth.js'
 import { fetchPRContext } from './pr-fetcher.js'
+import { fetchTelemetryContext } from './telemetry/fetch-telemetry-context.js'
 import { fetchGitLabMRContext } from './gitlab-fetcher.js'
 import { runReviewPipeline } from './review-bridge.js'
 import { postReview } from './comment-poster.js'
@@ -33,6 +34,13 @@ async function processGitHubPullRequest(octokit: Octokit, data: GitHubPullReques
   const { owner, repo, prNumber, headSha, installationId, repositoryExternalId, fullName } = data
 
   const prContext = await fetchPRContext(octokit, owner, repo, prNumber)
+  prContext.telemetry = await fetchTelemetryContext(
+    octokit,
+    String(installationId),
+    owner,
+    repo,
+    prContext.telemetryConnectors ?? []
+  )
 
   const checkRun = await (octokit as any).rest.checks.create({
     owner,
