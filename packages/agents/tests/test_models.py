@@ -67,6 +67,44 @@ def test_pr_context_accepts_snake_case_fields():
     assert ctx.custom_rules == ["no eval()"]
 
 
+def test_pr_context_defaults_telemetry_to_empty_list():
+    from arete_agents.models.pr import FileChange, PRContext
+
+    pr = PRContext(
+        repo="acme/api",
+        pr_number=1,
+        title="t",
+        description="",
+        files=[FileChange(path="a.py", patch="+x", additions=1, deletions=0)],
+    )
+    assert pr.telemetry == []
+
+
+def test_pr_context_accepts_telemetry_snapshots():
+    from datetime import datetime, timezone
+
+    from arete_agents.models.pr import FileChange, PRContext
+    from arete_agents.models.telemetry import TelemetrySnapshot
+
+    pr = PRContext(
+        repo="acme/api",
+        pr_number=1,
+        title="t",
+        description="",
+        files=[FileChange(path="a.py", patch="+x", additions=1, deletions=0)],
+        telemetry=[
+            TelemetrySnapshot(
+                provider="github_actions",
+                source_ref="acme/api",
+                summary_text="All CI green.",
+                fetched_at=datetime(2026, 7, 10, tzinfo=timezone.utc),
+            )
+        ],
+    )
+    assert len(pr.telemetry) == 1
+    assert pr.telemetry[0].provider == "github_actions"
+
+
 def test_review_comment_rejects_invalid_severity():
     with pytest.raises(Exception):
         ReviewComment(
