@@ -2,6 +2,25 @@ import { Request, Response } from 'express';
 import { reviewExists } from './persistence.js';
 import { enqueueReviewJob } from './queue.js';
 import { getGitLabConfig } from './config.js';
+import { gitlabBaseUrl } from './gitlab-fetcher.js';
+import { prisma } from './db.js';
+import { evaluateBillingGate } from './billing.js';
+
+/** Posts a plain top-level note on the MR (used for billing-gate messages). */
+async function postMergeRequestNote(projectId: number, mrIid: number, body: string): Promise<void> {
+  const url = `${gitlabBaseUrl()}/api/v4/projects/${projectId}/merge_requests/${mrIid}/notes`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Private-Token': getGitLabConfig().accessToken,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ body }),
+  })
+  if (!res.ok) {
+    console.error(`[gitlab-handler] Failed to post note on MR !${mrIid} (status ${res.status})`)
+  }
+}
 
 /**
  * Validates and enqueues a `review-pr` job for a GitLab merge request event.
@@ -17,6 +36,23 @@ async function enqueueMergeRequestJob(body: any): Promise<void> {
 
   if (!projectId || !mrIid) {
     console.warn('[gitlab-handler] Missing project id or MR iid in payload — skipping')
+    return
+  }
+
+  // Billing gate — same rationale and rules as the GitHub handler's gate:
+  // evaluated BEFORE enqueueing so a lapsed subscription or an exhausted
+  // free tier (50 free reviews) never spends an LLM pipeline run. GitLab
+  // installations are keyed by project id (see persistence.ts).
+  const installation = await prisma.installation.findUnique({
+    where: { provider_externalId: { provider: 'gitlab', externalId: projectId } },
+  })
+  const gate = evaluateBillingGate(installation)
+  if (!gate.allowed) {
+    console.log(
+      `[gitlab-handler] Review blocked for project ${projectId} (${gate.reason}). ` +
+      `Status: ${installation?.subscriptionStatus}, usage: ${installation?.usageCount}`
+    )
+    await postMergeRequestNote(projectId, mrIid, gate.message)
     return
   }
 

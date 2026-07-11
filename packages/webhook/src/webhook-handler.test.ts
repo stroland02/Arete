@@ -127,6 +127,86 @@ describe('handlePullRequestEvent', () => {
     )
     expect(mockEnqueue).not.toHaveBeenCalled()
   })
+
+  it('blocks the review and posts an upgrade comment when the 50-review free tier is exhausted', async () => {
+    mockPrisma({
+      installation: {
+        id: 'inst-1', provider: 'github', externalId: 777,
+        subscriptionStatus: 'trialing', usageCount: 50,
+      },
+    })
+    const mockEnqueue = vi.fn()
+    const mockRequest = vi.fn().mockResolvedValue({})
+    vi.doMock('./queue.js', () => ({ enqueueReviewJob: mockEnqueue }))
+
+    const { handlePullRequestEvent } = await import('./webhook-handler.js')
+
+    await handlePullRequestEvent({ request: mockRequest } as any, {
+      repository: { id: 123, owner: { login: 'acme' }, name: 'api', full_name: 'acme/api' },
+      pull_request: { number: 1, head: { sha: 'abcdef' } },
+      installation: { id: 777 },
+      action: 'opened',
+    })
+
+    // Upgrade prompt is posted, and the LLM pipeline is never enqueued
+    expect(mockRequest).toHaveBeenCalledWith(
+      'POST /repos/{owner}/{repo}/issues/{issue_number}/comments',
+      expect.objectContaining({ body: expect.stringContaining('50 free') })
+    )
+    expect(mockRequest).toHaveBeenCalledWith(
+      'POST /repos/{owner}/{repo}/issues/{issue_number}/comments',
+      expect.objectContaining({ body: expect.stringContaining('upgrade') })
+    )
+    expect(mockEnqueue).not.toHaveBeenCalled()
+  })
+
+  it('still enqueues normally when the installation is under the free-tier limit (regression guard)', async () => {
+    mockPrisma({
+      installation: {
+        id: 'inst-1', provider: 'github', externalId: 777,
+        subscriptionStatus: 'trialing', usageCount: 49,
+      },
+    })
+    const mockEnqueue = vi.fn().mockResolvedValue(undefined)
+    const mockRequest = vi.fn()
+    vi.doMock('./queue.js', () => ({ enqueueReviewJob: mockEnqueue }))
+
+    const { handlePullRequestEvent } = await import('./webhook-handler.js')
+
+    await handlePullRequestEvent({ request: mockRequest } as any, {
+      repository: { id: 123, owner: { login: 'acme' }, name: 'api', full_name: 'acme/api' },
+      pull_request: { number: 1, head: { sha: 'abcdef' } },
+      installation: { id: 777 },
+      action: 'opened',
+    })
+
+    expect(mockEnqueue).toHaveBeenCalledTimes(1)
+    expect(mockRequest).not.toHaveBeenCalled()
+  })
+
+  it('still enqueues for a paying customer even past 50 reviews (paid plans have no PR cap)', async () => {
+    mockPrisma({
+      installation: {
+        id: 'inst-1', provider: 'github', externalId: 777,
+        subscriptionStatus: 'active', usageCount: 500,
+      },
+    })
+    const mockEnqueue = vi.fn().mockResolvedValue(undefined)
+    const mockRequest = vi.fn()
+    vi.doMock('./queue.js', () => ({ enqueueReviewJob: mockEnqueue }))
+
+    const { handlePullRequestEvent } = await import('./webhook-handler.js')
+
+    await handlePullRequestEvent({ request: mockRequest } as any, {
+      repository: { id: 123, owner: { login: 'acme' }, name: 'api', full_name: 'acme/api' },
+      pull_request: { number: 1, head: { sha: 'abcdef' } },
+      installation: { id: 777 },
+      action: 'opened',
+    })
+
+    expect(mockEnqueue).toHaveBeenCalledTimes(1)
+    expect(mockRequest).not.toHaveBeenCalled()
+  })
 })
 
 describe('registerCheckRunWebhooks', () => {

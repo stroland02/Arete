@@ -38,11 +38,23 @@ const MR_PAYLOAD = {
   },
 }
 
-function mockPersistenceAndQueue(overrides: { reviewExists?: boolean } = {}) {
+function mockPersistenceAndQueue(
+  overrides: { reviewExists?: boolean; installation?: any } = {}
+) {
   const mockEnqueue = vi.fn().mockResolvedValue(undefined)
   const mockReviewExists = vi.fn().mockResolvedValue(overrides.reviewExists ?? false)
   vi.doMock('./queue.js', () => ({ enqueueReviewJob: mockEnqueue }))
   vi.doMock('./persistence.js', () => ({ reviewExists: mockReviewExists }))
+  // gitlab-handler looks up the Installation (billing gate) through ./db.js,
+  // which constructs a PrismaClient from @arete/db — mock at that boundary,
+  // same pattern as webhook-handler.test.ts.
+  vi.doMock('@arete/db', () => {
+    const PrismaClient = vi.fn()
+    PrismaClient.prototype.installation = {
+      findUnique: vi.fn().mockResolvedValue(overrides.installation ?? null),
+    }
+    return { PrismaClient }
+  })
   return { mockEnqueue, mockReviewExists }
 }
 
@@ -113,6 +125,45 @@ describe('handleGitLabWebhook', () => {
         mrIid: 5,
       })
     )
+  })
+
+  it('blocks the review, posts an upgrade note, and does not enqueue when the free tier is exhausted', async () => {
+    const { mockEnqueue } = mockPersistenceAndQueue({
+      installation: { id: 'inst-gl-1', subscriptionStatus: 'trialing', usageCount: 50 },
+    })
+    vi.stubEnv('GITLAB_WEBHOOK_SECRET', 'correct-secret')
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal('fetch', mockFetch)
+    const { handleGitLabWebhook } = await import('./gitlab-handler.js')
+
+    const { req, res, mockRes } = makeReqRes({ 'x-gitlab-token': 'correct-secret' }, MR_PAYLOAD)
+    await handleGitLabWebhook(req, res)
+
+    expect(mockRes.statusCode).toBe(200)
+    expect(mockEnqueue).not.toHaveBeenCalled()
+    // Upgrade note posted on the MR
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining('/merge_requests/5/notes'),
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('50 free'),
+      })
+    )
+    vi.unstubAllGlobals()
+  })
+
+  it('still enqueues when the installation is under the free-tier limit', async () => {
+    const { mockEnqueue } = mockPersistenceAndQueue({
+      installation: { id: 'inst-gl-1', subscriptionStatus: 'trialing', usageCount: 3 },
+    })
+    vi.stubEnv('GITLAB_WEBHOOK_SECRET', 'correct-secret')
+    const { handleGitLabWebhook } = await import('./gitlab-handler.js')
+
+    const { req, res, mockRes } = makeReqRes({ 'x-gitlab-token': 'correct-secret' }, MR_PAYLOAD)
+    await handleGitLabWebhook(req, res)
+
+    expect(mockRes.statusCode).toBe(200)
+    expect(mockEnqueue).toHaveBeenCalledTimes(1)
   })
 
   it('skips enqueueing a duplicate job when a review already exists for this head SHA', async () => {
