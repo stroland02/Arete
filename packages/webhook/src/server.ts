@@ -3,6 +3,8 @@ import { getConfig } from './config.js'
 import { handlePullRequestEvent } from './webhook-handler.js'
 import { handleStripeWebhook } from './stripe-handler.js'
 import { handleGitLabWebhook } from './gitlab-handler.js'
+import { buildOAuthAuthorizeUrl } from './oauth/build-authorize-url.js'
+import { handleOAuthCallback } from './oauth/oauth-callback-handler.js'
 
 // @octokit/app and @octokit/webhooks are pure ESM (import-only "exports" maps);
 // this package compiles to CJS, so they must be loaded via dynamic import(),
@@ -51,6 +53,20 @@ export async function createServer(): Promise<express.Application> {
   // Express strips the mount prefix from req.url, so mounting at '/webhook'
   // would make the middleware see '/' and never match its configured path.
   server.use(createNodeMiddleware(app.webhooks, { path: '/webhook' }))
+
+  server.get('/oauth/:provider/authorize', (req, res) => {
+    const installationId = req.query.installationId as string | undefined
+    if (!installationId) {
+      res.status(400).send('Missing installationId query parameter')
+      return
+    }
+    const provider = req.params.provider as 'vercel' | 'posthog'
+    const url = buildOAuthAuthorizeUrl(provider, installationId)
+    res.redirect(url)
+  })
+
+  server.get('/oauth/:provider/callback', handleOAuthCallback)
+
   server.get('/health', (_req, res) => res.json({ status: 'ok' }))
 
   return server
