@@ -56,6 +56,12 @@ Other files changed in this same PR (peripheral context only — review ONLY the
 </pr_file_manifest>
 """
 
+    def _build_telemetry_block(self, pr_context: PRContext) -> str:
+        """Hook for agents that want production/business telemetry folded
+        into their prompt. Returns "" by default (most agents don't need
+        it) — BusinessLogicAgent overrides this."""
+        return ""
+
     def _build_user_prompt(self, file: FileChange, pr_context: PRContext) -> str:
         patch = file.patch
         truncation_note = ""
@@ -72,7 +78,7 @@ PR: "{escape_for_prompt(pr_context.title)}" in {escape_for_prompt(pr_context.rep
 Description: {escape_for_prompt(pr_context.description)}
 File: {escape_for_prompt(file.path)} ({file.language})
 </pr_metadata>
-{self._build_pr_manifest(file, pr_context)}
+{self._build_pr_manifest(file, pr_context)}{self._build_telemetry_block(pr_context)}
 <diff>
 {patch}{truncation_note}
 </diff>
