@@ -19,6 +19,12 @@ export interface TelemetrySnapshot {
   fetched_at: string
 }
 
+export interface TelemetryConnectorConfig {
+  provider: 'github_actions' | 'posthog'
+  service?: string
+  project?: string
+}
+
 export interface PRContext {
   repo: string
   pr_number: number
@@ -28,6 +34,7 @@ export interface PRContext {
   customRules?: string[]
   ciLogs?: string
   telemetry?: TelemetrySnapshot[]
+  telemetryConnectors?: TelemetryConnectorConfig[]
 }
 
 export interface ReviewComment {
