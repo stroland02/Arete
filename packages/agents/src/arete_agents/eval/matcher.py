@@ -50,7 +50,7 @@ class LLMJudge:
         llm_with_retry = self._llm.with_retry(stop_after_attempt=2)
         response = llm_with_retry.invoke(messages)
         raw = response.content if isinstance(response.content, str) else ""
-        return "yes" in raw.strip().lower()[:5]
+        return raw.strip().lower().startswith("yes")
 
 
 def build_judge(
