@@ -27,6 +27,11 @@ class ReviewResult(BaseModel):
     # "failed" means every agent errored and NOTHING was actually reviewed —
     # distinguishes "no issues found" from "no review ever happened".
     analysis_status: Literal["complete", "failed"] = "complete"
+    # Number of raw agent comments the Synthesizer's verification pass DROPPED
+    # as low-confidence/hallucinated (part of the explicit synthesis contract,
+    # so filtering is observable/testable rather than silent). 0 for the
+    # deterministic fallback paths, which never filter.
+    dropped_count: int = 0
 
     @computed_field
     @property
