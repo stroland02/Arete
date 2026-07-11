@@ -530,7 +530,9 @@ git commit -m "feat(dashboard): thread real session data (installations, userNam
 - Modify: `packages/dashboard/src/app/(dashboard)/layout.tsx` (full rewrite)
 
 **Interfaces:**
-- Consumes: `auth` from `../../lib/auth` (unchanged); `DashboardShell` from `@/components/dashboard/dashboard-shell` (Task 18).
+- Consumes: `auth` from `../../lib/auth` (unchanged); `DashboardShell` from `@/components/dashboard/dashboard-shell` (Task 18); `SignOutButton` from `@/components/SignOutButton` (existing, unchanged).
+
+**Amendment (discovered during Task 18):** `DashboardShell`/`Sidebar` are Client Components and can never `import` `SignOutButton` directly — it's a Server Component that pulls in `lib/auth` → `lib/db` → `pg` (Node-only), and importing a Server Component module into a Client Component's file breaks the client bundle graph regardless of runtime behavior. Task 18 was corrected to accept a `signOutSlot: ReactNode` prop instead of importing `SignOutButton` itself. This layout — a real Server Component — is the correct place to import `SignOutButton` and pass its rendered output down as that slot.
 
 - [ ] **Step 1: Rewrite the file**
 
@@ -539,11 +541,18 @@ Replace the entire content of `packages/dashboard/src/app/(dashboard)/layout.tsx
 import { redirect } from "next/navigation";
 import { auth } from "../../lib/auth";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { SignOutButton } from "@/components/SignOutButton";
 
 // This layout wraps every authenticated dashboard route. It reads the
 // session itself (in addition to proxy.ts) so it can render the signed-in
 // user and their authorized installations — proxy.ts only gates access, it
 // doesn't hand session data to the render tree.
+//
+// SignOutButton is a Server Component (it imports lib/auth's server-only
+// signOut action) and is passed down to DashboardShell/Sidebar — both
+// Client Components — as an already-rendered ReactNode slot, not imported
+// by them directly. A Client Component can never import a Server Component
+// module itself; it can only render one it's handed as children/props.
 export default async function DashboardLayout({
   children,
 }: Readonly<{
@@ -558,7 +567,11 @@ export default async function DashboardLayout({
   const userName = session.user.name ?? session.user.email ?? "Signed in";
 
   return (
-    <DashboardShell installations={installations} userName={userName}>
+    <DashboardShell
+      installations={installations}
+      userName={userName}
+      signOutSlot={<SignOutButton />}
+    >
       {children}
     </DashboardShell>
   );
