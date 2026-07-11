@@ -1,5 +1,16 @@
 import { IconChartBar, IconBug, IconCalendarStats, IconActivity } from "@tabler/icons-react";
-import { db } from "../lib/db";
+import { redirect } from "next/navigation";
+import { auth } from "../../lib/auth";
+import { db } from "../../lib/db";
+import { getDashboardViewModel, resolveSelectedInstallationIds } from "../../lib/queries";
+import { EmptyState } from "../../components/EmptyState";
+
+// This page reads the session and queries Prisma scoped to it on every
+// request — it must never be statically prerendered (that would either fail
+// at build time for lack of a session, or worse, bake one user's tenant
+// data into a page served to everyone). `force-dynamic` makes that explicit
+// instead of relying on Next's heuristics.
+export const dynamic = "force-dynamic";
 
 function timeAgo(date: Date): string {
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
@@ -34,65 +45,42 @@ function formatCategory(category: string): string {
     .join(" ");
 }
 
-/**
- * Week-over-week change badge. Expresses the delta as a percentage of the
- * prior-week baseline; falls back to a raw count when the baseline is 0 to
- * avoid divide-by-zero rendering as "Infinity%" / "NaN%".
- */
-function weeklyChange(current: number, prior: number): { change: string; positive: boolean } {
-  const delta = current - prior;
-  const positive = delta >= 0;
-  const sign = positive ? "+" : "";
-  if (prior === 0) {
-    return { change: `${sign}${delta}`, positive };
+export default async function DashboardOverview({
+  searchParams,
+}: {
+  searchParams: Promise<{ installation?: string }>;
+}) {
+  const session = await auth();
+  if (!session?.user) {
+    redirect("/login");
   }
-  return { change: `${sign}${((delta / prior) * 100).toFixed(1)}%`, positive };
-}
 
-export default async function DashboardOverview() {
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+  const { installation } = await searchParams;
+  const installationIds = resolveSelectedInstallationIds(
+    session.installations ?? [],
+    installation
+  );
 
-  const [
+  const viewModel = await getDashboardViewModel(db, installationIds);
+
+  if (!viewModel.hasAccess) {
+    return <EmptyState />;
+  }
+
+  const {
     totalPrs,
     activeRepos,
     criticalBugs,
     recentReviews,
-    previousWeekReviews,
-    priorTotalPrs,
-    priorCriticalBugs,
-    priorActiveRepos,
+    weeklyDelta,
+    totalPrsChange,
+    criticalBugsChange,
+    repoDelta,
     commentsByCategory,
     latestReviews,
-  ] =
-    await Promise.all([
-      db.review.count(),
-      db.repository.count(),
-      db.reviewComment.count({ where: { severity: "error" } }),
-      db.review.count({ where: { createdAt: { gte: sevenDaysAgo } } }),
-      db.review.count({ where: { createdAt: { gte: fourteenDaysAgo, lt: sevenDaysAgo } } }),
-      db.review.count({ where: { createdAt: { lt: sevenDaysAgo } } }),
-      // ReviewComment has no createdAt of its own; comments are created with their review.
-      db.reviewComment.count({ where: { severity: "error", review: { createdAt: { lt: sevenDaysAgo } } } }),
-      db.repository.count({ where: { createdAt: { lt: sevenDaysAgo } } }),
-      db.reviewComment.groupBy({
-        by: ["category"],
-        _count: { category: true },
-        orderBy: { _count: { category: "desc" } },
-      }),
-      db.review.findMany({
-        take: 5,
-        orderBy: { createdAt: "desc" },
-        include: { repository: true },
-      }),
-    ]);
+  } = viewModel;
 
-  const weeklyDelta = recentReviews - previousWeekReviews;
-  const totalPrsChange = weeklyChange(totalPrs, priorTotalPrs);
-  const criticalBugsChange = weeklyChange(criticalBugs, priorCriticalBugs);
-  // Repo counts are small; a raw week-over-week delta reads better than a percentage.
-  const repoDelta = activeRepos - priorActiveRepos;
-  const maxCategoryCount = Math.max(1, ...commentsByCategory.map((c) => c._count.category));
+  const maxCategoryCount = Math.max(1, ...commentsByCategory.map((c) => c.count));
 
   const metrics = [
     {
@@ -182,11 +170,11 @@ export default async function DashboardOverview() {
                   <div className="flex-1 h-2.5 rounded-full bg-white/5 border border-white/5 overflow-hidden">
                     <div
                       className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400"
-                      style={{ width: `${(entry._count.category / maxCategoryCount) * 100}%` }}
+                      style={{ width: `${(entry.count / maxCategoryCount) * 100}%` }}
                     />
                   </div>
                   <p className="w-10 shrink-0 text-right text-sm font-semibold text-slate-200">
-                    {entry._count.category}
+                    {entry.count}
                   </p>
                 </div>
               ))}
@@ -207,7 +195,7 @@ export default async function DashboardOverview() {
                 <div className="w-2 h-2 mt-2 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.8)]" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-slate-200 truncate">{review.repository.fullName}</p>
+                    <p className="text-sm font-medium text-slate-200 truncate">{review.repositoryFullName}</p>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide border shrink-0 ${riskBadgeClasses(review.riskLevel)}`}>
                       {review.riskLevel}
                     </span>

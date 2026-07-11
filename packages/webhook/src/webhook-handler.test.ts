@@ -1,69 +1,57 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const MOCK_PR_CONTEXT = {
-  repo: 'acme/api', pr_number: 1, title: 'Fix', description: '', files: [],
-}
-const MOCK_RESULT = {
-  pr_context: MOCK_PR_CONTEXT,
-  file_reviews: [],
-  overall_summary: 'OK',
-  risk_level: 'low',
-  total_comments: 0,
+function mockPrisma(overrides: { installation?: any; repository?: any; review?: any } = {}) {
+  vi.doMock('@arete/db', () => {
+    const PrismaClient = vi.fn()
+    PrismaClient.prototype.installation = {
+      findUnique: vi.fn().mockResolvedValue(overrides.installation ?? null),
+    }
+    PrismaClient.prototype.repository = {
+      findUnique: vi.fn().mockResolvedValue(overrides.repository ?? null),
+    }
+    PrismaClient.prototype.review = {
+      findUnique: vi.fn().mockResolvedValue(overrides.review ?? null),
+    }
+    return { PrismaClient }
+  })
 }
 
 describe('handlePullRequestEvent', () => {
   beforeEach(() => { vi.resetModules() })
 
-  it('fetches PR, runs pipeline, posts review', async () => {
-    const mockFetch = vi.fn().mockResolvedValue(MOCK_PR_CONTEXT)
-    const mockRun = vi.fn().mockResolvedValue(MOCK_RESULT)
-    const mockPost = vi.fn().mockResolvedValue(undefined)
-    const mockChecksCreate = vi.fn().mockResolvedValue({ data: { id: 999 } })
-    const mockChecksUpdate = vi.fn().mockResolvedValue({})
-    const mockOctokit = {
-      rest: {
-        checks: {
-          create: mockChecksCreate,
-          update: mockChecksUpdate
-        }
-      }
-    }
-
-    vi.doMock('./pr-fetcher.js', () => ({ fetchPRContext: mockFetch }))
-    vi.doMock('./review-bridge.js', () => ({ runReviewPipeline: mockRun }))
-    vi.doMock('./comment-poster.js', () => ({ postReview: mockPost }))
-    vi.doMock('@arete/db', () => {
-      const PrismaClient = vi.fn()
-      PrismaClient.prototype.installation = {
-        findUnique: vi.fn().mockResolvedValue(null),
-        upsert: vi.fn().mockResolvedValue({ id: 'inst-uuid-1' }),
-        update: vi.fn().mockResolvedValue({}),
-      }
-      PrismaClient.prototype.repository = { upsert: vi.fn().mockResolvedValue({ id: 'repo-uuid-1' }) }
-      PrismaClient.prototype.review = { findUnique: vi.fn().mockResolvedValue(null), create: vi.fn() }
-      return { PrismaClient }
-    })
+  it('enqueues a review-pr job and returns without waiting for the pipeline (async handoff)', async () => {
+    mockPrisma()
+    const mockEnqueue = vi.fn().mockResolvedValue(undefined)
+    vi.doMock('./queue.js', () => ({ enqueueReviewJob: mockEnqueue }))
 
     const { handlePullRequestEvent } = await import('./webhook-handler.js')
 
-    await handlePullRequestEvent(mockOctokit as any, {
+    await handlePullRequestEvent({} as any, {
       repository: { id: 123, owner: { login: 'acme' }, name: 'api', full_name: 'acme/api' },
       pull_request: { number: 1, head: { sha: 'abcdef' } },
+      installation: { id: 777 },
       action: 'opened',
     })
 
-    expect(mockFetch).toHaveBeenCalledWith(mockOctokit, 'acme', 'api', 1)
-    expect(mockRun).toHaveBeenCalledWith(MOCK_PR_CONTEXT)
-    expect(mockPost).toHaveBeenCalledWith(mockOctokit, 'acme', 'api', 1, MOCK_RESULT)
+    expect(mockEnqueue).toHaveBeenCalledTimes(1)
+    expect(mockEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'github',
+        kind: 'pull_request',
+        owner: 'acme',
+        repo: 'api',
+        prNumber: 1,
+        installationId: 777,
+        headSha: 'abcdef',
+        repositoryExternalId: 123,
+      })
+    )
   })
 
-  it('does not run pipeline for closed PRs', async () => {
-    const mockRun = vi.fn()
-    vi.doMock('./review-bridge.js', () => ({ runReviewPipeline: mockRun }))
-    vi.doMock('@arete/db', () => {
-      const PrismaClient = vi.fn()
-      return { PrismaClient }
-    })
+  it('does not enqueue for closed PRs', async () => {
+    mockPrisma()
+    const mockEnqueue = vi.fn()
+    vi.doMock('./queue.js', () => ({ enqueueReviewJob: mockEnqueue }))
 
     const { handlePullRequestEvent } = await import('./webhook-handler.js')
 
@@ -73,54 +61,177 @@ describe('handlePullRequestEvent', () => {
       action: 'closed',
     })
 
-    expect(mockRun).not.toHaveBeenCalled()
+    expect(mockEnqueue).not.toHaveBeenCalled()
   })
 
-  it('marks the check run as failed instead of leaving it stuck in_progress when the pipeline throws', async () => {
-    const mockFetch = vi.fn().mockResolvedValue(MOCK_PR_CONTEXT)
-    const mockRun = vi.fn().mockRejectedValue(new Error('Python pipeline timed out after 120s'))
-    const mockPost = vi.fn()
-    const mockChecksCreate = vi.fn().mockResolvedValue({ data: { id: 999 } })
-    const mockChecksUpdate = vi.fn().mockResolvedValue({})
-    const mockOctokit = {
-      rest: {
-        checks: {
-          create: mockChecksCreate,
-          update: mockChecksUpdate
-        }
-      }
-    }
-
-    vi.doMock('./pr-fetcher.js', () => ({ fetchPRContext: mockFetch }))
-    vi.doMock('./review-bridge.js', () => ({ runReviewPipeline: mockRun }))
-    vi.doMock('./comment-poster.js', () => ({ postReview: mockPost }))
-    vi.doMock('@arete/db', () => {
-      const PrismaClient = vi.fn()
-      return { PrismaClient }
+  it('skips enqueueing when a completed review already exists for this head SHA (duplicate delivery)', async () => {
+    mockPrisma({
+      repository: { id: 'repo-uuid-1', provider: 'github', externalId: 123 },
+      review: { id: 'review-uuid-1', repositoryId: 'repo-uuid-1', prNumber: 1, headSha: 'abcdef' },
     })
+    const mockEnqueue = vi.fn()
+    vi.doMock('./queue.js', () => ({ enqueueReviewJob: mockEnqueue }))
 
     const { handlePullRequestEvent } = await import('./webhook-handler.js')
 
-    await expect(
-      handlePullRequestEvent(mockOctokit as any, {
-        repository: { id: 123, owner: { login: 'acme' }, name: 'api', full_name: 'acme/api' },
-        pull_request: { number: 1, head: { sha: 'abcdef' } },
-        action: 'opened',
-      })
-    ).rejects.toThrow('Python pipeline timed out after 120s')
+    await handlePullRequestEvent({} as any, {
+      repository: { id: 123, owner: { login: 'acme' }, name: 'api', full_name: 'acme/api' },
+      pull_request: { number: 1, head: { sha: 'abcdef' } },
+      installation: { id: 777 },
+      action: 'synchronize',
+    })
 
-    expect(mockPost).not.toHaveBeenCalled()
-    expect(mockChecksUpdate).toHaveBeenCalledTimes(1)
-    expect(mockChecksUpdate).toHaveBeenCalledWith(
+    expect(mockEnqueue).not.toHaveBeenCalled()
+  })
+
+  it('still enqueues a job for a different head SHA on the same PR (new commit, not a duplicate)', async () => {
+    mockPrisma({
+      repository: { id: 'repo-uuid-1', provider: 'github', externalId: 123 },
+      review: null, // findUnique keyed on (repositoryId, prNumber, headSha) — new SHA has no row
+    })
+    const mockEnqueue = vi.fn().mockResolvedValue(undefined)
+    vi.doMock('./queue.js', () => ({ enqueueReviewJob: mockEnqueue }))
+
+    const { handlePullRequestEvent } = await import('./webhook-handler.js')
+
+    await handlePullRequestEvent({} as any, {
+      repository: { id: 123, owner: { login: 'acme' }, name: 'api', full_name: 'acme/api' },
+      pull_request: { number: 1, head: { sha: 'newsha456' } },
+      installation: { id: 777 },
+      action: 'synchronize',
+    })
+
+    expect(mockEnqueue).toHaveBeenCalledTimes(1)
+  })
+
+  it('posts a "paused" comment and skips enqueueing when the subscription is inactive', async () => {
+    mockPrisma({
+      installation: { id: 'inst-1', provider: 'github', externalId: 777, subscriptionStatus: 'canceled' },
+    })
+    const mockEnqueue = vi.fn()
+    const mockRequest = vi.fn().mockResolvedValue({})
+    vi.doMock('./queue.js', () => ({ enqueueReviewJob: mockEnqueue }))
+
+    const { handlePullRequestEvent } = await import('./webhook-handler.js')
+
+    await handlePullRequestEvent({ request: mockRequest } as any, {
+      repository: { id: 123, owner: { login: 'acme' }, name: 'api', full_name: 'acme/api' },
+      pull_request: { number: 1, head: { sha: 'abcdef' } },
+      installation: { id: 777 },
+      action: 'opened',
+    })
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      'POST /repos/{owner}/{repo}/issues/{issue_number}/comments',
+      expect.objectContaining({ body: expect.stringContaining('paused') })
+    )
+    expect(mockEnqueue).not.toHaveBeenCalled()
+  })
+})
+
+describe('registerCheckRunWebhooks', () => {
+  beforeEach(() => { vi.resetModules() })
+
+  function makeApp() {
+    const handlers: Record<string, Function> = {}
+    return {
+      app: {
+        webhooks: {
+          on: (event: string, handler: Function) => { handlers[event] = handler },
+        },
+      },
+      handlers,
+    }
+  }
+
+  it("does NOT enqueue a job for check_run.completed on Areté's OWN check run (regression: self-trigger loop)", async () => {
+    mockPrisma()
+    const mockEnqueue = vi.fn()
+    vi.doMock('./queue.js', () => ({ enqueueReviewJob: mockEnqueue }))
+
+    const { registerCheckRunWebhooks } = await import('./webhook-handler.js')
+    const { app, handlers } = makeApp()
+    registerCheckRunWebhooks(app)
+
+    await handlers['check_run.completed']({
+      octokit: {},
+      payload: {
+        check_run: {
+          name: 'Areté AI Code Review',
+          conclusion: 'failure',
+          head_sha: 'abcdef',
+          pull_requests: [{ number: 1 }],
+        },
+        repository: { id: 123, owner: { login: 'acme' }, name: 'api', full_name: 'acme/api' },
+        installation: { id: 777 },
+      },
+    })
+
+    expect(mockEnqueue).not.toHaveBeenCalled()
+  })
+
+  it("DOES enqueue a CI-diagnosis job for a DIFFERENT check run (customer's real CI failing)", async () => {
+    mockPrisma()
+    const mockEnqueue = vi.fn().mockResolvedValue(undefined)
+    vi.doMock('./queue.js', () => ({ enqueueReviewJob: mockEnqueue }))
+
+    const { registerCheckRunWebhooks } = await import('./webhook-handler.js')
+    const { app, handlers } = makeApp()
+    registerCheckRunWebhooks(app)
+
+    await handlers['check_run.completed']({
+      octokit: {},
+      payload: {
+        check_run: {
+          name: 'CI / build',
+          conclusion: 'failure',
+          head_sha: 'abcdef',
+          pull_requests: [{ number: 1 }],
+          output: { text: 'build failed: exit code 1' },
+        },
+        repository: { id: 123, owner: { login: 'acme' }, name: 'api', full_name: 'acme/api' },
+        installation: { id: 777 },
+      },
+    })
+
+    expect(mockEnqueue).toHaveBeenCalledTimes(1)
+    expect(mockEnqueue).toHaveBeenCalledWith(
       expect.objectContaining({
-        check_run_id: 999,
-        status: 'completed',
-        conclusion: 'failure',
-        output: expect.objectContaining({
-          title: 'Review Failed',
-          summary: expect.stringContaining('Python pipeline timed out after 120s'),
-        }),
+        provider: 'github',
+        kind: 'check_run',
+        owner: 'acme',
+        repo: 'api',
+        prNumber: 1,
+        headSha: 'abcdef',
+        installationId: 777,
+        ciLogs: 'build failed: exit code 1',
       })
     )
+  })
+
+  it('does not enqueue when the (non-own) check run succeeded rather than failed', async () => {
+    mockPrisma()
+    const mockEnqueue = vi.fn()
+    vi.doMock('./queue.js', () => ({ enqueueReviewJob: mockEnqueue }))
+
+    const { registerCheckRunWebhooks } = await import('./webhook-handler.js')
+    const { app, handlers } = makeApp()
+    registerCheckRunWebhooks(app)
+
+    await handlers['check_run.completed']({
+      octokit: {},
+      payload: {
+        check_run: {
+          name: 'CI / build',
+          conclusion: 'success',
+          head_sha: 'abcdef',
+          pull_requests: [{ number: 1 }],
+        },
+        repository: { id: 123, owner: { login: 'acme' }, name: 'api', full_name: 'acme/api' },
+        installation: { id: 777 },
+      },
+    })
+
+    expect(mockEnqueue).not.toHaveBeenCalled()
   })
 })
