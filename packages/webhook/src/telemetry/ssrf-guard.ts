@@ -5,9 +5,12 @@
 // so a bug in a connector can never turn into a request to an arbitrary or
 // internal host.
 
-const ALLOWED_HOSTS: Record<'github_actions' | 'posthog', string[]> = {
+const ALLOWED_HOSTS: Record<'github_actions' | 'posthog' | 'sentry' | 'vercel' | 'stripe', string[]> = {
   github_actions: ['api.github.com'],
   posthog: ['app.posthog.com', 'us.posthog.com', 'eu.posthog.com'],
+  sentry: ['sentry.io'],
+  vercel: ['api.vercel.com'],
+  stripe: ['api.stripe.com'],
 }
 
 const PRIVATE_IPV4_PREFIXES = ['10.', '127.', '169.254.', '192.168.']
@@ -23,7 +26,10 @@ function isPrivateOrMetadataIPv4(hostname: string): boolean {
   return false
 }
 
-export function assertAllowedTelemetryHost(provider: 'github_actions' | 'posthog', url: string): void {
+export function assertAllowedTelemetryHost(
+  provider: 'github_actions' | 'posthog' | 'sentry' | 'vercel' | 'stripe',
+  url: string
+): void {
   const parsed = new URL(url)
   if (isPrivateOrMetadataIPv4(parsed.hostname) || parsed.hostname === 'localhost') {
     throw new Error(`Telemetry connector blocked: "${parsed.hostname}" resolves to a private/internal address`)
