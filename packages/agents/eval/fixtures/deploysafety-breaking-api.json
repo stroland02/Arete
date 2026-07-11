@@ -18,7 +18,7 @@
     {
       "id": "breakapi-001",
       "path": "src/api/schemas.py",
-      "line": 1,
+      "line": 2,
       "target_agent": "deployment_safety",
       "description": "Breaking public API change: renaming the response field 'name' to 'full_name' breaks existing API consumers relying on the old field name.",
       "severity": "error"
