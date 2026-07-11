@@ -3,6 +3,7 @@ import { prisma } from './db.js'
 import { reviewExists } from './persistence.js'
 import { enqueueReviewJob } from './queue.js'
 import { ARETE_CHECK_RUN_NAME } from './constants.js'
+import { evaluateBillingGate } from './billing.js'
 
 const HANDLED_ACTIONS = new Set(['opened', 'synchronize', 'reopened'])
 
@@ -50,13 +51,21 @@ export async function handlePullRequestEvent(
       where: { provider_externalId: { provider: 'github', externalId: installationId } }
     })
 
-    if (installation && (installation.subscriptionStatus === 'canceled' || installation.subscriptionStatus === 'past_due')) {
-      console.log(`[handler] Subscription inactive for installation ${installationId}. Status: ${installation.subscriptionStatus}`)
+    // Billing gate — runs BEFORE the idempotency check and BEFORE enqueueing,
+    // so a blocked installation never spends an LLM pipeline run. Covers both
+    // a lapsed subscription (canceled/past_due) and an exhausted free tier
+    // (50 free reviews, no active paid subscription).
+    const gate = evaluateBillingGate(installation)
+    if (!gate.allowed) {
+      console.log(
+        `[handler] Review blocked for installation ${installationId} (${gate.reason}). ` +
+        `Status: ${installation?.subscriptionStatus}, usage: ${installation?.usageCount}`
+      )
       await octokit.request('POST /repos/{owner}/{repo}/issues/{issue_number}/comments', {
         owner,
         repo,
         issue_number: prNumber,
-        body: 'Areté Code Review is paused due to an inactive subscription.'
+        body: gate.message
       })
       return
     }
