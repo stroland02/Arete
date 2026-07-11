@@ -15,7 +15,7 @@ its assigned package without declaring a cross-package change in the progress le
 |---|---|---|
 | `agents` | `packages/agents/` | Python FastAPI, LangGraph orchestrator, all agent classes, Pydantic models |
 | `webhook` | `packages/webhook/` | TypeScript Express server, GitHub/GitLab handlers, review bridge, Stripe |
-| `dashboard` | `packages/dashboard/` | Next.js app, Prisma schema, all UI components, API routes |
+| `dashboard` | `packages/dashboard/` | Next.js app, all UI components, API routes (Prisma schema now lives in `packages/db`, see `@arete/db`) |
 | `infra` | `infra/`, `.github/`, `scripts/` | CI/CD, Docker, Kubernetes, OpenTelemetry collector config |
 | `docs` | `docs/`, `.superpowers/` | Plans, proposals, progress ledger, this file |
 
@@ -65,7 +65,8 @@ The finishing agent must:
 | Branch | Package | Task | Status |
 |---|---|---|---|
 | `feat/webhook-gitlab-complete` | `webhook` | Full GitLab MR diff fetch + comment posting | Dispatched |
-| `feat/dashboard-real-metrics` | `dashboard` | Real computed metrics, per-agent breakdown | Dispatched |
+| `feat/dashboard-real-metrics` | `dashboard` | Real computed metrics, per-agent breakdown | Merged (superseded/rebuilt by auth + @arete/db extraction) |
+| `feat/dashboard-ui-port` | `dashboard` | Port the finished design system (tokens, primitives, motion, agent-orchestration graph) onto main's current auth-scoped dashboard (app/(dashboard)/*, getDashboardViewModel, @arete/db). Presentation layer + one new additive query function (getTrendSeries). | Dispatched |
 | `main` | `docs` | ADE setup, coordination | Done |
 
 ## Test Baselines (must not regress)
