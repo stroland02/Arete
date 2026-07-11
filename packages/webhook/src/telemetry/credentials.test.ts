@@ -22,6 +22,23 @@ describe('credentials encryption', () => {
     expect(a).not.toBe(b)
   })
 
+  it('throws when the ciphertext has been tampered with (GCM auth tag mismatch)', async () => {
+    const { encryptCredentials, decryptCredentials } = await import('./credentials.js')
+    const ciphertext = encryptCredentials({ apiKey: 'phc_tamper_target' })
+    const [iv, authTag, encrypted] = ciphertext.split(':')
+    // Flip one hex digit in the encrypted segment. GCM's auth tag covers the
+    // ciphertext, so ANY single-character change here is guaranteed to fail
+    // authentication in decipher.final(). The flip is unambiguous: the new
+    // character always differs from the original.
+    const flipped = encrypted[0] === '0' ? '1' : '0'
+    const tampered = `${iv}:${authTag}:${flipped}${encrypted.slice(1)}`
+    expect(tampered).not.toBe(ciphertext)
+    // Assert on the OpenSSL auth-failure message so this test can only pass on
+    // a genuine tag mismatch — not an incidental JSON.parse error on garbage
+    // plaintext (which is what a permissive catch around final() would yield).
+    expect(() => decryptCredentials(tampered)).toThrow(/authenticate/)
+  })
+
   it('throws a clear error when TELEMETRY_ENCRYPTION_KEY is missing', async () => {
     vi.stubEnv('TELEMETRY_ENCRYPTION_KEY', '')
     const { encryptCredentials } = await import('./credentials.js')
