@@ -232,6 +232,187 @@ def test_synthesizer_invalid_json_falls_back_without_rerunning_agents(sample_pr)
     assert mock.invoke.call_count == 7
 
 
+def _make_synth_llm(response: str) -> MagicMock:
+    mock = MagicMock()
+    mock.with_retry.return_value = mock
+    mock.invoke.return_value = AIMessage(content=response)
+    return mock
+
+
+def test_synthesizer_drops_hallucinated_comment(sample_pr):
+    """A raw comment referencing a symbol that appears nowhere in the diff
+    (`frobnicate_user`) must not survive synthesis when the verification pass
+    filters it; the well-grounded comment must survive."""
+    import json
+
+    from arete_agents.orchestrator import SynthesizerAgent
+
+    hallucinated = ReviewComment(
+        path="src/auth.py",
+        line=3,
+        body="The call to `frobnicate_user()` is missing a null check.",
+        severity="error",
+        category="security",
+    )
+    grounded = ReviewComment(
+        path="src/auth.py",
+        line=1,
+        body="Unparameterized SELECT with user_id enables SQL injection.",
+        severity="error",
+        category="security",
+    )
+    raw = [
+        FileReview(
+            path="src/auth.py",
+            comments=[hallucinated, grounded],
+            summary="Mixed findings.",
+        )
+    ]
+    filtered = json.dumps(
+        {
+            "file_reviews": [
+                {
+                    "path": "src/auth.py",
+                    "comments": [grounded.model_dump()],
+                    "summary": "Verified SQL injection finding.",
+                }
+            ],
+            "overall_summary": "One verified security issue.",
+            "risk_level": "high",
+            "dropped_count": 1,
+        }
+    )
+    llm = _make_synth_llm(filtered)
+    result = SynthesizerAgent(llm).synthesize(sample_pr, raw)
+
+    bodies = [c.body for fr in result.file_reviews for c in fr.comments]
+    assert not any("frobnicate_user" in b for b in bodies)
+    assert any("SQL injection" in b for b in bodies)
+    assert result.dropped_count == 1
+
+
+def test_synthesizer_keeps_grounded_comment_and_reports_zero_dropped(sample_pr):
+    """Inverse case: a well-grounded comment survives and dropped_count is 0."""
+    import json
+
+    from arete_agents.orchestrator import SynthesizerAgent
+
+    grounded = ReviewComment(
+        path="src/auth.py",
+        line=1,
+        body="Unparameterized SELECT with user_id enables SQL injection.",
+        severity="error",
+        category="security",
+    )
+    raw = [FileReview(path="src/auth.py", comments=[grounded], summary="One finding.")]
+    passthrough = json.dumps(
+        {
+            "file_reviews": [
+                {
+                    "path": "src/auth.py",
+                    "comments": [grounded.model_dump()],
+                    "summary": "Verified.",
+                }
+            ],
+            "overall_summary": "One verified security issue.",
+            "risk_level": "high",
+            "dropped_count": 0,
+        }
+    )
+    llm = _make_synth_llm(passthrough)
+    result = SynthesizerAgent(llm).synthesize(sample_pr, raw)
+
+    bodies = [c.body for fr in result.file_reviews for c in fr.comments]
+    assert any("SQL injection" in b for b in bodies)
+    assert result.dropped_count == 0
+
+
+def test_synthesizer_missing_dropped_count_defaults_to_zero(sample_pr):
+    """Backward compatibility: a synthesizer response without dropped_count
+    still parses (older prompt shape / partial LLM compliance)."""
+    from arete_agents.orchestrator import SynthesizerAgent
+
+    response = (
+        '{"file_reviews": [], "overall_summary": "Clean.", "risk_level": "low"}'
+    )
+    llm = _make_synth_llm(response)
+    result = SynthesizerAgent(llm).synthesize(
+        sample_pr,
+        [FileReview(path="src/auth.py", comments=[], summary="clean")],
+    )
+    assert result.dropped_count == 0
+
+
+def test_synthesizer_prompt_instructs_verification(sample_pr):
+    """The system prompt must contain the verification contract: drop
+    low-confidence/hallucinated findings and gate ```suggestion blocks."""
+    from arete_agents.orchestrator import SynthesizerAgent
+
+    llm = _make_synth_llm(
+        '{"file_reviews": [], "overall_summary": "ok", "risk_level": "low", '
+        '"dropped_count": 0}'
+    )
+    SynthesizerAgent(llm).synthesize(
+        sample_pr, [FileReview(path="src/auth.py", comments=[], summary="clean")]
+    )
+    system_content = llm.invoke.call_args[0][0][0].content  # SystemMessage
+    assert "DROP" in system_content
+    assert "suggestion" in system_content
+    assert "dropped_count" in system_content
+
+
+def test_synthesizer_prompt_does_not_require_mermaid(sample_pr):
+    """The Mermaid diagram must no longer be a hard requirement of every
+    summary — at most an at-your-judgment option."""
+    from arete_agents.orchestrator import SynthesizerAgent
+
+    llm = _make_synth_llm(
+        '{"file_reviews": [], "overall_summary": "ok", "risk_level": "low", '
+        '"dropped_count": 0}'
+    )
+    SynthesizerAgent(llm).synthesize(
+        sample_pr, [FileReview(path="src/auth.py", comments=[], summary="clean")]
+    )
+    system_content = llm.invoke.call_args[0][0][0].content
+    assert "MUST include a ````mermaid" not in system_content
+    lower = system_content.lower()
+    # No phrasing that makes a diagram mandatory.
+    assert "must include a diagram" not in lower
+    assert "must include a mermaid" not in lower
+
+
+def test_large_raw_reviews_payload_is_truncated(sample_pr):
+    """Raw-reviews JSON over MAX_RAW_REVIEWS_CHARS must be truncated before
+    being sent to the Synthesizer LLM, with an explicit truncation note."""
+    from arete_agents.orchestrator import MAX_RAW_REVIEWS_CHARS, SynthesizerAgent
+
+    llm = _make_synth_llm(
+        '{"file_reviews": [], "overall_summary": "ok", "risk_level": "low", '
+        '"dropped_count": 0}'
+    )
+    huge_summary = "x" * (MAX_RAW_REVIEWS_CHARS + 10_000)
+    raw = [FileReview(path="src/auth.py", comments=[], summary=huge_summary)]
+    SynthesizerAgent(llm).synthesize(sample_pr, raw)
+
+    human_content = llm.invoke.call_args[0][0][1].content  # HumanMessage
+    assert len(human_content) < len(huge_summary)
+    assert "[Raw reviews truncated:" in human_content
+
+
+def test_small_raw_reviews_payload_is_not_truncated(sample_pr):
+    """Payloads under the cap must be passed through untouched."""
+    from arete_agents.orchestrator import SynthesizerAgent
+
+    llm = _make_synth_llm(
+        '{"file_reviews": [], "overall_summary": "ok", "risk_level": "low", '
+        '"dropped_count": 0}'
+    )
+    raw = [FileReview(path="src/auth.py", comments=[], summary="small")]
+    SynthesizerAgent(llm).synthesize(sample_pr, raw)
+    human_content = llm.invoke.call_args[0][0][1].content
+    assert "[Raw reviews truncated:" not in human_content
+
+
 def test_large_patch_is_truncated(cyclic_llm):
     """Patches over MAX_PATCH_CHARS must be truncated before being sent to LLM."""
     from arete_agents.agents.base import MAX_PATCH_CHARS
