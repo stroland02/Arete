@@ -1,5 +1,6 @@
 import type { ReviewComment, ReviewResult } from './types.js'
 import { gitlabBaseUrl } from './gitlab-fetcher.js'
+import { getGitLabConfig } from './config.js'
 
 export interface DiffRefs {
   baseSha: string
@@ -20,7 +21,7 @@ export async function postGitLabReview(
 ): Promise<void> {
   const url = `${gitlabBaseUrl()}/api/v4/projects/${projectId}/merge_requests/${mrIid}/discussions`
   const headers = {
-    'Private-Token': process.env.GITLAB_ACCESS_TOKEN ?? '',
+    'Private-Token': getGitLabConfig().accessToken,
     'Content-Type': 'application/json',
   }
 

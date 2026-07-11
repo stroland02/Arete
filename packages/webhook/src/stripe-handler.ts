@@ -1,8 +1,9 @@
 import Stripe from 'stripe';
 import { Request, Response } from 'express';
 import { prisma } from './db.js';
+import { getStripeConfig } from './config.js';
 
-const stripeKey = process.env.STRIPE_SECRET_KEY
+const stripeKey = getStripeConfig().secretKey
 if (!stripeKey) throw new Error('STRIPE_SECRET_KEY env var is required')
 const stripe = new Stripe(stripeKey, {
   apiVersion: '2026-06-24.dahlia',
@@ -10,7 +11,7 @@ const stripe = new Stripe(stripeKey, {
 
 export async function handleStripeWebhook(req: Request, res: Response) {
   const sig = req.headers['stripe-signature'];
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  const webhookSecret = getStripeConfig().webhookSecret;
 
   if (!sig || !webhookSecret) {
     res.status(400).send('Missing signature or secret');

@@ -3,6 +3,7 @@ import { fetchGitLabMRContext } from './gitlab-fetcher.js';
 import { postGitLabReview, DiffRefs } from './gitlab-comment-poster.js';
 import { runReviewPipeline } from './review-bridge.js';
 import { persistReview } from './persistence.js';
+import { getGitLabConfig } from './config.js';
 
 async function processMergeRequest(body: any): Promise<void> {
   const projectId: number = body.project?.id
@@ -56,7 +57,7 @@ async function processMergeRequest(body: any): Promise<void> {
 
 export async function handleGitLabWebhook(req: Request, res: Response): Promise<void> {
   const token = req.headers['x-gitlab-token'];
-  const secret = process.env.GITLAB_WEBHOOK_SECRET;
+  const secret = getGitLabConfig().webhookSecret;
 
   // Fail closed: without a configured secret we cannot verify the request
   // actually came from GitLab, so refuse to process it rather than trusting

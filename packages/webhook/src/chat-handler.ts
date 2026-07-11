@@ -1,4 +1,5 @@
 import type { Octokit } from '@octokit/core'
+import { getServiceConfig } from './config.js'
 
 interface PullRequestReviewCommentPayload {
   action: string
@@ -67,7 +68,7 @@ export async function handleReviewCommentEvent(
 }
 
 async function runChatPipeline(context: any): Promise<string> {
-  const baseUrl = process.env.PYTHON_SERVICE_URL ?? 'http://127.0.0.1:8000'
+  const baseUrl = getServiceConfig().pythonServiceUrl
   const res = await fetch(`${baseUrl}/chat`, {
     method: 'POST',
     body: JSON.stringify(context),

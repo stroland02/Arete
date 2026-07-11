@@ -1,11 +1,12 @@
 import type { PRContext, ReviewResult } from './types.js'
+import { getServiceConfig } from './config.js'
 
 export async function runReviewPipeline(prContext: PRContext): Promise<ReviewResult> {
   const controller = new AbortController()
   const timer = setTimeout(() => { controller.abort() }, 120_000)
 
   try {
-    const baseUrl = process.env.PYTHON_SERVICE_URL ?? 'http://127.0.0.1:8000'
+    const baseUrl = getServiceConfig().pythonServiceUrl
     const res = await fetch(`${baseUrl}/review`, {
       method: 'POST',
       body: JSON.stringify(prContext),

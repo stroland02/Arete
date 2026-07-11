@@ -1,4 +1,5 @@
 import type { FileChange, PRContext } from './types.js'
+import { getGitLabConfig } from './config.js'
 
 // Kept in sync with pr-fetcher.ts's EXTENSION_MAP (and the Python
 // _EXTENSION_MAP in packages/agents/src/arete_agents/models/pr.py, which
@@ -22,7 +23,7 @@ interface GitLabChange {
 }
 
 export function gitlabBaseUrl(): string {
-  return process.env.GITLAB_URL || 'https://gitlab.com'
+  return getGitLabConfig().url
 }
 
 function detectLanguage(filename: string): string {
@@ -54,7 +55,7 @@ export async function fetchGitLabMRContext(
 ): Promise<PRContext> {
   const url = `${gitlabBaseUrl()}/api/v4/projects/${projectId}/merge_requests/${mrIid}/changes`
   const res = await fetch(url, {
-    headers: { 'Private-Token': process.env.GITLAB_ACCESS_TOKEN ?? '' },
+    headers: { 'Private-Token': getGitLabConfig().accessToken },
   })
 
   if (!res.ok) {
