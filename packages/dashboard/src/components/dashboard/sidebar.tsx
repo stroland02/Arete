@@ -7,7 +7,7 @@ import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import { springTransition } from "@/lib/motion";
 import { InstallationSwitcher } from "@/components/InstallationSwitcher";
-import { SignOutButton } from "@/components/SignOutButton";
+import type { ReactNode } from "react";
 import type { AuthorizedInstallation } from "@/lib/installations";
 
 const collapseTransition = { ...springTransition, opacity: { duration: 0.15 } } as const;
@@ -23,9 +23,10 @@ interface SidebarProps {
   onToggleCollapsed: () => void;
   installations: AuthorizedInstallation[];
   userName: string;
+  signOutSlot: ReactNode;
 }
 
-export function Sidebar({ collapsed, onToggleCollapsed, installations, userName }: SidebarProps) {
+export function Sidebar({ collapsed, onToggleCollapsed, installations, userName, signOutSlot }: SidebarProps) {
   const pathname = usePathname();
   const initial = userName.charAt(0).toUpperCase();
 
@@ -132,7 +133,7 @@ export function Sidebar({ collapsed, onToggleCollapsed, installations, userName 
                 className="text-sm overflow-hidden whitespace-nowrap min-w-0 flex-1"
               >
                 <p className="font-medium text-content-secondary truncate">{userName}</p>
-                <SignOutButton />
+                {signOutSlot}
               </motion.div>
             )}
           </AnimatePresence>

@@ -10,9 +10,10 @@ interface DashboardShellProps {
   children: ReactNode;
   installations: AuthorizedInstallation[];
   userName: string;
+  signOutSlot: ReactNode;
 }
 
-export function DashboardShell({ children, installations, userName }: DashboardShellProps) {
+export function DashboardShell({ children, installations, userName, signOutSlot }: DashboardShellProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -22,6 +23,7 @@ export function DashboardShell({ children, installations, userName }: DashboardS
         onToggleCollapsed={() => setCollapsed((c) => !c)}
         installations={installations}
         userName={userName}
+        signOutSlot={signOutSlot}
       />
       <main
         className={cn(
