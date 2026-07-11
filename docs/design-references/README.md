@@ -56,6 +56,55 @@ SuperLog's actual product — "Active Critical Incidents" panel and a "Service m
 
 ---
 
+## Reference batch: `superlog-review-detail/`
+
+SuperLog's per-incident detail page — header (title, service, environment, priority, status), an Activity tab (trace/error timeline), a Findings tab, and a PR tab ("No PR has been opened for this incident").
+
+**Correction to how this batch was described when handed off:** the underlying *data* for an equivalent page is fully real — `Review` already has `riskLevel`, `overallSummary`, `headSha`, `analysisStatus`, and a `ReviewComment[]` with `path`/`line`/`body`/`severity`/`category` on each one. But **no per-review detail route exists yet** — `packages/dashboard/src/app/(dashboard)/` currently has exactly one page (the overview list). Clicking into a review from "Latest Activity" today goes nowhere. So: data model built, detail page not built. This is the same shape of gap as the connect-flow picker — real backend, zero UI — not something already shipped.
+
+| Element in the reference | Backend status |
+|---|---|
+| Title/summary header | ✅ Real — `Review.overallSummary`, `Review.riskLevel` |
+| Activity/timeline tab | ⚠️ Partial — `ReviewComment.createdAt` exists per comment, but there's no "Issue detected" / "Recovery detected" lifecycle event model, only a flat comment list |
+| Findings tab | ✅ Real — this is exactly `ReviewComment[]`, already fetched by the existing dashboard queries |
+| PR tab | ⚠️ N/A as shown — Areté's "PR" *is* the review itself (the review posts as PR comments), so a nested "PR tab" doesn't map 1:1. A link back to the GitHub/GitLab PR URL would be the equivalent, and that URL isn't currently stored on `Review` — would need a small schema addition. |
+
+---
+
+## Reference batch: `superlog-alerting/` — speculative, no backend
+
+Empty "Alerts" page with a "+ new alert" CTA. **Do not build this.** No alert-rule data model, no notification-delivery mechanism (Slack was explicitly scoped out this session as a future, structurally-different outbound connector, not built), no evaluation engine to trigger an alert from. This is pure Phase 2/3 territory.
+
+---
+
+## Reference batch: `superlog-raw-telemetry-explorer/` — speculative, no backend
+
+A generic log/trace/metric explorer (facets, severity filters, a raw events table) — SuperLog's own telemetry data, browsable ad hoc. Areté has no equivalent concept: the 5 telemetry connectors fetch a small, purpose-built summary (`TelemetrySnapshot`) for one PR's review, not a queryable raw event store. Building a generic explorer would require an entirely new ingestion/storage/query layer — do not build from this reference without that discussion happening first.
+
+---
+
+## Reference batch: `superlog-widget-builder/` — speculative, no backend
+
+Dashboard list/creation UI, an "add widget" modal (chart type, source: metric/traces/logs, axis toggles), and a "new variable" modal for dashboard filters. This is a full user-configurable-dashboard product surface. Areté's dashboard is currently one fixed page with fixed queries — there is no concept of a user-created dashboard, saved widget, or variable at all. This is the most speculative of all the batches; do not build any part of it without a real design/data-model discussion, since it implies a materially different product (self-serve BI tool) than what's built.
+
+---
+
+## Reference batch: `superlog-billing-settings/` — real and buildable now
+
+Org-level billing settings: current plan (Free/Pay-as-you-go/Pro/Max), usage bars (investigation credits, spans, logs, metric points), current bill estimate.
+
+**Unlike the other new batches, this one has a mostly-real backend already:** `packages/webhook/src/stripe-handler.ts` handles Stripe webhooks and keeps `Installation.subscriptionStatus`/`stripeCustomerId`/`stripeSubscriptionId` up to date; `packages/webhook/src/billing.ts` enforces the 50-review free tier. What's missing is only the **customer-facing page** — there's no dashboard route showing current plan/usage to the customer today. Building a simplified version of this (current plan, reviews-used-this-period vs. the 50 limit) is legitimate, real work that can start now — it's reading data that already exists (`Installation.subscriptionStatus`, `Installation.usageCount`), not speculative like the batches above. The usage-metered line items (spans/logs/metric points) don't apply to Areté's per-review pricing model — skip those, they're SuperLog-specific.
+
+---
+
+## Reference batch: `superlog-settings-integrations/`
+
+Mixed batch: general project settings (name/slug/context — mostly not applicable to Areté's model), a per-project "Integrations" card grid (GitHub/Slack/Linear/Notion/Cloudflare, each "Connect"), an "Install MCP server" page, and an org switcher.
+
+The **Integrations card grid** is the same underlying concept as `superlog-connect-flow/` — just a settings-surface presentation instead of an onboarding-flow presentation. Same backend-reality notes apply: the mechanism is real for our 5 connectors, no UI enumerates them yet. The **MCP server install** page and **org switcher** don't map to anything in Areté's product today (Areté doesn't expose an MCP server to its own customers, and multi-org switching isn't a modeled concept — `Installation` is 1:1 with a GitHub/GitLab install, not a multi-org account structure) — treat as non-applicable reference, not a build target.
+
+---
+
 ## What's already built (backend, tested) — safe to build UI against today
 
 - **5 telemetry connectors**, API-key auth: GitHub Actions, PostHog, Sentry, Vercel, Stripe (`packages/webhook/src/telemetry/`)
@@ -65,13 +114,16 @@ SuperLog's actual product — "Active Critical Incidents" panel and a "Service m
 
 ## Real but not built (backend exists, zero UI)
 
-- A settings/connections page (OAuth "Connect" buttons + API-key paste forms)
-- A billing/plan management page for customers (webhook handling exists; no customer-facing page)
+- A settings/connections page (OAuth "Connect" buttons + API-key paste forms), whether presented as an onboarding picker (`superlog-connect-flow/`) or a settings-page card grid (`superlog-settings-integrations/`) — same backend either way
+- A billing/plan management page for customers — `subscriptionStatus`/`usageCount` are real and queryable now; only the page is missing (`superlog-billing-settings/`)
 - The `/settings/connections?connected=<provider>` landing page the OAuth callback already redirects to
+- A per-review detail page — `Review`/`ReviewComment` have everything needed except a stored PR URL and a lifecycle-event timeline (`superlog-review-detail/`)
 
 ## Speculative — do not build without a backend/data-model discussion first
 
-- **Alerting / notification rules** — no backend, Slack was explicitly deferred this session as "a different shape" of connector (outbound delivery, not inbound telemetry)
+- **Alerting / notification rules** (`superlog-alerting/`) — no backend, Slack was explicitly deferred this session as "a different shape" of connector (outbound delivery, not inbound telemetry)
+- **Raw telemetry explorer** (`superlog-raw-telemetry-explorer/`) — no queryable event store; the 5 connectors fetch one small per-PR summary each, not browsable raw events
+- **Widget builder / user-configurable dashboards** (`superlog-widget-builder/`) — no concept of a saved dashboard, widget, or variable; implies a different product (self-serve BI) than what's built
 - **Incidents as a first-class concept** — no data model; Areté's closest concept is `Review`/`ReviewComment`, which are PR-review findings, not production incidents
 - **Auto-discovered service map** — no inventory-discovery capability anywhere
 - **Widget builder / custom dashboard layout** — no data model for user-configurable layouts
