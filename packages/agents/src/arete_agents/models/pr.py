@@ -1,5 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from arete_agents.models.telemetry import TelemetrySnapshot
+
 _EXTENSION_MAP: dict[str, str] = {
     ".py": "python", ".ts": "typescript", ".tsx": "typescript",
     ".js": "javascript", ".jsx": "javascript", ".go": "go",
@@ -36,3 +38,4 @@ class PRContext(BaseModel):
     files: list[FileChange]
     custom_rules: list[str] = Field(default_factory=list, alias="customRules")
     ci_logs: str | None = Field(None, alias="ciLogs")
+    telemetry: list[TelemetrySnapshot] = Field(default_factory=list)
