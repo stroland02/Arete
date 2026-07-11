@@ -22,6 +22,12 @@ from arete_agents.models.review import FileReview, ReviewResult
 
 _SEVERITY_WEIGHT = {"error": 3, "warning": 2, "info": 1}
 
+# Cap on the serialized raw-reviews JSON sent to the Synthesizer in one call.
+# Mirrors MAX_PATCH_CHARS in agents/base.py: for a large PR (many files x 6
+# agents x comments) an unbounded payload can blow the context window or
+# produce mangled/hallucinated line numbers, so degrade gracefully instead.
+MAX_RAW_REVIEWS_CHARS = 150_000
+
 
 def _risk_level(
     file_reviews: list[FileReview],
@@ -90,13 +96,15 @@ class SynthesizerAgent:
             )
             
         system_prompt = """You are the Areté Synthesizer.
-Your task is to merge raw code reviews from multiple specialist agents.
+Your task is to merge raw code reviews from multiple specialist agents into one verified, high-signal review.
 1. Read the raw comments provided.
 2. Remove duplicates and resolve contradictions.
-3. Group the finalized comments by file.
-4. Provide a summarized string for each file.
-5. Provide an overall summary. IMPORTANT: Your overall summary MUST include a ````mermaid ... ```` block containing an architectural sequence diagram or flow chart that visually maps out the impact of this Pull Request's changes.
-6. Calculate risk level ("low", "medium", "high", "critical") based on severity.
+3. VERIFY every remaining comment against the diff content quoted inside it and the other raw reviews. A comment is well-grounded only if it references an actual line, symbol, or pattern visible in the review material. DROP any comment that is low-confidence, speculative, vague, or hallucinated (e.g. it names a variable or function that does not appear anywhere in the reviewed diff content) — do NOT include dropped comments in the output. Count how many you dropped and report it as "dropped_count".
+4. NEVER include a ```suggestion code block unless you can verify the suggested replacement actually addresses the diff shown: it must reference real variable/function names that appear in the diff content and match the surrounding code's indentation. If a suggestion cannot be verified, strip the ```suggestion block and keep only the prose explanation (or drop the whole comment if nothing verifiable remains).
+5. Group the finalized comments by file.
+6. Provide a summarized string for each file.
+7. Provide an overall summary. You may optionally include a ```mermaid diagram in it, but ONLY if this PR's changes are complex enough (multi-component data/control flow) that a diagram genuinely aids understanding — for simple or small PRs, omit it.
+8. Calculate risk level ("low", "medium", "high", "critical") based on severity.
 
 Return ONLY valid JSON with this exact structure:
 {
@@ -116,7 +124,8 @@ Return ONLY valid JSON with this exact structure:
     }
   ],
   "overall_summary": "...",
-  "risk_level": "low"
+  "risk_level": "low",
+  "dropped_count": <integer: number of raw comments you dropped as unverified/hallucinated in step 3>
 }"""
 
         if pr.custom_rules:
@@ -124,11 +133,21 @@ Return ONLY valid JSON with this exact structure:
             system_prompt += "\n".join(f"- {rule}" for rule in pr.custom_rules)
 
         raw_reviews_json = [fr.model_dump() for fr in raw_reviews]
-        
+        serialized = json.dumps(raw_reviews_json, indent=2)
+        truncation_note = ""
+        if len(serialized) > MAX_RAW_REVIEWS_CHARS:
+            serialized = serialized[:MAX_RAW_REVIEWS_CHARS]
+            truncation_note = (
+                f"\n[Raw reviews truncated: showing first {MAX_RAW_REVIEWS_CHARS} "
+                "chars only — the JSON above may be cut off mid-structure; "
+                "synthesize what is visible and do not invent content for the "
+                "missing remainder]"
+            )
+
         user_prompt = f"""Synthesize the following raw reviews for PR #{pr.pr_number}:
-        
+
 Raw Reviews:
-{json.dumps(raw_reviews_json, indent=2)}
+{serialized}{truncation_note}
 """
 
         messages = [
@@ -152,12 +171,20 @@ Raw Reviews:
         risk = data.get("risk_level", "low").lower()
         if risk not in ("low", "medium", "high", "critical"):
             risk = "low"
-            
+
+        # Explicit verification-pass accounting (see system prompt step 3).
+        # Defensive parse: older/non-compliant responses simply report 0.
+        try:
+            dropped_count = max(0, int(data.get("dropped_count", 0)))
+        except (TypeError, ValueError):
+            dropped_count = 0
+
         return ReviewResult(
             pr_context=pr,
             file_reviews=file_reviews,
             overall_summary=data.get("overall_summary", "Synthesized reviews."),
-            risk_level=risk
+            risk_level=risk,
+            dropped_count=dropped_count,
         )
 
 

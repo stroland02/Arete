@@ -34,6 +34,28 @@ class BaseReviewAgent(ABC):
     def __init__(self, llm: BaseChatModel) -> None:
         self._llm = llm
 
+    @staticmethod
+    def _build_pr_manifest(file: FileChange, pr_context: PRContext) -> str:
+        """Cheap, deterministic PR-level manifest: every OTHER file changed in
+        the same PR, as path + diff stats. Gives each agent peripheral
+        awareness of the whole PR's shape (e.g. a removed field in models.py
+        that handler.py depends on) without shipping every file's full diff —
+        intentionally NOT an LLM call and NOT repo-context RAG.
+        """
+        others = [f for f in pr_context.files if f.path != file.path]
+        if not others:
+            return ""
+        lines = "\n".join(
+            f"- {escape_for_prompt(f.path)} (+{f.additions}/-{f.deletions})"
+            for f in others
+        )
+        return f"""
+<pr_file_manifest>
+Other files changed in this same PR (peripheral context only — review ONLY the file in <diff> below, but consider cross-file impact, e.g. renamed/removed symbols these files may introduce):
+{lines}
+</pr_file_manifest>
+"""
+
     def _build_user_prompt(self, file: FileChange, pr_context: PRContext) -> str:
         patch = file.patch
         truncation_note = ""
@@ -50,7 +72,7 @@ PR: "{escape_for_prompt(pr_context.title)}" in {escape_for_prompt(pr_context.rep
 Description: {escape_for_prompt(pr_context.description)}
 File: {escape_for_prompt(file.path)} ({file.language})
 </pr_metadata>
-
+{self._build_pr_manifest(file, pr_context)}
 <diff>
 {patch}{truncation_note}
 </diff>
