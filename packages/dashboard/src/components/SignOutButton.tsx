@@ -10,7 +10,7 @@ export function SignOutButton() {
     >
       <button
         type="submit"
-        className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+        className="text-xs text-content-muted hover:text-content-secondary transition-colors"
       >
         Sign out
       </button>
