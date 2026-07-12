@@ -78,9 +78,8 @@ export const CONNECTORS: ConnectorDef[] = [
     tagline: "Connect code changes in billing-critical paths to real revenue and subscription impact.",
     authKind: "api-key",
     authSummary: "A restricted, read-only API key — Stripe Connect (OAuth) isn't the right tool for reading your own account's data.",
-    trustNote: "The key would be scoped to read-only reporting data — never payment methods or the ability to move money.",
-    requirement: "Not yet available — needs a settings form to securely collect and encrypt the key.",
-    status: "planned",
+    trustNote: "Create a Restricted key in Stripe with read-only access to Charges. Areté encrypts it at rest and never requests write access.",
+    status: "available",
     connected: false,
   },
 ];

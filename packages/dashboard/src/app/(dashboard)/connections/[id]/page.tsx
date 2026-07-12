@@ -6,6 +6,7 @@ import { CONNECTORS, getConnector, type ConnectorDef } from "@/lib/connector-cat
 import { resolveSelectedInstallationIds } from "@/lib/queries";
 import { ConnectorIcon } from "@/components/connections/connector-icon";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
+import { StripeConnectForm } from "@/components/connections/stripe-connect-form";
 
 export const dynamic = "force-dynamic";
 
@@ -93,11 +94,19 @@ export default async function ConnectorDetailPage({
           )}
         </div>
 
-        <div className="flex items-center justify-between mt-6">
-          <Link href="/connections" className="text-sm text-content-muted hover:text-content-secondary transition-colors">
+        <div className="flex items-center justify-between mt-6 gap-4">
+          <Link
+            href="/connections"
+            className="shrink-0 text-sm text-content-muted hover:text-content-secondary transition-colors"
+          >
             ← Back to all connectors
           </Link>
-          {connectHref ? (
+
+          {connector.authKind === "api-key" && connector.status === "available" && targetInstallationId ? (
+            <div className="flex-1 max-w-sm">
+              <StripeConnectForm installationId={targetInstallationId} />
+            </div>
+          ) : connectHref ? (
             <a
               href={connectHref}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-white bg-accent-primary hover:bg-accent-primary/90 transition-colors"
