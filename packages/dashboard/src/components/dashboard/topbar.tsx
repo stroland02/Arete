@@ -1,13 +1,33 @@
+"use client";
+
+import { usePathname } from "next/navigation";
 import { IconSearch, IconBell } from "@tabler/icons-react";
 
+const BREADCRUMB_LABELS: Record<string, string> = {
+  "/": "Overview",
+  "/connections": "Connections",
+  "/reviews": "Review",
+  "/history": "Review History",
+  "/settings": "Settings",
+};
+
+function breadcrumbFor(pathname: string): string {
+  if (BREADCRUMB_LABELS[pathname]) return BREADCRUMB_LABELS[pathname];
+  // Dynamic sub-routes (e.g. /connections/vercel) fall back to their parent's label.
+  const parent = "/" + pathname.split("/")[1];
+  return BREADCRUMB_LABELS[parent] ?? "Overview";
+}
+
 export function Topbar() {
+  const pathname = usePathname();
+
   return (
     <header className="flex items-center justify-between px-8 pt-6 pb-2">
       <div className="flex items-center gap-3">
         <nav className="flex items-center gap-1.5 text-sm text-content-muted">
           <span className="text-content-secondary font-medium">Dashboard</span>
           <span>/</span>
-          <span className="text-content-primary font-medium">Overview</span>
+          <span className="text-content-primary font-medium">{breadcrumbFor(pathname)}</span>
         </nav>
         {/* No "system live" pill here: the Topbar has no real signal to back
             such a claim, and the agent-orchestration graph already shows an
