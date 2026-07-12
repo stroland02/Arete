@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   getDashboardViewModel,
+  getTrendSeries,
   resolveSelectedInstallationIds,
   type DashboardViewModel,
 } from './queries';
@@ -57,6 +58,14 @@ function createFakeDb(repos: FakeRepo[], reviews: FakeReview[], comments: FakeCo
             inScope(r.installationId, where.installationId.in) &&
             matchesCreatedAt(r.createdAt, where.createdAt)
         ).length;
+      },
+      findMany: async ({ where, select }: any) => {
+        void select;
+        return repos.filter(
+          (r) =>
+            inScope(r.installationId, where.installationId.in) &&
+            matchesCreatedAt(r.createdAt, where.createdAt)
+        );
       },
     },
     review: {
@@ -194,5 +203,31 @@ describe('resolveSelectedInstallationIds', () => {
 
   it('returns an empty array when the session has zero authorized installations', () => {
     expect(resolveSelectedInstallationIds([], 'anything')).toEqual([]);
+  });
+});
+
+describe('getTrendSeries', () => {
+  it('only includes reviews and repositories from authorized installations', async () => {
+    const repos: FakeRepo[] = [
+      { id: 'repo-a', installationId: 'inst-1', fullName: 'org/a', createdAt: new Date('2026-07-01') },
+      { id: 'repo-b', installationId: 'inst-2', fullName: 'org/b', createdAt: new Date('2026-07-02') },
+    ];
+    const reviews: FakeReview[] = [
+      { id: 'rev-a', repositoryId: 'repo-a', prNumber: 1, riskLevel: 'low', createdAt: new Date('2026-07-05') },
+      { id: 'rev-b', repositoryId: 'repo-b', prNumber: 2, riskLevel: 'low', createdAt: new Date('2026-07-06') },
+    ];
+    const db = createFakeDb(repos, reviews, []);
+
+    const result = await getTrendSeries(db as any, ['inst-1']);
+
+    expect(result.reviewDates).toEqual([reviews[0].createdAt]);
+    expect(result.repoDates).toEqual([repos[0].createdAt]);
+  });
+
+  it('returns empty arrays when installationIds is empty', async () => {
+    const db = createFakeDb([], [], []);
+    const result = await getTrendSeries(db as any, []);
+    expect(result.reviewDates).toEqual([]);
+    expect(result.repoDates).toEqual([]);
   });
 });

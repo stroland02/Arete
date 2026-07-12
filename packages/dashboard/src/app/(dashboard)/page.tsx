@@ -2,8 +2,15 @@ import { IconChartBar, IconBug, IconCalendarStats, IconActivity } from "@tabler/
 import { redirect } from "next/navigation";
 import { auth } from "../../lib/auth";
 import { db } from "../../lib/db";
-import { getDashboardViewModel, resolveSelectedInstallationIds } from "../../lib/queries";
+import { getDashboardViewModel, getTrendSeries, resolveSelectedInstallationIds } from "../../lib/queries";
+import { bucketByDay, cumulativeByDay } from "../../lib/trends";
 import { EmptyState } from "../../components/EmptyState";
+import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
+import { MetricsGrid, type Metric } from "@/components/dashboard/metrics-grid";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { ActivityList } from "@/components/dashboard/activity-list";
+import { AgentOrchestrationGraph } from "@/components/dashboard/agent-orchestration-graph";
+import { CategoryBreakdown } from "@/components/dashboard/category-breakdown";
 
 // This page reads the session and queries Prisma scoped to it on every
 // request — it must never be statically prerendered (that would either fail
@@ -11,39 +18,6 @@ import { EmptyState } from "../../components/EmptyState";
 // data into a page served to everyone). `force-dynamic` makes that explicit
 // instead of relying on Next's heuristics.
 export const dynamic = "force-dynamic";
-
-function timeAgo(date: Date): string {
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return date.toLocaleDateString();
-}
-
-function riskBadgeClasses(riskLevel: string): string {
-  switch (riskLevel.toLowerCase()) {
-    case "critical":
-    case "high":
-      return "bg-rose-500/10 text-rose-400 border-rose-500/20";
-    case "medium":
-      return "bg-amber-500/10 text-amber-400 border-amber-500/20";
-    case "low":
-      return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
-    default:
-      return "bg-slate-500/10 text-slate-400 border-slate-500/20";
-  }
-}
-
-function formatCategory(category: string): string {
-  return category
-    .split("_")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-}
 
 export default async function DashboardOverview({
   searchParams,
@@ -61,7 +35,10 @@ export default async function DashboardOverview({
     installation
   );
 
-  const viewModel = await getDashboardViewModel(db, installationIds);
+  const [viewModel, trendSeries] = await Promise.all([
+    getDashboardViewModel(db, installationIds),
+    getTrendSeries(db, installationIds),
+  ]);
 
   if (!viewModel.hasAccess) {
     return <EmptyState />;
@@ -80,133 +57,95 @@ export default async function DashboardOverview({
     latestReviews,
   } = viewModel;
 
-  const maxCategoryCount = Math.max(1, ...commentsByCategory.map((c) => c.count));
+  // Trends are derived from real createdAt data via getTrendSeries — never
+  // fabricated. "Critical Bugs Prevented" deliberately has no sparkline:
+  // scoped out of this port (see docs/superpowers/specs/2026-07-11-dashboard-ui-port-design.md
+  // §3.2) even though ReviewComment now has a createdAt column on main.
+  const totalPrsTrend = cumulativeByDay(trendSeries.reviewDates, 7);
+  const reviewsThisWeekTrend = bucketByDay(trendSeries.reviewDates, 7);
+  const activeReposTrend = cumulativeByDay(trendSeries.repoDates, 7);
 
-  const metrics = [
+  const metrics: Metric[] = [
     {
       title: "Total PRs Reviewed",
       value: totalPrs.toString(),
       change: totalPrsChange.change,
       positive: totalPrsChange.positive,
-      icon: <IconChartBar className="w-6 h-6 text-indigo-400" />,
+      icon: <IconChartBar className="w-6 h-6 text-accent-primary" />,
+      trend: totalPrsTrend,
     },
     {
       title: "Critical Bugs Prevented",
       value: criticalBugs.toString(),
       change: criticalBugsChange.change,
       positive: criticalBugsChange.positive,
-      icon: <IconBug className="w-6 h-6 text-emerald-400" />,
+      icon: <IconBug className="w-6 h-6 text-accent-success" />,
     },
     {
       title: "Reviews This Week",
       value: recentReviews.toString(),
       change: `${weeklyDelta >= 0 ? "+" : ""}${weeklyDelta} vs last week`,
       positive: weeklyDelta >= 0,
-      icon: <IconCalendarStats className="w-6 h-6 text-cyan-400" />,
+      icon: <IconCalendarStats className="w-6 h-6 text-accent-info" />,
+      trend: reviewsThisWeekTrend,
     },
     {
       title: "Active Repositories",
       value: activeRepos.toString(),
       change: `${repoDelta >= 0 ? "+" : ""}${repoDelta}`,
       positive: repoDelta >= 0,
-      icon: <IconActivity className="w-6 h-6 text-purple-400" />,
+      icon: <IconActivity className="w-6 h-6 text-accent-secondary" />,
+      trend: activeReposTrend,
     },
   ];
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-1000 ease-out">
-      {/* Header section */}
-      <div className="flex flex-col gap-2">
-        <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400">
-          Overview
-        </h1>
-        <p className="text-slate-400 text-lg">
-          Monitor your AI-assisted code reviews and team performance in real-time.
-        </p>
-      </div>
+    <PageReveal className="space-y-8">
+      <RevealItem>
+        <h1 className="text-2xl font-semibold text-content-primary">Overview</h1>
+      </RevealItem>
 
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {metrics.map((metric, i) => (
-          <div key={i} className="glass-panel p-6 flex flex-col gap-4 group">
-            <div className="flex justify-between items-start">
-              <div className="p-3 bg-white/5 rounded-2xl border border-white/10 group-hover:bg-white/10 transition-colors">
-                {metric.icon}
-              </div>
-              <div className={`px-2.5 py-1 rounded-full text-xs font-medium border ${metric.positive ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'}`}>
-                {metric.change}
-              </div>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-slate-400 mb-1">{metric.title}</p>
-              <h3 className="text-3xl font-bold text-white tracking-tight group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-indigo-300 transition-all">
-                {metric.value}
-              </h3>
-            </div>
-          </div>
-        ))}
-      </div>
+      <MetricsGrid metrics={metrics} />
 
-      {/* Recent Activity Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 glass-panel p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-white">Comments by Agent</h2>
-          </div>
-          {commentsByCategory.length === 0 ? (
-            <div className="h-64 flex items-center justify-center border border-white/5 rounded-xl bg-white/[0.02] backdrop-blur-sm">
-              <p className="text-slate-500 flex items-center gap-2">
-                <IconActivity className="w-5 h-5" />
-                No review comments yet
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {commentsByCategory.map((entry) => (
-                <div key={entry.category} className="flex items-center gap-4">
-                  <p className="w-40 shrink-0 text-sm font-medium text-slate-300">
-                    {formatCategory(entry.category)}
-                  </p>
-                  <div className="flex-1 h-2.5 rounded-full bg-white/5 border border-white/5 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400"
-                      style={{ width: `${(entry.count / maxCategoryCount) * 100}%` }}
-                    />
-                  </div>
-                  <p className="w-10 shrink-0 text-right text-sm font-semibold text-slate-200">
-                    {entry.count}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      <RevealItem className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Agent Orchestration</CardTitle>
+            <button
+              disabled
+              title="Review history coming soon"
+              className="text-sm text-content-muted font-medium opacity-60 cursor-not-allowed"
+            >
+              View All
+            </button>
+          </CardHeader>
+          <AgentOrchestrationGraph activeRepos={activeRepos} totalPrs={totalPrs} />
+        </Card>
 
-        <div className="glass-panel p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-white">Latest Activity</h2>
-          </div>
-          <div className="space-y-4">
-            {latestReviews.length === 0 && (
-              <p className="text-sm text-slate-500">No reviews yet.</p>
-            )}
-            {latestReviews.map((review) => (
-              <div key={review.id} className="flex gap-4 p-3 rounded-xl hover:bg-white/5 transition-colors cursor-pointer border border-transparent hover:border-white/5">
-                <div className="w-2 h-2 mt-2 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.8)]" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-slate-200 truncate">{review.repositoryFullName}</p>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide border shrink-0 ${riskBadgeClasses(review.riskLevel)}`}>
-                      {review.riskLevel}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-1">PR #{review.prNumber} • {timeAgo(new Date(review.createdAt))}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Latest Activity</CardTitle>
+          </CardHeader>
+          <ActivityList
+            reviews={latestReviews.map((review) => ({
+              id: review.id,
+              repositoryName: review.repositoryFullName,
+              prNumber: review.prNumber,
+              createdAt: review.createdAt.toISOString(),
+              riskLevel: review.riskLevel,
+            }))}
+          />
+        </Card>
+      </RevealItem>
+
+      <RevealItem>
+        <Card>
+          <CardHeader>
+            <CardTitle>Comments by Category</CardTitle>
+          </CardHeader>
+          <CategoryBreakdown categories={commentsByCategory} />
+        </Card>
+      </RevealItem>
+    </PageReveal>
   );
 }
