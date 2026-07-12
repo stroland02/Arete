@@ -2,7 +2,12 @@ import { IconChartBar, IconBug, IconCalendarStats, IconActivity } from "@tabler/
 import { redirect } from "next/navigation";
 import { auth } from "../../lib/auth";
 import { db } from "../../lib/db";
-import { getDashboardViewModel, getTrendSeries, resolveSelectedInstallationIds } from "../../lib/queries";
+import {
+  getConnectedTelemetryProviders,
+  getDashboardViewModel,
+  getTrendSeries,
+  resolveSelectedInstallationIds,
+} from "../../lib/queries";
 import { bucketByDay, cumulativeByDay } from "../../lib/trends";
 import { EmptyState } from "../../components/EmptyState";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
@@ -10,7 +15,6 @@ import { MetricsGrid, type Metric } from "@/components/dashboard/metrics-grid";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ActivityList } from "@/components/dashboard/activity-list";
 import { AgentOrchestrationGraph } from "@/components/dashboard/agent-orchestration-graph";
-import { CategoryBreakdown } from "@/components/dashboard/category-breakdown";
 
 // This page reads the session and queries Prisma scoped to it on every
 // request — it must never be statically prerendered (that would either fail
@@ -35,9 +39,10 @@ export default async function DashboardOverview({
     installation
   );
 
-  const [viewModel, trendSeries] = await Promise.all([
+  const [viewModel, trendSeries, telemetryProviders] = await Promise.all([
     getDashboardViewModel(db, installationIds),
     getTrendSeries(db, installationIds),
+    getConnectedTelemetryProviders(db, installationIds),
   ]);
 
   if (!viewModel.hasAccess) {
@@ -119,7 +124,11 @@ export default async function DashboardOverview({
               View All
             </button>
           </CardHeader>
-          <AgentOrchestrationGraph activeRepos={activeRepos} totalPrs={totalPrs} />
+          <AgentOrchestrationGraph
+            totalPrs={totalPrs}
+            commentsByCategory={commentsByCategory}
+            telemetryProviders={telemetryProviders}
+          />
         </Card>
 
         <Card>
@@ -135,15 +144,6 @@ export default async function DashboardOverview({
               riskLevel: review.riskLevel,
             }))}
           />
-        </Card>
-      </RevealItem>
-
-      <RevealItem>
-        <Card>
-          <CardHeader>
-            <CardTitle>Comments by Category</CardTitle>
-          </CardHeader>
-          <CategoryBreakdown categories={commentsByCategory} />
         </Card>
       </RevealItem>
     </PageReveal>

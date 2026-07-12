@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  getConnectedTelemetryProviders,
   getDashboardViewModel,
   getTrendSeries,
   resolveSelectedInstallationIds,
@@ -31,8 +32,18 @@ interface FakeComment {
   severity: string;
   category: string;
 }
+interface FakeTelemetryConnection {
+  id: string;
+  installationId: string;
+  provider: string;
+}
 
-function createFakeDb(repos: FakeRepo[], reviews: FakeReview[], comments: FakeComment[]) {
+function createFakeDb(
+  repos: FakeRepo[],
+  reviews: FakeReview[],
+  comments: FakeComment[],
+  telemetryConnections: FakeTelemetryConnection[] = []
+) {
   const repoById = new Map(repos.map((r) => [r.id, r]));
   const reviewById = new Map(reviews.map((r) => [r.id, r]));
 
@@ -108,6 +119,20 @@ function createFakeDb(repos: FakeRepo[], reviews: FakeReview[], comments: FakeCo
         return [...counts.entries()]
           .map(([category, count]) => ({ category, _count: { category: count } }))
           .sort((a, b) => b._count.category - a._count.category);
+      },
+    },
+    telemetryConnection: {
+      findMany: async ({ where, distinct }: any) => {
+        const matched = telemetryConnections.filter((c) =>
+          inScope(c.installationId, where.installationId.in)
+        );
+        if (!distinct?.includes('provider')) return matched;
+        const seen = new Set<string>();
+        return matched.filter((c) => {
+          if (seen.has(c.provider)) return false;
+          seen.add(c.provider);
+          return true;
+        });
       },
     },
   };
@@ -229,5 +254,46 @@ describe('getTrendSeries', () => {
     const result = await getTrendSeries(db as any, []);
     expect(result.reviewDates).toEqual([]);
     expect(result.repoDates).toEqual([]);
+  });
+});
+
+describe('getConnectedTelemetryProviders', () => {
+  it('returns only the requesting installation\'s connected providers, deduplicated', async () => {
+    const db = createFakeDb([], [], [], [
+      { id: 'conn-1', installationId: 'inst-a', provider: 'sentry' },
+      { id: 'conn-2', installationId: 'inst-a', provider: 'vercel' },
+      // Same installation somehow has two rows for the same provider — the
+      // query must still report it once (distinct), not double-count it.
+      { id: 'conn-3', installationId: 'inst-a', provider: 'sentry' },
+      { id: 'conn-4', installationId: 'inst-b', provider: 'stripe' },
+    ]);
+
+    const result = await getConnectedTelemetryProviders(db as any, ['inst-a']);
+
+    expect(result.sort()).toEqual(['sentry', 'vercel']);
+    expect(result).not.toContain('stripe'); // installation B's connection must never leak in
+  });
+
+  it('aggregates providers across multiple authorized installations', async () => {
+    const db = createFakeDb([], [], [], [
+      { id: 'conn-1', installationId: 'inst-a', provider: 'sentry' },
+      { id: 'conn-2', installationId: 'inst-b', provider: 'stripe' },
+    ]);
+
+    const result = await getConnectedTelemetryProviders(db as any, ['inst-a', 'inst-b']);
+
+    expect(result.sort()).toEqual(['sentry', 'stripe']);
+  });
+
+  it('never queries the db and returns an empty array for zero authorized installations', async () => {
+    let queried = false;
+    const db = {
+      telemetryConnection: { findMany: async () => { queried = true; return []; } },
+    };
+
+    const result = await getConnectedTelemetryProviders(db as any, []);
+
+    expect(result).toEqual([]);
+    expect(queried).toBe(false);
   });
 });
