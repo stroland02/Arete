@@ -14,6 +14,7 @@ const collapseTransition = { ...springTransition, opacity: { duration: 0.15 } } 
 
 const NAV_ITEMS = [
   { href: "/", label: "Overview" },
+  { href: "/connections", label: "Connections" },
   { href: "/history", label: "Review History" },
   { href: "/settings", label: "Settings" },
 ];
