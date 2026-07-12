@@ -8,19 +8,24 @@ import { NextRequest } from 'next/server';
 // call happens for a request with no session cookie.
 beforeAll(() => {
   process.env.AUTH_SECRET = 'test-secret-not-for-production-0123456789';
-  process.env.GITHUB_OAUTH_CLIENT_ID = 'test-client-id';
-  process.env.GITHUB_OAUTH_CLIENT_SECRET = 'test-client-secret';
-  // lib/auth.ts transitively imports lib/db.ts, which guards on this being
-  // set; the proxy's authorized() check never actually queries the db.
-  process.env.DATABASE_URL ??= 'postgresql://arete:arete@localhost:5432/arete';
+  process.env.GOOGLE_CLIENT_ID = 'test-client-id';
+  process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
 });
+
+// NextAuth's `auth` wrapper types itself for the middleware/route-handler
+// call shapes, not a direct `(NextRequest) => Response` invocation — but
+// that IS how Next.js's proxy runtime invokes it. Narrow once here.
+async function runProxy(request: NextRequest): Promise<Response | undefined> {
+  const { proxy } = await import('./proxy');
+  const run = proxy as unknown as (req: NextRequest) => Promise<Response | undefined>;
+  return run(request);
+}
 
 describe('proxy: unauthenticated access', () => {
   it('redirects an unauthenticated request to a protected path (/overview) to /login', async () => {
-    const { proxy } = await import('./proxy');
     const request = new NextRequest(new URL('https://dashboard.example.com/overview'));
 
-    const response = await proxy(request);
+    const response = await runProxy(request);
 
     expect(response).toBeDefined();
     expect(response!.status).toBeGreaterThanOrEqual(300);
@@ -30,20 +35,36 @@ describe('proxy: unauthenticated access', () => {
   });
 
   it('does NOT redirect a request to the public /login path itself', async () => {
-    const { proxy } = await import('./proxy');
     const request = new NextRequest(new URL('https://dashboard.example.com/login'));
 
-    const response = await proxy(request);
+    const response = await runProxy(request);
 
     // NextResponse.next() carries no Location header / redirect status.
     expect(response?.headers.get('location')).toBeFalsy();
   });
 
+  it('does NOT redirect a request to the public /signup path', async () => {
+    const request = new NextRequest(new URL('https://dashboard.example.com/signup'));
+
+    const response = await runProxy(request);
+
+    // /signup must stay public — an anonymous visitor has to be able to
+    // create an account.
+    expect(response?.headers.get('location')).toBeFalsy();
+  });
+
+  it('redirects an unauthenticated request to /connections to /login', async () => {
+    const request = new NextRequest(new URL('https://dashboard.example.com/connections'));
+
+    const response = await runProxy(request);
+
+    expect(response?.headers.get('location')).toContain('/login');
+  });
+
   it('does NOT redirect a request to the public marketing landing page (/)', async () => {
-    const { proxy } = await import('./proxy');
     const request = new NextRequest(new URL('https://dashboard.example.com/'));
 
-    const response = await proxy(request);
+    const response = await runProxy(request);
 
     // "/" is the public marketing page now — an anonymous visitor must be
     // able to land on it directly, unlike every other route.
