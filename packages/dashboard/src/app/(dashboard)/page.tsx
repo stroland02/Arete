@@ -1,7 +1,12 @@
 import { redirect } from "next/navigation";
 import { auth } from "../../lib/auth";
 import { db } from "../../lib/db";
-import { getDashboardViewModel, getTrendSeries, resolveSelectedInstallationIds } from "../../lib/queries";
+import {
+  getConnectedTelemetryProviders,
+  getDashboardViewModel,
+  getTrendSeries,
+  resolveSelectedInstallationIds,
+} from "../../lib/queries";
 import { bucketByDay, cumulativeByDay } from "../../lib/trends";
 import { EmptyState } from "../../components/EmptyState";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
@@ -10,7 +15,6 @@ import { ConnectorHealthStrip } from "@/components/dashboard/connector-health-st
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ActivityList } from "@/components/dashboard/activity-list";
 import { AgentOrchestrationGraph } from "@/components/dashboard/agent-orchestration-graph";
-import { CategoryBreakdown } from "@/components/dashboard/category-breakdown";
 
 // This page reads the session and queries Prisma scoped to it on every
 // request — it must never be statically prerendered (that would either fail
@@ -35,9 +39,10 @@ export default async function DashboardOverview({
     installation
   );
 
-  const [viewModel, trendSeries] = await Promise.all([
+  const [viewModel, trendSeries, telemetryProviders] = await Promise.all([
     getDashboardViewModel(db, installationIds),
     getTrendSeries(db, installationIds),
+    getConnectedTelemetryProviders(db, installationIds),
   ]);
 
   if (!viewModel.hasAccess) {
@@ -66,9 +71,11 @@ export default async function DashboardOverview({
   const activeReposTrend = cumulativeByDay(trendSeries.repoDates, 7);
 
   // Values consumed below are real; a few view-model fields (totalPrsChange,
-  // criticalBugsChange, repoDelta, activeReposTrend) are unused in this
-  // reciprocity-first layout iteration and intentionally left for later.
-  void totalPrsChange; void criticalBugsChange; void repoDelta; void activeReposTrend;
+  // criticalBugsChange, repoDelta, activeReposTrend, activeRepos) are unused
+  // in this reciprocity-first layout iteration and intentionally left for
+  // later — activeRepos was dropped from AgentOrchestrationGraph's props
+  // when it was rebuilt around real per-agent finding counts.
+  void totalPrsChange; void criticalBugsChange; void repoDelta; void activeReposTrend; void activeRepos;
 
   return (
     <PageReveal className="space-y-8">
@@ -97,7 +104,11 @@ export default async function DashboardOverview({
               View All
             </button>
           </CardHeader>
-          <AgentOrchestrationGraph activeRepos={activeRepos} totalPrs={totalPrs} />
+          <AgentOrchestrationGraph
+            totalPrs={totalPrs}
+            commentsByCategory={commentsByCategory}
+            telemetryProviders={telemetryProviders}
+          />
         </Card>
 
         <Card>
@@ -116,17 +127,7 @@ export default async function DashboardOverview({
         </Card>
       </RevealItem>
 
-      {/* ④ What we found, by category */}
-      <RevealItem>
-        <Card>
-          <CardHeader>
-            <CardTitle>Comments by Category</CardTitle>
-          </CardHeader>
-          <CategoryBreakdown categories={commentsByCategory} />
-        </Card>
-      </RevealItem>
-
-      {/* ⑤ Compounding-value loop: connect more tools → richer reviews (full width) */}
+      {/* ④ Compounding-value loop: connect more tools → richer reviews (full width) */}
       <RevealItem>
         <ConnectorHealthStrip />
       </RevealItem>

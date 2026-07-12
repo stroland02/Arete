@@ -164,6 +164,30 @@ export async function getDashboardViewModel(
   };
 }
 
+/**
+ * Distinct telemetry providers (Sentry, Vercel, Stripe, PostHog, GitHub
+ * Actions, ...) actually connected for any of `installationIds`. Backs the
+ * agent orchestration graph's telemetry-sources cluster, which must only
+ * ever show a provider the tenant genuinely connected — never a static
+ * catalog of providers we merely support.
+ */
+export async function getConnectedTelemetryProviders(
+  db: PrismaClient,
+  installationIds: string[]
+): Promise<string[]> {
+  if (installationIds.length === 0) {
+    return [];
+  }
+
+  const connections = await db.telemetryConnection.findMany({
+    where: { installationId: { in: installationIds } },
+    select: { provider: true },
+    distinct: ['provider'],
+  });
+
+  return connections.map((c) => c.provider);
+}
+
 export interface TrendSeries {
   reviewDates: Date[];
   repoDates: Date[];
