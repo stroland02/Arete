@@ -17,6 +17,7 @@ from arete_agents.agents.performance import PerformanceAgent
 from arete_agents.agents.quality import QualityAgent
 from arete_agents.agents.security import SecurityAgent
 from arete_agents.agents.test_coverage import TestCoverageAgent
+from arete_agents.llm.base import ROLE_KEYS
 from arete_agents.models.pr import FileChange, PRContext
 from arete_agents.models.review import FileReview, ReviewResult
 
@@ -211,17 +212,23 @@ def _fallback_synthesize(pr: PRContext, flat_results: list[FileReview]) -> Revie
 
 
 class ReviewOrchestrator:
-    def __init__(self, llm: BaseChatModel) -> None:
-        self.llm = llm
+    def __init__(self, llm: BaseChatModel | dict[str, BaseChatModel]) -> None:
+        # Accept either a single client (used for every role — the common case
+        # in tests and simple callers) or a per-role dict from
+        # get_llms_by_role() so each agent runs on its configured tier.
+        if isinstance(llm, dict):
+            self._llms = llm
+        else:
+            self._llms = {role: llm for role in ROLE_KEYS}
         self._agents = [
-            SecurityAgent(llm),
-            PerformanceAgent(llm),
-            QualityAgent(llm),
-            TestCoverageAgent(llm),
-            DeploymentSafetyAgent(llm),
-            BusinessLogicAgent(llm),
+            SecurityAgent(self._llms["security"]),
+            PerformanceAgent(self._llms["performance"]),
+            QualityAgent(self._llms["quality"]),
+            TestCoverageAgent(self._llms["test_coverage"]),
+            DeploymentSafetyAgent(self._llms["deployment_safety"]),
+            BusinessLogicAgent(self._llms["business_logic"]),
         ]
-        self.synthesizer = SynthesizerAgent(llm)
+        self.synthesizer = SynthesizerAgent(self._llms["synthesizer"])
         self.graph = self._build_graph()
 
     def _build_graph(self):
@@ -258,7 +265,7 @@ class ReviewOrchestrator:
 
         agent = None
         if agent_name == "CIAgent":
-            agent = CIAgent(self.llm)
+            agent = CIAgent(self._llms["ci_diagnostics"])
         else:
             for a in self._agents:
                 if a.agent_name == agent_name:
@@ -338,7 +345,7 @@ class ReviewOrchestrator:
             logging.warning(f"LangGraph orchestration failed: {exc}. Falling back to blind merge.")
 
             if pr.ci_logs is not None:
-                agents = [CIAgent(self.llm)]
+                agents = [CIAgent(self._llms["ci_diagnostics"])]
             else:
                 agents = self._agents
 

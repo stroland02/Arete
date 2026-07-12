@@ -6,7 +6,7 @@ from fastapi.responses import PlainTextResponse
 
 from arete_agents.agents.chat import ChatAgent
 from arete_agents.config import get_settings
-from arete_agents.llm.base import get_llm
+from arete_agents.llm.base import get_llms_by_role
 from arete_agents.models.pr import PRContext
 from arete_agents.orchestrator import ReviewOrchestrator
 
@@ -24,14 +24,14 @@ try:
 except Exception:
     logging.critical(
         "Areté agents server failed to start: invalid or missing configuration. "
-        "Set LLM_PROVIDER (gemini|anthropic) and the matching GEMINI_API_KEY or "
-        "ANTHROPIC_API_KEY in the environment or .env file.",
+        "Set ANTHROPIC_API_KEY in the environment or .env file (the pipeline "
+        "uses Anthropic Claude models per role).",
         exc_info=True,
     )
     raise
-_llm = get_llm(_settings)
-_orchestrator = ReviewOrchestrator(llm=_llm)
-_chat_agent = ChatAgent(llm=_llm)
+_llms = get_llms_by_role(_settings)
+_orchestrator = ReviewOrchestrator(llm=_llms)
+_chat_agent = ChatAgent(llm=_llms["chat"])
 
 
 @app.post("/review")

@@ -12,12 +12,30 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    llm_provider: Literal["gemini", "anthropic"] = "gemini"
+    # Anthropic is the standard provider for all AI-driven decisions. The
+    # gemini path remains dormant (selectable via LLM_PROVIDER=gemini) but is
+    # not used by the production pipeline, which builds Anthropic clients
+    # per role via get_llms_by_role().
+    llm_provider: Literal["gemini", "anthropic"] = "anthropic"
     gemini_api_key: str = ""
     anthropic_api_key: str = ""
 
     database_url: str = "postgresql://arete:arete@localhost:5432/arete"
     redis_url: str = "redis://localhost:6379"
+
+    # Per-role Claude model tier. "opus" (claude-opus-4-8) for nuanced-
+    # judgment roles; "sonnet" (claude-sonnet-5) for more mechanical/
+    # pattern-based roles. Each is individually overridable via env
+    # (e.g. SECURITY_TIER=sonnet).
+    security_tier: Literal["opus", "sonnet"] = "opus"
+    business_logic_tier: Literal["opus", "sonnet"] = "opus"
+    deployment_safety_tier: Literal["opus", "sonnet"] = "opus"
+    ci_tier: Literal["opus", "sonnet"] = "opus"
+    synthesizer_tier: Literal["opus", "sonnet"] = "opus"
+    performance_tier: Literal["opus", "sonnet"] = "sonnet"
+    quality_tier: Literal["opus", "sonnet"] = "sonnet"
+    test_coverage_tier: Literal["opus", "sonnet"] = "sonnet"
+    chat_tier: Literal["opus", "sonnet"] = "sonnet"
 
     eval_finder_provider: Literal["gemini", "anthropic"] | None = None
     eval_judge_provider: Literal["gemini", "anthropic"] | None = None
