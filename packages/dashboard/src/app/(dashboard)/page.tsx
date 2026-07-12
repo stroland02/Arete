@@ -1,4 +1,3 @@
-import { IconChartBar, IconBug, IconCalendarStats, IconActivity } from "@tabler/icons-react";
 import { redirect } from "next/navigation";
 import { auth } from "../../lib/auth";
 import { db } from "../../lib/db";
@@ -6,7 +5,8 @@ import { getDashboardViewModel, getTrendSeries, resolveSelectedInstallationIds }
 import { bucketByDay, cumulativeByDay } from "../../lib/trends";
 import { EmptyState } from "../../components/EmptyState";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
-import { MetricsGrid, type Metric } from "@/components/dashboard/metrics-grid";
+import { ValueLedger } from "@/components/dashboard/value-ledger";
+import { ConnectorHealthStrip } from "@/components/dashboard/connector-health-strip";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ActivityList } from "@/components/dashboard/activity-list";
 import { AgentOrchestrationGraph } from "@/components/dashboard/agent-orchestration-graph";
@@ -65,52 +65,30 @@ export default async function DashboardOverview({
   const reviewsThisWeekTrend = bucketByDay(trendSeries.reviewDates, 7);
   const activeReposTrend = cumulativeByDay(trendSeries.repoDates, 7);
 
-  const metrics: Metric[] = [
-    {
-      title: "Total PRs Reviewed",
-      value: totalPrs.toString(),
-      change: totalPrsChange.change,
-      positive: totalPrsChange.positive,
-      icon: <IconChartBar className="w-6 h-6 text-accent-primary" />,
-      trend: totalPrsTrend,
-    },
-    {
-      title: "Critical Bugs Prevented",
-      value: criticalBugs.toString(),
-      change: criticalBugsChange.change,
-      positive: criticalBugsChange.positive,
-      icon: <IconBug className="w-6 h-6 text-accent-success" />,
-    },
-    {
-      title: "Reviews This Week",
-      value: recentReviews.toString(),
-      change: `${weeklyDelta >= 0 ? "+" : ""}${weeklyDelta} vs last week`,
-      positive: weeklyDelta >= 0,
-      icon: <IconCalendarStats className="w-6 h-6 text-accent-info" />,
-      trend: reviewsThisWeekTrend,
-    },
-    {
-      title: "Active Repositories",
-      value: activeRepos.toString(),
-      change: `${repoDelta >= 0 ? "+" : ""}${repoDelta}`,
-      positive: repoDelta >= 0,
-      icon: <IconActivity className="w-6 h-6 text-accent-secondary" />,
-      trend: activeReposTrend,
-    },
-  ];
+  // Values consumed below are real; a few view-model fields (totalPrsChange,
+  // criticalBugsChange, repoDelta, activeReposTrend) are unused in this
+  // reciprocity-first layout iteration and intentionally left for later.
+  void totalPrsChange; void criticalBugsChange; void repoDelta; void activeReposTrend;
 
   return (
     <PageReveal className="space-y-8">
+      {/* ① Reciprocity hero — what Areté caught FOR you */}
       <RevealItem>
-        <h1 className="text-2xl font-semibold text-content-primary">Overview</h1>
+        <ValueLedger
+          criticalBugs={criticalBugs}
+          totalPrs={totalPrs}
+          recentReviews={recentReviews}
+          weeklyDelta={weeklyDelta}
+          totalPrsTrend={totalPrsTrend}
+          reviewsThisWeekTrend={reviewsThisWeekTrend}
+        />
       </RevealItem>
 
-      <MetricsGrid metrics={metrics} />
-
+      {/* ② Proof-of-work centerpiece + ③ what we caught feed */}
       <RevealItem className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Agent Orchestration</CardTitle>
+            <CardTitle>Agents at work</CardTitle>
             <button
               disabled
               title="Review history coming soon"
@@ -124,7 +102,7 @@ export default async function DashboardOverview({
 
         <Card>
           <CardHeader>
-            <CardTitle>Latest Activity</CardTitle>
+            <CardTitle>What we caught for you</CardTitle>
           </CardHeader>
           <ActivityList
             reviews={latestReviews.map((review) => ({
@@ -138,6 +116,7 @@ export default async function DashboardOverview({
         </Card>
       </RevealItem>
 
+      {/* ④ What we found, by category */}
       <RevealItem>
         <Card>
           <CardHeader>
@@ -145,6 +124,11 @@ export default async function DashboardOverview({
           </CardHeader>
           <CategoryBreakdown categories={commentsByCategory} />
         </Card>
+      </RevealItem>
+
+      {/* ⑤ Compounding-value loop: connect more tools → richer reviews (full width) */}
+      <RevealItem>
+        <ConnectorHealthStrip />
       </RevealItem>
     </PageReveal>
   );

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { IconGitPullRequest } from "@tabler/icons-react";
 import { staggerContainer, fadeSlideUp } from "@/lib/motion";
@@ -53,25 +54,26 @@ export function ActivityList({ reviews }: { reviews: ActivityItem[] }) {
   return (
     <motion.div className="space-y-4" variants={staggerContainer} initial="hidden" animate="show">
       {reviews.map((review) => (
-        <motion.div
-          key={review.id}
-          variants={fadeSlideUp}
-          className="flex gap-4 p-3 rounded-xl hover:bg-white/[0.02] transition-colors"
-        >
-          <div className="w-2 h-2 mt-2 rounded-full bg-accent-primary shadow-[0_0_8px_rgba(129,140,248,0.8)]" />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-medium text-content-secondary font-mono tabular-nums truncate">{review.repositoryName}</p>
-              <span
-                className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide border shrink-0 ${riskBadgeClasses(review.riskLevel)}`}
-              >
-                {review.riskLevel}
-              </span>
+        <motion.div key={review.id} variants={fadeSlideUp}>
+          <Link
+            href={`/reviews/${review.id}`}
+            className="flex gap-4 p-3 rounded-xl hover:bg-white/[0.04] transition-colors cursor-pointer border border-transparent hover:border-border-subtle"
+          >
+            <div className="w-2 h-2 mt-2 rounded-full bg-accent-primary shadow-[0_0_8px_rgba(129,140,248,0.8)]" />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium text-content-secondary font-mono tabular-nums truncate">{review.repositoryName}</p>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide border shrink-0 ${riskBadgeClasses(review.riskLevel)}`}
+                >
+                  {review.riskLevel}
+                </span>
+              </div>
+              <p className="text-xs text-content-muted mt-1">
+                <span className="font-mono tabular-nums">PR #{review.prNumber}</span> • {timeAgo(new Date(review.createdAt))}
+              </p>
             </div>
-            <p className="text-xs text-content-muted mt-1">
-              <span className="font-mono tabular-nums">PR #{review.prNumber}</span> • {timeAgo(new Date(review.createdAt))}
-            </p>
-          </div>
+          </Link>
         </motion.div>
       ))}
     </motion.div>
