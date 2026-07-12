@@ -204,3 +204,175 @@ export async function getTrendSeries(
     repoDates: repoDates.map((r) => r.createdAt),
   };
 }
+
+export interface ReviewFinding {
+  id: string;
+  path: string;
+  line: number;
+  body: string;
+  severity: string;
+  category: string;
+}
+
+export interface ReviewDetail {
+  id: string;
+  prNumber: number;
+  riskLevel: string;
+  overallSummary: string;
+  analysisStatus: string;
+  createdAt: Date;
+  repositoryFullName: string;
+  findings: ReviewFinding[];
+}
+
+/**
+ * Loads one review's full detail (summary + all comments), scoped to
+ * `installationIds` via the same `repository: { installationId: { in } }`
+ * filter as every other query in this file. Returns `null` uniformly
+ * whether the review doesn't exist OR belongs to an installation outside
+ * the caller's authorized set — the caller must not be able to distinguish
+ * "not found" from "not yours" (that distinction itself would leak
+ * information about other tenants' data).
+ */
+export async function getReviewDetail(
+  db: PrismaClient,
+  installationIds: string[],
+  reviewId: string
+): Promise<ReviewDetail | null> {
+  if (installationIds.length === 0) return null;
+
+  const review = await db.review.findFirst({
+    where: { id: reviewId, repository: { installationId: { in: installationIds } } },
+    include: { repository: true, comments: true },
+  });
+
+  if (!review) return null;
+
+  return {
+    id: review.id,
+    prNumber: review.prNumber,
+    riskLevel: review.riskLevel,
+    overallSummary: review.overallSummary,
+    analysisStatus: review.analysisStatus,
+    createdAt: review.createdAt,
+    repositoryFullName: review.repository.fullName,
+    findings: review.comments.map((c) => ({
+      id: c.id,
+      path: c.path,
+      line: c.line,
+      body: c.body,
+      severity: c.severity,
+      category: c.category,
+    })),
+  };
+}
+
+export interface ReviewHistoryRow {
+  id: string;
+  prNumber: number;
+  riskLevel: string;
+  createdAt: Date;
+  repositoryFullName: string;
+}
+
+export interface ReviewHistoryPage {
+  reviews: ReviewHistoryRow[];
+  total: number;
+  riskCounts: Record<string, number>;
+}
+
+const PAGE_SIZE = 20;
+
+/**
+ * Paginated, tenant-scoped review list for the Review History page. Same
+ * `repository: { installationId: { in } }` scoping as every other query in
+ * this file. `riskLevel` filters to one risk tier when provided (matching
+ * the tab pattern on the history page); `riskCounts` is always computed
+ * across the FULL unfiltered tenant scope (not just the current page) so
+ * the tab badges show true totals regardless of which tab is active.
+ */
+export async function getReviewHistory(
+  db: PrismaClient,
+  installationIds: string[],
+  { riskLevel, page = 1 }: { riskLevel?: string; page?: number } = {}
+): Promise<ReviewHistoryPage> {
+  if (installationIds.length === 0) {
+    return { reviews: [], total: 0, riskCounts: {} };
+  }
+
+  const repoScope = { installationId: { in: installationIds } } as const;
+  const where = {
+    repository: repoScope,
+    ...(riskLevel ? { riskLevel } : {}),
+  };
+
+  const [reviews, total, riskGroups] = await Promise.all([
+    db.review.findMany({
+      where,
+      take: PAGE_SIZE,
+      skip: (page - 1) * PAGE_SIZE,
+      orderBy: { createdAt: "desc" },
+      include: { repository: true },
+    }),
+    db.review.count({ where }),
+    db.review.groupBy({
+      by: ["riskLevel"],
+      where: { repository: repoScope },
+      _count: { riskLevel: true },
+    }),
+  ]);
+
+  const riskCounts: Record<string, number> = {};
+  for (const group of riskGroups) {
+    riskCounts[group.riskLevel] = group._count.riskLevel;
+  }
+
+  return {
+    reviews: reviews.map((r) => ({
+      id: r.id,
+      prNumber: r.prNumber,
+      riskLevel: r.riskLevel,
+      createdAt: r.createdAt,
+      repositoryFullName: r.repository.fullName,
+    })),
+    total,
+    riskCounts,
+  };
+}
+
+/** 50 free reviews per installation before payment is required — mirrors
+ * packages/webhook/src/billing.ts's FREE_TIER_REVIEW_LIMIT. Duplicated here
+ * (not imported) because the dashboard and webhook packages don't share a
+ * runtime dependency for this constant; keep the two values in sync by hand
+ * if the webhook's limit ever changes. */
+export const FREE_TIER_REVIEW_LIMIT = 50;
+
+export interface InstallationBilling {
+  owner: string;
+  subscriptionStatus: string;
+  usageCount: number;
+}
+
+/**
+ * Billing summary for the Settings page, scoped to the caller's authorized
+ * installations. Deliberately does NOT surface `planTier` — per
+ * packages/webhook/src/billing.ts's own comment, that field is never
+ * written by any business logic (only `subscriptionStatus` is authoritative)
+ * so showing it would display a permanently-stale value. When multiple
+ * installations are authorized, returns the first one scoped by
+ * `installationIds` (matching how the rest of the dashboard treats a
+ * multi-installation session — see resolveSelectedInstallationIds).
+ */
+export async function getInstallationBilling(
+  db: PrismaClient,
+  installationIds: string[]
+): Promise<InstallationBilling | null> {
+  if (installationIds.length === 0) return null;
+
+  const installation = await db.installation.findFirst({
+    where: { id: { in: installationIds } },
+    select: { owner: true, subscriptionStatus: true, usageCount: true },
+  });
+
+  return installation;
+}
