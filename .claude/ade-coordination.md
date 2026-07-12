@@ -66,8 +66,37 @@ The finishing agent must:
 |---|---|---|---|
 | `feat/webhook-gitlab-complete` | `webhook` | Full GitLab MR diff fetch + comment posting | Dispatched |
 | `feat/dashboard-real-metrics` | `dashboard` | Real computed metrics, per-agent breakdown | Merged (superseded/rebuilt by auth + @arete/db extraction) |
-| `feat/dashboard-ui-port` | `dashboard` | Port the finished design system (tokens, primitives, motion, agent-orchestration graph) onto main's current auth-scoped dashboard (app/(dashboard)/*, getDashboardViewModel, @arete/db). Presentation layer + one new additive query function (getTrendSeries). NOTE: adds a worktree-root `.npmrc` (virtual-store-dir-max-length=60) + `next.config.ts` turbopack.root pin for Windows nested-worktree builds — requires a fresh `pnpm install` after pulling. | Done — see pre-merge notes below |
+| `feat/dashboard-ui-port` | `dashboard` | Port the finished design system (tokens, primitives, motion, agent-orchestration graph) onto main's current auth-scoped dashboard (app/(dashboard)/*, getDashboardViewModel, @arete/db). Presentation layer + one new additive query function (getTrendSeries). NOTE: adds a worktree-root `.npmrc` (virtual-store-dir-max-length=60) + `next.config.ts` turbopack.root pin for Windows nested-worktree builds — requires a fresh `pnpm install` after pulling. | **Merged to main at `986987b` (2026-07-12)** — see pre-merge notes below |
 | `main` | `docs` | ADE setup, coordination | Done |
+
+## ⚠️ Known unreconciled conflict: `feat/dashboard-ui-redesign`
+
+As of 2026-07-12, `main` contains `feat/dashboard-ui-port`'s reciprocity-first
+Overview redesign + Connections/Review Detail/Review History/Settings pages
+(commit `986987b`). A **separate, never-pushed local branch**,
+`feat/dashboard-ui-redesign` (worktree: `.worktrees/dashboard-ui-redesign`,
+24 commits, diverges from `main` at `8d730b3`), independently rebuilt
+overlapping ground: its own design-token/motion-token system, its own
+Button/Card/Badge/Skeleton/Tooltip primitives, an animated collapsible
+sidebar, and its own version of `agent-orchestration-graph.tsx` and the
+Comments-by-Category treatment.
+
+**This was not reconciled before `986987b` merged** — the two branches were
+discovered to be working the same ground only after `dashboard-ui-port` was
+already verified and ready to land, and `dashboard-ui-redesign` was still
+local/unpushed/not yet a shared conflict. Per explicit user decision, `main`
+was pushed rather than blocking on a comparison.
+
+**Whoever picks up `feat/dashboard-ui-redesign` next must, before merging it:**
+1. Diff its `packages/dashboard/src/components/dashboard/agent-orchestration-graph.tsx`,
+   sidebar/topbar, and design-token files against what's now on `main` —
+   expect real, substantive conflicts, not just line-ending noise.
+2. Decide per-component which version wins (or whether to hand-merge), since
+   both sides independently solved the same UX problems differently.
+3. Re-run the full verification pass (`tsc --noEmit`, eslint, `next build`,
+   `vitest run` for both `dashboard` and `webhook` packages) after resolving,
+   the same way `dashboard-ui-port`'s merge was verified — do not assume a
+   clean git merge means the two design systems compose correctly.
 
 ## Test Baselines (must not regress)
 
