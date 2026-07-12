@@ -10,6 +10,7 @@ import { fetchStripeSnapshot, type StripeTelemetryCredentials } from './stripe-t
 import { decryptCredentials } from './credentials.js'
 import { getCachedTelemetry, setCachedTelemetry } from './cache.js'
 import { recordTelemetryFailure, recordTelemetrySuccess, isTelemetryCircuitOpen } from './circuit-breaker.js'
+import { getValidOAuthAccessToken } from '../oauth/get-valid-oauth-token.js'
 import { prisma } from '../db.js'
 
 function sourceRefFor(owner: string, repo: string, connector: TelemetryConnectorConfig): string {
@@ -49,8 +50,17 @@ async function fetchOneConnector(
         where: { installationId_provider: { installationId, provider: 'posthog' } },
       })
       if (!connection) return null
-      const credentials = decryptCredentials<PostHogCredentials>(connection.credentials)
-      result = await fetchPostHogSnapshot(credentials, sourceRef)
+      // OAuth-connected rows store {accessToken, refreshToken, ...}, not
+      // {apiKey} — resolve a fresh bearer token instead of decrypting the
+      // row directly. A null token (expired + no refresh, refresh rejected)
+      // is a stale-credential gap, not a provider outage — skip without
+      // touching the circuit breaker, same as a missing connection.
+      const apiKey =
+        connection.authMethod === 'oauth'
+          ? await getValidOAuthAccessToken(installationId, 'posthog')
+          : decryptCredentials<PostHogCredentials>(connection.credentials).apiKey
+      if (!apiKey) return null
+      result = await fetchPostHogSnapshot({ apiKey }, sourceRef)
     } else if (connector.provider === 'sentry') {
       if (!installationId) return null
       const connection = await prisma.telemetryConnection.findUnique({
@@ -67,8 +77,12 @@ async function fetchOneConnector(
         where: { installationId_provider: { installationId, provider: 'vercel' } },
       })
       if (!connection) return null
-      const credentials = decryptCredentials<VercelCredentials>(connection.credentials)
-      result = await fetchVercelSnapshot(credentials, sourceRef, connector.org)
+      const token =
+        connection.authMethod === 'oauth'
+          ? await getValidOAuthAccessToken(installationId, 'vercel')
+          : decryptCredentials<VercelCredentials>(connection.credentials).token
+      if (!token) return null
+      result = await fetchVercelSnapshot({ token }, sourceRef, connector.org)
     } else if (connector.provider === 'stripe') {
       if (!installationId) return null
       const connection = await prisma.telemetryConnection.findUnique({

@@ -256,6 +256,69 @@ describe('fetchTelemetryContext', () => {
     expect(result[0].provider).toBe('stripe')
   })
 
+  it('resolves an OAuth-connected PostHog row via getValidOAuthAccessToken instead of decrypting it as an api key', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({
+      status: 'ok',
+      snapshot: { ...PH_SNAPSHOT },
+    })
+    vi.doMock('./posthog-connector.js', () => ({ fetchPostHogSnapshot: fetchSpy }))
+    const decryptSpy = vi.fn()
+    vi.doMock('./credentials.js', () => ({ decryptCredentials: decryptSpy }))
+    const getValidOAuthAccessToken = vi.fn().mockResolvedValue('fresh-oauth-token')
+    vi.doMock('../oauth/get-valid-oauth-token.js', () => ({ getValidOAuthAccessToken }))
+    vi.doMock('../db.js', () => ({
+      prisma: {
+        installation: { findUnique: vi.fn().mockResolvedValue({ id: 'inst-uuid-1' }) },
+        telemetryConnection: {
+          findUnique: vi.fn().mockResolvedValue({
+            authMethod: 'oauth',
+            credentials: 'encrypted-oauth-blob',
+            config: { project: 'production-app' },
+          }),
+        },
+      },
+    }))
+
+    const { fetchTelemetryContext } = await import('./fetch-telemetry-context.js')
+    const result = await fetchTelemetryContext({} as any, 'github', 42, 'acme', 'backend', [
+      { provider: 'posthog', project: 'production-app' },
+    ])
+
+    expect(result).toHaveLength(1)
+    expect(getValidOAuthAccessToken).toHaveBeenCalledWith('inst-uuid-1', 'posthog')
+    expect(fetchSpy).toHaveBeenCalledWith({ apiKey: 'fresh-oauth-token' }, 'production-app')
+    // Must never treat the OAuth token blob as if it were {apiKey: ...} shaped.
+    expect(decryptSpy).not.toHaveBeenCalled()
+  })
+
+  it('skips an OAuth-connected Vercel row without throwing when the token cannot be refreshed', async () => {
+    const fetchSpy = vi.fn()
+    vi.doMock('./vercel-connector.js', () => ({ fetchVercelSnapshot: fetchSpy }))
+    vi.doMock('../oauth/get-valid-oauth-token.js', () => ({
+      getValidOAuthAccessToken: vi.fn().mockResolvedValue(null),
+    }))
+    vi.doMock('../db.js', () => ({
+      prisma: {
+        installation: { findUnique: vi.fn().mockResolvedValue({ id: 'inst-uuid-1' }) },
+        telemetryConnection: {
+          findUnique: vi.fn().mockResolvedValue({
+            authMethod: 'oauth',
+            credentials: 'encrypted-oauth-blob',
+            config: { project: 'prj_123' },
+          }),
+        },
+      },
+    }))
+
+    const { fetchTelemetryContext } = await import('./fetch-telemetry-context.js')
+    const result = await fetchTelemetryContext({} as any, 'github', 42, 'acme', 'backend', [
+      { provider: 'vercel', project: 'prj_123' },
+    ])
+
+    expect(result).toEqual([])
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
   it('still opens the circuit breaker after consecutive real provider errors', async () => {
     const ghFetch = vi.fn().mockResolvedValue({ status: 'error' })
     vi.doMock('./github-actions-connector.js', () => ({ fetchGitHubActionsSnapshot: ghFetch }))

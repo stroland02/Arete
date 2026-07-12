@@ -1,9 +1,12 @@
 /**
  * Static catalog of the telemetry connectors the review pipeline supports
  * (packages/webhook/src/telemetry/*, see docs/superpowers/specs/2026-07-10-telemetry-connectors-design.md).
- * This is intentionally NOT read from a database — no TelemetryConnection
- * model exists yet, so "connected" is always false. Every description and
- * requirement below is drawn from the real design spec, not invented.
+ * This is intentionally NOT read from a database — "connected" is always
+ * false here even though TelemetryConnection now exists, because this
+ * catalog only describes what's connectABLE, not a given user's actual
+ * connections; getConnectedTelemetryProviders (queries.ts) is the real
+ * per-installation source of truth. Every description and requirement
+ * below is drawn from the real implementation, not invented.
  */
 
 export type ConnectorAuthKind = "existing-token" | "api-key" | "oauth";
@@ -38,9 +41,9 @@ export const CONNECTORS: ConnectorDef[] = [
     name: "PostHog",
     category: "Product usage",
     tagline: "Correlate a PR's feature area with real product engagement and conversion trends.",
-    authKind: "api-key",
-    authSummary: "A static, revocable API key — no OAuth flow.",
-    trustNote: "The key is scoped to read-only analytics access. Rotate or revoke it anytime; Areté never writes to your PostHog project.",
+    authKind: "oauth",
+    authSummary: "OAuth connection — click to sign in with PostHog, same as GitHub sign-in.",
+    trustNote: "Areté only requests read-only analytics access. Revoke access anytime from your PostHog account settings.",
     status: "available",
     connected: false,
   },
@@ -50,9 +53,9 @@ export const CONNECTORS: ConnectorDef[] = [
     category: "Errors",
     tagline: "Surface recent error spikes and incident history for the code a PR touches.",
     authKind: "oauth",
-    authSummary: "OAuth connection — deferred until per-installation token refresh is solved server-side.",
+    authSummary: "OAuth connection — gated behind Sentry's own integration review process.",
     trustNote: "Sentry's own MCP server typically requires a paid-tier org to return meaningful data.",
-    requirement: "Not yet available — planned for a future release.",
+    requirement: "Not yet available — Sentry requires publishing an approved integration before this can launch.",
     status: "planned",
     connected: false,
   },
@@ -62,10 +65,10 @@ export const CONNECTORS: ConnectorDef[] = [
     category: "Deploys",
     tagline: "Understand deploy health and recent rollback history for the affected project.",
     authKind: "oauth",
-    authSummary: "OAuth connection — deferred until per-installation token refresh is solved server-side.",
+    authSummary: "OAuth connection — click to sign in with Vercel, same as GitHub sign-in.",
     trustNote: "Vercel does not offer Drains (the streaming telemetry API) on the Hobby plan.",
     requirement: "Requires a Vercel Pro or Enterprise team.",
-    status: "planned",
+    status: "available",
     connected: false,
   },
   {
@@ -73,10 +76,10 @@ export const CONNECTORS: ConnectorDef[] = [
     name: "Stripe",
     category: "Revenue",
     tagline: "Connect code changes in billing-critical paths to real revenue and subscription impact.",
-    authKind: "oauth",
-    authSummary: "OAuth connection — deferred until per-installation token refresh is solved server-side.",
-    trustNote: "Stripe access would be scoped to read-only reporting data — never payment methods or the ability to move money.",
-    requirement: "Not yet available — planned for a future release.",
+    authKind: "api-key",
+    authSummary: "A restricted, read-only API key — Stripe Connect (OAuth) isn't the right tool for reading your own account's data.",
+    trustNote: "The key would be scoped to read-only reporting data — never payment methods or the ability to move money.",
+    requirement: "Not yet available — needs a settings form to securely collect and encrypt the key.",
     status: "planned",
     connected: false,
   },
