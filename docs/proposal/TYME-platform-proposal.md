@@ -436,24 +436,26 @@ Once Code Review reaches ~$50K MRR, add outbound for the full Areté Platform:
 ### Phase 1: Code Review Service (Months 1–3)
 **Goal:** 50 paying teams, $15K MRR
 
-- [ ] GitHub App created and submitted to Marketplace
-- [ ] 6-agent review pipeline (Security, Performance, Quality, Tests, Deployment, Business Logic)
-- [ ] PR summary card + inline comments via GitHub API
-- [ ] Conversational interface (reply to agent comments in PR thread)
-- [ ] Stripe billing integration
-- [ ] Basic customer dashboard (review history, usage stats)
-- [ ] GitLab webhook support
-- [ ] HN / Product Hunt launch
+- [x] 6-agent review pipeline (Security, Performance, Quality, Tests, Deployment, Business Logic) — `packages/agents/src/arete_agents/orchestrator.py`
+- [x] PR summary card + inline comments via GitHub API — `packages/webhook/src/comment-poster.ts`
+- [x] Conversational interface (reply to agent comments in PR thread) — `packages/webhook/src/chat-handler.ts`, wired in `server.ts`
+- [x] Stripe billing integration — `packages/webhook/src/stripe-handler.ts` + `billing.ts`, wired in `server.ts`
+- [x] Basic customer dashboard (review history, usage stats) — `packages/dashboard` (Overview, Connections, History, Settings, per-review detail)
+- [x] GitLab webhook support — `packages/webhook/src/gitlab-handler.ts`, wired in `server.ts`
+- [ ] GitHub App created and submitted to Marketplace — app exists (`github.com/apps/arete-ai-code-review`); Marketplace submission is a manual GitHub-side step, not something an agent can complete
+- [ ] HN / Product Hunt launch — manual marketing action, not a code task
+
+**Phase 1 code is complete.** Both remaining checkboxes are external actions requiring a human with GitHub/HN/PH accounts, not further engineering.
 
 ### Phase 2: Production Monitoring Layer (Months 3–9)
 **Goal:** 200 paying teams, $60K MRR
 
+- [x] Code Review enriched with production context (Business Logic Agent active) — 5 telemetry connectors built (GitHub Actions, Sentry, Vercel, Stripe, PostHog) feeding `_build_telemetry_block` in `business_logic.py`; generic OAuth infrastructure also built. **Not yet done:** no Connect-flow UI (`TelemetryConnection` rows are hand/script-created only), and none of the 5 connectors have been validated against a real account yet — see `.superpowers/sdd/progress.md`.
 - [ ] OpenTelemetry ingestion pipeline (OTLP collector)
 - [ ] ClickHouse telemetry database and schema
 - [ ] Master Grid dashboard (unified error/latency/deployment view)
 - [ ] Business metric overlay (connect revenue events to engineering telemetry)
 - [ ] Analytics Agent with root cause analysis
-- [ ] Code Review enriched with production context (Business Logic Agent active)
 - [ ] Anomaly detection and alerting
 
 ### Phase 3: Full Areté Platform (Months 9–18)
