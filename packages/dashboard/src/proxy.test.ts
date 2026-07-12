@@ -16,9 +16,9 @@ beforeAll(() => {
 });
 
 describe('proxy: unauthenticated access', () => {
-  it('redirects an unauthenticated request to a protected path to /login', async () => {
+  it('redirects an unauthenticated request to a protected path (/overview) to /login', async () => {
     const { proxy } = await import('./proxy');
-    const request = new NextRequest(new URL('https://dashboard.example.com/'));
+    const request = new NextRequest(new URL('https://dashboard.example.com/overview'));
 
     const response = await proxy(request);
 
@@ -36,6 +36,17 @@ describe('proxy: unauthenticated access', () => {
     const response = await proxy(request);
 
     // NextResponse.next() carries no Location header / redirect status.
+    expect(response?.headers.get('location')).toBeFalsy();
+  });
+
+  it('does NOT redirect a request to the public marketing landing page (/)', async () => {
+    const { proxy } = await import('./proxy');
+    const request = new NextRequest(new URL('https://dashboard.example.com/'));
+
+    const response = await proxy(request);
+
+    // "/" is the public marketing page now — an anonymous visitor must be
+    // able to land on it directly, unlike every other route.
     expect(response?.headers.get('location')).toBeFalsy();
   });
 });

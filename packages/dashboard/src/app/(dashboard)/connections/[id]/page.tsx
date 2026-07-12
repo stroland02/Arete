@@ -73,7 +73,7 @@ export default async function ConnectorDetailPage({
 
         <p className="text-xs text-content-muted text-center mt-8">
           Not ready yet?{" "}
-          <Link href="/" className="text-accent-primary hover:text-accent-primary/80">
+          <Link href="/overview" className="text-accent-primary hover:text-accent-primary/80">
             Explore the dashboard with sample data first →
           </Link>
         </p>

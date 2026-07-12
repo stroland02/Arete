@@ -5,7 +5,7 @@ import { auth, signIn } from '../../lib/auth';
 export default async function LoginPage() {
   const session = await auth();
   if (session) {
-    redirect('/');
+    redirect('/overview');
   }
 
   return (
@@ -23,7 +23,7 @@ export default async function LoginPage() {
         <form
           action={async () => {
             'use server';
-            await signIn('github', { redirectTo: '/' });
+            await signIn('github', { redirectTo: '/overview' });
           }}
           className="w-full"
         >

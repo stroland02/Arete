@@ -1,14 +1,14 @@
 import { redirect } from "next/navigation";
-import { auth } from "../../lib/auth";
-import { db } from "../../lib/db";
+import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
 import {
   getConnectedTelemetryProviders,
   getDashboardViewModel,
   getTrendSeries,
   resolveSelectedInstallationIds,
-} from "../../lib/queries";
-import { bucketByDay, cumulativeByDay } from "../../lib/trends";
-import { EmptyState } from "../../components/EmptyState";
+} from "@/lib/queries";
+import { bucketByDay, cumulativeByDay } from "@/lib/trends";
+import { EmptyState } from "@/components/EmptyState";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 import { ValueLedger } from "@/components/dashboard/value-ledger";
 import { ConnectorHealthStrip } from "@/components/dashboard/connector-health-strip";

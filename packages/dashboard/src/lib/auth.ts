@@ -49,7 +49,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // themselves must stay public or sign-in becomes impossible.
     authorized({ auth, request }) {
       const { pathname } = request.nextUrl;
-      const isPublic = pathname.startsWith('/login') || pathname.startsWith('/api/auth');
+      // "/" is the public marketing landing page (not the dashboard — that
+      // lives at /overview now), so it must stay outside the auth gate
+      // alongside /login and the NextAuth API routes.
+      const isPublic =
+        pathname === '/' || pathname.startsWith('/login') || pathname.startsWith('/api/auth');
       if (isPublic) return true;
       return !!auth?.user;
     },

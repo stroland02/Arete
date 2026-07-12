@@ -13,7 +13,7 @@ import type { AuthorizedInstallation } from "@/lib/installations";
 const collapseTransition = { ...springTransition, opacity: { duration: 0.15 } } as const;
 
 const NAV_ITEMS = [
-  { href: "/", label: "Overview" },
+  { href: "/overview", label: "Overview" },
   { href: "/connections", label: "Connections" },
   { href: "/history", label: "Review History" },
   { href: "/settings", label: "Settings" },
