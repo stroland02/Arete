@@ -1,21 +1,27 @@
 import Link from "next/link";
+import { IconTopologyStar3 } from "@tabler/icons-react";
 
 export function MarketingNav() {
   return (
-    <header className="sticky top-0 z-30 border-b border-border-subtle bg-surface-0/70 backdrop-blur-md">
-      <div className="mx-auto max-w-6xl px-6 h-16 flex items-center justify-between">
-        <Link
-          href="/"
-          className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-cyan-400 to-teal-300 tracking-tight"
-        >
-          Areté AI
+    <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-surface-0/70 backdrop-blur-xl">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+        <Link href="/" className="group flex items-center gap-2">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg border border-accent-primary/30 bg-accent-primary/10 text-accent-primary">
+            <IconTopologyStar3 className="h-4 w-4" stroke={1.75} />
+          </span>
+          <span className="bg-gradient-to-r from-indigo-300 via-cyan-300 to-teal-200 bg-clip-text text-lg font-bold tracking-tight text-transparent">
+            Areté AI
+          </span>
         </Link>
 
-        <nav className="hidden md:flex items-center gap-8 text-sm text-content-muted">
-          <a href="#how-it-works" className="hover:text-content-primary transition-colors">
+        <nav className="hidden items-center gap-8 text-sm text-content-muted md:flex">
+          <a href="#how-it-works" className="transition-colors hover:text-content-primary">
             How it works
           </a>
-          <a href="#pricing" className="hover:text-content-primary transition-colors">
+          <a href="#connectors" className="transition-colors hover:text-content-primary">
+            Connectors
+          </a>
+          <a href="#pricing" className="transition-colors hover:text-content-primary">
             Pricing
           </a>
         </nav>
@@ -23,13 +29,13 @@ export function MarketingNav() {
         <div className="flex items-center gap-3">
           <Link
             href="/login"
-            className="text-sm font-medium text-content-muted hover:text-content-primary transition-colors"
+            className="text-sm font-medium text-content-muted transition-colors hover:text-content-primary"
           >
             Sign in
           </Link>
           <Link
             href="/login"
-            className="inline-flex items-center justify-center h-8 px-4 rounded-full text-[13px] font-medium text-white bg-accent-primary hover:brightness-110 active:brightness-95 shadow-[0_1px_0_0_rgba(255,255,255,0.15)_inset,0_6px_14px_-6px_rgba(129,140,248,0.55)] transition-[filter]"
+            className="inline-flex h-9 items-center justify-center rounded-full bg-accent-primary px-4 text-[13px] font-medium text-white shadow-[0_1px_0_0_rgba(255,255,255,0.15)_inset,0_6px_14px_-6px_rgba(129,140,248,0.55)] transition-[filter] hover:brightness-110 active:brightness-95"
           >
             Get started
           </Link>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import {
+  IconArrowRight,
   IconBriefcase,
   IconCheck,
   IconGauge,
@@ -35,80 +36,108 @@ const HOW_IT_WORKS = [
 
 // Mirrors the real agent set in packages/agents/src/arete_agents/agents/*.py
 // (agent_name values) — same 6 agents shown in the authenticated dashboard's
-// AgentOrchestrationGraph, not a marketing-only invented list.
+// AgentOrchestrationGraph and the hero graph, not a marketing-only invented
+// list. Colors match the hero graph's per-agent hues.
 const AGENTS = [
-  { label: "Security", description: "Scans for vulnerabilities and OWASP-class issues.", icon: IconShieldCheck },
-  { label: "Performance", description: "Flags algorithmic and resource-usage regressions.", icon: IconGauge },
-  { label: "Quality", description: "Reviews style, readability, and maintainability.", icon: IconSparkles },
-  { label: "Test Coverage", description: "Checks whether behavior changes are actually tested.", icon: IconTestPipe },
-  { label: "Deployment Safety", description: "Looks for migration, rollout, and config risks.", icon: IconRocket },
-  {
-    label: "Business Logic",
-    description: "Checks your diff against connected production signals.",
-    icon: IconBriefcase,
-  },
+  { label: "Security", description: "Scans for vulnerabilities and OWASP-class issues.", icon: IconShieldCheck, color: "#fb7185" },
+  { label: "Performance", description: "Flags algorithmic and resource-usage regressions.", icon: IconGauge, color: "#22d3ee" },
+  { label: "Quality", description: "Reviews style, readability, and maintainability.", icon: IconSparkles, color: "#c084fc" },
+  { label: "Test Coverage", description: "Checks whether behavior changes are actually tested.", icon: IconTestPipe, color: "#34d399" },
+  { label: "Deployment Safety", description: "Looks for migration, rollout, and config risks.", icon: IconRocket, color: "#f59e0b" },
+  { label: "Business Logic", description: "Checks your diff against connected production signals.", icon: IconBriefcase, color: "#818cf8" },
 ];
 
-const CONNECTORS = ["GitHub Actions", "Sentry", "Vercel", "Stripe", "PostHog"];
+const CONNECTORS = [
+  { name: "GitHub Actions", color: "#f1f5f9" },
+  { name: "Sentry", color: "#c084fc" },
+  { name: "Vercel", color: "#f1f5f9" },
+  { name: "Stripe", color: "#818cf8" },
+  { name: "PostHog", color: "#f59e0b" },
+];
 
 // Pricing mirrors docs/proposal/TYME-platform-proposal.md §9 "Code Review
-// Service (Launch Product)" table exactly — no invented numbers.
+// Service (Launch Product)" table exactly — prices/units and the feature copy
+// below (split verbatim from the proposal's descriptions) — no invented numbers.
 const PRICING_TIERS = [
   {
     name: "Starter",
     price: "$29",
     unit: "/dev/month",
-    description: "Up to 10 devs, all 6 review agents, PR summary + inline comments.",
+    tagline: "For small teams getting started.",
+    features: ["Up to 10 developers", "All 6 review agents", "PR summary + inline comments"],
     featured: false,
   },
   {
     name: "Pro",
     price: "$49",
     unit: "/dev/month",
-    description: "Unlimited devs, production monitoring context, conversational interface.",
+    tagline: "For teams that ship to production.",
+    features: ["Unlimited developers", "Production monitoring context", "Conversational interface"],
     featured: true,
   },
   {
     name: "Enterprise",
     price: "Custom",
     unit: "",
-    description: "Self-hosted option, SSO, audit logs, SLA, dedicated support.",
+    tagline: "For organizations with compliance needs.",
+    features: ["Self-hosted option", "SSO + audit logs", "SLA + dedicated support"],
     featured: false,
   },
 ];
 
+function SectionHeading({ eyebrow, title, subtitle }: { eyebrow: string; title: string; subtitle: string }) {
+  return (
+    <div className="mb-14 text-center">
+      <span className="text-xs font-semibold uppercase tracking-[0.2em] text-accent-primary">{eyebrow}</span>
+      <h2 className="mt-3 text-3xl font-bold tracking-tight text-content-primary">{title}</h2>
+      <p className="mt-3 text-content-muted">{subtitle}</p>
+    </div>
+  );
+}
+
 export function HowItWorks() {
   return (
-    <section id="how-it-works" className="mx-auto max-w-6xl px-6 py-20">
-      <div className="text-center mb-14">
-        <h2 className="text-3xl font-bold text-content-primary">How it works</h2>
-        <p className="text-content-muted mt-3">From pull request to verified review, automatically.</p>
-      </div>
+    <section id="how-it-works" className="mx-auto max-w-6xl px-6 py-24">
+      <SectionHeading
+        eyebrow="How it works"
+        title="From pull request to verified review"
+        subtitle="Three steps, then it runs on every PR — automatically."
+      />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
+      <div className="relative mb-20 grid grid-cols-1 gap-6 md:grid-cols-3">
+        {/* connecting line behind the step badges (desktop) */}
+        <div className="absolute inset-x-[16%] top-11 hidden h-px bg-gradient-to-r from-transparent via-white/10 to-transparent md:block" />
         {HOW_IT_WORKS.map((item) => (
-          <Card key={item.step}>
-            <span className="text-xs font-mono text-accent-primary">{item.step}</span>
-            <h3 className="text-lg font-semibold text-content-primary mt-2 mb-2">{item.title}</h3>
-            <p className="text-sm text-content-muted">{item.description}</p>
-          </Card>
+          <div key={item.step} className="relative flex flex-col items-start">
+            <span className="mb-5 flex h-10 w-10 items-center justify-center rounded-full border border-accent-primary/30 bg-surface-0 font-mono text-sm font-semibold text-accent-primary shadow-[0_0_0_4px_rgba(2,6,23,1)]">
+              {item.step}
+            </span>
+            <h3 className="mb-2 text-lg font-semibold text-content-primary">{item.title}</h3>
+            <p className="text-sm leading-relaxed text-content-muted">{item.description}</p>
+          </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="mb-4 text-center">
+        <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-content-muted">The six specialists</h3>
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {AGENTS.map((agent) => {
           const Icon = agent.icon;
           return (
             <div
               key={agent.label}
-              className="flex items-start gap-3 p-4 rounded-xl border border-border-subtle bg-white/[0.02]"
+              className="group flex items-start gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 transition-colors hover:border-white/15 hover:bg-white/[0.04]"
             >
-              <div className="p-2 rounded-lg bg-accent-primary/10 border border-accent-primary/20 shrink-0">
-                <Icon className="w-4 h-4 text-accent-primary" />
+              <div
+                className="shrink-0 rounded-lg border p-2"
+                style={{ color: agent.color, borderColor: `${agent.color}33`, backgroundColor: `${agent.color}14` }}
+              >
+                <Icon className="h-4 w-4" />
               </div>
               <div>
                 <p className="text-sm font-medium text-content-primary">{agent.label}</p>
-                <p className="text-xs text-content-muted mt-0.5">{agent.description}</p>
+                <p className="mt-0.5 text-xs leading-relaxed text-content-muted">{agent.description}</p>
               </div>
             </div>
           );
@@ -120,23 +149,24 @@ export function HowItWorks() {
 
 export function ConnectorStrip() {
   return (
-    <section className="border-y border-border-subtle bg-white/[0.01]">
-      <div className="mx-auto max-w-6xl px-6 py-12 text-center">
-        <div className="inline-flex items-center gap-2 text-xs font-medium text-content-muted mb-6">
-          <IconPlugConnected className="w-4 h-4" />
-          CONNECTS TO WHAT YOU ALREADY RUN
+    <section id="connectors" className="border-y border-white/[0.06] bg-white/[0.01]">
+      <div className="mx-auto max-w-6xl px-6 py-16 text-center">
+        <div className="mb-7 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-content-muted">
+          <IconPlugConnected className="h-4 w-4" />
+          Connects to what you already run
         </div>
         <div className="flex flex-wrap items-center justify-center gap-3">
-          {CONNECTORS.map((name) => (
+          {CONNECTORS.map((c) => (
             <span
-              key={name}
-              className="px-4 py-2 rounded-full text-sm text-content-secondary border border-border-default bg-white/[0.02]"
+              key={c.name}
+              className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.02] px-4 py-2 text-sm text-content-secondary transition-colors hover:border-white/20"
             >
-              {name}
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: c.color, boxShadow: `0 0 8px ${c.color}66` }} />
+              {c.name}
             </span>
           ))}
         </div>
-        <p className="text-xs text-content-muted mt-6 max-w-md mx-auto">
+        <p className="mx-auto mt-7 max-w-md text-sm leading-relaxed text-content-muted">
           The Business Logic agent reads your connected telemetry to catch production-shaped bugs
           before they ship.
         </p>
@@ -147,30 +177,48 @@ export function ConnectorStrip() {
 
 export function PricingSection() {
   return (
-    <section id="pricing" className="mx-auto max-w-6xl px-6 py-20">
-      <div className="text-center mb-14">
-        <h2 className="text-3xl font-bold text-content-primary">Pricing</h2>
-        <p className="text-content-muted mt-3">First 50 PRs free. No credit card required.</p>
-      </div>
+    <section id="pricing" className="mx-auto max-w-6xl px-6 py-24">
+      <SectionHeading
+        eyebrow="Pricing"
+        title="Simple, per-developer pricing"
+        subtitle="First 50 PRs free. No credit card required."
+      />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-3">
         {PRICING_TIERS.map((tier) => (
-          <Card key={tier.name} elevated={tier.featured} className="flex flex-col">
+          <Card
+            key={tier.name}
+            elevated={tier.featured}
+            className={`relative flex flex-col ${tier.featured ? "md:-mt-3 md:pb-8" : ""}`}
+          >
+            {tier.featured && (
+              <span className="absolute -top-3 left-6 inline-flex items-center rounded-full bg-accent-primary px-3 py-1 text-[11px] font-semibold text-white shadow-[0_6px_14px_-6px_rgba(129,140,248,0.6)]">
+                Most popular
+              </span>
+            )}
             <h3 className="text-lg font-semibold text-content-primary">{tier.name}</h3>
-            <div className="mt-3 mb-4">
-              <span className="text-3xl font-bold text-content-primary">{tier.price}</span>
+            <p className="mt-1 text-sm text-content-muted">{tier.tagline}</p>
+            <div className="mt-4 mb-5 flex items-baseline gap-1">
+              <span className="text-4xl font-bold tracking-tight text-content-primary">{tier.price}</span>
               <span className="text-sm text-content-muted">{tier.unit}</span>
             </div>
-            <p className="text-sm text-content-muted flex-1">{tier.description}</p>
+            <ul className="mb-6 flex flex-1 flex-col gap-2.5">
+              {tier.features.map((f) => (
+                <li key={f} className="flex items-start gap-2 text-sm text-content-secondary">
+                  <IconCheck className="mt-0.5 h-4 w-4 shrink-0 text-accent-success" />
+                  {f}
+                </li>
+              ))}
+            </ul>
             <Link
               href="/login"
               className={
                 tier.featured
-                  ? "mt-6 inline-flex items-center justify-center h-9 px-4 rounded-full text-sm font-medium text-white bg-accent-primary hover:brightness-110 active:brightness-95 shadow-[0_1px_0_0_rgba(255,255,255,0.15)_inset,0_6px_14px_-6px_rgba(129,140,248,0.55)] transition-[filter]"
-                  : "mt-6 inline-flex items-center justify-center h-9 px-4 rounded-full text-sm font-medium text-content-secondary border border-white/15 hover:bg-white/5 transition-colors"
+                  ? "inline-flex h-10 items-center justify-center rounded-full bg-accent-primary px-4 text-sm font-medium text-white shadow-[0_1px_0_0_rgba(255,255,255,0.15)_inset,0_6px_14px_-6px_rgba(129,140,248,0.55)] transition-[filter] hover:brightness-110 active:brightness-95"
+                  : "inline-flex h-10 items-center justify-center rounded-full border border-white/15 px-4 text-sm font-medium text-content-secondary transition-colors hover:border-white/30 hover:bg-white/5"
               }
             >
-              Get started
+              {tier.name === "Enterprise" ? "Contact sales" : "Get started"}
             </Link>
           </Card>
         ))}
@@ -181,19 +229,23 @@ export function PricingSection() {
 
 export function FinalCta() {
   return (
-    <section className="mx-auto max-w-6xl px-6 pb-20">
-      <Card elevated className="text-center py-16 flex flex-col items-center gap-6">
-        <IconGitPullRequest className="w-8 h-8 text-accent-primary" />
-        <h2 className="text-2xl sm:text-3xl font-bold text-content-primary max-w-lg">
+    <section className="mx-auto max-w-6xl px-6 pb-24">
+      <Card elevated className="relative flex flex-col items-center gap-6 overflow-hidden py-16 text-center">
+        <div className="absolute left-1/2 top-0 -z-10 h-64 w-64 -translate-x-1/2 rounded-full bg-accent-primary/15 blur-[100px]" />
+        <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-accent-primary/30 bg-accent-primary/10 text-accent-primary">
+          <IconGitPullRequest className="h-6 w-6" />
+        </span>
+        <h2 className="max-w-lg text-2xl font-bold tracking-tight text-content-primary sm:text-3xl">
           Verified code review, posted straight to your next PR.
         </h2>
         <Link
           href="/login"
-          className="inline-flex items-center justify-center gap-2 h-10 px-6 rounded-full text-sm font-medium text-white bg-accent-primary hover:brightness-110 active:brightness-95 shadow-[0_1px_0_0_rgba(255,255,255,0.15)_inset,0_8px_20px_-6px_rgba(129,140,248,0.5)] transition-[filter]"
+          className="group inline-flex h-11 items-center justify-center gap-2 rounded-full bg-accent-primary px-6 text-sm font-medium text-white shadow-[0_1px_0_0_rgba(255,255,255,0.15)_inset,0_10px_24px_-8px_rgba(129,140,248,0.6)] transition-[filter,transform] hover:brightness-110 active:brightness-95"
         >
-          <IconCheck className="w-4 h-4" />
-          Get started
+          Get started free
+          <IconArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
         </Link>
+        <p className="text-xs text-content-muted">First 50 PRs free · no credit card required</p>
       </Card>
     </section>
   );
@@ -201,11 +253,16 @@ export function FinalCta() {
 
 export function MarketingFooter() {
   return (
-    <footer className="border-t border-border-subtle">
-      <div className="mx-auto max-w-6xl px-6 py-10 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <span className="text-sm font-semibold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-cyan-400 to-teal-300">
+    <footer className="border-t border-white/[0.06]">
+      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-10 sm:flex-row">
+        <span className="bg-gradient-to-r from-indigo-300 via-cyan-300 to-teal-200 bg-clip-text text-sm font-semibold text-transparent">
           Areté AI
         </span>
+        <nav className="flex items-center gap-6 text-xs text-content-muted">
+          <a href="#how-it-works" className="transition-colors hover:text-content-primary">How it works</a>
+          <a href="#pricing" className="transition-colors hover:text-content-primary">Pricing</a>
+          <Link href="/login" className="transition-colors hover:text-content-primary">Sign in</Link>
+        </nav>
         <p className="text-xs text-content-muted">© 2026 Areté AI. All rights reserved.</p>
       </div>
     </footer>
