@@ -32,11 +32,13 @@ def run_fixture(
     results: list[FixtureAgentResult] = []
     for agent in agents:
         comments = []
+        errors = 0
         for file in fixture.pr.files:
             try:
                 review = agent.review_file(file, fixture.pr)
                 comments.extend(review.comments)
             except Exception:
+                errors += 1
                 continue
         relevant = [
             d for d in fixture.planted_defects if d.target_agent == agent.agent_name
@@ -51,6 +53,7 @@ def run_fixture(
                 relevant_defects=relevant,
                 comments=comments,
                 match_results=match_results,
+                errors=errors,
             )
         )
     return results

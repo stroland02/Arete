@@ -1,5 +1,3 @@
-from arete_agents.models.pr import FileChange, PRContext
-from arete_agents.models.review import ReviewComment
 from arete_agents.eval.models import (
     AgentScore,
     EvalFixture,
@@ -7,6 +5,8 @@ from arete_agents.eval.models import (
     MatchResult,
     PlantedDefect,
 )
+from arete_agents.models.pr import FileChange, PRContext
+from arete_agents.models.review import ReviewComment
 
 
 def _pr() -> PRContext:
@@ -39,8 +39,12 @@ def test_eval_fixture_defaults():
 
 
 def test_match_result_allows_none_defect():
-    c = ReviewComment(path="a.py", line=5, body="b", severity="error", category="security")
-    m = MatchResult(defect_id=None, comment=c, localization_ok=False, description_ok=None)
+    c = ReviewComment(
+        path="a.py", line=5, body="b", severity="error", category="security"
+    )
+    m = MatchResult(
+        defect_id=None, comment=c, localization_ok=False, description_ok=None
+    )
     assert m.defect_id is None
 
 

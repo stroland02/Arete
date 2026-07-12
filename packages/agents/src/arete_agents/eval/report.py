@@ -29,7 +29,8 @@ def build_report(
 def _row(s: AgentScore) -> str:
     return (
         f"| {s.agent} | {s.tp} | {s.fp} | {s.fn} | "
-        f"{s.precision:.3f} | {s.recall:.3f} | {s.f1:.3f} | {s.fp_rate:.3f} |"
+        f"{s.precision:.3f} | {s.recall:.3f} | {s.f1:.3f} | "
+        f"{s.fp_rate:.3f} | {s.errors} |"
     )
 
 
@@ -43,14 +44,24 @@ def render_markdown(report: EvalReport) -> str:
         lines.append("")
     lines.append("## Scores")
     lines.append("")
-    lines.append("| Agent | TP | FP | FN | Precision | Recall | F1 | FP-rate |")
-    lines.append("|---|---|---|---|---|---|---|---|")
+    lines.append(
+        "| Agent | TP | FP | FN | Precision | Recall | F1 | FP-rate | Errors |"
+    )
+    lines.append("|---|---|---|---|---|---|---|---|---|")
     for s in report.per_agent:
         lines.append(_row(s))
     lines.append(_row(report.overall))
     lines.append("")
     lines.append(f"**Misses (FN):** {len(report.misses)}")
     lines.append(f"**False positives (FP):** {len(report.false_positives)}")
+    if report.overall.errors:
+        lines.append("")
+        lines.append(
+            f"**WARNING: {report.overall.errors} agent call(s) raised an exception "
+            "and were silently excluded from scoring (e.g. an invalid API key, rate "
+            "limit, or network failure). These results may understate real recall "
+            "— do not trust this report's P/R/F1 until the error count is 0."
+        )
     lines.append("")
     return "\n".join(lines)
 

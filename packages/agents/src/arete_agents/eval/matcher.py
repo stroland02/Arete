@@ -1,7 +1,7 @@
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from arete_agents.models.review import ReviewComment
 from arete_agents.eval.models import MatchResult, PlantedDefect
+from arete_agents.models.review import ReviewComment
 
 DEFAULT_WINDOW = 3
 

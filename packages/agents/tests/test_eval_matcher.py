@@ -1,8 +1,6 @@
 import pytest
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from arete_agents.models.review import ReviewComment
-from arete_agents.eval.models import PlantedDefect
 from arete_agents.eval.matcher import (
     DEFAULT_WINDOW,
     LLMJudge,
@@ -11,17 +9,25 @@ from arete_agents.eval.matcher import (
     localization_candidates,
     match_comments,
 )
+from arete_agents.eval.models import PlantedDefect
+from arete_agents.models.review import ReviewComment
 
 
-def _defect(line: int = 5, agent: str = "security", path: str = "a.py") -> PlantedDefect:
+def _defect(
+    line: int = 5, agent: str = "security", path: str = "a.py"
+) -> PlantedDefect:
     return PlantedDefect(
         id="d1", path=path, line=line, target_agent=agent,
         description="SQL injection via string formatting", severity="error",
     )
 
 
-def _comment(line: int = 5, category: str = "security", path: str = "a.py") -> ReviewComment:
-    return ReviewComment(path=path, line=line, body="SQLi risk", severity="error", category=category)
+def _comment(
+    line: int = 5, category: str = "security", path: str = "a.py"
+) -> ReviewComment:
+    return ReviewComment(
+        path=path, line=line, body="SQLi risk", severity="error", category=category
+    )
 
 
 def test_exact_localization_matches():
@@ -37,11 +43,17 @@ def test_out_of_window_no_match():
 
 
 def test_wrong_category_no_match():
-    assert localization_candidates(_comment(5, category="performance"), [_defect(5)]) == []
+    assert (
+        localization_candidates(_comment(5, category="performance"), [_defect(5)])
+        == []
+    )
 
 
 def test_wrong_path_no_match():
-    assert localization_candidates(_comment(5, path="b.py"), [_defect(5, path="a.py")]) == []
+    assert (
+        localization_candidates(_comment(5, path="b.py"), [_defect(5, path="a.py")])
+        == []
+    )
 
 
 def test_default_window_is_three():
@@ -123,7 +135,9 @@ def test_llm_judge_rejects_substring_yes():
 
 def test_llm_judge_sends_system_and_human_messages():
     fake = _FakeLLM("YES")
-    LLMJudge(fake).confirm("SQLi in query builder", "SQL injection via string formatting")
+    LLMJudge(fake).confirm(
+        "SQLi in query builder", "SQL injection via string formatting"
+    )
     assert isinstance(fake.last_messages[0], SystemMessage)
     assert isinstance(fake.last_messages[1], HumanMessage)
     assert "SQLi in query builder" in fake.last_messages[1].content
