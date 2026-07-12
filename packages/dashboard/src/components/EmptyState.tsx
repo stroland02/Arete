@@ -15,7 +15,7 @@ export function EmptyState() {
           <IconBrandGithub className="w-8 h-8 text-accent-primary" />
         </div>
         <div className="flex flex-col gap-2">
-          <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400">
+          <h2 className="text-2xl font-semibold font-serif text-content-primary">
             Install the Areté GitHub App
           </h2>
           <p className="text-sm text-content-muted">
@@ -25,7 +25,7 @@ export function EmptyState() {
         </div>
         <a
           href="https://github.com/apps/arete-ai-code-review"
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium text-white bg-accent-primary/20 border border-accent-primary/30 hover:bg-accent-primary/30 transition-colors"
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium text-accent-primary bg-accent-primary/10 border border-accent-primary/30 hover:bg-accent-primary/15 transition-colors"
         >
           <IconBrandGithub className="w-4 h-4" />
           Install on GitHub

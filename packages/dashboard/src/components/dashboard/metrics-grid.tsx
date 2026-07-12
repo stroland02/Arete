@@ -22,7 +22,7 @@ export function MetricsGrid({ metrics }: { metrics: Metric[] }) {
         <RevealItem key={i}>
           <Card className="flex h-full flex-col gap-4 group">
             <div className="flex justify-between items-start">
-              <div className="p-3 bg-white/5 rounded-2xl border border-border-default transition-[background-color,border-color,transform] duration-300 ease-out group-hover:bg-white/10 group-hover:border-border-strong group-hover:scale-105">
+              <div className="p-3 bg-content-primary/5 rounded-2xl border border-border-default transition-[background-color,border-color,transform] duration-300 ease-out group-hover:bg-content-primary/10 group-hover:border-border-strong group-hover:scale-105">
                 {metric.icon}
               </div>
               {metric.change && (

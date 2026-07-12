@@ -35,7 +35,7 @@ export function Sidebar({ collapsed, onToggleCollapsed, installations, userName,
   return (
     <aside
       className={cn(
-        "glass border-r border-slate-800/50 flex flex-col fixed h-full z-20 transition-all duration-300",
+        "glass border-r border-border-subtle flex flex-col fixed h-full z-20 transition-all duration-300",
         collapsed ? "w-20" : "w-64"
       )}
     >
@@ -48,7 +48,7 @@ export function Sidebar({ collapsed, onToggleCollapsed, installations, userName,
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }}
               transition={collapseTransition}
-              className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-cyan-400 to-teal-300 tracking-tight"
+              className="text-2xl font-semibold font-serif text-content-primary tracking-tight"
             >
               A
             </motion.h1>
@@ -59,9 +59,9 @@ export function Sidebar({ collapsed, onToggleCollapsed, installations, userName,
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={collapseTransition}
-              className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-cyan-400 to-teal-300 tracking-tight whitespace-nowrap"
+              className="text-2xl font-semibold font-serif text-content-primary tracking-tight whitespace-nowrap"
             >
-              Areté AI
+              Aret<span className="text-accent-secondary">é</span> AI
             </motion.h1>
           )}
         </AnimatePresence>
@@ -82,13 +82,13 @@ export function Sidebar({ collapsed, onToggleCollapsed, installations, userName,
               href={item.href}
               className={cn(
                 "relative flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-colors duration-150",
-                isActive ? "text-content-primary" : "text-content-muted hover:text-white hover:bg-white/5"
+                isActive ? "text-content-primary" : "text-content-muted hover:text-content-primary hover:bg-content-primary/5"
               )}
             >
               {isActive && (
                 <motion.span
                   layoutId="sidebar-active-indicator"
-                  className="absolute inset-0 bg-white/5 border border-border-default rounded-xl shadow-sm"
+                  className="absolute inset-0 bg-content-primary/5 border border-border-default rounded-xl shadow-sm"
                   transition={springTransition}
                 />
               )}
@@ -113,15 +113,15 @@ export function Sidebar({ collapsed, onToggleCollapsed, installations, userName,
 
       <button
         onClick={onToggleCollapsed}
-        className="mx-4 mb-2 flex items-center justify-center h-8 rounded-lg text-content-muted hover:text-white hover:bg-white/5 transition-colors"
+        className="mx-4 mb-2 flex items-center justify-center h-8 rounded-lg text-content-muted hover:text-content-primary hover:bg-content-primary/5 transition-colors"
         aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
       >
         {collapsed ? <IconChevronRight className="w-4 h-4" /> : <IconChevronLeft className="w-4 h-4" />}
       </button>
 
-      <div className="p-4 border-t border-slate-800/50">
+      <div className="p-4 border-t border-border-subtle">
         <div className="flex items-center gap-3 px-2 py-2">
-          <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-sm font-bold shadow-lg ring-2 ring-indigo-500/20 shrink-0">
+          <div className="w-9 h-9 rounded-full bg-accent-primary text-white flex items-center justify-center text-sm font-bold shadow-sm ring-2 ring-accent-primary/20 shrink-0">
             {initial}
           </div>
           <AnimatePresence initial={false}>

@@ -37,7 +37,7 @@ export function InstallationSwitcher({
     <select
       value={selectedId ?? 'all'}
       onChange={(e) => handleChange(e.target.value)}
-      className="w-full bg-white/5 border border-border-default rounded-xl px-3 py-2 text-sm text-content-secondary focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
+      className="w-full bg-surface-2 border border-border-default rounded-xl px-3 py-2 text-sm text-content-secondary focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
     >
       <option value="all">All Installations</option>
       {installations.map((installation) => (
