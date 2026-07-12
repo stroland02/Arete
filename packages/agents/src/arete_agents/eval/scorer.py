@@ -1,9 +1,9 @@
-from arete_agents.models.review import ReviewComment
 from arete_agents.eval.models import (
     AgentScore,
     FixtureAgentResult,
     PlantedDefect,
 )
+from arete_agents.models.review import ReviewComment
 
 
 def _safe_div(num: float, den: float) -> float:
@@ -19,7 +19,7 @@ def _prf(tp: int, fp: int, fn: int) -> tuple[float, float, float, float]:
 
 
 def score_agent(agent: str, results: list[FixtureAgentResult]) -> AgentScore:
-    tp = fp = fn = 0
+    tp = fp = fn = errors = 0
     for r in results:
         confirmed_ids = {
             m.defect_id for m in r.match_results if m.defect_id is not None
@@ -28,10 +28,12 @@ def score_agent(agent: str, results: list[FixtureAgentResult]) -> AgentScore:
         relevant_ids = {d.id for d in r.relevant_defects}
         tp += len(relevant_ids & confirmed_ids)
         fn += len(relevant_ids - confirmed_ids)
+        errors += r.errors
     precision, recall, f1, fp_rate = _prf(tp, fp, fn)
     return AgentScore(
         agent=agent, tp=tp, fp=fp, fn=fn,
         precision=precision, recall=recall, f1=f1, fp_rate=fp_rate,
+        errors=errors,
     )
 
 
@@ -39,10 +41,12 @@ def aggregate_overall(scores: list[AgentScore]) -> AgentScore:
     tp = sum(s.tp for s in scores)
     fp = sum(s.fp for s in scores)
     fn = sum(s.fn for s in scores)
+    errors = sum(s.errors for s in scores)
     precision, recall, f1, fp_rate = _prf(tp, fp, fn)
     return AgentScore(
         agent="overall", tp=tp, fp=fp, fn=fn,
         precision=precision, recall=recall, f1=f1, fp_rate=fp_rate,
+        errors=errors,
     )
 
 

@@ -4,7 +4,6 @@ import pytest
 
 from arete_agents.eval.loader import load_fixtures
 
-
 _VALID = {
     "id": "sec-sqli",
     "pr": {
@@ -34,8 +33,12 @@ def test_loads_valid_fixture(tmp_path):
 
 
 def test_sorted_by_filename(tmp_path):
-    (tmp_path / "b.json").write_text(json.dumps({**_VALID, "id": "b"}), encoding="utf-8")
-    (tmp_path / "a.json").write_text(json.dumps({**_VALID, "id": "a"}), encoding="utf-8")
+    (tmp_path / "b.json").write_text(
+        json.dumps({**_VALID, "id": "b"}), encoding="utf-8"
+    )
+    (tmp_path / "a.json").write_text(
+        json.dumps({**_VALID, "id": "a"}), encoding="utf-8"
+    )
     fixtures = load_fixtures(tmp_path)
     assert [f.id for f in fixtures] == ["a", "b"]
 
@@ -50,3 +53,10 @@ def test_malformed_file_raises_with_name(tmp_path):
 def test_missing_directory_raises(tmp_path):
     with pytest.raises(FileNotFoundError):
         load_fixtures(tmp_path / "nope")
+
+
+def test_path_pointing_at_a_file_raises(tmp_path):
+    a_file = tmp_path / "not_a_directory.json"
+    a_file.write_text(json.dumps(_VALID), encoding="utf-8")
+    with pytest.raises(FileNotFoundError):
+        load_fixtures(a_file)

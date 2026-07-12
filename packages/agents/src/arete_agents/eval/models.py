@@ -38,6 +38,7 @@ class AgentScore(BaseModel):
     recall: float
     f1: float
     fp_rate: float
+    errors: int = 0
 
 
 class FixtureAgentResult(BaseModel):
@@ -46,6 +47,7 @@ class FixtureAgentResult(BaseModel):
     relevant_defects: list[PlantedDefect]
     comments: list[ReviewComment]
     match_results: list[MatchResult]
+    errors: int = 0
 
 
 class EvalReport(BaseModel):

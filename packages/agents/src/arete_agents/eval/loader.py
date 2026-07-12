@@ -13,6 +13,6 @@ def load_fixture(path: Path) -> EvalFixture:
 
 
 def load_fixtures(directory: Path) -> list[EvalFixture]:
-    if not directory.exists():
+    if not directory.is_dir():
         raise FileNotFoundError(f"Fixtures directory not found: {directory}")
     return [load_fixture(p) for p in sorted(directory.glob("*.json"))]

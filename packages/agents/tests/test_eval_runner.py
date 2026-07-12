@@ -1,10 +1,10 @@
 from unittest.mock import MagicMock
 
+from arete_agents.eval.matcher import StubJudge
+from arete_agents.eval.models import EvalFixture, PlantedDefect
+from arete_agents.eval.runner import AGENT_NAMES, run_fixture
 from arete_agents.models.pr import FileChange, PRContext
 from arete_agents.models.review import FileReview, ReviewComment
-from arete_agents.eval.models import EvalFixture, PlantedDefect
-from arete_agents.eval.matcher import StubJudge
-from arete_agents.eval.runner import AGENT_NAMES, run_fixture
 
 
 def _fixture(defect_agent: str = "security") -> EvalFixture:
@@ -29,11 +29,18 @@ def _agents_with_security_hit() -> list:
         if name == "security":
             a.review_file.return_value = FileReview(
                 path="a.py",
-                comments=[ReviewComment(path="a.py", line=5, body="SQLi", severity="error", category="security")],
+                comments=[
+                    ReviewComment(
+                        path="a.py", line=5, body="SQLi",
+                        severity="error", category="security",
+                    )
+                ],
                 summary="s",
             )
         else:
-            a.review_file.return_value = FileReview(path="a.py", comments=[], summary="")
+            a.review_file.return_value = FileReview(
+                path="a.py", comments=[], summary=""
+            )
         agents.append(a)
     return agents
 
@@ -64,9 +71,19 @@ def test_run_fixture_survives_agent_exception():
         if name == "security":
             a.review_file.side_effect = RuntimeError("boom")
         else:
-            a.review_file.return_value = FileReview(path="a.py", comments=[], summary="")
+            a.review_file.return_value = FileReview(
+                path="a.py", comments=[], summary=""
+            )
         agents.append(a)
 
     results = run_fixture(_fixture(), agents, StubJudge(), is_stub=True)
     by_agent = {r.agent: r for r in results}
     assert by_agent["security"].comments == []
+    assert by_agent["security"].errors == 1
+    assert by_agent["quality"].errors == 0
+
+
+def test_run_fixture_no_errors_when_all_agents_succeed():
+    agents = _agents_with_security_hit()
+    results = run_fixture(_fixture(), agents, StubJudge(), is_stub=True)
+    assert all(r.errors == 0 for r in results)

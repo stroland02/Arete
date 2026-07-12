@@ -41,9 +41,13 @@ def build_finder_llm(provider: str, settings: Settings) -> BaseChatModel:
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="arete_agents.eval")
-    parser.add_argument("--agent", default=None, help="Restrict scoring to one agent name.")
+    parser.add_argument(
+        "--agent", default=None, help="Restrict scoring to one agent name."
+    )
     parser.add_argument("--fixtures", default=str(_DEFAULT_FIXTURES))
-    parser.add_argument("--judge", choices=["gemini", "anthropic", "stub"], default=None)
+    parser.add_argument(
+        "--judge", choices=["gemini", "anthropic", "stub"], default=None
+    )
     parser.add_argument("--report", choices=["md", "json"], default="md")
     parser.add_argument("--window", type=int, default=DEFAULT_WINDOW)
     parser.add_argument("--update-baseline", action="store_true")
@@ -79,8 +83,25 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(render_markdown(report))
 
+    if report.overall.errors:
+        print(
+            f"\nWARNING: {report.overall.errors} agent call(s) raised an "
+            "exception during this run (e.g. an invalid API key, rate limit, "
+            "or network failure) and were excluded from scoring. This report's "
+            "P/R/F1 may understate real recall.",
+            file=sys.stderr,
+        )
+
     baseline_path = Path(args.baseline)
     if args.update_baseline:
+        if report.overall.errors:
+            print(
+                "\nRefusing to write baseline: the run had "
+                f"{report.overall.errors} agent error(s). Fix the underlying "
+                "cause (e.g. API key) and re-run before updating the baseline.",
+                file=sys.stderr,
+            )
+            return 1
         baseline_path.write_text(render_json(report), encoding="utf-8")
         print(f"\nBaseline written to {baseline_path}", file=sys.stderr)
         return 0
