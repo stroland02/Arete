@@ -450,10 +450,10 @@ Once Code Review reaches ~$50K MRR, add outbound for the full Areté Platform:
 ### Phase 2: Production Monitoring Layer (Months 3–9)
 **Goal:** 200 paying teams, $60K MRR
 
-- [x] Code Review enriched with production context (Business Logic Agent active) — 5 telemetry connectors built (GitHub Actions, Sentry, Vercel, Stripe, PostHog) feeding `_build_telemetry_block` in `business_logic.py`; generic OAuth infrastructure also built. **Not yet done:** no Connect-flow UI (`TelemetryConnection` rows are hand/script-created only), and none of the 5 connectors have been validated against a real account yet — see `.superpowers/sdd/progress.md`.
+- [x] Code Review enriched with production context (Business Logic Agent active) — 5 telemetry connectors built (GitHub Actions, Sentry, Vercel, Stripe, PostHog) feeding `_build_telemetry_block` in `business_logic.py`; generic OAuth infrastructure also built and wired into the connector dispatch (`fetch-telemetry-context.ts`). Real Connect-flow UI exists for 4/5 connectors (`packages/dashboard/src/app/(dashboard)/connections/[id]/page.tsx`) — GitHub Actions is automatic, PostHog/Vercel use OAuth, Stripe uses an API-key form. **Not yet done:** Sentry stays blocked behind Sentry's own third-party app review; none of the 5 connectors have been validated against a real account yet (Vercel/PostHog also need real OAuth app credentials registered) — see `.superpowers/sdd/progress.md`.
 - [ ] OpenTelemetry ingestion pipeline (OTLP collector)
 - [ ] ClickHouse telemetry database and schema
-- [ ] Master Grid dashboard (unified error/latency/deployment view)
+- [x] Master Grid dashboard (unified error/latency/deployment view) — lightweight version shipped: `packages/dashboard/src/app/(dashboard)/grid/page.tsx` reads `TelemetrySnapshotRecord` rows persisted at review time (not live-fetched, no OTel/ClickHouse yet — see the two unchecked items above for the full pipeline this deliberately deferred)
 - [ ] Business metric overlay (connect revenue events to engineering telemetry)
 - [ ] Analytics Agent with root cause analysis
 - [ ] Anomaly detection and alerting
