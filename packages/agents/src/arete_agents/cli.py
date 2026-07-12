@@ -2,11 +2,11 @@ import argparse
 import json
 import sys
 
+from arete_agents.agents.chat import ChatAgent
 from arete_agents.config import get_settings
-from arete_agents.llm.base import get_llm
+from arete_agents.llm.base import get_llms_by_role
 from arete_agents.models.pr import PRContext
 from arete_agents.orchestrator import ReviewOrchestrator
-from arete_agents.agents.chat import ChatAgent
 
 
 def main() -> None:
@@ -23,15 +23,15 @@ def main() -> None:
 
     try:
         settings = get_settings()
-        llm = get_llm(settings)
-        
+        llms = get_llms_by_role(settings)
+
         if args.mode == "chat":
-            agent = ChatAgent(llm=llm)
+            agent = ChatAgent(llm=llms["chat"])
             result = agent.reply(context_dict)
             print(result)
         else:
             pr = PRContext.model_validate(context_dict)
-            orch = ReviewOrchestrator(llm=llm)
+            orch = ReviewOrchestrator(llm=llms)
             result = orch.run(pr)
             print(result.model_dump_json())
     except Exception as exc:

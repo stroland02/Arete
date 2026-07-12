@@ -41,13 +41,15 @@ def test_cli_reads_stdin_and_writes_stdout(monkeypatch, capsys):
     mock_llm.with_retry.return_value = mock_llm
     mock_llm.invoke.return_value = AIMessage(content=MOCK_LLM_RESPONSE)
 
-    monkeypatch.setenv("LLM_PROVIDER", "gemini")
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
 
     from arete_agents.config import get_settings
+    from arete_agents.llm.base import ROLE_KEYS
     get_settings.cache_clear()
 
-    with patch("arete_agents.cli.get_llm", return_value=mock_llm):
+    llms_by_role = {role: mock_llm for role in ROLE_KEYS}
+    with patch("arete_agents.cli.get_llms_by_role", return_value=llms_by_role):
         monkeypatch.setattr("sys.stdin", StringIO(SAMPLE_PR.model_dump_json()))
         from arete_agents.cli import main
         main()

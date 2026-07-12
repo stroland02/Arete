@@ -1,8 +1,12 @@
 # Design Spec: Anthropic-Only Per-Role Model Tiers
 
 **Date:** 2026-07-12
-**Status:** Approved design — proceeding to plan + implementation
+**Status:** Approved design — Phase 1 (production tiers) implementing now; Phase 2 (eval judge) deferred
 **Lane:** `packages/agents/` + `docs/` only
+
+> **Phasing (added during implementation).** Two refinements to keep the change safe and proportionate:
+> - **Phase 1 (this change):** the production per-role Anthropic tier system — §4 (config, minus the eval-provider-field removal), §5, §6, §8. `ReviewOrchestrator` uses a **union constructor** (`BaseChatModel | dict[str, BaseChatModel]`) rather than the dict-only "replace" in §6, so all existing single-`llm` test call sites keep working; production passes the per-role dict.
+> - **Phase 2 (deferred follow-up):** the eval-harness cross-tier judge (§7) and removing `eval_finder_provider`/`eval_judge_provider` from config. The eval harness is offline-only, its current stub/vendor judge modes still function untouched, and the cross-tier judge cannot be live-verified without a working key — so it is not worth the test churn now. Tracked for a later spec/plan.
 **Related:** [eval harness spec](2026-07-11-agent-eval-harness-design.md), [research synthesis](../research/2026-07-11-code-review-agent-quality-research.md)
 
 ---
