@@ -1,21 +1,5 @@
 import Link from "next/link";
-import { AgentOrchestrationGraph } from "@/components/dashboard/agent-orchestration-graph";
-
-// Sample counts used ONLY to give the hero's graph embed something to
-// render — this is the same real AgentOrchestrationGraph component the
-// authenticated dashboard uses, not a fabricated screenshot. The
-// "Illustrative example" label below it is load-bearing: a visitor must
-// never mistake this for real account activity (see docs/design-references/
-// README.md's "sample data" pattern, which this follows deliberately).
-const ILLUSTRATIVE_COMMENTS = [
-  { category: "security", count: 3 },
-  { category: "performance", count: 2 },
-  { category: "quality", count: 4 },
-  { category: "test_coverage", count: 1 },
-  { category: "deployment_safety", count: 1 },
-  { category: "business_logic", count: 2 },
-];
-const ILLUSTRATIVE_TELEMETRY = ["sentry", "vercel"];
+import { DashboardPreview } from "@/components/marketing/dashboard-preview";
 
 export function LandingHero() {
   return (
@@ -57,13 +41,9 @@ export function LandingHero() {
         </div>
 
         <div className="flex flex-col gap-2">
-          <AgentOrchestrationGraph
-            totalPrs={1}
-            commentsByCategory={ILLUSTRATIVE_COMMENTS}
-            telemetryProviders={ILLUSTRATIVE_TELEMETRY}
-          />
+          <DashboardPreview />
           <p className="text-center text-xs text-content-muted/70">
-            Illustrative example — not live account data.
+            Illustrative preview — not live account data.
           </p>
         </div>
       </div>

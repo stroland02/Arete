@@ -39,7 +39,11 @@ export function AgentsWorkspace({
 
   return (
     <>
-      <div className="glass-panel flex min-h-[540px] flex-col divide-y divide-border-subtle overflow-hidden lg:grid lg:h-[calc(100vh-8.5rem)] lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:divide-x lg:divide-y-0">
+      {/* Full-bleed: cancel the shell's p-8 and drop the card framing so this
+          reads as the actual interface built into the page, not a floating
+          card. A top border separates it from the Topbar; panes divide with
+          thin internal separators. */}
+      <div className="-m-8 flex min-h-[540px] flex-col divide-y divide-border-subtle border-t border-border-subtle bg-surface-1/20 overflow-hidden lg:grid lg:h-[calc(100vh-4.5rem)] lg:min-h-0 lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:divide-x lg:divide-y-0">
         <AgentRail
           findingCountById={findingCountById}
           hasReviews={hasReviews}
