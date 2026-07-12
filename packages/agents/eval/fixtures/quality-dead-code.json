@@ -1,0 +1,28 @@
+{
+  "id": "quality-dead-code",
+  "pr": {
+    "repo": "acme/api",
+    "pr_number": 106,
+    "title": "Compute discount",
+    "description": "Returns a discount amount.",
+    "files": [
+      {
+        "path": "src/pricing.py",
+        "patch": "@@ -0,0 +1,5 @@\n+def discount(total):\n+    return total * 0.1\n+    if total > 100:\n+        return total * 0.2\n+",
+        "additions": 5,
+        "deletions": 0
+      }
+    ]
+  },
+  "planted_defects": [
+    {
+      "id": "dead-001",
+      "path": "src/pricing.py",
+      "line": 3,
+      "target_agent": "quality",
+      "description": "Dead/unreachable code: the 'if total > 100' branch follows an unconditional return and can never execute.",
+      "severity": "warning"
+    }
+  ],
+  "clean": false
+}

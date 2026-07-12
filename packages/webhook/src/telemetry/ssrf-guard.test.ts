@@ -29,4 +29,20 @@ describe('assertAllowedTelemetryHost', () => {
   it('rejects the wrong provider for a given host', () => {
     expect(() => assertAllowedTelemetryHost('github_actions', 'https://app.posthog.com/api/projects/1/query')).toThrow(/not an allowed host/)
   })
+
+  it('allows the sentry api host', () => {
+    expect(() => assertAllowedTelemetryHost('sentry', 'https://sentry.io/api/0/organizations/acme/issues/')).not.toThrow()
+  })
+
+  it('allows the vercel api host', () => {
+    expect(() => assertAllowedTelemetryHost('vercel', 'https://api.vercel.com/v6/deployments')).not.toThrow()
+  })
+
+  it('allows the stripe api host', () => {
+    expect(() => assertAllowedTelemetryHost('stripe', 'https://api.stripe.com/v1/charges')).not.toThrow()
+  })
+
+  it('rejects sentry provider for a vercel host', () => {
+    expect(() => assertAllowedTelemetryHost('sentry', 'https://api.vercel.com/v6/deployments')).toThrow(/not an allowed host/)
+  })
 })

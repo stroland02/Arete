@@ -1,0 +1,28 @@
+{
+  "id": "bizlogic-offbyone",
+  "pr": {
+    "repo": "acme/api",
+    "pr_number": 111,
+    "title": "Paginate results",
+    "description": "Slices a page of results.",
+    "files": [
+      {
+        "path": "src/pagination.py",
+        "patch": "@@ -0,0 +1,4 @@\n+def page(items, page_num, size):\n+    start = page_num * size\n+    return items[start:start + size + 1]\n+",
+        "additions": 4,
+        "deletions": 0
+      }
+    ]
+  },
+  "planted_defects": [
+    {
+      "id": "offbyone-001",
+      "path": "src/pagination.py",
+      "line": 3,
+      "target_agent": "business_logic",
+      "description": "Off-by-one error: the slice end is 'start + size + 1', returning one extra item per page beyond the requested page size.",
+      "severity": "warning"
+    }
+  ],
+  "clean": false
+}

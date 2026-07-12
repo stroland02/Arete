@@ -1,5 +1,5 @@
 import type { Octokit } from '@octokit/core'
-import type { FileChange, PRContext } from './types.js'
+import type { FileChange, PRContext, TelemetryConnectorConfig } from './types.js'
 import yaml from 'yaml'
 
 const EXTENSION_MAP: Record<string, string> = {
@@ -14,8 +14,13 @@ function detectLanguage(filename: string): string {
   return EXTENSION_MAP[ext] ?? 'other'
 }
 
-export async function fetchAreteYaml(octokit: Octokit, owner: string, repo: string, ref: string): Promise<string[]> {
-  const tryFetch = async (path: string) => {
+interface AreteYamlContent {
+  customRules: string[]
+  telemetryConnectors: TelemetryConnectorConfig[]
+}
+
+export async function fetchAreteYaml(octokit: Octokit, owner: string, repo: string, ref: string): Promise<AreteYamlContent> {
+  const tryFetch = async (path: string): Promise<AreteYamlContent | null> => {
     try {
       const res = await (octokit as any).rest.repos.getContent({
         owner,
@@ -26,7 +31,10 @@ export async function fetchAreteYaml(octokit: Octokit, owner: string, repo: stri
       if (res.data.type === 'file' && res.data.content) {
         const content = Buffer.from(res.data.content, res.data.encoding || 'base64').toString('utf8');
         const parsed = yaml.parse(content);
-        return parsed?.custom_rules || [];
+        return {
+          customRules: parsed?.custom_rules || [],
+          telemetryConnectors: parsed?.telemetry_connectors || [],
+        };
       }
     } catch (err: any) {
       if (err.status !== 404) {
@@ -38,11 +46,11 @@ export async function fetchAreteYaml(octokit: Octokit, owner: string, repo: stri
 
   const yamlResult = await tryFetch('.arete.yml');
   if (yamlResult !== null) return yamlResult;
-  
+
   const yamlResult2 = await tryFetch('.arete.yaml');
   if (yamlResult2 !== null) return yamlResult2;
 
-  return [];
+  return { customRules: [], telemetryConnectors: [] };
 }
 
 // GitHub returns changed files in pages of up to 100. PRs touching more than
@@ -88,7 +96,7 @@ export async function fetchPRContext(
     }))
 
   // Fetch .arete.yml from the base branch, never the PR head: otherwise a PR could edit .arete.yml to weaken the rules used to review itself.
-  const customRules = await fetchAreteYaml(octokit, owner, repo, pr.base.sha);
+  const areteYaml = await fetchAreteYaml(octokit, owner, repo, pr.base.sha);
 
   return {
     repo: `${owner}/${repo}`,
@@ -96,6 +104,7 @@ export async function fetchPRContext(
     title: pr.title,
     description: pr.body ?? '',
     files: fileChanges,
-    customRules,
+    customRules: areteYaml.customRules,
+    telemetryConnectors: areteYaml.telemetryConnectors,
   }
 }

@@ -19,6 +19,14 @@ export interface TelemetrySnapshot {
   fetched_at: string
 }
 
+export interface TelemetryConnectorConfig {
+  provider: 'github_actions' | 'posthog' | 'sentry' | 'vercel' | 'stripe'
+  service?: string
+  project?: string
+  /** Sentry: organization slug. Vercel: team ID (optional, personal accounts omit it). */
+  org?: string
+}
+
 export interface PRContext {
   repo: string
   pr_number: number
@@ -28,6 +36,7 @@ export interface PRContext {
   customRules?: string[]
   ciLogs?: string
   telemetry?: TelemetrySnapshot[]
+  telemetryConnectors?: TelemetryConnectorConfig[]
 }
 
 export interface ReviewComment {

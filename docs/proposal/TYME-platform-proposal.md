@@ -138,6 +138,24 @@ A unified dashboard that gives engineering teams a single pane of glass for:
 - PR status for all open improvement suggestions
 - Business metric correlation (revenue, conversion, latency connected to code changes)
 
+**How it's actually built (as of Phase 1 telemetry connector work):** rather than requiring every customer to instrument their code with a new OpenTelemetry SDK before Areté delivers any value (a real adoption barrier for a self-serve product), the Master Grid ingests via **MCP (Model Context Protocol) connectors** — a now-standard, cross-vendor integration layer that most major dev-tool and cloud providers ship an official server for. A customer connects the tools they *already* run (GitHub, PostHog, Sentry, etc.) with a few clicks or an API key; Areté fetches from those directly rather than asking for new instrumentation. OpenTelemetry ingestion remains the plan for teams that want deeper, custom in-app tracing later — the connector layer is the fast on-ramp, not a replacement.
+
+Each connected source is normalized into one shared internal shape (`TelemetrySnapshot`: source, what it's about, a summary, key metrics, and a link back to the source) before it reaches either an AI review agent or the dashboard. This means the same data feeding "this service has had elevated CI failures" into a PR review is also what the Master Grid renders as a live tile — one pipeline, two consumers.
+
+**Connector catalog** (chosen for the self-serve ICP — individual developers and small teams who can connect a tool with an API key today, not enterprises requiring a sales relationship):
+
+| Connector | Category | Status | What it feeds the Master Grid / reviews |
+|---|---|---|---|
+| GitHub Actions | CI/CD health | ✅ Built | Recent workflow-run pass/fail history per repo — "this service's CI has been unstable" |
+| PostHog | Product analytics | ✅ Built | Recent event volume/trends per project — the actual business-metric-correlation promise, not just error counts |
+| Sentry | Error tracking | 🔜 Next | The natural error-tracking complement — most startups adopt Sentry before Datadog |
+| Vercel / Netlify | Deploy events | 🔜 Next | "This deploy broke something" — deploy status/timing correlation |
+| Stripe | Revenue | 🔜 Next | Revenue/subscription signal, for indie developers monetizing a product |
+| Slack | Notification delivery | Planned (different shape — outbound, not a data source) | Posts review summaries and Master Grid alerts to a team channel |
+| Datadog, AWS CloudWatch, Sentry (enterprise tier), Linear, Jira, PagerDuty, Google Cloud Monitoring, Azure Monitor | Various | Deferred | Higher-adoption at 25+ dev teams; revisit once a paying customer already has one under contract, since they typically require an enterprise relationship the self-serve connectors above don't |
+
+Every connector degrades gracefully — a connector that's down, misconfigured, or simply has no data for this PR never blocks a review from completing. Credentials are encrypted at rest; no connector ever accepts a customer-supplied URL (closing off a class of SSRF attack); and the AI agents treat all fetched telemetry as untrusted data to inform judgment, never as instructions to follow.
+
 ### Human-in-the-Loop
 
 Areté never touches production code without developer approval. Every action follows this flow:

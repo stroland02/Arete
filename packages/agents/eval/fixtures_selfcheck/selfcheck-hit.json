@@ -1,0 +1,28 @@
+{
+  "id": "selfcheck-hit",
+  "pr": {
+    "repo": "acme/api",
+    "pr_number": 900,
+    "title": "selfcheck hit",
+    "description": "One planted security defect at line 5.",
+    "files": [
+      {
+        "path": "src/auth.py",
+        "patch": "@@ -0,0 +1,6 @@\n+def q(user_id):\n+    return \"SELECT * FROM users WHERE id = '%s'\" % user_id\n+",
+        "additions": 6,
+        "deletions": 0
+      }
+    ]
+  },
+  "planted_defects": [
+    {
+      "id": "self-sqli",
+      "path": "src/auth.py",
+      "line": 5,
+      "target_agent": "security",
+      "description": "SQL injection via string formatting.",
+      "severity": "error"
+    }
+  ],
+  "clean": false
+}

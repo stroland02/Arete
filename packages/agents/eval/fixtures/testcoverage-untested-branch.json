@@ -1,0 +1,28 @@
+{
+  "id": "testcoverage-untested-branch",
+  "pr": {
+    "repo": "acme/api",
+    "pr_number": 107,
+    "title": "Add refund guard",
+    "description": "Adds a new refund branch but no test.",
+    "files": [
+      {
+        "path": "src/refunds.py",
+        "patch": "@@ -1,3 +1,6 @@\n def refund(amount, is_admin):\n-    return process(amount)\n+    if is_admin:\n+        return process(amount)\n+    raise PermissionError(\"not allowed\")\n+",
+        "additions": 4,
+        "deletions": 1
+      }
+    ]
+  },
+  "planted_defects": [
+    {
+      "id": "untested-001",
+      "path": "src/refunds.py",
+      "line": 2,
+      "target_agent": "test_coverage",
+      "description": "New untested branch: the added is_admin conditional and the PermissionError path introduce behavior with no accompanying test.",
+      "severity": "warning"
+    }
+  ],
+  "clean": false
+}

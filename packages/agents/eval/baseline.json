@@ -1,0 +1,7 @@
+{
+  "per_agent": [],
+  "overall": {"agent": "overall", "tp": 0, "fp": 0, "fn": 0, "precision": 0.0, "recall": 0.0, "f1": 0.0, "fp_rate": 0.0},
+  "misses": [],
+  "false_positives": [],
+  "meta": {"note": "placeholder baseline - no API key available at generation time; replace via --update-baseline once a real run is possible"}
+}

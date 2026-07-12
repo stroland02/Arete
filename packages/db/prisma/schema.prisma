@@ -34,8 +34,33 @@ model Installation {
   usageCount           Int          @default(0)
   createdAt            DateTime     @default(now())
   repositories         Repository[]
+  telemetryConnections TelemetryConnection[]
 
   @@unique([provider, externalId])
+}
+
+model TelemetryConnection {
+  id             String       @id @default(uuid())
+  installationId String
+  /// Telemetry provider name, e.g. "posthog". A plain string (not the
+  /// ScmProvider enum) — telemetry providers are an independently growing
+  /// set from source-control providers.
+  provider       String
+  /// Non-secret provider-specific config, e.g. { "project": "production-app" }.
+  config         Json
+  /// Encrypted (AES-256-GCM, see credentials.ts) JSON blob. Shape is
+  /// provider-specific — for v1 (PostHog, API-key only) it is just
+  /// { "apiKey": "..." } — a loose shape avoids a schema migration when a
+  /// different auth model is added for a future provider.
+  credentials    String
+  /// "api_key" | "oauth" — which shape `credentials` holds. api_key rows
+  /// store { apiKey/secretKey/token: "..." }; oauth rows store
+  /// { accessToken, refreshToken, expiresAt, tokenType }.
+  authMethod     String       @default("api_key")
+  createdAt      DateTime     @default(now())
+  installation   Installation @relation(fields: [installationId], references: [id])
+
+  @@unique([installationId, provider])
 }
 
 model Repository {

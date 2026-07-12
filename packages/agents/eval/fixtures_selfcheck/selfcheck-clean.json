@@ -1,0 +1,19 @@
+{
+  "id": "selfcheck-clean",
+  "pr": {
+    "repo": "acme/api",
+    "pr_number": 901,
+    "title": "selfcheck clean",
+    "description": "No defects; any finding is a false positive.",
+    "files": [
+      {
+        "path": "src/ok.py",
+        "patch": "@@ -0,0 +1,2 @@\n+def add(a, b):\n+    return a + b\n+",
+        "additions": 2,
+        "deletions": 0
+      }
+    ]
+  },
+  "planted_defects": [],
+  "clean": true
+}

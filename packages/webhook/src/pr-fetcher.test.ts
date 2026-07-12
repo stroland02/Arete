@@ -107,4 +107,51 @@ describe('fetchPRContext', () => {
     expect(result.files).toHaveLength(101)
     expect(result.files[100].path).toBe('src/last.ts')
   })
+
+  it('parses telemetry_connectors from .arete.yml alongside custom_rules', async () => {
+    const octokit = {
+      rest: {
+        pulls: {
+          get: vi.fn().mockResolvedValue({ data: { number: 1, title: 't', body: '', base: { sha: 'base-sha' }, head: { sha: 'head-sha' } } }),
+          listFiles: vi.fn().mockResolvedValue({ data: [] }),
+        },
+        repos: {
+          getContent: vi.fn().mockResolvedValue({
+            data: {
+              type: 'file',
+              encoding: 'base64',
+              content: Buffer.from(
+                'custom_rules:\n  - "no console.log"\ntelemetry_connectors:\n  - provider: github_actions\n  - provider: posthog\n    project: production-app\n'
+              ).toString('base64'),
+            },
+          }),
+        },
+      },
+    } as any
+
+    const { fetchPRContext } = await import('./pr-fetcher.js')
+    const result = await fetchPRContext(octokit, 'acme', 'api', 1)
+    expect(result.telemetryConnectors).toEqual([
+      { provider: 'github_actions' },
+      { provider: 'posthog', project: 'production-app' },
+    ])
+  })
+
+  it('defaults telemetryConnectors to an empty array when .arete.yml has none configured', async () => {
+    const octokit = {
+      rest: {
+        pulls: {
+          get: vi.fn().mockResolvedValue({ data: { number: 1, title: 't', body: '', base: { sha: 'base-sha' }, head: { sha: 'head-sha' } } }),
+          listFiles: vi.fn().mockResolvedValue({ data: [] }),
+        },
+        repos: {
+          getContent: vi.fn().mockRejectedValue({ status: 404 }),
+        },
+      },
+    } as any
+
+    const { fetchPRContext } = await import('./pr-fetcher.js')
+    const result = await fetchPRContext(octokit, 'acme', 'api', 1)
+    expect(result.telemetryConnectors).toEqual([])
+  })
 })

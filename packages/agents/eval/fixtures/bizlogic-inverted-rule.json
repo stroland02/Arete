@@ -1,0 +1,28 @@
+{
+  "id": "bizlogic-inverted-rule",
+  "pr": {
+    "repo": "acme/api",
+    "pr_number": 112,
+    "title": "Apply loyalty discount",
+    "description": "Applies discount to loyalty members.",
+    "files": [
+      {
+        "path": "src/discount.py",
+        "patch": "@@ -0,0 +1,4 @@\n+def price(base, is_member):\n+    if not is_member:\n+        return base * 0.8\n+    return base\n+",
+        "additions": 4,
+        "deletions": 0
+      }
+    ]
+  },
+  "planted_defects": [
+    {
+      "id": "inverted-001",
+      "path": "src/discount.py",
+      "line": 2,
+      "target_agent": "business_logic",
+      "description": "Inverted business rule: the discount is applied when the user is NOT a member ('if not is_member'), the opposite of the intended loyalty-member discount.",
+      "severity": "error"
+    }
+  ],
+  "clean": false
+}
