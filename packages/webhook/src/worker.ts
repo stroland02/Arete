@@ -13,7 +13,7 @@ import { fetchGitLabMRContext } from './gitlab-fetcher.js'
 import { runReviewPipeline } from './review-bridge.js'
 import { postReview } from './comment-poster.js'
 import { postGitLabReview, type DiffRefs } from './gitlab-comment-poster.js'
-import { persistReview } from './persistence.js'
+import { persistReview, persistTelemetrySnapshots } from './persistence.js'
 import { ARETE_CHECK_RUN_NAME } from './constants.js'
 import {
   REVIEW_QUEUE_NAME,
@@ -100,6 +100,16 @@ async function processGitHubPullRequest(octokit: Octokit, data: GitHubPullReques
     })
   } catch (err) {
     console.error('[worker] Failed to persist review (review was still posted):', err)
+  }
+
+  try {
+    await persistTelemetrySnapshots({
+      provider: 'github',
+      installationExternalId: installationId,
+      snapshots: prContext.telemetry ?? [],
+    })
+  } catch (err) {
+    console.error('[worker] Failed to persist telemetry snapshots (review was still posted):', err)
   }
 
   console.log(`[worker] Posted review — risk: ${result.risk_level}, comments: ${result.total_comments}`)

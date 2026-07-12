@@ -400,3 +400,40 @@ export async function getInstallationBilling(
 
   return installation;
 }
+
+export interface TelemetryGridSnapshot {
+  provider: string;
+  sourceRef: string;
+  summaryText: string;
+  metrics: Record<string, number>;
+  links: string[];
+  fetchedAt: Date;
+}
+
+/**
+ * Loads the latest known telemetry snapshot per (provider, sourceRef) for
+ * `installationIds` — backs the Master Grid page. TelemetrySnapshotRecord is
+ * upserted by the webhook's review pipeline (persistTelemetrySnapshots), so
+ * this always reflects "what we saw as of the last review", never a live
+ * fetch. Tenancy-scoped identically to every other query in this file.
+ */
+export async function getMasterGridSnapshots(
+  db: PrismaClient,
+  installationIds: string[]
+): Promise<TelemetryGridSnapshot[]> {
+  if (installationIds.length === 0) return [];
+
+  const rows = await db.telemetrySnapshotRecord.findMany({
+    where: { installationId: { in: installationIds } },
+    orderBy: { fetchedAt: 'desc' },
+  });
+
+  return rows.map((r) => ({
+    provider: r.provider,
+    sourceRef: r.sourceRef,
+    summaryText: r.summaryText,
+    metrics: r.metrics as Record<string, number>,
+    links: r.links as string[],
+    fetchedAt: r.fetchedAt,
+  }));
+}

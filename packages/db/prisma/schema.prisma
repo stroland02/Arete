@@ -35,6 +35,7 @@ model Installation {
   createdAt            DateTime     @default(now())
   repositories         Repository[]
   telemetryConnections TelemetryConnection[]
+  telemetrySnapshots   TelemetrySnapshotRecord[]
 
   @@unique([provider, externalId])
 }
@@ -106,4 +107,31 @@ model ReviewComment {
   category  String
   createdAt DateTime @default(now())
   review    Review   @relation(fields: [reviewId], references: [id])
+}
+
+/// Latest known telemetry snapshot per (installation, provider, sourceRef) —
+/// NOT a history table. Upserted every time a PR review fetches fresh
+/// telemetry (see packages/webhook/src/persistence.ts persistTelemetrySnapshots),
+/// so this always reflects "what we saw as of the last review", never live
+/// data. Backs the dashboard's Master Grid page. Deliberately reuses
+/// Postgres rather than standing up a time-series database — see
+/// docs/proposal/TYME-platform-proposal.md Phase 2 for the eventual
+/// OTel+ClickHouse path once real usage demands persistent history.
+model TelemetrySnapshotRecord {
+  id             String       @id @default(uuid())
+  installationId String
+  /// Telemetry provider name, e.g. "sentry" — matches TelemetryConnection.provider.
+  provider       String
+  /// Provider-specific scope the snapshot describes, e.g. "org/project" for
+  /// Sentry or "owner/repo" for GitHub Actions. See sourceRefFor() in
+  /// fetch-telemetry-context.ts for the exact per-provider format.
+  sourceRef      String
+  summaryText    String
+  metrics        Json
+  links          Json
+  fetchedAt      DateTime
+  createdAt      DateTime     @default(now())
+  installation   Installation @relation(fields: [installationId], references: [id])
+
+  @@unique([installationId, provider, sourceRef])
 }

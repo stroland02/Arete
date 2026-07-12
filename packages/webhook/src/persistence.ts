@@ -1,6 +1,6 @@
 import type { ScmProvider } from '@arete/db'
 import { prisma } from './db.js'
-import type { ReviewResult } from './types.js'
+import type { ReviewResult, TelemetrySnapshot } from './types.js'
 
 export interface ReviewExistsParams {
   provider: ScmProvider
@@ -136,4 +136,62 @@ export async function persistReview(params: PersistReviewParams): Promise<void> 
     where: { id: installation.id },
     data: { usageCount: { increment: 1 } },
   })
+}
+
+export interface PersistTelemetrySnapshotsParams {
+  provider: ScmProvider
+  /** GitHub App installation id, or GitLab project id. Unique per provider only. */
+  installationExternalId: number
+  snapshots: TelemetrySnapshot[]
+}
+
+/**
+ * Upserts the latest telemetry snapshot per (installation, provider,
+ * sourceRef) — a "what did we see as of the last review" record, NOT a
+ * growing history table (see TelemetrySnapshotRecord's schema comment).
+ * Backs the dashboard's Master Grid page.
+ *
+ * Requires the Installation row to already exist — callers should run this
+ * after persistReview (which upserts it) in the same job, not before.
+ * Silently no-ops if the installation isn't found yet, matching
+ * persistReview's non-fatal contract: telemetry persistence must never
+ * block or fail a review that already posted successfully.
+ */
+export async function persistTelemetrySnapshots(params: PersistTelemetrySnapshotsParams): Promise<void> {
+  const { provider, installationExternalId, snapshots } = params
+  if (snapshots.length === 0) return
+
+  const installation = await prisma.installation.findUnique({
+    where: { provider_externalId: { provider, externalId: installationExternalId } },
+  })
+  if (!installation) return
+
+  await Promise.all(
+    snapshots.map((s) =>
+      prisma.telemetrySnapshotRecord.upsert({
+        where: {
+          installationId_provider_sourceRef: {
+            installationId: installation.id,
+            provider: s.provider,
+            sourceRef: s.source_ref,
+          },
+        },
+        create: {
+          installationId: installation.id,
+          provider: s.provider,
+          sourceRef: s.source_ref,
+          summaryText: s.summary_text,
+          metrics: s.metrics,
+          links: s.links,
+          fetchedAt: new Date(s.fetched_at),
+        },
+        update: {
+          summaryText: s.summary_text,
+          metrics: s.metrics,
+          links: s.links,
+          fetchedAt: new Date(s.fetched_at),
+        },
+      })
+    )
+  )
 }

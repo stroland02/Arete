@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   getConnectedTelemetryProviders,
   getDashboardViewModel,
+  getMasterGridSnapshots,
   getTrendSeries,
   resolveSelectedInstallationIds,
   type DashboardViewModel,
@@ -37,12 +38,23 @@ interface FakeTelemetryConnection {
   installationId: string;
   provider: string;
 }
+interface FakeTelemetrySnapshot {
+  id: string;
+  installationId: string;
+  provider: string;
+  sourceRef: string;
+  summaryText: string;
+  metrics: Record<string, number>;
+  links: string[];
+  fetchedAt: Date;
+}
 
 function createFakeDb(
   repos: FakeRepo[],
   reviews: FakeReview[],
   comments: FakeComment[],
-  telemetryConnections: FakeTelemetryConnection[] = []
+  telemetryConnections: FakeTelemetryConnection[] = [],
+  telemetrySnapshots: FakeTelemetrySnapshot[] = []
 ) {
   const repoById = new Map(repos.map((r) => [r.id, r]));
   const reviewById = new Map(reviews.map((r) => [r.id, r]));
@@ -133,6 +145,18 @@ function createFakeDb(
           seen.add(c.provider);
           return true;
         });
+      },
+    },
+    telemetrySnapshotRecord: {
+      findMany: async ({ where, orderBy }: any) => {
+        const matched = telemetrySnapshots.filter((s) =>
+          inScope(s.installationId, where.installationId.in)
+        );
+        return matched.sort((a, b) =>
+          orderBy?.fetchedAt === 'desc'
+            ? b.fetchedAt.getTime() - a.fetchedAt.getTime()
+            : a.fetchedAt.getTime() - b.fetchedAt.getTime()
+        );
       },
     },
   };
@@ -292,6 +316,62 @@ describe('getConnectedTelemetryProviders', () => {
     };
 
     const result = await getConnectedTelemetryProviders(db as any, []);
+
+    expect(result).toEqual([]);
+    expect(queried).toBe(false);
+  });
+});
+
+describe('getMasterGridSnapshots', () => {
+  it('returns only the requesting installation\'s snapshots, newest first', async () => {
+    const db = createFakeDb([], [], [], [], [
+      {
+        id: 'snap-1',
+        installationId: 'inst-a',
+        provider: 'sentry',
+        sourceRef: 'acme/api',
+        summaryText: '2 new issues',
+        metrics: { issue_count: 2 },
+        links: ['https://sentry.io/1'],
+        fetchedAt: new Date('2026-07-10'),
+      },
+      {
+        id: 'snap-2',
+        installationId: 'inst-a',
+        provider: 'vercel',
+        sourceRef: 'acme/web',
+        summaryText: '1 failed deploy',
+        metrics: { failed_deploys: 1 },
+        links: ['https://vercel.com/1'],
+        fetchedAt: new Date('2026-07-12'),
+      },
+      {
+        id: 'snap-3',
+        installationId: 'inst-b',
+        provider: 'stripe',
+        sourceRef: 'account',
+        summaryText: 'installation B data — must never leak',
+        metrics: {},
+        links: [],
+        fetchedAt: new Date('2026-07-11'),
+      },
+    ]);
+
+    const result = await getMasterGridSnapshots(db as any, ['inst-a']);
+
+    expect(result).toHaveLength(2);
+    expect(result[0].provider).toBe('vercel'); // newest (2026-07-12) first
+    expect(result[1].provider).toBe('sentry');
+    expect(result.some((s) => s.summaryText.includes('installation B'))).toBe(false);
+  });
+
+  it('never queries the db and returns an empty array for zero authorized installations', async () => {
+    let queried = false;
+    const db = {
+      telemetrySnapshotRecord: { findMany: async () => { queried = true; return []; } },
+    };
+
+    const result = await getMasterGridSnapshots(db as any, []);
 
     expect(result).toEqual([]);
     expect(queried).toBe(false);
