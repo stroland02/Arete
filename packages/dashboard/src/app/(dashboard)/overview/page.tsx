@@ -13,7 +13,14 @@ import { ValueLedger } from "@/components/dashboard/value-ledger";
 import { ConnectorHealthStrip } from "@/components/dashboard/connector-health-strip";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ActivityList } from "@/components/dashboard/activity-list";
-import { AgentsAtWork } from "@/components/dashboard/agents/agents-at-work";
+import { MetricsGrid, type Metric } from "@/components/dashboard/metrics-grid";
+import { CommentsByCategory } from "@/components/dashboard/comments-by-category";
+import {
+  IconBug,
+  IconCalendarStats,
+  IconFolders,
+  IconGitPullRequest,
+} from "@tabler/icons-react";
 
 // This page reads the session and queries Prisma scoped to it on every
 // request — it must never be statically prerendered (that would either fail
@@ -82,12 +89,43 @@ export default async function DashboardOverview({
   const reviewsThisWeekTrend = bucketByDay(trendSeries.reviewDates, 7);
   const activeReposTrend = cumulativeByDay(trendSeries.repoDates, 7);
 
-  // Values consumed below are real; a few view-model fields (totalPrsChange,
-  // criticalBugsChange, repoDelta, activeReposTrend, activeRepos) are unused
-  // in this reciprocity-first layout iteration and intentionally left for
-  // later — activeRepos was dropped from AgentOrchestrationGraph's props
-  // when it was rebuilt around real per-agent finding counts.
-  void totalPrsChange; void criticalBugsChange; void repoDelta; void activeReposTrend; void activeRepos;
+  // SuperLog-style analytics grid — every value and weekly change comes from
+  // the view model (real Prisma aggregations), every sparkline from real
+  // createdAt series. "Critical Issues Caught" deliberately has no sparkline
+  // (see the trend comment above).
+  const metrics: Metric[] = [
+    {
+      title: "Total PRs Reviewed",
+      value: totalPrs.toString(),
+      change: totalPrsChange.change,
+      positive: totalPrsChange.positive,
+      icon: <IconGitPullRequest className="h-5 w-5 text-accent-primary" />,
+      trend: totalPrsTrend,
+    },
+    {
+      title: "Critical Issues Caught",
+      value: criticalBugs.toString(),
+      change: criticalBugsChange.change,
+      positive: criticalBugsChange.positive,
+      icon: <IconBug className="h-5 w-5 text-accent-danger" />,
+    },
+    {
+      title: "Reviews This Week",
+      value: recentReviews.toString(),
+      change: `${weeklyDelta >= 0 ? "+" : ""}${weeklyDelta}`,
+      positive: weeklyDelta >= 0,
+      icon: <IconCalendarStats className="h-5 w-5 text-accent-info" />,
+      trend: reviewsThisWeekTrend,
+    },
+    {
+      title: "Active Repositories",
+      value: activeRepos.toString(),
+      change: `${repoDelta >= 0 ? "+" : ""}${repoDelta}`,
+      positive: repoDelta >= 0,
+      icon: <IconFolders className="h-5 w-5 text-accent-success" />,
+      trend: activeReposTrend,
+    },
+  ];
 
   return (
     <PageReveal className="space-y-8">
@@ -126,47 +164,32 @@ export default async function DashboardOverview({
         />
       </RevealItem>
 
-      {/* ② Proof-of-work centerpiece — full-width row so the agent cards,
-          Synthesizer hourglass, and PR outcome panel breathe */}
-      <RevealItem>
-        <Card>
-          <CardHeader>
-            <CardTitle>Agents at work</CardTitle>
-            <button
-              disabled
-              title="Review history coming soon"
-              className="text-sm text-content-muted font-medium opacity-60 cursor-not-allowed"
-            >
-              View All
-            </button>
-          </CardHeader>
-          <AgentsAtWork
-            findingCountById={Object.fromEntries(
-              commentsByCategory.map((c) => [c.category, c.count])
-            )}
-            totalFindings={commentsByCategory.reduce((sum, c) => sum + c.count, 0)}
-            hasReviews={connected && totalPrs > 0}
-          />
-        </Card>
-      </RevealItem>
+      {/* ② Analytics grid — the agents block moved to /agents; this row is
+          the SuperLog-style breakdown with weekly changes and sparklines */}
+      <MetricsGrid metrics={metrics} />
 
-      {/* ③ What we caught feed — its own panel below */}
-      <RevealItem>
-        <Card>
-          <CardHeader>
-            <CardTitle>What we caught for you</CardTitle>
-          </CardHeader>
-          <ActivityList
-            reviews={latestReviews.map((review) => ({
-              id: review.id,
-              repositoryName: review.repositoryFullName,
-              prNumber: review.prNumber,
-              createdAt: review.createdAt.toISOString(),
-              riskLevel: review.riskLevel,
-            }))}
-          />
-        </Card>
-      </RevealItem>
+      {/* ③ Two-column analytics: category breakdown + what-we-caught feed */}
+      <div className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-2">
+        <RevealItem>
+          <CommentsByCategory categories={commentsByCategory} />
+        </RevealItem>
+        <RevealItem>
+          <Card className="h-full">
+            <CardHeader>
+              <CardTitle>What we caught for you</CardTitle>
+            </CardHeader>
+            <ActivityList
+              reviews={latestReviews.map((review) => ({
+                id: review.id,
+                repositoryName: review.repositoryFullName,
+                prNumber: review.prNumber,
+                createdAt: review.createdAt.toISOString(),
+                riskLevel: review.riskLevel,
+              }))}
+            />
+          </Card>
+        </RevealItem>
+      </div>
 
       {/* ④ Compounding-value loop: connect more tools → richer reviews (full width) */}
       <RevealItem>
