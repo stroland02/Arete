@@ -69,34 +69,39 @@ The finishing agent must:
 | `feat/dashboard-ui-port` | `dashboard` | Port the finished design system (tokens, primitives, motion, agent-orchestration graph) onto main's current auth-scoped dashboard (app/(dashboard)/*, getDashboardViewModel, @arete/db). Presentation layer + one new additive query function (getTrendSeries). NOTE: adds a worktree-root `.npmrc` (virtual-store-dir-max-length=60) + `next.config.ts` turbopack.root pin for Windows nested-worktree builds — requires a fresh `pnpm install` after pulling. | **Merged to main at `986987b` (2026-07-12)** — see pre-merge notes below |
 | `main` | `docs` | ADE setup, coordination | Done |
 
-## ⚠️ Known unreconciled conflict: `feat/dashboard-ui-redesign`
+## ✅ Resolved: `feat/dashboard-ui-redesign` is superseded — do not merge
 
-As of 2026-07-12, `main` contains `feat/dashboard-ui-port`'s reciprocity-first
-Overview redesign + Connections/Review Detail/Review History/Settings pages
-(commit `986987b`). A **separate, never-pushed local branch**,
-`feat/dashboard-ui-redesign` (worktree: `.worktrees/dashboard-ui-redesign`,
-24 commits, diverges from `main` at `8d730b3`), independently rebuilt
-overlapping ground: its own design-token/motion-token system, its own
-Button/Card/Badge/Skeleton/Tooltip primitives, an animated collapsible
-sidebar, and its own version of `agent-orchestration-graph.tsx` and the
-Comments-by-Category treatment.
+**Status as of 2026-07-12 (resolved).** `feat/dashboard-ui-redesign`
+(24 commits, never pushed, diverges from `main` at `8d730b3`) independently
+rebuilt the same design-system ground as `feat/dashboard-ui-port` (its own
+tokens, Button/Card/Badge/Skeleton/Tooltip primitives, animated collapsible
+sidebar, and its own `agent-orchestration-graph.tsx`). `dashboard-ui-port`
+won that race and merged to `main` at `986987b`.
 
-**This was not reconciled before `986987b` merged** — the two branches were
-discovered to be working the same ground only after `dashboard-ui-port` was
-already verified and ready to land, and `dashboard-ui-redesign` was still
-local/unpushed/not yet a shared conflict. Per explicit user decision, `main`
-was pushed rather than blocking on a comparison.
+Investigated for reconciliation and found the branch is not just
+unreconciled but **critically stale**: `git diff --stat main
+feat/dashboard-ui-redesign` shows it's missing ~4,600 lines across 60 files
+that `main` has since gained — the entire Connect flow, Master Grid, GitLab
+support, account auth (signup/login), the marketing landing page, and the
+Review Detail/History/Settings pages. Reconciling it would mean rebuilding
+most of the current app on its older foundation, not a component-level
+merge. **Decision: treat it as superseded. Do not merge.** The branch is
+left as-is in git (not deleted) in case anything in its token/sidebar work
+is worth a closer look later, but no future agent should attempt a full
+reconciliation.
 
-**Whoever picks up `feat/dashboard-ui-redesign` next must, before merging it:**
-1. Diff its `packages/dashboard/src/components/dashboard/agent-orchestration-graph.tsx`,
-   sidebar/topbar, and design-token files against what's now on `main` —
-   expect real, substantive conflicts, not just line-ending noise.
-2. Decide per-component which version wins (or whether to hand-merge), since
-   both sides independently solved the same UX problems differently.
-3. Re-run the full verification pass (`tsc --noEmit`, eslint, `next build`,
-   `vitest run` for both `dashboard` and `webhook` packages) after resolving,
-   the same way `dashboard-ui-port`'s merge was verified — do not assume a
-   clean git merge means the two design systems compose correctly.
+The 3-way `agent-orchestration-graph.tsx` collision this created is resolved
+the same way: `feat/dashboard-ui-redesign`'s version is moot along with the
+rest of that branch. The live contenders are `main`'s current SVG graph
+(`agent-orchestration-graph.tsx`, real per-agent data, built 2026-07-12) and
+`feat/arete-account-auth`'s in-progress **AgentsAtWork** card redesign
+(`components/dashboard/agents/*`, spec at
+`docs/superpowers/specs/2026-07-12-agents-at-work-redesign-design.md`) —
+grounded in real per-agent model tiers (`config.py`) and the Synthesizer's
+actual verify/drop logic, explicitly non-fabricated. AgentsAtWork is still
+being actively extended (an "Orca-style /agents workspace" page is being
+spec'd on top of it as of this writing) — not yet merge-ready, but the clear
+direction once it lands.
 
 ## Test Baselines (must not regress)
 
