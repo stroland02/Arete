@@ -1,11 +1,14 @@
-// Next.js 16 renamed Middleware to Proxy (same file convention, same
-// runtime). Re-exporting NextAuth's `auth` wrapper here runs the
-// `authorized` callback from lib/auth.ts on every request matched below,
-// redirecting anyone without a session to /login before any page or
-// route handler executes.
-export { auth as proxy } from './lib/auth';
+import NextAuth from 'next-auth';
+import { authConfig } from './lib/auth.config';
+
+// Middleware gate runs ONLY the edge-safe config (no db/bcrypt). See
+// lib/auth.config.ts.
+// Next 16's proxy loader only recognizes a function exported directly or via
+// an `export { x as proxy }` binding — a destructured `export const { auth:
+// proxy }` is seen as a non-function const and silently disables the gate.
+const { auth } = NextAuth(authConfig);
+export { auth as proxy };
 
 export const config = {
-  // Skip static assets; everything else (including "/") goes through auth.
   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };

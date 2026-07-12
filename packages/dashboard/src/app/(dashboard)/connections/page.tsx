@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { IconChevronRight } from "@tabler/icons-react";
+import { IconBrandGithub, IconChevronRight } from "@tabler/icons-react";
 import { CONNECTORS } from "@/lib/connector-catalog";
 import { ConnectorIcon } from "@/components/connections/connector-icon";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
@@ -14,6 +14,33 @@ export default function ConnectionsPage() {
             Every connected source gives Areté real production context — so a review can say
             &quot;this endpoint failed 6 times this week&quot; instead of judging the diff alone.
           </p>
+        </div>
+      </RevealItem>
+
+      <RevealItem>
+        <div className="glass-panel flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-accent-primary/20 bg-accent-primary/10 text-accent-primary">
+            <IconBrandGithub className="h-5 w-5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-content-primary">Areté GitHub App</span>
+              <span className="rounded-full border border-accent-primary/20 bg-accent-primary/5 px-1.5 py-0.5 text-[10px] font-medium text-accent-primary/80">
+                Core
+              </span>
+            </div>
+            <p className="mt-0.5 text-xs text-content-muted">
+              Install the Areté GitHub App on your account or org so Areté can review your pull
+              requests. This is the core connection that powers your overview dashboard.
+            </p>
+          </div>
+          <a
+            href="https://github.com/apps/arete-ai-code-review"
+            className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-accent-primary/30 bg-accent-primary/20 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/30"
+          >
+            <IconBrandGithub className="h-4 w-4" />
+            Install on GitHub
+          </a>
         </div>
       </RevealItem>
 
