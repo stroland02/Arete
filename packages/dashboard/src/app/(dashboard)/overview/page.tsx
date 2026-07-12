@@ -7,14 +7,21 @@ import {
   getTrendSeries,
   resolveSelectedInstallationIds,
 } from "@/lib/queries";
-import Link from "next/link";
 import { bucketByDay, cumulativeByDay } from "@/lib/trends";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 import { ValueLedger } from "@/components/dashboard/value-ledger";
 import { ConnectorHealthStrip } from "@/components/dashboard/connector-health-strip";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ActivityList } from "@/components/dashboard/activity-list";
-import { AgentOrchestrationGraph } from "@/components/dashboard/agent-orchestration-graph";
+import { MetricsGrid, type Metric } from "@/components/dashboard/metrics-grid";
+import { CommentsByCategory } from "@/components/dashboard/comments-by-category";
+import { SetupChecklist, type SetupStep } from "@/components/dashboard/setup-checklist";
+import {
+  IconBug,
+  IconCalendarStats,
+  IconFolders,
+  IconGitPullRequest,
+} from "@tabler/icons-react";
 
 // This page reads the session and queries Prisma scoped to it on every
 // request — it must never be statically prerendered (that would either fail
@@ -84,87 +91,102 @@ export default async function DashboardOverview({
   const reviewsThisWeekTrend = bucketByDay(trendSeries.reviewDates, 7);
   const activeReposTrend = cumulativeByDay(trendSeries.repoDates, 7);
 
-  // Values consumed below are real; a few view-model fields (totalPrsChange,
-  // criticalBugsChange, repoDelta, activeReposTrend, activeRepos) are unused
-  // in this reciprocity-first layout iteration and intentionally left for
-  // later — activeRepos was dropped from AgentOrchestrationGraph's props
-  // when it was rebuilt around real per-agent finding counts.
-  void totalPrsChange; void criticalBugsChange; void repoDelta; void activeReposTrend; void activeRepos;
+  // Setup checklist — every `done` value is a real fact, not an estimate.
+  // "account" is honestly true by construction (this page is auth-gated).
+  const setupSteps: SetupStep[] = [
+    { id: "account", label: "Create your Areté account", done: true },
+    {
+      id: "repo",
+      label: "Connect your GitHub repository",
+      done: connected,
+      href: "/connections",
+    },
+    {
+      id: "telemetry",
+      label: "Connect a telemetry source",
+      done: telemetryProviders.length > 0,
+      href: "/connections",
+    },
+    {
+      id: "first-review",
+      label: "See your first automated review",
+      done: totalPrs > 0,
+    },
+  ];
+
+  // SuperLog-style analytics grid — every value and weekly change comes from
+  // the view model (real Prisma aggregations), every sparkline from real
+  // createdAt series. "Critical Issues Caught" deliberately has no sparkline
+  // (ReviewComment.createdAt exists but this metric was scoped out of the
+  // original port — see docs/superpowers/specs/2026-07-11-dashboard-ui-port-design.md §3.2).
+  const metrics: Metric[] = [
+    {
+      title: "Total PRs Reviewed",
+      value: totalPrs.toString(),
+      change: totalPrsChange.change,
+      positive: totalPrsChange.positive,
+      icon: <IconGitPullRequest className="h-5 w-5 text-accent-primary" />,
+      trend: totalPrsTrend,
+    },
+    {
+      title: "Critical Issues Caught",
+      value: criticalBugs.toString(),
+      change: criticalBugsChange.change,
+      positive: criticalBugsChange.positive,
+      icon: <IconBug className="h-5 w-5 text-accent-danger" />,
+    },
+    {
+      title: "Reviews This Week",
+      value: recentReviews.toString(),
+      change: `${weeklyDelta >= 0 ? "+" : ""}${weeklyDelta}`,
+      positive: weeklyDelta >= 0,
+      icon: <IconCalendarStats className="h-5 w-5 text-accent-info" />,
+      trend: reviewsThisWeekTrend,
+    },
+    {
+      title: "Active Repositories",
+      value: activeRepos.toString(),
+      change: `${repoDelta >= 0 ? "+" : ""}${repoDelta}`,
+      positive: repoDelta >= 0,
+      icon: <IconFolders className="h-5 w-5 text-accent-success" />,
+      trend: activeReposTrend,
+    },
+  ];
 
   return (
     <PageReveal className="space-y-8">
-      {!connected && (
-        <RevealItem>
-          <div className="glass-panel flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
-            <div className="flex-1">
-              <h2 className="text-sm font-semibold text-content-primary">
-                Connect a repository to see your real reviews
-              </h2>
-              <p className="mt-0.5 text-xs text-content-muted">
-                You&apos;re signed in, but no GitHub repository is connected yet. Connect the Areté
-                GitHub App on the Connections page — this overview then fills with your PRs,
-                findings, and agent activity.
-              </p>
-            </div>
-            <Link
-              href="/connections"
-              className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-accent-primary/30 bg-accent-primary/20 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/30"
-            >
-              Go to Connections
-            </Link>
-          </div>
-        </RevealItem>
-      )}
-
-      {/* ① Reciprocity hero — what Areté caught FOR you */}
       <RevealItem>
-        <ValueLedger
-          criticalBugs={criticalBugs}
-          totalPrs={totalPrs}
-          recentReviews={recentReviews}
-          weeklyDelta={weeklyDelta}
-          totalPrsTrend={totalPrsTrend}
-          reviewsThisWeekTrend={reviewsThisWeekTrend}
-        />
+        <SetupChecklist steps={setupSteps} />
       </RevealItem>
 
-      {/* ② Proof-of-work centerpiece + ③ what we caught feed */}
-      <RevealItem className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Agents at work</CardTitle>
-            <button
-              disabled
-              title="Review history coming soon"
-              className="text-sm text-content-muted font-medium opacity-60 cursor-not-allowed"
-            >
-              View All
-            </button>
-          </CardHeader>
-          <AgentOrchestrationGraph
-            totalPrs={totalPrs}
-            commentsByCategory={commentsByCategory}
-            telemetryProviders={telemetryProviders}
-          />
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>What we caught for you</CardTitle>
-          </CardHeader>
-          <ActivityList
-            reviews={latestReviews.map((review) => ({
-              id: review.id,
-              repositoryName: review.repositoryFullName,
-              prNumber: review.prNumber,
-              createdAt: review.createdAt.toISOString(),
-              riskLevel: review.riskLevel,
-            }))}
-          />
-        </Card>
+      <RevealItem>
+        <ValueLedger />
       </RevealItem>
 
-      {/* ④ Compounding-value loop: connect more tools → richer reviews (full width) */}
+      <MetricsGrid metrics={metrics} />
+
+      <div className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-2">
+        <RevealItem>
+          <CommentsByCategory categories={commentsByCategory} />
+        </RevealItem>
+        <RevealItem>
+          <Card className="h-full">
+            <CardHeader>
+              <CardTitle>What we caught for you</CardTitle>
+            </CardHeader>
+            <ActivityList
+              reviews={latestReviews.map((review) => ({
+                id: review.id,
+                repositoryName: review.repositoryFullName,
+                prNumber: review.prNumber,
+                createdAt: review.createdAt.toISOString(),
+                riskLevel: review.riskLevel,
+              }))}
+            />
+          </Card>
+        </RevealItem>
+      </div>
+
       <RevealItem>
         <ConnectorHealthStrip />
       </RevealItem>
