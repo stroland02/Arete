@@ -7,8 +7,8 @@ import {
   getTrendSeries,
   resolveSelectedInstallationIds,
 } from "@/lib/queries";
+import Link from "next/link";
 import { bucketByDay, cumulativeByDay } from "@/lib/trends";
-import { EmptyState } from "@/components/EmptyState";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 import { ValueLedger } from "@/components/dashboard/value-ledger";
 import { ConnectorHealthStrip } from "@/components/dashboard/connector-health-strip";
@@ -45,10 +45,11 @@ export default async function DashboardOverview({
     getConnectedTelemetryProviders(db, installationIds),
   ]);
 
-  if (!viewModel.hasAccess) {
-    return <EmptyState />;
-  }
-
+  // Don't wall the whole dashboard behind "install the GitHub App". A
+  // signed-in user always sees the real overview; when no installation is
+  // linked yet we render it in a zero-state and show a non-blocking banner
+  // that points to the Connections page (where the GitHub App is connected).
+  const connected = viewModel.hasAccess;
   const {
     totalPrs,
     activeRepos,
@@ -60,7 +61,20 @@ export default async function DashboardOverview({
     repoDelta,
     commentsByCategory,
     latestReviews,
-  } = viewModel;
+  } = viewModel.hasAccess
+    ? viewModel
+    : {
+        totalPrs: 0,
+        activeRepos: 0,
+        criticalBugs: 0,
+        recentReviews: 0,
+        weeklyDelta: 0,
+        totalPrsChange: { change: "+0", positive: true },
+        criticalBugsChange: { change: "+0", positive: true },
+        repoDelta: 0,
+        commentsByCategory: [],
+        latestReviews: [],
+      };
 
   // Trends are derived from real createdAt data via getTrendSeries — never
   // fabricated. "Critical Bugs Prevented" deliberately has no sparkline:
@@ -79,6 +93,29 @@ export default async function DashboardOverview({
 
   return (
     <PageReveal className="space-y-8">
+      {!connected && (
+        <RevealItem>
+          <div className="glass-panel flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
+            <div className="flex-1">
+              <h2 className="text-sm font-semibold text-content-primary">
+                Connect a repository to see your real reviews
+              </h2>
+              <p className="mt-0.5 text-xs text-content-muted">
+                You&apos;re signed in, but no GitHub repository is connected yet. Connect the Areté
+                GitHub App on the Connections page — this overview then fills with your PRs,
+                findings, and agent activity.
+              </p>
+            </div>
+            <Link
+              href="/connections"
+              className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-accent-primary/30 bg-accent-primary/20 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/30"
+            >
+              Go to Connections
+            </Link>
+          </div>
+        </RevealItem>
+      )}
+
       {/* ① Reciprocity hero — what Areté caught FOR you */}
       <RevealItem>
         <ValueLedger
