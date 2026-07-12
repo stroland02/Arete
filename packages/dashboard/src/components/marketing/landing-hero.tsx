@@ -1,67 +1,65 @@
 import Link from "next/link";
-import { AgentOrchestrationGraph } from "@/components/dashboard/agent-orchestration-graph";
-
-// Sample counts used ONLY to give the hero's graph embed something to
-// render — this is the same real AgentOrchestrationGraph component the
-// authenticated dashboard uses, not a fabricated screenshot. The
-// "Illustrative example" label below it is load-bearing: a visitor must
-// never mistake this for real account activity (see docs/design-references/
-// README.md's "sample data" pattern, which this follows deliberately).
-const ILLUSTRATIVE_COMMENTS = [
-  { category: "security", count: 3 },
-  { category: "performance", count: 2 },
-  { category: "quality", count: 4 },
-  { category: "test_coverage", count: 1 },
-  { category: "deployment_safety", count: 1 },
-  { category: "business_logic", count: 2 },
-];
-const ILLUSTRATIVE_TELEMETRY = ["sentry", "vercel"];
+import { IconArrowRight, IconBrandGithub, IconBrandGitlab, IconSparkles } from "@tabler/icons-react";
+import { HeroAgentGraph } from "@/components/marketing/hero-agent-graph";
 
 export function LandingHero() {
   return (
     <section className="relative overflow-hidden">
-      <div className="absolute top-0 left-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl -z-10 pointer-events-none" />
-      <div className="absolute bottom-0 right-0 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl -z-10 pointer-events-none" />
+      {/* ambient glows */}
+      <div className="absolute -top-24 left-1/4 h-[28rem] w-[28rem] -z-10 rounded-full bg-indigo-500/[0.12] blur-[120px] pointer-events-none" />
+      <div className="absolute top-40 right-0 h-96 w-96 -z-10 rounded-full bg-cyan-500/[0.08] blur-[120px] pointer-events-none" />
+      {/* faint top hairline gradient */}
+      <div className="absolute inset-x-0 top-0 -z-10 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
 
-      <div className="mx-auto max-w-6xl px-6 pt-20 pb-16 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-        <div className="flex flex-col gap-6">
-          <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-content-primary">
+      <div className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-12 px-6 pt-20 pb-20 lg:grid-cols-12 lg:gap-10">
+        <div className="flex flex-col gap-6 lg:col-span-5">
+          <span className="inline-flex w-fit items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-xs font-medium text-content-secondary backdrop-blur-sm">
+            <IconSparkles className="h-3.5 w-3.5 text-accent-primary" />
+            Verified AI code review
+          </span>
+
+          <h1 className="text-4xl font-bold leading-[1.08] tracking-tight text-content-primary sm:text-5xl">
             Code review that{" "}
-            <span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-cyan-400 to-teal-300">
+            <span className="bg-gradient-to-r from-indigo-400 via-cyan-400 to-teal-300 bg-clip-text text-transparent">
               checks its own work
             </span>
             .
           </h1>
-          <p className="text-lg text-content-muted max-w-xl">
+
+          <p className="max-w-xl text-lg leading-relaxed text-content-muted">
             Six specialist agents review every pull request in parallel. A Synthesizer verifies
-            each finding against your actual diff and drops anything it can&apos;t prove — so
-            what lands in your PR is signal, not noise.
+            each finding against your actual diff and drops anything it can&apos;t prove — so what
+            lands in your PR is signal, not noise.
           </p>
-          <div className="flex flex-wrap items-center gap-4">
+
+          <div className="flex flex-wrap items-center gap-3">
             <Link
               href="/login"
-              className="inline-flex items-center justify-center h-10 px-6 rounded-full text-sm font-medium text-white bg-accent-primary hover:brightness-110 active:brightness-95 shadow-[0_1px_0_0_rgba(255,255,255,0.15)_inset,0_8px_20px_-6px_rgba(129,140,248,0.5)] transition-[filter]"
+              className="group inline-flex h-11 items-center justify-center gap-2 rounded-full bg-accent-primary px-6 text-sm font-medium text-white shadow-[0_1px_0_0_rgba(255,255,255,0.15)_inset,0_10px_24px_-8px_rgba(129,140,248,0.6)] transition-[filter,transform] hover:brightness-110 active:brightness-95"
             >
-              Get started
+              Get started free
+              <IconArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </Link>
             <a
               href="#how-it-works"
-              className="inline-flex items-center justify-center h-10 px-6 rounded-full text-sm font-medium text-content-secondary border border-white/15 bg-white/[0.03] backdrop-blur-md hover:border-white/30 hover:bg-white/[0.06] transition-colors"
+              className="inline-flex h-11 items-center justify-center rounded-full border border-white/15 bg-white/[0.03] px-6 text-sm font-medium text-content-secondary backdrop-blur-md transition-colors hover:border-white/30 hover:bg-white/[0.06]"
             >
               See how it works
             </a>
           </div>
-          <p className="text-xs text-content-muted">
-            First 50 PRs free. No credit card required.
-          </p>
+
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-1 text-xs text-content-muted">
+            <span>First 50 PRs free · no credit card</span>
+            <span className="hidden h-3 w-px bg-white/10 sm:inline-block" />
+            <span className="inline-flex items-center gap-1.5">
+              <IconBrandGithub className="h-4 w-4" /> GitHub
+              <IconBrandGitlab className="ml-2 h-4 w-4" /> GitLab
+            </span>
+          </div>
         </div>
 
-        <div className="flex flex-col gap-2">
-          <AgentOrchestrationGraph
-            totalPrs={1}
-            commentsByCategory={ILLUSTRATIVE_COMMENTS}
-            telemetryProviders={ILLUSTRATIVE_TELEMETRY}
-          />
+        <div className="flex flex-col gap-2 lg:col-span-7">
+          <HeroAgentGraph />
           <p className="text-center text-xs text-content-muted/70">
             Illustrative example — not live account data.
           </p>
