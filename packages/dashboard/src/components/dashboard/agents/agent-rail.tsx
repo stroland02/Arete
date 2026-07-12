@@ -67,7 +67,7 @@ export function AgentRail({
                 onClick={() => onSelect(agent.id)}
                 aria-current={selected ? "true" : undefined}
                 className={cn(
-                  "flex w-full items-start gap-2.5 px-3 py-2.5 text-left transition-colors",
+                  "flex w-full items-start gap-2.5 py-2.5 pl-3 pr-9 text-left transition-colors",
                   selected ? "bg-white/[0.06]" : "hover:bg-white/[0.03]"
                 )}
               >
@@ -92,7 +92,7 @@ export function AgentRail({
                   <span className="flex items-center gap-1.5">
                     <span
                       className={cn(
-                        "truncate text-[13px] font-medium",
+                        "min-w-0 flex-1 truncate text-[13px] font-medium",
                         selected ? "text-content-primary" : "text-content-secondary"
                       )}
                     >

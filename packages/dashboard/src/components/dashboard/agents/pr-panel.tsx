@@ -1,7 +1,12 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { IconChevronDown, IconExternalLink } from "@tabler/icons-react";
+import {
+  IconCheck,
+  IconChevronDown,
+  IconExternalLink,
+  IconGitBranch,
+} from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -70,6 +75,23 @@ export function PrPanel({ hasReviews, latestReview, totalFindings }: PrPanelProp
         )}
       </header>
 
+      {/* Repository selector — shell: switching repos needs deeper GitHub linking */}
+      <div className="shrink-0 border-b border-border-subtle px-3 py-2">
+        <button
+          type="button"
+          disabled
+          title="Connect a repository to switch between repos"
+          aria-label="Select repository"
+          className="flex w-full cursor-not-allowed items-center gap-2 rounded-lg border border-border-default bg-surface-2/60 px-2.5 py-1.5 text-left text-[11px] text-content-muted"
+        >
+          <IconGitBranch size={13} stroke={1.75} className="shrink-0" aria-hidden />
+          <span className="truncate">
+            {pr ? pr.repoFullName : "No repository connected"}
+          </span>
+          <IconChevronDown size={12} stroke={2} className="ml-auto shrink-0 opacity-60" aria-hidden />
+        </button>
+      </div>
+
       {/* Comparison line */}
       <div className="shrink-0 border-b border-border-subtle px-3 py-2">
         {pr ? (
@@ -128,6 +150,46 @@ export function PrPanel({ hasReviews, latestReview, totalFindings }: PrPanelProp
           </p>
         </PanelSection>
       </div>
+
+      {/* Human verification — you sign off before the review is sent out.
+          Shell controls: disabled until real PR actions are wired up. */}
+      <footer className="shrink-0 space-y-2 border-t border-border-subtle px-3 py-3">
+        <p className="font-mono text-[10px] uppercase tracking-wider text-content-muted">
+          Human verification
+        </p>
+        <Button
+          size="sm"
+          disabled
+          title="Connect a repository to enable"
+          className="h-8 w-full rounded-lg text-[12px]"
+        >
+          <IconCheck size={13} stroke={2} aria-hidden />
+          Approve &amp; post review
+        </Button>
+        <div className="grid grid-cols-2 gap-1.5">
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled
+            title="Connect a repository to enable"
+            className="h-8 rounded-lg text-[11px]"
+          >
+            Request changes
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled
+            title="Connect a repository to enable"
+            className="h-8 rounded-lg text-[11px]"
+          >
+            Post to PR
+          </Button>
+        </div>
+        <p className="text-[10px] leading-4 text-content-muted/80">
+          Nothing is sent until you approve — connect a repository to enable these.
+        </p>
+      </footer>
     </section>
   );
 }

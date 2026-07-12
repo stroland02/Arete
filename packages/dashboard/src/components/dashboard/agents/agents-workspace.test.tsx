@@ -88,7 +88,11 @@ describe('SynthesizerConsole', () => {
       />
     );
 
-    expect(html).toContain('No active review');
+    // Idle state now explains what the Synthesizer does and routes the user
+    // to the next step instead of a bare "no active review".
+    expect(html).toContain('coordinates every review');
+    expect(html).toContain('Connect a repository');
+    expect(html).toContain('/connections');
     expect(html).toContain('Ask the Synthesizer…');
     expect(html).not.toContain('posted to the PR');
   });
@@ -123,6 +127,12 @@ describe('PrPanel', () => {
     expect(html).toContain('Files changed');
     expect(html).toContain('Commits');
     expect(html).not.toContain('github.com');
+    // Repo selector + human-verification controls (honest shells).
+    expect(html).toContain('No repository connected');
+    expect(html).toContain('Human verification');
+    expect(html).toContain('Approve');
+    expect(html).toContain('Request changes');
+    expect(html).toContain('Post to PR');
   });
 });
 

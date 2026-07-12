@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { motion } from "framer-motion";
-import { IconHourglassHigh } from "@tabler/icons-react";
+import { IconArrowRight, IconHourglassHigh } from "@tabler/icons-react";
 import { staggerContainer, fadeSlideUp } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
@@ -136,17 +137,44 @@ export function SynthesizerConsole({
             ))}
           </motion.ol>
         ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-            <div className="rounded-2xl border border-border-default bg-white/5 p-3 text-content-muted">
-              <IconHourglassHigh size={22} stroke={1.5} />
+          <div className="mx-auto flex h-full max-w-md flex-col items-center justify-center gap-5 px-4 text-center">
+            <div className="rounded-2xl border border-border-default bg-white/5 p-3 text-accent-primary">
+              <IconHourglassHigh size={24} stroke={1.5} />
             </div>
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-content-secondary">No active review</p>
-              <p className="max-w-[16rem] text-xs text-content-muted">
-                Connect a repository to watch the Synthesizer coordinate the six
-                specialists on your pull requests.
+
+            <div className="space-y-1.5">
+              <p className="text-sm font-semibold text-content-primary">
+                The Synthesizer coordinates every review
+              </p>
+              <p className="text-xs leading-5 text-content-muted">
+                It merges findings from all six specialist agents, verifies each one
+                against your diff, drops anything low-confidence or hallucinated, and
+                posts only the survivors to your pull request — so you see signal, not noise.
               </p>
             </div>
+
+            <ol className="w-full space-y-2 text-left">
+              {[
+                "Connect a repository",
+                "Open a pull request",
+                "Areté reviews it automatically — the workflow streams here",
+              ].map((step, i) => (
+                <li key={step} className="flex items-start gap-2.5">
+                  <span className="mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border-default bg-white/5 font-mono text-[10px] text-content-secondary">
+                    {i + 1}
+                  </span>
+                  <span className="text-xs leading-5 text-content-secondary">{step}</span>
+                </li>
+              ))}
+            </ol>
+
+            <Link
+              href="/connections"
+              className="inline-flex items-center gap-2 rounded-xl border border-accent-primary/30 bg-accent-primary/20 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/30"
+            >
+              Connect a repository
+              <IconArrowRight size={15} stroke={2} />
+            </Link>
           </div>
         )}
       </div>
