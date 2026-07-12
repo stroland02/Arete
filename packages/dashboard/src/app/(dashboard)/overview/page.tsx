@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import {
-  getConnectedTelemetryProviders,
   getDashboardViewModel,
   getTrendSeries,
   resolveSelectedInstallationIds,
@@ -14,7 +13,7 @@ import { ValueLedger } from "@/components/dashboard/value-ledger";
 import { ConnectorHealthStrip } from "@/components/dashboard/connector-health-strip";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ActivityList } from "@/components/dashboard/activity-list";
-import { AgentOrchestrationGraph } from "@/components/dashboard/agent-orchestration-graph";
+import { AgentsAtWork } from "@/components/dashboard/agents/agents-at-work";
 
 // This page reads the session and queries Prisma scoped to it on every
 // request — it must never be statically prerendered (that would either fail
@@ -39,10 +38,9 @@ export default async function DashboardOverview({
     installation
   );
 
-  const [viewModel, trendSeries, telemetryProviders] = await Promise.all([
+  const [viewModel, trendSeries] = await Promise.all([
     getDashboardViewModel(db, installationIds),
     getTrendSeries(db, installationIds),
-    getConnectedTelemetryProviders(db, installationIds),
   ]);
 
   // Don't wall the whole dashboard behind "install the GitHub App". A
@@ -128,9 +126,10 @@ export default async function DashboardOverview({
         />
       </RevealItem>
 
-      {/* ② Proof-of-work centerpiece + ③ what we caught feed */}
-      <RevealItem className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2">
+      {/* ② Proof-of-work centerpiece — full-width row so the agent cards,
+          Synthesizer hourglass, and PR outcome panel breathe */}
+      <RevealItem>
+        <Card>
           <CardHeader>
             <CardTitle>Agents at work</CardTitle>
             <button
@@ -141,13 +140,18 @@ export default async function DashboardOverview({
               View All
             </button>
           </CardHeader>
-          <AgentOrchestrationGraph
-            totalPrs={totalPrs}
-            commentsByCategory={commentsByCategory}
-            telemetryProviders={telemetryProviders}
+          <AgentsAtWork
+            findingCountById={Object.fromEntries(
+              commentsByCategory.map((c) => [c.category, c.count])
+            )}
+            totalFindings={commentsByCategory.reduce((sum, c) => sum + c.count, 0)}
+            hasReviews={connected && totalPrs > 0}
           />
         </Card>
+      </RevealItem>
 
+      {/* ③ What we caught feed — its own panel below */}
+      <RevealItem>
         <Card>
           <CardHeader>
             <CardTitle>What we caught for you</CardTitle>
