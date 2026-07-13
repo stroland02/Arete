@@ -37,7 +37,7 @@ export function DashboardsWorkspace({ model }: { model: Model }) {
             </button>
           ))}
         </div>
-        {tab !== "telemetry" && <TimeRangeControl value={range} onChange={setRange} />}
+        {tab === "activity" && <TimeRangeControl value={range} onChange={setRange} />}
       </div>
       <Active model={model} days={range} />
     </div>

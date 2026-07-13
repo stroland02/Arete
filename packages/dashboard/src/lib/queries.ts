@@ -514,7 +514,12 @@ export async function getDashboardsViewModel(
       where: { review: reviewScope },
       _count: { severity: true },
     }),
-    db.review.groupBy({ by: ['riskLevel'], where: reviewScope, _count: { riskLevel: true } }),
+    db.review.groupBy({
+      by: ['riskLevel'],
+      where: reviewScope,
+      _count: { riskLevel: true },
+      orderBy: { _count: { riskLevel: 'desc' } },
+    }),
     db.review.groupBy({
       by: ['repositoryId'],
       where: reviewScope,
