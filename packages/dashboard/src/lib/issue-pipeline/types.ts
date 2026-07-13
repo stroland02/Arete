@@ -56,6 +56,13 @@ export interface SynthStep {
   text: string;
   detail?: string;
   at: string; // ISO timestamp
+  /**
+   * Set on a `keep` step the Critic flagged low-confidence (spec
+   * synthesizer-component-and-critic §2, §4): gate-passed and kept, but "wants
+   * a human look". Renders as the ⚑ variant and increments the ledger's
+   * needs-attention count. Optional + backward-compatible.
+   */
+  needsAttention?: boolean;
 }
 
 export interface PrComment {
