@@ -1,9 +1,13 @@
 from arete_agents.eval.models import (
     AgentScore,
+    CleanFileStats,
     FixtureAgentResult,
     PlantedDefect,
+    SeverityScore,
 )
 from arete_agents.models.review import ReviewComment
+
+SEVERITY_ORDER = ["error", "warning", "info"]
 
 
 def _safe_div(num: float, den: float) -> float:
@@ -69,3 +73,54 @@ def collect_false_positives(results: list[FixtureAgentResult]) -> list[ReviewCom
 
 def f1_regressed(current: float, baseline: float, threshold: float = 0.05) -> bool:
     return current < baseline - threshold
+
+
+def score_by_severity(results: list[FixtureAgentResult]) -> list[SeverityScore]:
+    scores: list[SeverityScore] = []
+    for severity in SEVERITY_ORDER:
+        tp = fp = fn = 0
+        for r in results:
+            confirmed_ids = {
+                m.defect_id for m in r.match_results if m.defect_id is not None
+            }
+            for d in r.relevant_defects:
+                if d.severity != severity:
+                    continue
+                if d.id in confirmed_ids:
+                    tp += 1
+                else:
+                    fn += 1
+            fp += sum(
+                1
+                for m in r.match_results
+                if m.defect_id is None and m.comment.severity == severity
+            )
+        if tp + fp + fn == 0:
+            continue
+        precision, recall, f1, fp_rate = _prf(tp, fp, fn)
+        scores.append(
+            SeverityScore(
+                severity=severity, tp=tp, fp=fp, fn=fn,
+                precision=precision, recall=recall, f1=f1, fp_rate=fp_rate,
+            )
+        )
+    return scores
+
+
+def clean_file_stats(results: list[FixtureAgentResult]) -> CleanFileStats:
+    by_fixture: dict[str, list[FixtureAgentResult]] = {}
+    for r in results:
+        by_fixture.setdefault(r.fixture_id, []).append(r)
+    clean_fixtures = 0
+    flagged = 0
+    for fixture_results in by_fixture.values():
+        if not any(r.clean for r in fixture_results):
+            continue
+        clean_fixtures += 1
+        if any(r.comments for r in fixture_results):
+            flagged += 1
+    return CleanFileStats(
+        clean_fixtures=clean_fixtures,
+        clean_fixtures_flagged=flagged,
+        false_alarm_rate=_safe_div(flagged, clean_fixtures),
+    )

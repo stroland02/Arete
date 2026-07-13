@@ -87,3 +87,25 @@ def test_run_fixture_no_errors_when_all_agents_succeed():
     agents = _agents_with_security_hit()
     results = run_fixture(_fixture(), agents, StubJudge(), is_stub=True)
     assert all(r.errors == 0 for r in results)
+
+
+def _clean_fixture() -> EvalFixture:
+    pr = PRContext(
+        repo="acme/api", pr_number=2, title="t", description="d",
+        files=[FileChange(path="a.py", patch="+x", additions=1, deletions=0)],
+    )
+    return EvalFixture(id="clean-1", pr=pr, clean=True)
+
+
+def test_run_fixture_carries_clean_flag_true():
+    agents = _agents_with_security_hit()
+    results = run_fixture(_clean_fixture(), agents, StubJudge(), is_stub=True)
+    assert results
+    assert all(r.clean is True for r in results)
+
+
+def test_run_fixture_carries_clean_flag_false():
+    agents = _agents_with_security_hit()
+    results = run_fixture(_fixture(), agents, StubJudge(), is_stub=True)
+    assert results
+    assert all(r.clean is False for r in results)

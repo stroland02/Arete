@@ -37,8 +37,8 @@ class Settings(BaseSettings):
     test_coverage_tier: Literal["opus", "sonnet"] = "sonnet"
     chat_tier: Literal["opus", "sonnet"] = "sonnet"
 
-    eval_finder_provider: Literal["gemini", "anthropic"] | None = None
-    eval_judge_provider: Literal["gemini", "anthropic"] | None = None
+    eval_finder_tier: Literal["opus", "sonnet"] = "opus"
+    eval_judge_tier: Literal["opus", "sonnet"] = "sonnet"
     eval_f1_threshold: float = 0.05
 
     @field_validator("gemini_api_key")

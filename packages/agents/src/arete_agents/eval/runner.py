@@ -54,6 +54,7 @@ def run_fixture(
                 comments=comments,
                 match_results=match_results,
                 errors=errors,
+                clean=fixture.clean,
             )
         )
     return results

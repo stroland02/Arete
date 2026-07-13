@@ -6,10 +6,12 @@ from arete_agents.eval.models import (
 )
 from arete_agents.eval.scorer import (
     aggregate_overall,
+    clean_file_stats,
     collect_false_positives,
     collect_misses,
     f1_regressed,
     score_agent,
+    score_by_severity,
 )
 from arete_agents.models.review import ReviewComment
 
@@ -166,3 +168,89 @@ def test_aggregate_overall_sums_errors():
     )
     o = aggregate_overall([a, b])
     assert o.errors == 3
+
+
+def _severity_mixed_results() -> list[FixtureAgentResult]:
+    matched_error = PlantedDefect(
+        id="e1", path="a.py", line=5, target_agent="security",
+        description="d", severity="error",
+    )
+    missed_warning = PlantedDefect(
+        id="w1", path="a.py", line=9, target_agent="security",
+        description="d", severity="warning",
+    )
+    error_comment = ReviewComment(
+        path="a.py", line=5, body="b", severity="error", category="security"
+    )
+    info_comment = ReviewComment(
+        path="a.py", line=20, body="b", severity="info", category="security"
+    )
+    return [
+        FixtureAgentResult(
+            fixture_id="f1", agent="security",
+            relevant_defects=[matched_error, missed_warning],
+            comments=[error_comment, info_comment],
+            match_results=[
+                MatchResult(
+                    defect_id="e1", comment=error_comment,
+                    localization_ok=True, description_ok=True,
+                ),
+                MatchResult(
+                    defect_id=None, comment=info_comment,
+                    localization_ok=False, description_ok=None,
+                ),
+            ],
+        )
+    ]
+
+
+def test_score_by_severity_mixed():
+    scores = score_by_severity(_severity_mixed_results())
+    by_sev = {s.severity: s for s in scores}
+    assert [s.severity for s in scores] == ["error", "warning", "info"]
+    assert (by_sev["error"].tp, by_sev["error"].fp, by_sev["error"].fn) == (1, 0, 0)
+    assert by_sev["error"].precision == 1.0
+    assert by_sev["error"].recall == 1.0
+    assert (by_sev["warning"].tp, by_sev["warning"].fp, by_sev["warning"].fn) == (
+        0, 0, 1
+    )
+    assert by_sev["warning"].recall == 0.0
+    assert (by_sev["info"].tp, by_sev["info"].fp, by_sev["info"].fn) == (0, 1, 0)
+    assert by_sev["info"].fp_rate == 1.0
+
+
+def test_score_by_severity_omits_absent_severities():
+    scores = score_by_severity([_tp_result()])  # only an error defect/comment
+    assert [s.severity for s in scores] == ["error"]
+
+
+def _clean_result(
+    fixture_id: str, agent: str, comments: list[ReviewComment]
+) -> FixtureAgentResult:
+    return FixtureAgentResult(
+        fixture_id=fixture_id, agent=agent, relevant_defects=[],
+        comments=comments, match_results=[], clean=True,
+    )
+
+
+def test_clean_file_stats_flagged_and_unflagged():
+    flagged = [
+        _clean_result("clean-1", "security", [_comment()]),
+        _clean_result("clean-1", "quality", []),
+    ]
+    unflagged = [
+        _clean_result("clean-2", "security", []),
+        _clean_result("clean-2", "quality", []),
+    ]
+    defect = [_tp_result()]  # not clean, must be ignored
+    stats = clean_file_stats(flagged + unflagged + defect)
+    assert stats.clean_fixtures == 2
+    assert stats.clean_fixtures_flagged == 1
+    assert stats.false_alarm_rate == 0.5
+
+
+def test_clean_file_stats_no_clean_fixtures():
+    stats = clean_file_stats([_tp_result()])
+    assert stats.clean_fixtures == 0
+    assert stats.clean_fixtures_flagged == 0
+    assert stats.false_alarm_rate == 0.0

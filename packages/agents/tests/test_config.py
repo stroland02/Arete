@@ -43,3 +43,22 @@ def test_settings_anthropic_requires_api_key():
     }):
         with pytest.raises(ValueError):
             get_settings()
+
+
+def test_eval_tier_defaults():
+    from arete_agents.config import Settings
+    settings = Settings(llm_provider="anthropic", anthropic_api_key="k")
+    assert settings.eval_finder_tier == "opus"
+    assert settings.eval_judge_tier == "sonnet"
+
+
+def test_eval_tiers_accept_overrides():
+    from arete_agents.config import Settings
+    settings = Settings(
+        llm_provider="anthropic",
+        anthropic_api_key="k",
+        eval_finder_tier="sonnet",
+        eval_judge_tier="opus",
+    )
+    assert settings.eval_finder_tier == "sonnet"
+    assert settings.eval_judge_tier == "opus"
