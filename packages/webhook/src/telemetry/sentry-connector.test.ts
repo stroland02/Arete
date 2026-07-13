@@ -1,12 +1,15 @@
+import { webhookFetch } from '@arete/net-guard'
+vi.mock('@arete/net-guard', () => ({ webhookFetch: vi.fn() }))
+const webhookFetchMock = vi.mocked(webhookFetch)
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { fetchSentrySnapshot } from './sentry-connector.js'
 
 describe('fetchSentrySnapshot', () => {
-  const originalFetch = global.fetch
-  afterEach(() => { global.fetch = originalFetch })
+  
+  afterEach(() => { webhookFetchMock.mockReset() })
 
   it('summarizes recent Sentry issues', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    webhookFetchMock.mockResolvedValue({
       ok: true,
       json: async () => ([
         { title: 'TypeError: x is undefined', count: '42', shortId: 'ACME-1', permalink: 'https://acme.sentry.io/issues/1' },
@@ -25,19 +28,19 @@ describe('fetchSentrySnapshot', () => {
   })
 
   it('returns no-data when there are zero issues', async () => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ([]) }) as any
+    webhookFetchMock.mockResolvedValue({ ok: true, json: async () => ([]) }) as any
     const result = await fetchSentrySnapshot({ token: 'tok' }, 'acme', 'backend')
     expect(result.status).toBe('no-data')
   })
 
   it('returns error (never throws) on a non-OK response', async () => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 401 }) as any
+    webhookFetchMock.mockResolvedValue({ ok: false, status: 401 }) as any
     const result = await fetchSentrySnapshot({ token: 'bad' }, 'acme', 'backend')
     expect(result.status).toBe('error')
   })
 
   it('returns error (never throws) when the request times out', async () => {
-    global.fetch = vi.fn().mockImplementation(
+    webhookFetchMock.mockImplementation(
       () => new Promise((_resolve, reject) => {
         setTimeout(() => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), 10)
       })
@@ -47,12 +50,13 @@ describe('fetchSentrySnapshot', () => {
   })
 
   it('queries the org-level issues endpoint with a 7-day statsPeriod and project filter', async () => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ([]) }) as any
+    webhookFetchMock.mockResolvedValue({ ok: true, json: async () => ([]) }) as any
     await fetchSentrySnapshot({ token: 'tok' }, 'acme', 'backend')
-    const calledUrl = new URL((global.fetch as any).mock.calls[0][0] as string)
+    const calledUrl = new URL(webhookFetchMock.mock.calls[0][0] as string)
     expect(calledUrl.hostname).toBe('sentry.io')
     expect(calledUrl.pathname).toBe('/api/0/organizations/acme/issues/')
     expect(calledUrl.searchParams.get('statsPeriod')).toBe('7d')
     expect(calledUrl.searchParams.get('project')).toBe('backend')
   })
 })
+

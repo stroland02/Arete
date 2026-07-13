@@ -1,3 +1,6 @@
+import { webhookFetch } from '@arete/net-guard'
+vi.mock('@arete/net-guard', () => ({ webhookFetch: vi.fn() }))
+const webhookFetchMock = vi.mocked(webhookFetch)
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { TelemetrySnapshot } from '../types.js'
 
@@ -41,3 +44,4 @@ describe('telemetry cache', () => {
     expect(getCachedTelemetry('inst-1', 'posthog', 'production-app')).toBeNull()
   })
 })
+

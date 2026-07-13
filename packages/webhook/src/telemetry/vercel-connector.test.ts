@@ -1,12 +1,15 @@
+import { webhookFetch } from '@arete/net-guard'
+vi.mock('@arete/net-guard', () => ({ webhookFetch: vi.fn() }))
+const webhookFetchMock = vi.mocked(webhookFetch)
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { fetchVercelSnapshot } from './vercel-connector.js'
 
 describe('fetchVercelSnapshot', () => {
-  const originalFetch = global.fetch
-  afterEach(() => { global.fetch = originalFetch })
+  
+  afterEach(() => { webhookFetchMock.mockReset() })
 
   it('summarizes recent deployment health', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    webhookFetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({
         deployments: [
@@ -29,19 +32,19 @@ describe('fetchVercelSnapshot', () => {
   })
 
   it('returns no-data when there are zero deployments', async () => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ deployments: [] }) }) as any
+    webhookFetchMock.mockResolvedValue({ ok: true, json: async () => ({ deployments: [] }) }) as any
     const result = await fetchVercelSnapshot({ token: 'tok' }, 'prj_123')
     expect(result.status).toBe('no-data')
   })
 
   it('returns error (never throws) on a non-OK response', async () => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 403 }) as any
+    webhookFetchMock.mockResolvedValue({ ok: false, status: 403 }) as any
     const result = await fetchVercelSnapshot({ token: 'bad' }, 'prj_123')
     expect(result.status).toBe('error')
   })
 
   it('returns error (never throws) when the request times out', async () => {
-    global.fetch = vi.fn().mockImplementation(
+    webhookFetchMock.mockImplementation(
       () => new Promise((_resolve, reject) => {
         setTimeout(() => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), 10)
       })
@@ -51,9 +54,9 @@ describe('fetchVercelSnapshot', () => {
   })
 
   it('includes teamId in the query only when provided', async () => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ deployments: [] }) }) as any
+    webhookFetchMock.mockResolvedValue({ ok: true, json: async () => ({ deployments: [] }) }) as any
     await fetchVercelSnapshot({ token: 'tok' }, 'prj_123', 'team_abc')
-    const calledUrl = new URL((global.fetch as any).mock.calls[0][0] as string)
+    const calledUrl = new URL(webhookFetchMock.mock.calls[0][0] as string)
     expect(calledUrl.hostname).toBe('api.vercel.com')
     expect(calledUrl.pathname).toBe('/v6/deployments')
     expect(calledUrl.searchParams.get('projectId')).toBe('prj_123')
@@ -61,9 +64,10 @@ describe('fetchVercelSnapshot', () => {
   })
 
   it('omits teamId from the query when not provided', async () => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ deployments: [] }) }) as any
+    webhookFetchMock.mockResolvedValue({ ok: true, json: async () => ({ deployments: [] }) }) as any
     await fetchVercelSnapshot({ token: 'tok' }, 'prj_123')
-    const calledUrl = new URL((global.fetch as any).mock.calls[0][0] as string)
+    const calledUrl = new URL(webhookFetchMock.mock.calls[0][0] as string)
     expect(calledUrl.searchParams.has('teamId')).toBe(false)
   })
 })
+

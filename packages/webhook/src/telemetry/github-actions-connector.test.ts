@@ -1,3 +1,6 @@
+import { webhookFetch } from '@arete/net-guard'
+vi.mock('@arete/net-guard', () => ({ webhookFetch: vi.fn() }))
+const webhookFetchMock = vi.mocked(webhookFetch)
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { fetchGitHubActionsSnapshot } from './github-actions-connector.js'
 
@@ -68,3 +71,4 @@ describe('fetchGitHubActionsSnapshot', () => {
     expect(result).toEqual({ status: 'error' })
   })
 })
+

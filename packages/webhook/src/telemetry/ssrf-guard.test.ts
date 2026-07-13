@@ -1,3 +1,6 @@
+import { webhookFetch } from '@arete/net-guard'
+vi.mock('@arete/net-guard', () => ({ webhookFetch: vi.fn() }))
+const webhookFetchMock = vi.mocked(webhookFetch)
 import { describe, it, expect } from 'vitest'
 import { assertAllowedTelemetryHost } from './ssrf-guard.js'
 
@@ -46,3 +49,4 @@ describe('assertAllowedTelemetryHost', () => {
     expect(() => assertAllowedTelemetryHost('sentry', 'https://api.vercel.com/v6/deployments')).toThrow(/not an allowed host/)
   })
 })
+

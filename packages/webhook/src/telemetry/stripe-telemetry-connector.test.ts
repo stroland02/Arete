@@ -1,12 +1,15 @@
+import { webhookFetch } from '@arete/net-guard'
+vi.mock('@arete/net-guard', () => ({ webhookFetch: vi.fn() }))
+const webhookFetchMock = vi.mocked(webhookFetch)
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { fetchStripeSnapshot } from './stripe-telemetry-connector.js'
 
 describe('fetchStripeSnapshot', () => {
-  const originalFetch = global.fetch
-  afterEach(() => { global.fetch = originalFetch })
+  
+  afterEach(() => { webhookFetchMock.mockReset() })
 
   it('summarizes recent successful revenue', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    webhookFetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({
         data: [
@@ -29,19 +32,19 @@ describe('fetchStripeSnapshot', () => {
   })
 
   it('returns no-data when there are zero charges', async () => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: [], has_more: false }) }) as any
+    webhookFetchMock.mockResolvedValue({ ok: true, json: async () => ({ data: [], has_more: false }) }) as any
     const result = await fetchStripeSnapshot({ secretKey: 'rk_test_x' })
     expect(result.status).toBe('no-data')
   })
 
   it('returns error (never throws) on a non-OK response', async () => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 401 }) as any
+    webhookFetchMock.mockResolvedValue({ ok: false, status: 401 }) as any
     const result = await fetchStripeSnapshot({ secretKey: 'bad' })
     expect(result.status).toBe('error')
   })
 
   it('returns error (never throws) when the request times out', async () => {
-    global.fetch = vi.fn().mockImplementation(
+    webhookFetchMock.mockImplementation(
       () => new Promise((_resolve, reject) => {
         setTimeout(() => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), 10)
       })
@@ -51,13 +54,14 @@ describe('fetchStripeSnapshot', () => {
   })
 
   it('queries the charges endpoint with a 7-day created[gte] filter using Bearer auth', async () => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: [], has_more: false }) }) as any
+    webhookFetchMock.mockResolvedValue({ ok: true, json: async () => ({ data: [], has_more: false }) }) as any
     await fetchStripeSnapshot({ secretKey: 'rk_test_x' })
-    const calledUrl = new URL((global.fetch as any).mock.calls[0][0] as string)
-    const calledOptions = (global.fetch as any).mock.calls[0][1]
+    const calledUrl = new URL(webhookFetchMock.mock.calls[0][0] as string)
+    const calledOptions = webhookFetchMock.mock.calls[0][1]
     expect(calledUrl.hostname).toBe('api.stripe.com')
     expect(calledUrl.pathname).toBe('/v1/charges')
     expect(calledUrl.searchParams.has('created[gte]')).toBe(true)
     expect(calledOptions.headers.Authorization).toBe('Bearer rk_test_x')
   })
 })
+

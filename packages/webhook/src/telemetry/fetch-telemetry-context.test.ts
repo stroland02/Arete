@@ -1,3 +1,6 @@
+import { webhookFetch } from '@arete/net-guard'
+vi.mock('@arete/net-guard', () => ({ webhookFetch: vi.fn() }))
+const webhookFetchMock = vi.mocked(webhookFetch)
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const GH_SNAPSHOT = {
@@ -335,3 +338,4 @@ describe('fetchTelemetryContext', () => {
     expect(ghFetch).toHaveBeenCalledTimes(5)
   })
 })
+

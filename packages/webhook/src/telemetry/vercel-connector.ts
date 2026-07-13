@@ -1,6 +1,8 @@
 import type { ConnectorResult } from './connector-result.js'
 import { assertAllowedTelemetryHost } from './ssrf-guard.js'
 
+import { webhookFetch } from '@arete/net-guard'
+
 const VERCEL_BASE_URL = 'https://api.vercel.com'
 const FETCH_TIMEOUT_MS = 8_000
 const RECENT_DEPLOYMENTS_TO_SAMPLE = 20
@@ -36,7 +38,7 @@ export async function fetchVercelSnapshot(
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
 
   try {
-    const res = await fetch(url.toString(), {
+    const res = await webhookFetch(url.toString(), {
       headers: { Authorization: `Bearer ${credentials.token}` },
       signal: controller.signal,
     })
