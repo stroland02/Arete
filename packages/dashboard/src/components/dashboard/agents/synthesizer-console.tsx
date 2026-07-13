@@ -67,15 +67,16 @@ export function SynthesizerConsole({
               : "candidate findings handed to the Synthesizer",
         },
         {
-          marker: "✱",
+          marker: "◈",
           tone: "working",
-          text: "Verifying each finding against the diff…",
-          detail: "low-confidence and off-diff findings are dropped here",
+          text: "Independent Critic re-checked every finding",
+          detail:
+            "a separate model verifies each finding against the diff — anything not backed by real evidence in the code is dropped",
         },
         {
           marker: "✓",
           tone: "success",
-          text: `${totalFindings} verified finding${
+          text: `${totalFindings} evidence-backed finding${
             totalFindings === 1 ? "" : "s"
           } posted to the PR`,
         },
@@ -147,9 +148,10 @@ export function SynthesizerConsole({
                 The Synthesizer coordinates every review
               </p>
               <p className="text-xs leading-5 text-content-muted">
-                It merges findings from all six specialist agents, verifies each one
-                against your diff, drops anything low-confidence or hallucinated, and
-                posts only the survivors to your pull request — so you see signal, not noise.
+                It gathers findings from all six specialist agents, then an
+                independent Critic — a separate model — verifies each one against
+                your diff and drops anything not backed by real evidence. Only the
+                proven findings reach your pull request — so you see signal, not noise.
               </p>
             </div>
 
