@@ -154,6 +154,24 @@ def get_or_create_session(server_name: str, command: str) -> "ClientSession":
     return _sessions[server_name]
 
 
+def wrap_server_tools(server_name: str, allowed_names: "frozenset[str] | None" = None) -> List[Any]:
+    """Wrap the already-advertised tools of a CONNECTED MCP server (see
+    get_or_create_session) into LangChain tools. Optionally restrict to an
+    allowlist of tool names. Returns [] when the mcp package is unavailable,
+    the server has no live session, or it advertised no tools. Opens no new
+    connection — read-only over the existing session cache."""
+    if not HAS_MCP:
+        return []
+    if server_name not in _sessions:
+        return []
+    tools: List[Any] = []
+    for mcp_tool in _tool_definitions.get(server_name, []):
+        if allowed_names is not None and mcp_tool.name not in allowed_names:
+            continue
+        tools.append(_create_langchain_tool(server_name, mcp_tool))
+    return tools
+
+
 def call_tool_sync(server_name: str, tool_name: str, arguments: dict, timeout: float = 60) -> Any:
     """Synchronously call a tool on an already-connected stdio session
     (see get_or_create_session). Raises RuntimeError if server_name has no

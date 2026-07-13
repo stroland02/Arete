@@ -66,3 +66,19 @@ def test_call_tool_sync_invokes_session_call_tool():
 
     assert result == "tool-result"
     run_coro.assert_called_once()
+
+
+def test_wrap_server_tools_filters_by_allowlist():
+    mcp_client._sessions["srv"] = MagicMock()
+    good = MagicMock(); good.name = "search_graph"; good.description = "search the graph"
+    bad = MagicMock(); bad.name = "index_repository"; bad.description = "index the repo"
+    mcp_client._tool_definitions["srv"] = [good, bad]
+
+    tools = mcp_client.wrap_server_tools("srv", frozenset({"search_graph"}))
+
+    assert [t.name for t in tools] == ["search_graph"]
+
+
+def test_wrap_server_tools_returns_empty_without_session():
+    mcp_client._tool_definitions["ghost"] = [MagicMock(name="x")]
+    assert mcp_client.wrap_server_tools("ghost", None) == []
