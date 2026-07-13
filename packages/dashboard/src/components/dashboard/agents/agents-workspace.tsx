@@ -37,7 +37,6 @@ export function AgentsWorkspace({
   const [selectedAgentId, setSelectedAgentId] = useState<string>(AGENTS[0].id);
   const [configAgentId, setConfigAgentId] = useState<string | null>(null);
 
-  const selectedAgent = AGENTS.find((a) => a.id === selectedAgentId) ?? AGENTS[0];
   const configAgent = AGENTS.find((a) => a.id === configAgentId) ?? null;
   const selectedAgentFindings = activity.filter((f) => f.category === selectedAgent.id);
 
@@ -55,13 +54,9 @@ export function AgentsWorkspace({
           onSelect={setSelectedAgentId}
           onConfigure={setConfigAgentId}
         />
-        <AgentConversation
-          agent={selectedAgent}
-          findings={selectedAgentFindings}
-          findingCount={findingCountById[selectedAgent.id] ?? 0}
-          hasReviews={hasReviews}
-          onConfigure={setConfigAgentId}
-        />
+        {/* Center pane streams the focused container's Synthesizer transcript.
+            No deep-link param yet → null shows the onboarding + sample opt-in. */}
+        <SynthesizerConsole containerId={null} />
         <PrPanel
           hasReviews={hasReviews}
           latestReview={latestReview}
