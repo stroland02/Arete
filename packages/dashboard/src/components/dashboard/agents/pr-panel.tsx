@@ -1,12 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import {
-  IconCheck,
-  IconChevronDown,
-  IconExternalLink,
-  IconGitBranch,
-} from "@tabler/icons-react";
+import { IconCheck, IconChevronDown } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -18,7 +13,7 @@ export interface PrPanelProps {
     prNumber: number;
     riskLevel: string;
   } | null;
-  /** Total verified findings posted (real, from commentsByCategory). */
+  /** Total verified findings composed (real, from commentsByCategory). */
   totalFindings: number;
 }
 
@@ -28,7 +23,7 @@ function riskDotClass(riskLevel: string): string {
     case "high":
       return "bg-accent-danger";
     case "medium":
-      return "bg-amber-400";
+      return "bg-accent-warning";
     case "low":
       return "bg-accent-success";
     default:
@@ -37,79 +32,38 @@ function riskDotClass(riskLevel: string): string {
 }
 
 /**
- * Right pane of the /agents workspace, styled like Orca's git panel: a
- * primary "View PR" action, a `repo · PR #n · vs main` comparison line, and
- * collapsible Findings / Files changed / Commits sections.
+ * Right pane of the /agents workspace — the SOLUTION being composed in code.
  *
- * HONESTY: only real view-model data is shown (repo, PR number, risk level,
- * verified finding total). File-level and commit-level detail isn't synced
- * yet, so those sections say so plainly instead of inventing rows.
+ * Per the issue-container pipeline spec §2, the Agents panel shows the PR as
+ * it is assembled (verified findings → review comments, per-agent provenance,
+ * files touched) and carries the FIRST of two human gates: "Approve solution".
+ * It deliberately does NOT hold the repository target, and it does NOT post —
+ * the repo selector + "Post pull request / Request changes" live on the
+ * Services PR panel (the send gate). See §1, §4.7–8 and the two-panel table.
+ *
+ * HONESTY: only real view-model data is shown (risk level, verified total);
+ * file/commit detail isn't synced yet, so those sections say so plainly; the
+ * Approve control is a disabled shell until the backend gate is wired.
  */
 export function PrPanel({ hasReviews, latestReview, totalFindings }: PrPanelProps) {
   const pr = hasReviews ? latestReview ?? null : null;
-  const prUrl = pr ? `https://github.com/${pr.repoFullName}/pull/${pr.prNumber}` : null;
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col" aria-label="Pull request panel">
-      {/* Pane header with the primary action */}
+    <section className="flex min-h-0 flex-1 flex-col" aria-label="Solution panel">
+      {/* Pane header — identifies which PR's solution this is; no repo target
+          (that lives on the Services panel). */}
       <header className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-3">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">
-          Pull Request
+          Solution
         </h2>
-        {prUrl ? (
-          <Button asChild size="sm" className="h-6 rounded-lg px-2.5 text-[11px]">
-            <a href={prUrl} target="_blank" rel="noreferrer">
-              View PR
-              <IconExternalLink size={12} stroke={2} />
-            </a>
-          </Button>
-        ) : (
-          <Button
-            size="sm"
-            disabled
-            title="Connect a repository to open reviewed PRs"
-            className="h-6 rounded-lg px-2.5 text-[11px]"
-          >
-            View PR
-          </Button>
+        {pr && (
+          <span className="font-mono text-[10px] tabular-nums text-content-muted">PR #{pr.prNumber}</span>
         )}
       </header>
 
-      {/* Repository selector — shell: switching repos needs deeper GitHub linking */}
-      <div className="shrink-0 border-b border-border-subtle px-3 py-2">
-        <button
-          type="button"
-          disabled
-          title="Connect a repository to switch between repos"
-          aria-label="Select repository"
-          className="flex w-full cursor-not-allowed items-center gap-2 rounded-lg border border-border-default bg-surface-2/60 px-2.5 py-1.5 text-left text-[11px] text-content-muted"
-        >
-          <IconGitBranch size={13} stroke={1.75} className="shrink-0" aria-hidden />
-          <span className="truncate">
-            {pr ? pr.repoFullName : "No repository connected"}
-          </span>
-          <IconChevronDown size={12} stroke={2} className="ml-auto shrink-0 opacity-60" aria-hidden />
-        </button>
-      </div>
-
-      {/* Comparison line */}
-      <div className="shrink-0 border-b border-border-subtle px-3 py-2">
-        {pr ? (
-          <p className="truncate font-mono text-[11px] text-content-muted">
-            <span className="text-content-secondary">{pr.repoFullName}</span>
-            {" · "}
-            <span className="tabular-nums">PR #{pr.prNumber}</span>
-            {" · "}
-            vs main
-          </p>
-        ) : (
-          <p className="font-mono text-[11px] text-content-muted">No pull request yet</p>
-        )}
-      </div>
-
-      {/* Collapsible sections */}
+      {/* Collapsible sections — the composed review */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <PanelSection title="Findings" count={pr ? totalFindings : 0}>
+        <PanelSection title="Review comments" count={pr ? totalFindings : 0}>
           {pr ? (
             <div className="space-y-2">
               <div className="flex items-center gap-2 rounded-md px-1 py-0.5 font-mono text-[11px]">
@@ -123,18 +77,19 @@ export function PrPanel({ hasReviews, latestReview, totalFindings }: PrPanelProp
                 </span>
               </div>
               <p className="px-1 text-[11px] leading-4 text-content-muted">
-                Each finding is posted inline on the PR as{" "}
-                <span className="font-mono">path:line</span> comments by its specialist.
+                Each verified finding is composed into a{" "}
+                <span className="font-mono">path:line</span> review comment by the specialist that
+                raised it.
               </p>
             </div>
           ) : (
             <p className="px-1 text-[11px] leading-4 text-content-muted">
-              No findings yet — they appear here once a pull request is reviewed.
+              No comments yet — verified findings are composed here once a pull request is reviewed.
             </p>
           )}
         </PanelSection>
 
-        <PanelSection title="Files changed">
+        <PanelSection title="Files touched">
           <p className="px-1 text-[11px] leading-4 text-content-muted">
             {pr
               ? "File-level +adds/−dels aren't synced yet — coming with deeper GitHub linking."
@@ -151,11 +106,11 @@ export function PrPanel({ hasReviews, latestReview, totalFindings }: PrPanelProp
         </PanelSection>
       </div>
 
-      {/* Human verification — you sign off before the review is sent out.
-          Shell controls: disabled until real PR actions are wired up. */}
+      {/* Gate 1 of 2: approve the SOLUTION here; the PR is posted from the
+          issue's Services view (the send gate). Disabled shell for now. */}
       <footer className="shrink-0 space-y-2 border-t border-border-subtle px-3 py-3">
         <p className="font-mono text-[10px] uppercase tracking-wider text-content-muted">
-          Human verification
+          Human verification · 1 of 2
         </p>
         <Button
           size="sm"
@@ -164,30 +119,11 @@ export function PrPanel({ hasReviews, latestReview, totalFindings }: PrPanelProp
           className="h-8 w-full rounded-lg text-[12px]"
         >
           <IconCheck size={13} stroke={2} aria-hidden />
-          Approve &amp; post review
+          Approve solution
         </Button>
-        <div className="grid grid-cols-2 gap-1.5">
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled
-            title="Connect a repository to enable"
-            className="h-8 rounded-lg text-[11px]"
-          >
-            Request changes
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled
-            title="Connect a repository to enable"
-            className="h-8 rounded-lg text-[11px]"
-          >
-            Post to PR
-          </Button>
-        </div>
         <p className="text-[10px] leading-4 text-content-muted/80">
-          Nothing is sent until you approve — connect a repository to enable these.
+          Approving readies the fix — you post the pull request from the issue&apos;s Services view.
+          Areté never changes your code without approval.
         </p>
       </footer>
     </section>
