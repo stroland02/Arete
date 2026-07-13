@@ -9,12 +9,12 @@ export function SignupForm() {
   const [state, formAction, pending] = useActionState(signup, { error: null as string | null });
 
   return (
-    <div className="glass-panel max-w-sm w-full p-8 flex flex-col gap-6">
+    <div className="flex w-full max-w-sm flex-col gap-6">
       <div className="text-center">
-        <h1 className="text-3xl font-semibold font-serif text-content-primary tracking-tight">
-          Aret<span className="text-accent-secondary">é</span>
+        <h1 className="font-serif text-3xl font-semibold tracking-tight text-content-primary">
+          Create your Aret<span className="text-accent-secondary">é</span> account
         </h1>
-        <p className="mt-2 text-sm text-content-muted">Create your Areté account.</p>
+        <p className="mt-2 text-sm text-content-muted">Start free — no credit card required.</p>
       </div>
 
       <form action={googleSignIn} className="w-full">
@@ -28,7 +28,7 @@ export function SignupForm() {
 
       <div className="flex items-center gap-3 text-xs text-content-muted">
         <div className="h-px flex-1 bg-border-default" />
-        or
+        or continue with email
         <div className="h-px flex-1 bg-border-default" />
       </div>
 
@@ -77,7 +77,7 @@ export function SignupForm() {
         <button
           type="submit"
           disabled={pending}
-          className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-medium text-white bg-accent-primary shadow-sm hover:bg-accent-primary/90 transition-colors disabled:opacity-60"
+          className="mt-1 w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-medium text-white bg-accent-primary shadow-sm hover:bg-accent-primary/90 transition-colors disabled:opacity-60"
         >
           Create account
         </button>
