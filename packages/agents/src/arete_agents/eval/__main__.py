@@ -24,7 +24,9 @@ _DEFAULT_BASELINE = Path(__file__).resolve().parents[3] / "eval" / "baseline.jso
 def build_finder_llm(settings: Settings) -> BaseChatModel:
     from arete_agents.llm.anthropic import build_anthropic_llm
 
-    return build_anthropic_llm(settings.anthropic_api_key, tier=settings.eval_finder_tier)
+    return build_anthropic_llm(
+        settings.anthropic_api_key, tier=settings.eval_finder_tier
+    )
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
