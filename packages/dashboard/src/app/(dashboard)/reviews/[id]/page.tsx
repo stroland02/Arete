@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { getReviewDetail, resolveSelectedInstallationIds } from "@/lib/queries";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 import { IconArrowLeft } from "@tabler/icons-react";
+import { AgentRunExplorer } from "@/components/dashboard/agent-run-explorer";
 
 export const dynamic = "force-dynamic";
 
@@ -127,6 +128,11 @@ export default async function ReviewDetailPage({
             <p className="text-sm text-content-secondary whitespace-pre-wrap leading-relaxed">
               {review.overallSummary}
             </p>
+          </div>
+
+          <div className="glass-panel p-5 overflow-hidden">
+            <h2 className="text-sm font-semibold text-content-primary mb-4">Agent Run Explorer</h2>
+            <AgentRunExplorer findings={review.findings} />
           </div>
 
           <div className="glass-panel p-5">
