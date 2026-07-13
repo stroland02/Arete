@@ -10,6 +10,18 @@ from arete_agents.agents.chat import ChatAgent
 
 
 def main() -> None:
+    # Safely intercept 'skills' and 'mcp' commands to avoid interfering with other agents
+    if len(sys.argv) > 1:
+        cmd = sys.argv[1]
+        if cmd == "skills":
+            from arete_agents.skills.cli import handle_skills_cli
+            handle_skills_cli(sys.argv[2:])
+            return
+        elif cmd == "mcp":
+            from arete_agents.mcp.cli import handle_mcp_cli
+            handle_mcp_cli(sys.argv[2:])
+            return
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", default="review", choices=["review", "chat"])
     args, unknown = parser.parse_known_args()

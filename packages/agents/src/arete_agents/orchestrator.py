@@ -132,6 +132,12 @@ Return ONLY valid JSON with this exact structure:
             system_prompt += "\n\nCRITICAL: The user has defined custom Standard Operating Procedures (SOP) rules for this repository in .arete.yml. You MUST ensure the final output strictly obeys these rules:\n"
             system_prompt += "\n".join(f"- {rule}" for rule in pr.custom_rules)
 
+        from arete_agents.skills.loader import load_installed_skills
+        installed_skills = load_installed_skills()
+        if installed_skills:
+            system_prompt += "\n\nYou are also equipped with the following skills and global instructions. Adhere to them strictly when synthesizing reviews:\n"
+            system_prompt += "\n\n---\n\n".join(installed_skills)
+
         raw_reviews_json = [fr.model_dump() for fr in raw_reviews]
         serialized = json.dumps(raw_reviews_json, indent=2)
         truncation_note = ""
