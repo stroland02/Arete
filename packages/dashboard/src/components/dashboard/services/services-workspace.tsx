@@ -2,9 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { IconChevronDown, IconCircleCheck, IconCopy, IconHourglassHigh, IconX } from "@tabler/icons-react";
-import { CONNECTORS } from "@/lib/connector-catalog";
-import { ConnectorIcon } from "@/components/connections/connector-icon";
+import { IconChevronDown, IconCircleCheck, IconCopy, IconHourglassHigh, IconPlus, IconX } from "@tabler/icons-react";
 
 /**
  * Services "Triage Inbox" workspace. Production signals from CONNECTED
@@ -356,25 +354,13 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
           )}
 
           <div className="px-3 py-3">
-            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-content-muted">
-              {hasServices ? "Connect more" : "Connect your tools"}
-            </p>
-            <ul className="space-y-1">
-              {CONNECTORS.map((c) => (
-                <li key={c.id} className="flex items-center gap-2 rounded-lg border border-border-subtle px-2 py-1.5">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-border-default bg-surface-2 text-content-secondary">
-                    <ConnectorIcon id={c.id} className="h-3.5 w-3.5" />
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-content-secondary">{c.name}</span>
-                  <Link
-                    href={`/connections/${c.id}`}
-                    className="shrink-0 rounded-full border border-accent-primary/30 bg-accent-primary/10 px-2 py-0.5 text-[10px] font-semibold text-accent-primary transition-colors hover:bg-accent-primary/20"
-                  >
-                    Connect
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            <Link
+              href="/connections"
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-2 text-[12px] font-medium text-content-secondary transition-colors hover:border-border-strong hover:bg-content-primary/5"
+            >
+              <IconPlus size={14} stroke={2} aria-hidden />
+              {hasServices ? "Connect more services" : "Connect your services"}
+            </Link>
           </div>
         </div>
       </section>
