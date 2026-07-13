@@ -6,7 +6,6 @@ import {
   IconArrowRight,
   IconCircleCheck,
   IconCopy,
-  IconGitPullRequest,
   IconPlugConnected,
   IconX,
 } from "@tabler/icons-react";
@@ -251,123 +250,147 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
     setIssueId(first ? first.id : null);
   }
 
+  // Same column widths as the /agents workspace (260px rail / flexible
+  // center / 320px detail) so the two pages read as one consistent system.
   const outerClass =
     variant === "embedded"
-      ? "-m-8 grid min-h-[540px] grid-cols-1 divide-y divide-border-subtle border-t border-border-subtle bg-surface-1/20 overflow-hidden lg:h-[calc(100vh-4.5rem)] lg:min-h-0 lg:grid-cols-[210px_minmax(0,1fr)_minmax(0,1.1fr)] lg:divide-x lg:divide-y-0"
-      : "grid min-h-[560px] grid-cols-1 divide-y divide-border-subtle overflow-hidden lg:grid-cols-[210px_minmax(0,1fr)_minmax(0,1.1fr)] lg:divide-x lg:divide-y-0";
+      ? "-m-8 grid min-h-[540px] grid-cols-1 divide-y divide-border-subtle border-t border-border-subtle bg-surface-1/20 overflow-hidden lg:grid lg:h-[calc(100vh-4.5rem)] lg:min-h-0 lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:divide-x lg:divide-y-0"
+      : "grid min-h-[560px] grid-cols-1 divide-y divide-border-subtle overflow-hidden lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:divide-x lg:divide-y-0";
 
   return (
     // "embedded": full-bleed, cancels the dashboard shell's p-8 (the /agents
     // pattern). "framed": fixed height, no negative margin, for the marketing
-    // preview card.
+    // preview card. Each pane below mirrors agent-rail/synthesizer-console/
+    // pr-panel's structure exactly: flex-col with a h-10 header, a scrollable
+    // body, and (where relevant) a pinned footer.
     <div className={outerClass}>
       {/* Services rail */}
-      <aside className="min-w-0">
-        <div className="flex h-10 items-center justify-between border-b border-border-subtle px-3">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-content-secondary">Services</span>
-          <span className="font-mono text-[10px] text-content-muted">{services.length}</span>
-        </div>
-        {hasServices ? (
-          <ul>
-            {services.map((s) => {
-              const on = s.id === activeService;
-              return (
-                <li key={s.id}>
-                  <button
-                    type="button"
-                    onClick={() => selectService(s.id)}
-                    className={`flex w-full items-center gap-2.5 border-b border-border-subtle px-3 py-2.5 text-left transition-colors ${
-                      on ? "bg-accent-primary/[0.06] shadow-[inset_2px_0_0_var(--color-accent-primary)]" : "hover:bg-content-primary/[0.04]"
-                    }`}
-                  >
-                    <span className={`h-2 w-2 shrink-0 rounded-full ${SEV_DOT[s.worst]}`} />
-                    <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-content-primary">{s.id}</span>
-                    {s.open > 0 ? (
-                      <span className={`rounded-full border px-1.5 text-[10px] font-bold ${SEV_PILL[s.worst as Severity]}`}>{s.open}</span>
-                    ) : (
-                      <span className="font-mono text-[10px] text-content-muted">clear</span>
+      <section className="flex min-h-0 flex-1 flex-col" aria-label="Services">
+        <header className="flex h-10 shrink-0 items-center justify-between border-b border-border-subtle px-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Services</h2>
+          <span className="font-mono text-[10px] tabular-nums text-content-muted">{services.length}</span>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {hasServices ? (
+            <ul className="py-1">
+              {services.map((s) => {
+                const on = s.id === activeService;
+                return (
+                  <li key={s.id} className="relative">
+                    {on && (
+                      <span className="absolute inset-y-1 left-0 z-10 w-0.5 rounded-r bg-accent-primary" aria-hidden />
                     )}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <p className="px-3 py-6 text-center text-[11.5px] leading-relaxed text-content-muted">
-            Your connected services will list here.
+                    <button
+                      type="button"
+                      onClick={() => selectService(s.id)}
+                      aria-current={on ? "true" : undefined}
+                      className={`flex w-full items-center gap-2.5 py-2.5 pl-3 pr-3 text-left transition-colors ${
+                        on ? "bg-accent-primary/[0.06]" : "hover:bg-content-primary/[0.04]"
+                      }`}
+                    >
+                      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${SEV_DOT[s.worst]}`} />
+                      <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-content-primary">{s.id}</span>
+                      {s.open > 0 ? (
+                        <span className={`shrink-0 rounded-full border px-1.5 py-px text-[9px] font-bold ${SEV_PILL[s.worst as Severity]}`}>{s.open}</span>
+                      ) : (
+                        <span className="shrink-0 font-mono text-[10px] text-content-muted">clear</span>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="px-3 py-6 text-center text-[11.5px] leading-relaxed text-content-muted">
+              Your connected services will list here.
+            </p>
+          )}
+        </div>
+        <footer className="shrink-0 border-t border-border-subtle px-3 py-2">
+          <p className="font-mono text-[10px] leading-4 text-content-muted/80">
+            {hasServices ? "compiled from your connected telemetry" : "connect a tool to see services here"}
           </p>
-        )}
-      </aside>
+        </footer>
+      </section>
 
       {/* Issue stream */}
-      <section className="min-w-0">
-        <div className="flex h-10 items-center justify-between border-b border-border-subtle px-3">
+      <section className="flex min-h-0 flex-1 flex-col" aria-label="Issues">
+        <header className="flex h-10 shrink-0 items-center justify-between border-b border-border-subtle px-3">
           <span className="font-mono text-[12px] text-content-secondary">
             {hasServices ? `${activeService} · issues` : "Issues"}
           </span>
           {serviceIssues.length > 0 && (
             <span className="text-[10.5px] text-content-muted">{serviceIssues.length} open</span>
           )}
-        </div>
-        {!hasServices ? (
-          <div className="flex flex-col items-center justify-center gap-4 px-6 py-14 text-center">
-            <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-accent-primary/20 bg-accent-primary/10 text-accent-primary">
-              <IconPlugConnected size={22} stroke={1.75} />
-            </span>
-            <div className="max-w-xs">
-              <h3 className="font-serif text-base font-semibold text-content-primary">No services connected yet</h3>
-              <p className="mt-1.5 text-[12.5px] leading-relaxed text-content-muted">
-                Connect Sentry, Vercel, Stripe, CI, or PostHog and Areté compiles their issues here, per
-                service, with a fix already proposed.
-              </p>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {!hasServices ? (
+            <div className="mx-auto flex h-full max-w-xs flex-col items-center justify-center gap-4 px-4 text-center">
+              <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-accent-primary/20 bg-accent-primary/10 text-accent-primary">
+                <IconPlugConnected size={22} stroke={1.75} />
+              </span>
+              <div>
+                <h3 className="font-serif text-base font-semibold text-content-primary">No services connected yet</h3>
+                <p className="mt-1.5 text-[12.5px] leading-relaxed text-content-muted">
+                  Connect Sentry, Vercel, Stripe, CI, or PostHog and Areté compiles their issues here, per
+                  service, with a fix already proposed.
+                </p>
+              </div>
+              <Link
+                href="/connections"
+                className="group inline-flex h-9 items-center justify-center gap-1.5 rounded-full bg-accent-primary px-4 text-[13px] font-medium text-white shadow-sm transition-colors hover:bg-accent-primary/90"
+              >
+                Add your services
+                <IconArrowRight size={14} stroke={2} className="transition-transform group-hover:translate-x-0.5" />
+              </Link>
             </div>
-            <Link
-              href="/connections"
-              className="group inline-flex h-9 items-center justify-center gap-1.5 rounded-full bg-accent-primary px-4 text-[13px] font-medium text-white shadow-sm transition-colors hover:bg-accent-primary/90"
-            >
-              Add your services
-              <IconArrowRight size={14} stroke={2} className="transition-transform group-hover:translate-x-0.5" />
-            </Link>
-          </div>
-        ) : serviceIssues.length === 0 ? (
-          <p className="px-4 py-10 text-center text-sm text-content-muted">All clear — no open issues for this service.</p>
-        ) : (
-          <ul>
-            {serviceIssues.map((i) => {
-              const on = i.id === selected?.id;
-              return (
-                <li key={i.id} className="grid grid-cols-[3px_1fr] border-b border-border-subtle">
-                  <span className={`${SEV_DOT[i.severity]} rounded-r`} aria-hidden />
-                  <button
-                    type="button"
-                    onClick={() => setIssueId(i.id)}
-                    className={`px-3 py-2.5 text-left transition-colors ${on ? "bg-accent-primary/[0.06]" : "hover:bg-content-primary/[0.04]"}`}
-                  >
-                    <div className="mb-1 flex items-center gap-2">
-                      <span className={`rounded-full border px-1.5 py-px text-[9.5px] font-bold uppercase tracking-wide ${SEV_PILL[i.severity]}`}>{SEV_LABEL[i.severity]}</span>
-                      <span className="rounded border border-border-default bg-surface-2 px-1.5 text-[10px] font-medium text-content-secondary">{i.source}</span>
-                      <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-medium text-content-muted">
-                        <span className="h-1 w-1 rounded-full bg-accent-primary" />{i.status}
-                      </span>
-                    </div>
-                    <p className="text-[13px] font-semibold leading-tight text-content-primary">{i.title}</p>
-                    <p className="mt-1 font-mono text-[11px] text-content-muted">{i.occurrences} · {i.lastSeen} · {i.agent}</p>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+          ) : serviceIssues.length === 0 ? (
+            <p className="px-4 py-10 text-center text-sm text-content-muted">All clear — no open issues for this service.</p>
+          ) : (
+            <ul>
+              {serviceIssues.map((i) => {
+                const on = i.id === selected?.id;
+                return (
+                  <li key={i.id} className="grid grid-cols-[3px_1fr] border-b border-border-subtle">
+                    <span className={`${SEV_DOT[i.severity]} rounded-r`} aria-hidden />
+                    <button
+                      type="button"
+                      onClick={() => setIssueId(i.id)}
+                      className={`px-3 py-2.5 text-left transition-colors ${on ? "bg-accent-primary/[0.06]" : "hover:bg-content-primary/[0.04]"}`}
+                    >
+                      <div className="mb-1 flex items-center gap-2">
+                        <span className={`rounded-full border px-1.5 py-px text-[9.5px] font-bold uppercase tracking-wide ${SEV_PILL[i.severity]}`}>{SEV_LABEL[i.severity]}</span>
+                        <span className="rounded border border-border-default bg-surface-2 px-1.5 text-[10px] font-medium text-content-secondary">{i.source}</span>
+                        <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-medium text-content-muted">
+                          <span className="h-1 w-1 rounded-full bg-accent-primary" />{i.status}
+                        </span>
+                      </div>
+                      <p className="text-[13px] font-semibold leading-tight text-content-primary">{i.title}</p>
+                      <p className="mt-1 font-mono text-[11px] text-content-muted">{i.occurrences} · {i.lastSeen} · {i.agent}</p>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       </section>
 
       {/* Detail */}
-      <section className="min-w-0">
+      <section className="flex min-h-0 flex-1 flex-col" aria-label="Issue detail">
         {!selected ? (
-          <p className="px-4 py-10 text-sm text-content-muted">
-            {hasServices
-              ? "Select an issue to see what happened and the proposed fix."
-              : "An issue's evidence and proposed fix will appear here."}
-          </p>
+          <>
+            <header className="flex h-10 shrink-0 items-center justify-between border-b border-border-subtle px-3">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Issue</h2>
+            </header>
+            <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center">
+              <p className="text-sm text-content-muted">
+                {hasServices
+                  ? "Select an issue to see what happened and the proposed fix."
+                  : "An issue's evidence and proposed fix will appear here."}
+              </p>
+            </div>
+          </>
         ) : (
           <IssueDetail issue={selected} />
         )}
@@ -378,92 +401,99 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
 
 function IssueDetail({ issue }: { issue: Issue }) {
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex h-10 items-center justify-between border-b border-border-subtle px-3">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-content-secondary">Issue</span>
+    <>
+      <header className="flex h-10 shrink-0 items-center justify-between border-b border-border-subtle px-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Issue</h2>
         <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-accent-primary">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-primary" />{issue.agent} agent
         </span>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+        <div className="flex flex-col gap-4">
+          <div>
+            <span className={`rounded-full border px-1.5 py-px text-[9.5px] font-bold uppercase tracking-wide ${SEV_PILL[issue.severity]}`}>{SEV_LABEL[issue.severity]}</span>
+            <h3 className="mt-1.5 font-serif text-base font-semibold leading-tight text-content-primary">{issue.title}</h3>
+            <p className="mt-1 font-mono text-[11px] text-content-muted">{issue.source} · {issue.where} · {issue.occurrences} · {issue.lastSeen}</p>
+          </div>
+
+          <div>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-content-muted">What happened</p>
+            <p className="mb-2 text-[13px] leading-relaxed text-content-secondary">{issue.summary}</p>
+            <div className="overflow-hidden rounded-lg border border-border-default bg-surface-2">
+              <div className="border-b border-border-subtle px-3 py-1.5 font-mono text-[11px] text-content-muted">{issue.evidence.file}</div>
+              <pre className="overflow-x-auto px-3 py-2 font-mono text-[11.5px] leading-relaxed text-content-secondary">
+                {issue.evidence.rows.map(([k, v], idx) => (
+                  <div key={idx}>
+                    <span className="text-content-muted">{k}</span> = <span className={/null|missing|theft|500/.test(v) ? "text-accent-danger" : ""}>{v}</span>
+                  </div>
+                ))}
+              </pre>
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-content-muted">
+              Proposed fix <span className="font-normal normal-case tracking-normal text-accent-info">· verified against the diff</span>
+            </p>
+            <div className="overflow-hidden rounded-lg border border-border-default bg-surface-2">
+              <div className="border-b border-border-subtle px-3 py-1.5 font-mono text-[11px] text-content-muted">{issue.fix.file}</div>
+              <pre className="overflow-x-auto py-1 font-mono text-[11.5px] leading-relaxed">
+                {issue.fix.rows.map((r, idx) => (
+                  <div
+                    key={idx}
+                    className={`flex gap-2 px-2 ${r.kind === "add" ? "bg-accent-success/10" : r.kind === "remove" ? "bg-accent-danger/10" : ""}`}
+                  >
+                    <span className={`select-none ${r.kind === "add" ? "text-accent-success" : r.kind === "remove" ? "text-accent-danger" : "text-content-muted/50"}`}>
+                      {r.kind === "add" ? "+" : r.kind === "remove" ? "-" : " "}
+                    </span>
+                    <span className={r.kind === "context" ? "text-content-muted" : "text-content-secondary"}>{r.text}</span>
+                  </div>
+                ))}
+              </pre>
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-content-muted">Activity</p>
+            <ol>
+              {issue.timeline.map((t, idx) => (
+                <li key={idx} className="grid grid-cols-[16px_1fr] gap-2.5 pb-3">
+                  <div className="flex flex-col items-center">
+                    <span className={`mt-0.5 h-2.5 w-2.5 rounded-full ${TONE_DOT[t.tone]}`} />
+                    {idx < issue.timeline.length - 1 && <span className="mt-1 w-0.5 flex-1 bg-border-default" />}
+                  </div>
+                  <div>
+                    <p className="text-[12px] text-content-secondary">{t.text}</p>
+                    <p className="mt-0.5 font-mono text-[10.5px] text-content-muted">{t.when}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </div>
       </div>
 
-      <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
-        <div>
-          <span className={`rounded-full border px-1.5 py-px text-[9.5px] font-bold uppercase tracking-wide ${SEV_PILL[issue.severity]}`}>{SEV_LABEL[issue.severity]}</span>
-          <h3 className="mt-1.5 font-serif text-lg font-semibold leading-tight text-content-primary">{issue.title}</h3>
-          <p className="mt-1 font-mono text-[11px] text-content-muted">{issue.source} · {issue.where} · {issue.occurrences} · {issue.lastSeen}</p>
+      {/* Pinned actions — same treatment as the PR panel's human-verification
+          footer: primary action, secondary actions, a note underneath. */}
+      <footer className="shrink-0 space-y-2 border-t border-border-subtle px-3 py-3">
+        <div className="flex flex-wrap gap-1.5">
+          <button type="button" className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-accent-primary px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-accent-primary/90">
+            <IconCircleCheck size={14} stroke={2} /> Approve &amp; open PR
+          </button>
         </div>
-
-        <div>
-          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-content-muted">What happened</p>
-          <p className="mb-2 text-[13px] leading-relaxed text-content-secondary">{issue.summary}</p>
-          <div className="overflow-hidden rounded-lg border border-border-default bg-surface-2">
-            <div className="border-b border-border-subtle px-3 py-1.5 font-mono text-[11px] text-content-muted">{issue.evidence.file}</div>
-            <pre className="overflow-x-auto px-3 py-2 font-mono text-[11.5px] leading-relaxed text-content-secondary">
-              {issue.evidence.rows.map(([k, v], idx) => (
-                <div key={idx}>
-                  <span className="text-content-muted">{k}</span> = <span className={/null|missing|theft|500/.test(v) ? "text-accent-danger" : ""}>{v}</span>
-                </div>
-              ))}
-            </pre>
-          </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-1.5 text-[11px] font-semibold text-content-secondary transition-colors hover:bg-content-primary/5">
+            <IconCopy size={13} stroke={1.75} /> Copy patch
+          </button>
+          <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-1.5 text-[11px] font-semibold text-content-secondary transition-colors hover:bg-content-primary/5">
+            <IconX size={13} stroke={1.75} /> Dismiss
+          </button>
         </div>
-
-        <div>
-          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-content-muted">
-            Proposed fix <span className="font-normal normal-case tracking-normal text-accent-info">· verified against the diff</span>
-          </p>
-          <div className="overflow-hidden rounded-lg border border-border-default bg-surface-2">
-            <div className="border-b border-border-subtle px-3 py-1.5 font-mono text-[11px] text-content-muted">{issue.fix.file}</div>
-            <pre className="overflow-x-auto py-1 font-mono text-[11.5px] leading-relaxed">
-              {issue.fix.rows.map((r, idx) => (
-                <div
-                  key={idx}
-                  className={`flex gap-2 px-2 ${r.kind === "add" ? "bg-accent-success/10" : r.kind === "remove" ? "bg-accent-danger/10" : ""}`}
-                >
-                  <span className={`select-none ${r.kind === "add" ? "text-accent-success" : r.kind === "remove" ? "text-accent-danger" : "text-content-muted/50"}`}>
-                    {r.kind === "add" ? "+" : r.kind === "remove" ? "-" : " "}
-                  </span>
-                  <span className={r.kind === "context" ? "text-content-muted" : "text-content-secondary"}>{r.text}</span>
-                </div>
-              ))}
-            </pre>
-          </div>
-          <div className="mt-2.5 flex flex-wrap gap-2">
-            <button type="button" className="inline-flex items-center gap-1.5 rounded-lg bg-accent-primary px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-accent-primary/90">
-              <IconCircleCheck size={14} stroke={2} /> Approve &amp; open PR
-            </button>
-            <button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-1.5 text-[12px] font-semibold text-content-secondary transition-colors hover:bg-content-primary/5">
-              <IconCopy size={14} stroke={1.75} /> Copy patch
-            </button>
-            <button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-1.5 text-[12px] font-semibold text-content-secondary transition-colors hover:bg-content-primary/5">
-              <IconX size={14} stroke={1.75} /> Dismiss
-            </button>
-          </div>
-        </div>
-
-        <div>
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-content-muted">Activity</p>
-          <ol>
-            {issue.timeline.map((t, idx) => (
-              <li key={idx} className="grid grid-cols-[16px_1fr] gap-2.5 pb-3">
-                <div className="flex flex-col items-center">
-                  <span className={`mt-0.5 h-2.5 w-2.5 rounded-full ${TONE_DOT[t.tone]}`} />
-                  {idx < issue.timeline.length - 1 && <span className="mt-1 w-0.5 flex-1 bg-border-default" />}
-                </div>
-                <div>
-                  <p className="text-[12px] text-content-secondary">{t.text}</p>
-                  <p className="mt-0.5 font-mono text-[10.5px] text-content-muted">{t.when}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-        </div>
-
-        <div className="flex items-start gap-2 rounded-lg border border-border-default bg-surface-2 px-3 py-2 text-[11px] text-content-muted">
-          <IconGitPullRequest size={14} stroke={1.75} className="mt-0.5 shrink-0" />
+        <p className="text-[10px] leading-4 text-content-muted/80">
           You review and merge on your own terms — Areté never changes your code without approval.
-        </div>
-      </div>
-    </div>
+        </p>
+      </footer>
+    </>
   );
 }
