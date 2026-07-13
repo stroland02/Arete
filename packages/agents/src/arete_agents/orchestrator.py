@@ -17,6 +17,7 @@ from arete_agents.agents.performance import PerformanceAgent
 from arete_agents.agents.quality import QualityAgent
 from arete_agents.agents.security import SecurityAgent
 from arete_agents.agents.test_coverage import TestCoverageAgent
+from arete_agents.critic import CriticAgent
 from arete_agents.llm.base import ROLE_KEYS
 from arete_agents.models.pr import FileChange, PRContext
 from arete_agents.models.review import FileReview, ReviewResult
@@ -28,6 +29,21 @@ _SEVERITY_WEIGHT = {"error": 3, "warning": 2, "info": 1}
 # agents x comments) an unbounded payload can blow the context window or
 # produce mangled/hallucinated line numbers, so degrade gracefully instead.
 MAX_RAW_REVIEWS_CHARS = 150_000
+
+# Default category->tier mapping used for critic routing when the caller
+# doesn't supply live settings-derived tiers via the `tiers` constructor
+# param. Mirrors config.py's DEFAULT tier values for the 6 specialist
+# categories (not necessarily the live/env-overridden values — pass
+# tiers=role_tiers(settings) explicitly at the production call sites in
+# server.py/cli.py to respect real per-installation overrides).
+_DEFAULT_CATEGORY_TIERS: dict[str, str] = {
+    "security": "opus",
+    "performance": "sonnet",
+    "quality": "sonnet",
+    "test_coverage": "sonnet",
+    "deployment_safety": "opus",
+    "business_logic": "opus",
+}
 
 
 def _risk_level(
@@ -218,7 +234,11 @@ def _fallback_synthesize(pr: PRContext, flat_results: list[FileReview]) -> Revie
 
 
 class ReviewOrchestrator:
-    def __init__(self, llm: BaseChatModel | dict[str, BaseChatModel]) -> None:
+    def __init__(
+        self,
+        llm: BaseChatModel | dict[str, BaseChatModel],
+        tiers: dict[str, str] | None = None,
+    ) -> None:
         # Accept either a single client (used for every role — the common case
         # in tests and simple callers) or a per-role dict from
         # get_llms_by_role() so each agent runs on its configured tier.
@@ -235,6 +255,9 @@ class ReviewOrchestrator:
             BusinessLogicAgent(self._llms["business_logic"]),
         ]
         self.synthesizer = SynthesizerAgent(self._llms["synthesizer"])
+        self._critic_opus = CriticAgent(self._llms["critic_opus"])
+        self._critic_sonnet = CriticAgent(self._llms["critic_sonnet"])
+        self._category_tiers = tiers or _DEFAULT_CATEGORY_TIERS
         self.graph = self._build_graph()
 
     def _build_graph(self):
@@ -329,11 +352,61 @@ class ReviewOrchestrator:
             )
             final_result = _fallback_synthesize(pr, raw_reviews)
 
+        final_result = self._apply_critic(pr, final_result)
+
         # "failed" only when every agent errored (total outage) — partial
         # failures still produced a real (if incomplete) review.
         if state.get("agent_failures", 0) > 0 and state.get("agent_successes", 0) == 0:
             final_result.analysis_status = "failed"
         return {"final_result": final_result}
+
+    def _apply_critic(self, pr: PRContext, result: ReviewResult) -> ReviewResult:
+        """Independent second gate on the Synthesizer's output. Every
+        surviving comment's category maps to its authoring tier; it is
+        critiqued by the OPPOSITE tier's critic. Binary keep/drop only.
+        Fails open on any critic error (see CriticAgent.critique)."""
+        flat: list[tuple[int, int]] = [
+            (fi, ci)
+            for fi, fr in enumerate(result.file_reviews)
+            for ci in range(len(fr.comments))
+        ]
+        if not flat:
+            return result
+
+        opus_authored: list[tuple[int, int]] = []
+        sonnet_authored: list[tuple[int, int]] = []
+        for fi, ci in flat:
+            category = result.file_reviews[fi].comments[ci].category
+            tier = self._category_tiers.get(category)
+            if tier == "opus":
+                opus_authored.append((fi, ci))
+            elif tier == "sonnet":
+                sonnet_authored.append((fi, ci))
+            # else: unrecognized category -> kept as-is, uncritiqued.
+
+        drop_keys: set[tuple[int, int]] = set()
+
+        if opus_authored:
+            comments = [result.file_reviews[fi].comments[ci] for fi, ci in opus_authored]
+            dropped = self._critic_sonnet.critique(pr, comments)
+            drop_keys |= {opus_authored[i] for i in dropped}
+
+        if sonnet_authored:
+            comments = [result.file_reviews[fi].comments[ci] for fi, ci in sonnet_authored]
+            dropped = self._critic_opus.critique(pr, comments)
+            drop_keys |= {sonnet_authored[i] for i in dropped}
+
+        if not drop_keys:
+            return result
+
+        new_file_reviews = []
+        for fi, fr in enumerate(result.file_reviews):
+            kept = [c for ci, c in enumerate(fr.comments) if (fi, ci) not in drop_keys]
+            new_file_reviews.append(FileReview(path=fr.path, comments=kept, summary=fr.summary))
+
+        result.file_reviews = new_file_reviews
+        result.critic_dropped_count = len(drop_keys)
+        return result
 
     def run(self, pr: PRContext) -> ReviewResult:
         if not pr.files:

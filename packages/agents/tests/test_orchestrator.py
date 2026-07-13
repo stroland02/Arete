@@ -425,6 +425,191 @@ def test_small_raw_reviews_payload_is_not_truncated(sample_pr):
     assert "[Raw reviews truncated:" not in human_content
 
 
+def test_critic_drops_comment_that_survived_synthesizer(sample_pr):
+    """A comment that survives the Synthesizer's own self-check must still
+    be dropped if the independent critic flags it — proves the two gates
+    are genuinely independent, not redundant."""
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    synth_response = (
+        '{"file_reviews": [{"path": "src/auth.py", "comments": '
+        '[{"path": "src/auth.py", "line": 5, "body": "SQL injection.", '
+        '"severity": "error", "category": "security"}], '
+        '"summary": "SQL injection."}], '
+        '"overall_summary": "One security issue.", "risk_level": "high", '
+        '"dropped_count": 0}'
+    )
+    agent_response = '{"comments": [], "summary": "clean"}'
+
+    def fake_invoke(messages, **kwargs):
+        system = messages[0].content
+        if "Critic" in system:
+            return AIMessage(content='{"drop_indices": [0]}')
+        if "Synthesizer" in system:
+            return AIMessage(content=synth_response)
+        return AIMessage(content=agent_response)
+
+    mock = MagicMock()
+    mock.with_retry.return_value = mock
+    mock.invoke.side_effect = fake_invoke
+
+    result = ReviewOrchestrator(llm=mock).run(sample_pr)
+
+    assert result.total_comments == 0
+    assert result.critic_dropped_count == 1
+
+
+def test_critic_keeps_comment_it_approves(sample_pr):
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    synth_response = (
+        '{"file_reviews": [{"path": "src/auth.py", "comments": '
+        '[{"path": "src/auth.py", "line": 5, "body": "SQL injection.", '
+        '"severity": "error", "category": "security"}], '
+        '"summary": "SQL injection."}], '
+        '"overall_summary": "One security issue.", "risk_level": "high", '
+        '"dropped_count": 0}'
+    )
+    agent_response = '{"comments": [], "summary": "clean"}'
+
+    def fake_invoke(messages, **kwargs):
+        system = messages[0].content
+        if "Critic" in system:
+            return AIMessage(content='{"drop_indices": []}')
+        if "Synthesizer" in system:
+            return AIMessage(content=synth_response)
+        return AIMessage(content=agent_response)
+
+    mock = MagicMock()
+    mock.with_retry.return_value = mock
+    mock.invoke.side_effect = fake_invoke
+
+    result = ReviewOrchestrator(llm=mock).run(sample_pr)
+
+    assert result.total_comments == 1
+    assert result.critic_dropped_count == 0
+
+
+def test_critic_routes_opus_authored_comment_to_sonnet_critic(sample_pr):
+    """security is opus-tier by default -> its comment must be critiqued by
+    the critic_sonnet client, not critic_opus."""
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    synth_response = (
+        '{"file_reviews": [{"path": "src/auth.py", "comments": '
+        '[{"path": "src/auth.py", "line": 5, "body": "SQL injection.", '
+        '"severity": "error", "category": "security"}], '
+        '"summary": "SQL injection."}], '
+        '"overall_summary": "One security issue.", "risk_level": "high", '
+        '"dropped_count": 0}'
+    )
+    agent_llm = MagicMock()
+    agent_llm.with_retry.return_value = agent_llm
+    agent_llm.invoke.return_value = AIMessage(content='{"comments": [], "summary": "clean"}')
+
+    synth_llm = MagicMock()
+    synth_llm.with_retry.return_value = synth_llm
+    synth_llm.invoke.return_value = AIMessage(content=synth_response)
+
+    critic_opus_llm = MagicMock()
+    critic_opus_llm.with_retry.return_value = critic_opus_llm
+
+    critic_sonnet_llm = MagicMock()
+    critic_sonnet_llm.with_retry.return_value = critic_sonnet_llm
+    critic_sonnet_llm.invoke.return_value = AIMessage(content='{"drop_indices": []}')
+
+    from arete_agents.llm.base import ROLE_KEYS
+    llms = {role: agent_llm for role in ROLE_KEYS}
+    llms["synthesizer"] = synth_llm
+    llms["critic_opus"] = critic_opus_llm
+    llms["critic_sonnet"] = critic_sonnet_llm
+
+    ReviewOrchestrator(llm=llms).run(sample_pr)
+
+    critic_sonnet_llm.invoke.assert_called_once()
+    critic_opus_llm.invoke.assert_not_called()
+
+
+def test_critic_call_failure_keeps_comments_uncritiqued(sample_pr):
+    """Fail-open: if the critic LLM raises, the bucket's comments survive."""
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    synth_response = (
+        '{"file_reviews": [{"path": "src/auth.py", "comments": '
+        '[{"path": "src/auth.py", "line": 5, "body": "SQL injection.", '
+        '"severity": "error", "category": "security"}], '
+        '"summary": "SQL injection."}], '
+        '"overall_summary": "One security issue.", "risk_level": "high", '
+        '"dropped_count": 0}'
+    )
+    agent_response = '{"comments": [], "summary": "clean"}'
+
+    def fake_invoke(messages, **kwargs):
+        system = messages[0].content
+        if "Critic" in system:
+            raise RuntimeError("critic provider outage")
+        if "Synthesizer" in system:
+            return AIMessage(content=synth_response)
+        return AIMessage(content=agent_response)
+
+    mock = MagicMock()
+    mock.with_retry.return_value = mock
+    mock.invoke.side_effect = fake_invoke
+
+    result = ReviewOrchestrator(llm=mock).run(sample_pr)
+
+    assert result.total_comments == 1
+    assert result.critic_dropped_count == 0
+
+
+def test_orchestrator_accepts_explicit_tiers(sample_pr):
+    """A caller may pass tiers= (e.g. role_tiers(settings)) to override the
+    default category->tier mapping used for critic routing."""
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    synth_response = (
+        '{"file_reviews": [{"path": "src/auth.py", "comments": '
+        '[{"path": "src/auth.py", "line": 5, "body": "SQL injection.", '
+        '"severity": "error", "category": "security"}], '
+        '"summary": "SQL injection."}], '
+        '"overall_summary": "One security issue.", "risk_level": "high", '
+        '"dropped_count": 0}'
+    )
+    agent_llm = MagicMock()
+    agent_llm.with_retry.return_value = agent_llm
+    agent_llm.invoke.return_value = AIMessage(content='{"comments": [], "summary": "clean"}')
+
+    synth_llm = MagicMock()
+    synth_llm.with_retry.return_value = synth_llm
+    synth_llm.invoke.return_value = AIMessage(content=synth_response)
+
+    critic_opus_llm = MagicMock()
+    critic_opus_llm.with_retry.return_value = critic_opus_llm
+    critic_opus_llm.invoke.return_value = AIMessage(content='{"drop_indices": []}')
+
+    critic_sonnet_llm = MagicMock()
+    critic_sonnet_llm.with_retry.return_value = critic_sonnet_llm
+
+    from arete_agents.llm.base import ROLE_KEYS
+    llms = {role: agent_llm for role in ROLE_KEYS}
+    llms["synthesizer"] = synth_llm
+    llms["critic_opus"] = critic_opus_llm
+    llms["critic_sonnet"] = critic_sonnet_llm
+
+    # Override: security is sonnet-tier here, so its comment should go to
+    # the OPPOSITE critic (critic_opus), not the default (critic_sonnet).
+    overridden_tiers = {
+        "security": "sonnet", "performance": "sonnet", "quality": "sonnet",
+        "test_coverage": "sonnet", "deployment_safety": "sonnet",
+        "business_logic": "sonnet",
+    }
+
+    ReviewOrchestrator(llm=llms, tiers=overridden_tiers).run(sample_pr)
+
+    critic_opus_llm.invoke.assert_called_once()
+    critic_sonnet_llm.invoke.assert_not_called()
+
+
 def test_large_patch_is_truncated(cyclic_llm):
     """Patches over MAX_PATCH_CHARS must be truncated before being sent to LLM."""
     from arete_agents.agents.base import MAX_PATCH_CHARS
