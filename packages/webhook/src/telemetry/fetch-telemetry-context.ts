@@ -170,9 +170,26 @@ export async function fetchTelemetryContext(
   // installation whether or not its Installation row exists yet.
   const cacheScope = `${provider}:${installationExternalId}`
 
-  const results = await Promise.all(
-    deduped.map((c) => fetchOneConnector(octokit, cacheScope, installationId, owner, repo, c))
-  )
+  // Producer-Side Micro-Batching & Async Socket Pool Backpressure
+  // Limit concurrent outbound telemetry requests to prevent socket exhaustion
+  // and rate limits when a customer configures many connectors.
+  const CONCURRENCY_LIMIT = 5
+  const results: (TelemetrySnapshot | null)[] = []
+  let activePromises: Promise<void>[] = []
+  
+  for (const c of deduped) {
+    if (activePromises.length >= CONCURRENCY_LIMIT) {
+      await Promise.race(activePromises)
+    }
+    
+    const p = fetchOneConnector(octokit, cacheScope, installationId, owner, repo, c)
+      .then(res => { results.push(res) })
+      .finally(() => { activePromises = activePromises.filter(x => x !== p) })
+      
+    activePromises.push(p)
+  }
+  
+  await Promise.all(activePromises)
 
   return results.filter((s): s is TelemetrySnapshot => s !== null)
 }

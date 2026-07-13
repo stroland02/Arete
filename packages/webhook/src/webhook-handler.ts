@@ -15,7 +15,7 @@ interface PullRequestPayload {
     name: string
     full_name: string
   }
-  pull_request: { number: number, head: { sha: string } }
+  pull_request: { number: number, head: { sha: string }, changed_files?: number }
   installation?: { id: number }
 }
 
@@ -97,6 +97,12 @@ export async function handlePullRequestEvent(
     return
   }
 
+  // Dual-Lane Ingestion Queuing
+  // Route massive PRs to a separate 'heavy' lane to prevent them from starving
+  // fast memory queues and small webhook jobs.
+  const changedFiles = payload.pull_request.changed_files ?? 0
+  const lane = changedFiles > 50 ? 'heavy' : 'fast'
+
   await enqueueReviewJob({
     provider: 'github',
     kind: 'pull_request',
@@ -107,9 +113,9 @@ export async function handlePullRequestEvent(
     installationId,
     prNumber,
     headSha,
-  })
+  }, lane)
 
-  console.log(`[handler] Enqueued review-pr job for ${owner}/${repo}#${prNumber}`)
+  console.log(`[handler] Enqueued review-pr job for ${owner}/${repo}#${prNumber} on '${lane}' lane`)
 }
 
 export function registerCheckRunWebhooks(app: any) {

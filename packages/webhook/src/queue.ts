@@ -14,6 +14,7 @@ import { Redis as IORedis } from 'ioredis'
 // out into unbounded LLM calls.
 
 export const REVIEW_QUEUE_NAME = 'review-pr'
+export const REVIEW_QUEUE_HEAVY_NAME = 'review-pr-heavy'
 export const REVIEW_QUEUE_CONCURRENCY = 5
 
 export interface GitHubPullRequestJobData {
@@ -70,15 +71,17 @@ function getConnection(): IORedis {
   return connection
 }
 
-let queue: Queue<ReviewJobData> | null = null
+let queueFast: Queue<ReviewJobData> | null = null
+let queueHeavy: Queue<ReviewJobData> | null = null
 
-/** Lazily-constructed singleton so importing this module never opens a Redis
- *  connection (or fails) until a job is actually enqueued/consumed. */
-export function getReviewQueue(): Queue<ReviewJobData> {
-  if (!queue) {
-    queue = new Queue<ReviewJobData>(REVIEW_QUEUE_NAME, { connection: getConnection() })
+export function getReviewQueue(lane: 'fast' | 'heavy' = 'fast'): Queue<ReviewJobData> {
+  if (lane === 'fast') {
+    if (!queueFast) queueFast = new Queue<ReviewJobData>(REVIEW_QUEUE_NAME, { connection: getConnection() })
+    return queueFast
+  } else {
+    if (!queueHeavy) queueHeavy = new Queue<ReviewJobData>(REVIEW_QUEUE_HEAVY_NAME, { connection: getConnection() })
+    return queueHeavy
   }
-  return queue
 }
 
 const DEFAULT_JOB_OPTIONS: JobsOptions = {
@@ -88,14 +91,17 @@ const DEFAULT_JOB_OPTIONS: JobsOptions = {
   removeOnFail: 500,
 }
 
-export async function enqueueReviewJob(data: ReviewJobData) {
-  return getReviewQueue().add(REVIEW_QUEUE_NAME, data, DEFAULT_JOB_OPTIONS)
+export async function enqueueReviewJob(data: ReviewJobData, lane: 'fast' | 'heavy' = 'fast') {
+  const qName = lane === 'fast' ? REVIEW_QUEUE_NAME : REVIEW_QUEUE_HEAVY_NAME
+  return getReviewQueue(lane).add(qName, data, DEFAULT_JOB_OPTIONS)
 }
 
 /** For graceful shutdown and test cleanup. */
 export async function closeReviewQueue(): Promise<void> {
-  await queue?.close()
+  await queueFast?.close()
+  await queueHeavy?.close()
   await connection?.quit()
-  queue = null
+  queueFast = null
+  queueHeavy = null
   connection = null
 }

@@ -43,6 +43,17 @@ export async function createServer(): Promise<express.Application> {
 
   const server = express()
   
+  // Pre-auth Poison Message Guard: Drop empty/malformed payloads instantly
+  // before they consume DB reads or queue resources.
+  server.use((req, res, next) => {
+    const contentLength = req.headers['content-length']
+    if (contentLength !== undefined && /^\s*0+\s*$/.test(contentLength)) {
+      res.status(400).send('empty request body; no records to ingest')
+      return
+    }
+    next()
+  })
+
   // Stripe webhook needs raw body
   server.post('/stripe-webhook', express.raw({ type: 'application/json' }), handleStripeWebhook)
   
