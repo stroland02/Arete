@@ -39,3 +39,5 @@ class PRContext(BaseModel):
     custom_rules: list[str] = Field(default_factory=list, alias="customRules")
     ci_logs: str | None = Field(None, alias="ciLogs")
     telemetry: list[TelemetrySnapshot] = Field(default_factory=list)
+    predecessor_handoff_notes: str | None = Field(None, alias="predecessorHandoffNotes")
+    predecessor_root_cause: str | None = Field(None, alias="predecessorRootCause")

@@ -71,6 +71,15 @@ Other files changed in this same PR (peripheral context only — review ONLY the
                 f"\n[Diff truncated: showing first {MAX_PATCH_CHARS} chars only]"
             )
 
+        predecessor_block = ""
+        if pr_context.predecessor_handoff_notes or pr_context.predecessor_root_cause:
+            predecessor_block = "\n<predecessor_context>\nThis is a follow-up review on a previously flagged PR. Use this context from the prior agent review pass to avoid repeating past mistakes or feedback:\n"
+            if pr_context.predecessor_root_cause:
+                predecessor_block += f"Prior Root Cause:\n{escape_for_prompt(pr_context.predecessor_root_cause)}\n"
+            if pr_context.predecessor_handoff_notes:
+                predecessor_block += f"Handoff Notes:\n{escape_for_prompt(pr_context.predecessor_handoff_notes)}\n"
+            predecessor_block += "</predecessor_context>\n"
+
         return f"""Review this pull request file for {self.agent_name} issues.
 
 <pr_metadata>
@@ -78,7 +87,7 @@ PR: "{escape_for_prompt(pr_context.title)}" in {escape_for_prompt(pr_context.rep
 Description: {escape_for_prompt(pr_context.description)}
 File: {escape_for_prompt(file.path)} ({file.language})
 </pr_metadata>
-{self._build_pr_manifest(file, pr_context)}{self._build_telemetry_block(pr_context)}
+{predecessor_block}{self._build_pr_manifest(file, pr_context)}{self._build_telemetry_block(pr_context)}
 <diff>
 {patch}{truncation_note}
 </diff>
@@ -122,7 +131,9 @@ If no issues found, return empty comments array."""
         
         # Load authorized tools specifically for this agent type
         from arete_agents.mcp.client import get_mcp_tools_for_agent
+        from arete_agents.tools.actions import get_native_action_tools
         mcp_tools = get_mcp_tools_for_agent(self.agent_name)
+        mcp_tools.extend(get_native_action_tools())
         
         # Bind the tools if the server is authenticated and has tools available
         llm_with_tools = self._llm.bind_tools(mcp_tools) if mcp_tools else self._llm
