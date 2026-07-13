@@ -24,6 +24,10 @@ function fakeDb(initial: Array<{ id: string; userId: string; provider: string; p
         const { provider, providerAccountId } = where.provider_providerAccountId;
         return rows.find((r) => r.provider === provider && r.providerAccountId === providerAccountId) ?? null;
       },
+      findFirst: async ({ where }) => {
+        const row = rows.find((r) => r.userId === where.userId && r.provider === where.provider);
+        return row ? { id: row.id } : null;
+      },
       create: async ({ data }) => {
         rows.push({ id: `acc-${rows.length + 1}`, userId: data.userId, provider: data.provider, providerAccountId: data.providerAccountId });
         return null;

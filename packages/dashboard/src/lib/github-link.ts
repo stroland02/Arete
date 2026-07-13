@@ -14,6 +14,10 @@ export interface GithubLinkDb {
     findUnique: (args: {
       where: { provider_providerAccountId: { provider: string; providerAccountId: string } };
     }) => Promise<{ id: string; userId: string } | null>;
+    findFirst: (args: {
+      where: { userId: string; provider: string };
+      select: { id: true };
+    }) => Promise<{ id: string } | null>;
     create: (args: {
       data: {
         userId: string;
@@ -164,4 +168,22 @@ export async function linkGithubAccount(
       githubAccessTokenEncrypted: encrypted,
     },
   });
+}
+
+/**
+ * Whether the given dashboard user already has a linked GitHub account
+ * (an `Account` row with `provider: 'github'`). Used by the Settings page
+ * to decide between showing the "Connect GitHub" CTA and a connected
+ * state — deliberately does NOT decrypt the stored token or call the
+ * GitHub API just to render the page; the connected state's installation
+ * list comes from `session.installations` (already resolved by auth.ts's
+ * jwt callback), never fabricated here.
+ */
+export async function isGithubLinked(db: GithubLinkDb | PrismaClient, userId: string): Promise<boolean> {
+  const typedDb = db as GithubLinkDb;
+  const existing = await typedDb.account.findFirst({
+    where: { userId, provider: 'github' },
+    select: { id: true },
+  });
+  return existing !== null;
 }
