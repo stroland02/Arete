@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   getConnectedTelemetryProviders,
   getDashboardViewModel,
+  getDashboardsViewModel,
   getMasterGridSnapshots,
   getTrendSeries,
   resolveSelectedInstallationIds,
@@ -110,6 +111,18 @@ function createFakeDb(
           .slice(0, take);
         return filtered.map((r) => ({ ...r, repository: repoById.get(r.repositoryId)! }));
       },
+      groupBy: async ({ by, where }: any) => {
+        const matched = reviews.filter((v) => reviewMatchesRepoScope(v, where.repository));
+        const field = by[0] as 'riskLevel' | 'repositoryId';
+        const counts = new Map<string, number>();
+        for (const v of matched) {
+          const key = String((v as any)[field]);
+          counts.set(key, (counts.get(key) ?? 0) + 1);
+        }
+        return [...counts.entries()]
+          .map(([k, count]) => ({ [field]: k, _count: { [field]: count } }))
+          .sort((a: any, b: any) => b._count[field] - a._count[field]);
+      },
     },
     reviewComment: {
       count: async ({ where }: any) => {
@@ -121,16 +134,16 @@ function createFakeDb(
           return true;
         }).length;
       },
-      groupBy: async ({ where }: any) => {
-        const matched = comments.filter((c) => {
-          const review = reviewById.get(c.reviewId)!;
-          return reviewMatchesRepoScope(review, where.review.repository);
-        });
+      groupBy: async ({ by, where }: any) => {
+        const field = by[0] as 'category' | 'severity';
+        const matched = comments.filter((c) =>
+          reviewMatchesRepoScope(reviewById.get(c.reviewId)!, where.review.repository)
+        );
         const counts = new Map<string, number>();
-        for (const c of matched) counts.set(c.category, (counts.get(c.category) ?? 0) + 1);
+        for (const c of matched) counts.set((c as any)[field], (counts.get((c as any)[field]) ?? 0) + 1);
         return [...counts.entries()]
-          .map(([category, count]) => ({ category, _count: { category: count } }))
-          .sort((a, b) => b._count.category - a._count.category);
+          .map(([k, count]) => ({ [field]: k, _count: { [field]: count } }))
+          .sort((a: any, b: any) => b._count[field] - a._count[field]);
       },
     },
     telemetryConnection: {
@@ -319,6 +332,57 @@ describe('getConnectedTelemetryProviders', () => {
 
     expect(result).toEqual([]);
     expect(queried).toBe(false);
+  });
+});
+
+describe('getDashboardsViewModel', () => {
+  it('returns hasAccess:false for zero installations without querying', async () => {
+    let queried = false;
+    const db = {
+      review: {
+        count: async () => { queried = true; return 0; },
+        findMany: async () => { queried = true; return []; },
+        groupBy: async () => { queried = true; return []; },
+      },
+      reviewComment: {
+        count: async () => { queried = true; return 0; },
+        groupBy: async () => { queried = true; return []; },
+      },
+      repository: { findMany: async () => { queried = true; return []; } },
+      telemetrySnapshotRecord: { findMany: async () => { queried = true; return []; } },
+    };
+    const result = await getDashboardsViewModel(db as any, []);
+    expect(result).toEqual({ hasAccess: false });
+    expect(queried).toBe(false);
+  });
+
+  it('aggregates only in-scope data and shapes breakdowns', async () => {
+    const repos: FakeRepo[] = [
+      { id: 'r1', installationId: 'inst-a', fullName: 'acme/api', createdAt: new Date('2026-07-01') },
+      { id: 'r2', installationId: 'inst-b', fullName: 'globex/web', createdAt: new Date('2026-07-01') },
+    ];
+    const reviews: FakeReview[] = [
+      { id: 'v1', repositoryId: 'r1', prNumber: 1, riskLevel: 'high', createdAt: new Date() },
+      { id: 'v2', repositoryId: 'r1', prNumber: 2, riskLevel: 'low', createdAt: new Date() },
+      { id: 'v3', repositoryId: 'r2', prNumber: 9, riskLevel: 'critical', createdAt: new Date() },
+    ];
+    const comments: FakeComment[] = [
+      { id: 'c1', reviewId: 'v1', severity: 'error', category: 'security' },
+      { id: 'c2', reviewId: 'v1', severity: 'warning', category: 'performance' },
+      { id: 'c3', reviewId: 'v3', severity: 'error', category: 'security' },
+    ];
+    const db = createFakeDb(repos, reviews, comments);
+
+    const result = await getDashboardsViewModel(db as any, ['inst-a']);
+    if (!result.hasAccess) throw new Error('expected access');
+
+    expect(result.totalPrs).toBe(2);            // only inst-a's r1 reviews
+    expect(result.criticalBugs).toBe(1);        // only c1 (error) in scope; c3 is inst-b
+    expect(result.byRepo).toEqual([{ fullName: 'acme/api', count: 2 }]);
+    expect(result.bySeverity.find((s) => s.category === 'error')?.count).toBe(1);
+    expect(result.byRisk.map((r) => r.category).sort()).toEqual(['high', 'low']);
+    expect(result.reviewDates).toHaveLength(2);
+    expect(result.telemetry).toEqual([]);
   });
 });
 
