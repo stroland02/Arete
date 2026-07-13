@@ -9,16 +9,37 @@ import { TimeRangeControl, type Range } from "./time-range-control";
 
 type Model = Extract<DashboardsViewModel, { hasAccess: true }>;
 
+/** Zero-valued model used to render the dashboard LAYOUT in the not-connected
+ *  preview — every widget shows a "connect …" prompt (see ConnectPrompt),
+ *  never fabricated data. */
+const EMPTY_MODEL: Model = {
+  hasAccess: true,
+  totalPrs: 0,
+  criticalBugs: 0,
+  recentReviews: 0,
+  weeklyDelta: 0,
+  reviewDates: [],
+  byCategory: [],
+  bySeverity: [],
+  byRisk: [],
+  byRepo: [],
+  latestReviews: [],
+  telemetry: [],
+};
+
 const PRESETS = [
   { key: "activity", label: "Review Activity", Component: ReviewActivityPreset },
   { key: "findings", label: "Findings", Component: FindingsPreset },
   { key: "telemetry", label: "Telemetry", Component: TelemetryPreset },
 ] as const;
 
-export function DashboardsWorkspace({ model }: { model: Model }) {
+export function DashboardsWorkspace({ model }: { model: DashboardsViewModel }) {
   const [tab, setTab] = useState<(typeof PRESETS)[number]["key"]>("activity");
   const [range, setRange] = useState<Range>(30);
   const Active = PRESETS.find((p) => p.key === tab)!.Component;
+
+  const connected = model.hasAccess;
+  const data: Model = model.hasAccess ? model : EMPTY_MODEL;
 
   return (
     <div className="space-y-6">
@@ -37,9 +58,9 @@ export function DashboardsWorkspace({ model }: { model: Model }) {
             </button>
           ))}
         </div>
-        {tab === "activity" && <TimeRangeControl value={range} onChange={setRange} />}
+        {connected && tab === "activity" && <TimeRangeControl value={range} onChange={setRange} />}
       </div>
-      <Active model={model} days={range} />
+      <Active model={data} days={range} connected={connected} />
     </div>
   );
 }

@@ -1,17 +1,23 @@
 import { bucketByDay } from "@/lib/trends";
 import { Widget } from "./widget";
+import type { ConnectKind } from "./connect-prompt";
 
 export interface TimeseriesWidgetProps {
   title: string;
   caption?: string;
   dates: Date[];
   days: number;
+  connect?: ConnectKind;
 }
 
 const W = 600;
 const H = 160;
 
-export function TimeseriesWidget({ title, caption, dates, days }: TimeseriesWidgetProps) {
+export function TimeseriesWidget({ title, caption, dates, days, connect }: TimeseriesWidgetProps) {
+  if (connect) {
+    return <Widget title={title} caption={caption} connect={connect}><span /></Widget>;
+  }
+
   const series = bucketByDay(dates, days);
   const total = series.reduce((a, b) => a + b, 0);
 

@@ -24,36 +24,47 @@ const fullModel: Model = {
 
 describe('ReviewActivityPreset', () => {
   it('renders real metrics with data', () => {
-    const html = renderToStaticMarkup(<ReviewActivityPreset model={fullModel} days={30} />);
+    const html = renderToStaticMarkup(<ReviewActivityPreset model={fullModel} days={30} connected />);
     expect(html).toContain('acme/api');
     expect(html).toContain('Pull requests reviewed');
   });
-  it('renders honest empty states with no data', () => {
-    const html = renderToStaticMarkup(<ReviewActivityPreset model={emptyModel} days={30} />);
+  it('renders honest empty states with no data (connected)', () => {
+    const html = renderToStaticMarkup(<ReviewActivityPreset model={emptyModel} days={30} connected />);
     expect(html).toContain('No reviews yet');
+  });
+  it('shows the connect-a-repository preview when not connected', () => {
+    const html = renderToStaticMarkup(<ReviewActivityPreset model={emptyModel} days={30} connected={false} />);
+    expect(html).toContain('Connect a repository');
+    expect(html).toContain('Reviews over time');
+    expect(html).toContain('Pull requests reviewed');
   });
 });
 
 describe('FindingsPreset', () => {
   it('renders severity + category breakdowns with data', () => {
-    const html = renderToStaticMarkup(<FindingsPreset model={fullModel} days={30} />);
+    const html = renderToStaticMarkup(<FindingsPreset model={fullModel} days={30} connected />);
     expect(html).toContain('security');
     expect(html.toLowerCase()).toContain('error');
   });
-  it('renders empty states with no data', () => {
-    const html = renderToStaticMarkup(<FindingsPreset model={emptyModel} days={30} />);
+  it('renders empty states with no data (connected)', () => {
+    const html = renderToStaticMarkup(<FindingsPreset model={emptyModel} days={30} connected />);
     expect(html).toContain('Nothing to show yet');
+  });
+  it('shows the connect-a-repository preview when not connected', () => {
+    const html = renderToStaticMarkup(<FindingsPreset model={emptyModel} days={30} connected={false} />);
+    expect(html).toContain('Connect a repository');
+    expect(html).toContain('Findings by severity');
   });
 });
 
 describe('TelemetryPreset', () => {
-  it('shows the connect-a-provider empty state when nothing is connected', () => {
-    const html = renderToStaticMarkup(<TelemetryPreset model={emptyModel} days={30} />);
-    expect(html.toLowerCase()).toContain('connect a provider');
+  it('shows the connect-a-service empty state when nothing is connected', () => {
+    const html = renderToStaticMarkup(<TelemetryPreset model={emptyModel} days={30} connected={false} />);
+    expect(html.toLowerCase()).toContain('connect a service');
   });
   it('renders one panel per connected provider', () => {
     const html = renderToStaticMarkup(
-      <TelemetryPreset model={{ ...emptyModel, telemetry: [{ provider: 'sentry', sourceRef: 'acme/api', summaryText: '', metrics: { error_rate: 2 }, links: [], fetchedAt: new Date() }] }} days={30} />
+      <TelemetryPreset model={{ ...emptyModel, telemetry: [{ provider: 'sentry', sourceRef: 'acme/api', summaryText: '', metrics: { error_rate: 2 }, links: [], fetchedAt: new Date() }] }} days={30} connected />
     );
     expect(html).toContain('sentry');
     expect(html.toLowerCase()).toContain('as of last review');

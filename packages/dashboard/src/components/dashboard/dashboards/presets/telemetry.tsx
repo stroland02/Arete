@@ -7,18 +7,18 @@ import { TelemetryMetricWidget } from "../telemetry-metric-widget";
 
 type Model = Extract<DashboardsViewModel, { hasAccess: true }>;
 
-export function TelemetryPreset({ model }: { model: Model; days: number }) {
-  if (model.telemetry.length === 0) {
+export function TelemetryPreset({ model, connected }: { model: Model; days: number; connected: boolean }) {
+  if (!connected || model.telemetry.length === 0) {
     return (
       <Card>
         <EmptyState
           icon={<IconPlugConnected className="h-6 w-6" />}
-          title="No telemetry connected yet"
-          description="Connect a provider to see its latest metrics here — captured at each review."
+          title="Connect a service to see telemetry"
+          description="Connect a service like Sentry, Vercel, or PostHog — its latest metrics appear here, captured at each review."
         />
         <div className="mt-4 flex justify-center">
           <Link href="/connections" className="inline-flex items-center gap-2 rounded-xl border border-accent-primary/30 bg-accent-primary/20 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/30">
-            Connect a provider <IconArrowRight className="h-4 w-4" />
+            Connect a service <IconArrowRight className="h-4 w-4" />
           </Link>
         </div>
       </Card>

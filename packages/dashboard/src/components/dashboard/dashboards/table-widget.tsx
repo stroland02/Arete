@@ -1,13 +1,18 @@
 import type { ReviewSummary } from "@/lib/queries";
 import { Widget } from "./widget";
 import { ActivityList, type ActivityItem } from "@/components/dashboard/activity-list";
+import type { ConnectKind } from "./connect-prompt";
 
 export interface TableWidgetProps {
   title: string;
   reviews: ReviewSummary[];
+  connect?: ConnectKind;
 }
 
-export function TableWidget({ title, reviews }: TableWidgetProps) {
+export function TableWidget({ title, reviews, connect }: TableWidgetProps) {
+  if (connect) {
+    return <Widget title={title} connect={connect}><span /></Widget>;
+  }
   const items: ActivityItem[] = reviews.map((r) => ({
     id: r.id,
     repositoryName: r.repositoryFullName,
