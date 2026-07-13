@@ -6,7 +6,8 @@ import { pathToFileURL } from 'node:url'
 // used as both a value and a type, but its named `Redis` export can.
 import { Redis as IORedis } from 'ioredis'
 import type { Octokit } from '@octokit/core'
-import { createApp, getInstallationOctokit } from './github-auth.js'
+import type { PRContext } from './types.js'
+import { createApp, getInstallationOctokit, getInstallationToken } from './github-auth.js'
 import { fetchPRContext } from './pr-fetcher.js'
 import { fetchTelemetryContext } from './telemetry/fetch-telemetry-context.js'
 import { fetchGitLabMRContext } from './gitlab-fetcher.js'
@@ -25,12 +26,32 @@ import {
 } from './queue.js'
 
 /**
+ * Pure helper so the clone-URL construction is unit-testable without
+ * mocking the whole Octokit/BullMQ call chain. GitHub accepts an
+ * installation access token as the HTTPS Basic-auth username on a clone
+ * URL — that substitution happens agents-side (arete_agents.context_map.repo_cache),
+ * not here; this function only builds the plain clone URL and carries the
+ * token alongside it.
+ */
+export function buildCloneContext(
+  fullName: string,
+  installationId: number,
+  installationToken: string
+): Pick<PRContext, 'cloneUrl' | 'installationToken' | 'installationId'> {
+  return {
+    cloneUrl: `https://github.com/${fullName}.git`,
+    installationToken,
+    installationId,
+  }
+}
+
+/**
  * Runs the review pipeline for a GitHub `pull_request` job: fetch diff,
  * create the in-progress check run, call the LLM pipeline, post the review,
  * resolve the check run, and persist. This is where the heavy lifting that
  * used to happen synchronously inside the webhook handler now lives.
  */
-async function processGitHubPullRequest(octokit: Octokit, data: GitHubPullRequestJobData): Promise<void> {
+async function processGitHubPullRequest(octokit: Octokit, installationToken: string, data: GitHubPullRequestJobData): Promise<void> {
   const { owner, repo, prNumber, headSha, installationId, repositoryExternalId, fullName } = data
 
   const prContext = await fetchPRContext(octokit, owner, repo, prNumber)
@@ -45,6 +66,8 @@ async function processGitHubPullRequest(octokit: Octokit, data: GitHubPullReques
     repo,
     prContext.telemetryConnectors ?? []
   )
+
+  Object.assign(prContext, buildCloneContext(fullName, installationId, installationToken))
 
   const checkRun = await (octokit as any).rest.checks.create({
     owner,
@@ -120,11 +143,12 @@ async function processGitHubPullRequest(octokit: Octokit, data: GitHubPullReques
  * a normal review, but with the customer's CI logs attached to the context
  * so the LLM can diagnose the failure.
  */
-async function processGitHubCheckRun(octokit: Octokit, data: GitHubCheckRunJobData): Promise<void> {
+async function processGitHubCheckRun(octokit: Octokit, installationToken: string, data: GitHubCheckRunJobData): Promise<void> {
   const { owner, repo, prNumber, headSha, installationId, repositoryExternalId, fullName, ciLogs } = data
 
   const prContext = await fetchPRContext(octokit, owner, repo, prNumber)
   prContext.ciLogs = ciLogs
+  Object.assign(prContext, buildCloneContext(fullName, installationId, installationToken))
 
   const checkRun = await (octokit as any).rest.checks.create({
     owner,
@@ -243,10 +267,11 @@ export async function processReviewJob(data: ReviewJobData): Promise<void> {
   if (data.provider === 'github') {
     const app = createApp()
     const octokit = await getInstallationOctokit(app, data.installationId)
+    const installationToken = await getInstallationToken(app, data.installationId)
     if (data.kind === 'pull_request') {
-      await processGitHubPullRequest(octokit, data)
+      await processGitHubPullRequest(octokit, installationToken, data)
     } else {
-      await processGitHubCheckRun(octokit, data)
+      await processGitHubCheckRun(octokit, installationToken, data)
     }
     return
   }

@@ -147,3 +147,25 @@ def test_review_result_computes_total_comments():
         risk_level="medium",
     )
     assert result.total_comments == 2
+
+
+def test_pr_context_accepts_clone_context_fields():
+    from arete_agents.models.pr import PRContext
+
+    pr = PRContext.model_validate({
+        "repo": "acme/api", "pr_number": 1, "title": "t", "description": "d",
+        "files": [], "cloneUrl": "https://github.com/acme/api.git",
+        "installationToken": "ghs_abc123", "installationId": 42,
+    })
+    assert pr.clone_url == "https://github.com/acme/api.git"
+    assert pr.installation_token == "ghs_abc123"
+    assert pr.installation_id == 42
+
+
+def test_pr_context_clone_fields_default_to_none():
+    from arete_agents.models.pr import PRContext
+
+    pr = PRContext(repo="acme/api", pr_number=1, title="t", description="d", files=[])
+    assert pr.clone_url is None
+    assert pr.installation_token is None
+    assert pr.installation_id is None

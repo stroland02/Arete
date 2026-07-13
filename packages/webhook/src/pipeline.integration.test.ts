@@ -261,6 +261,7 @@ async function buildApp(mocks: Mocks): Promise<Application> {
   vi.doMock('./github-auth.js', () => ({
     createApp: vi.fn(() => ({})),
     getInstallationOctokit: vi.fn(async () => mocks.octokit),
+    getInstallationToken: vi.fn(async () => 'ghs_test_token'),
   }))
 
   vi.stubGlobal('fetch', mocks.fetchMock)

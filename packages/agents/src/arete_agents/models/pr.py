@@ -41,3 +41,10 @@ class PRContext(BaseModel):
     telemetry: list[TelemetrySnapshot] = Field(default_factory=list)
     predecessor_handoff_notes: str | None = Field(None, alias="predecessorHandoffNotes")
     predecessor_root_cause: str | None = Field(None, alias="predecessorRootCause")
+    # Populated by the webhook (best-effort) so agents can clone-and-index
+    # the repository for context-mapping. All three are optional together —
+    # CLI/eval/local callers omit them and context-mapping is simply
+    # skipped for that review (see arete_agents/context_map).
+    clone_url: str | None = Field(None, alias="cloneUrl")
+    installation_token: str | None = Field(None, alias="installationToken")
+    installation_id: int | None = Field(None, alias="installationId")

@@ -37,6 +37,9 @@ export interface PRContext {
   ciLogs?: string
   telemetry?: TelemetrySnapshot[]
   telemetryConnectors?: TelemetryConnectorConfig[]
+  cloneUrl?: string
+  installationToken?: string
+  installationId?: number
 }
 
 export interface ReviewComment {

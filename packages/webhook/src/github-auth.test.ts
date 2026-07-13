@@ -12,3 +12,14 @@ describe('getInstallationOctokit', () => {
     expect(result).toBe(mockOctokit)
   })
 })
+
+describe('getInstallationToken', () => {
+  it('calls app.octokit.auth with installation type and returns the token', async () => {
+    const mockAuth = vi.fn().mockResolvedValue({ token: 'ghs_abc123' })
+    const mockApp = { octokit: { auth: mockAuth } }
+    const { getInstallationToken } = await import('./github-auth.js')
+    const result = await getInstallationToken(mockApp as any, 42)
+    expect(mockAuth).toHaveBeenCalledWith({ type: 'installation', installationId: 42 })
+    expect(result).toBe('ghs_abc123')
+  })
+})
