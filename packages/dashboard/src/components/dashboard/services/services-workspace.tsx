@@ -473,9 +473,49 @@ function IssuePanel({ issue }: { issue: Issue | null }) {
       </header>
 
       {!issue ? (
-        <div className="flex min-h-0 flex-1 items-center justify-center px-4 text-center">
-          <p className="text-sm text-content-muted">Select an issue to see its details here.</p>
-        </div>
+        <>
+          {/* Idle: show the panel's real structure (same sections as when an
+              issue is selected) with placeholder copy, so it's clear what
+              lands here — mirrors the /agents PR panel's idle pattern. */}
+          <div className="shrink-0 border-b border-border-subtle px-3 py-2.5">
+            <p className="text-[12.5px] text-content-muted">
+              Select an issue on the left. Its agents, evidence, and the proposed fix appear here.
+            </p>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <PanelSection title="Agents involved">
+              <p className="px-1 text-[11px] leading-4 text-content-muted">
+                The specialists that worked this issue — and the Synthesizer that verified it — list here.
+              </p>
+            </PanelSection>
+            <PanelSection title="Evidence">
+              <p className="px-1 text-[11px] leading-4 text-content-muted">
+                The telemetry that flagged the issue (source, the offending values, the affected <span className="font-mono">file:line</span>) shows here.
+              </p>
+            </PanelSection>
+            <PanelSection title="Proposed fix">
+              <p className="px-1 text-[11px] leading-4 text-content-muted">
+                The verified before → after diff Areté proposes — only what it can prove against the change.
+              </p>
+            </PanelSection>
+          </div>
+          <footer className="shrink-0 space-y-2 border-t border-border-subtle px-3 py-3">
+            <button type="button" disabled className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent-primary px-3 py-1.5 text-[12px] font-semibold text-white opacity-50">
+              <IconCircleCheck size={14} stroke={2} /> Approve &amp; open PR
+            </button>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button type="button" disabled className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-1.5 text-[11px] font-semibold text-content-muted opacity-60">
+                <IconCopy size={13} stroke={1.75} /> Copy patch
+              </button>
+              <button type="button" disabled className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-1.5 text-[11px] font-semibold text-content-muted opacity-60">
+                <IconX size={13} stroke={1.75} /> Dismiss
+              </button>
+            </div>
+            <p className="text-[10px] leading-4 text-content-muted/80">
+              Actions enable once you pick an issue — Areté never changes your code without approval.
+            </p>
+          </footer>
+        </>
       ) : (
         <>
           <div className="shrink-0 border-b border-border-subtle px-3 py-2.5">
