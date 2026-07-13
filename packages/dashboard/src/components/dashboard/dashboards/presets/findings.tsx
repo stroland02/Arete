@@ -23,8 +23,7 @@ function riskColor(label: string): string {
   }
 }
 
-export function FindingsPreset({ model, connected }: { model: Model; days: number; connected: boolean }) {
-  const skeleton = !connected;
+export function FindingsPreset({ model, skeleton }: { model: Model; days: number; skeleton: boolean }) {
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <MetricWidget label="Critical issues caught" value={model.criticalBugs} icon={<IconShieldExclamation className="h-5 w-5 text-accent-danger" />} skeleton={skeleton} />

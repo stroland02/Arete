@@ -2,29 +2,41 @@
 
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
-import { IconBrandGithub, IconPlugConnected, IconArrowRight } from "@tabler/icons-react";
+import { IconBrandGithub, IconPlugConnected, IconClockHour4, IconArrowRight } from "@tabler/icons-react";
 
-export type ConnectKind = "repository" | "service";
+export type BannerVariant = "connect-repository" | "connect-service" | "awaiting-review";
 
-const COPY: Record<ConnectKind, { title: string; desc: string; cta: string; Icon: typeof IconBrandGithub }> = {
-  repository: {
+type Copy = {
+  title: string;
+  desc: string;
+  Icon: typeof IconBrandGithub;
+  cta?: { label: string; href: string };
+};
+
+const COPY: Record<BannerVariant, Copy> = {
+  "connect-repository": {
     title: "Bring this dashboard to life",
     desc: "Below is the shape of this dashboard. Connect a repo and every panel fills with your real pull-request reviews — usually within a couple of minutes.",
-    cta: "Connect a repository",
     Icon: IconBrandGithub,
+    cta: { label: "Connect a repository", href: "/connections" },
   },
-  service: {
+  "connect-service": {
     title: "See your telemetry in one place",
     desc: "Below is the shape of this dashboard. Connect a service like Sentry, Vercel, or PostHog and its latest metrics appear here, captured at each review.",
-    cta: "Connect a service",
     Icon: IconPlugConnected,
+    cta: { label: "Connect a service", href: "/connections" },
+  },
+  "awaiting-review": {
+    title: "Waiting for your first review",
+    desc: "Everything's connected. Open a pull request on a connected repository and its review appears here — usually within a couple of minutes.",
+    Icon: IconClockHour4,
   },
 };
 
-/** Single, contextual connect banner for the not-connected Dashboards preview.
- *  Shown ONCE by the workspace — never per widget. */
-export function DashboardConnectBanner({ kind }: { kind: ConnectKind }) {
-  const { title, desc, cta, Icon } = COPY[kind];
+/** Single contextual status banner for the Dashboards preview states. Shown ONCE
+ *  by the workspace — never per widget. */
+export function DashboardStatusBanner({ variant }: { variant: BannerVariant }) {
+  const { title, desc, Icon, cta } = COPY[variant];
   const reduce = useReducedMotion();
   return (
     <motion.div
@@ -41,12 +53,14 @@ export function DashboardConnectBanner({ kind }: { kind: ConnectKind }) {
         <p className="text-sm font-semibold text-content-primary">{title}</p>
         <p className="mt-1 text-[13px] leading-relaxed text-content-muted">{desc}</p>
       </div>
-      <Link
-        href="/connections"
-        className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-accent-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-accent-primary/90"
-      >
-        {cta} <IconArrowRight className="h-4 w-4" />
-      </Link>
+      {cta && (
+        <Link
+          href={cta.href}
+          className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-accent-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-accent-primary/90"
+        >
+          {cta.label} <IconArrowRight className="h-4 w-4" />
+        </Link>
+      )}
     </motion.div>
   );
 }

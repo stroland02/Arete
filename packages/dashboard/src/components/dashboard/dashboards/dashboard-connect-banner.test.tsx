@@ -1,15 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { DashboardConnectBanner } from './dashboard-connect-banner';
+import { DashboardStatusBanner } from './dashboard-connect-banner';
 
-describe('DashboardConnectBanner', () => {
-  it('shows the repository CTA for kind=repository', () => {
-    const html = renderToStaticMarkup(<DashboardConnectBanner kind="repository" />);
+describe('DashboardStatusBanner', () => {
+  it('connect-repository shows the repository CTA', () => {
+    const html = renderToStaticMarkup(<DashboardStatusBanner variant="connect-repository" />);
     expect(html).toContain('Connect a repository');
     expect(html).not.toContain('Connect a service');
   });
-  it('shows the service CTA for kind=service', () => {
-    const html = renderToStaticMarkup(<DashboardConnectBanner kind="service" />);
+  it('connect-service shows the service CTA', () => {
+    const html = renderToStaticMarkup(<DashboardStatusBanner variant="connect-service" />);
     expect(html).toContain('Connect a service');
+  });
+  it('awaiting-review states the waiting message and has no connect CTA', () => {
+    const html = renderToStaticMarkup(<DashboardStatusBanner variant="awaiting-review" />);
+    expect(html).toContain('Waiting for your first review');
+    expect(html).not.toContain('Connect a');
   });
 });

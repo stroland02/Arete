@@ -6,7 +6,7 @@ import { ReviewActivityPreset } from "./presets/review-activity";
 import { FindingsPreset } from "./presets/findings";
 import { TelemetryPreset } from "./presets/telemetry";
 import { TimeRangeControl, type Range } from "./time-range-control";
-import { DashboardConnectBanner } from "./dashboard-connect-banner";
+import { DashboardStatusBanner, type BannerVariant } from "./dashboard-connect-banner";
 
 type Model = Extract<DashboardsViewModel, { hasAccess: true }>;
 
@@ -41,9 +41,20 @@ export function DashboardsWorkspace({ model }: { model: DashboardsViewModel }) {
   const connected = model.hasAccess;
   const data: Model = model.hasAccess ? model : EMPTY_MODEL;
 
+  // Skeleton + banner are decided per active tab against that tab's own data.
+  let skeleton: boolean;
+  let banner: BannerVariant | null;
+  if (tab === "telemetry") {
+    skeleton = data.telemetry.length === 0;
+    banner = skeleton ? "connect-service" : null;
+  } else {
+    skeleton = data.totalPrs === 0; // no reviews yet (whether or not a repo is linked)
+    banner = !connected ? "connect-repository" : data.totalPrs === 0 ? "awaiting-review" : null;
+  }
+
   return (
     <div className="space-y-6">
-      {!connected && <DashboardConnectBanner kind={tab === "telemetry" ? "service" : "repository"} />}
+      {banner && <DashboardStatusBanner variant={banner} />}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-1.5 overflow-x-auto">
@@ -60,9 +71,9 @@ export function DashboardsWorkspace({ model }: { model: DashboardsViewModel }) {
             </button>
           ))}
         </div>
-        {connected && tab === "activity" && <TimeRangeControl value={range} onChange={setRange} />}
+        {tab === "activity" && !skeleton && <TimeRangeControl value={range} onChange={setRange} />}
       </div>
-      <Active model={data} days={range} connected={connected} />
+      <Active model={data} days={range} skeleton={skeleton} />
     </div>
   );
 }
