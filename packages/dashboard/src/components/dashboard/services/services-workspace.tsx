@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { IconChevronDown, IconCircleCheck, IconCopy, IconHourglassHigh, IconPlus, IconX } from "@tabler/icons-react";
+import { IconChevronDown, IconCopy, IconGitBranch, IconGitPullRequest, IconHourglassHigh, IconPlus } from "@tabler/icons-react";
 
 /**
  * Services "Triage Inbox" workspace. Production signals from CONNECTED
@@ -224,23 +224,6 @@ function markerForTone(tone: Issue["timeline"][number]["tone"]): string {
   return "●"; // critical/high/medium — the telemetry source's own detection
 }
 
-/**
- * Who "said" a given timeline entry, for the team-chat transcript — derived
- * entirely from fields the issue already carries (tone/source/agent), never
- * invented. Detection-tone entries (critical/high/medium) are the telemetry
- * source reporting; "accent" is the specialist agent working it; "good" is
- * the Synthesizer's verification step.
- */
-function speakerFor(tone: Issue["timeline"][number]["tone"], issue: Issue): string {
-  if (tone === "accent") return issue.agent;
-  if (tone === "good") return "Synthesizer";
-  return issue.source;
-}
-
-function teamFor(issue: Issue): string[] {
-  return Array.from(new Set(issue.timeline.map((t) => speakerFor(t.tone, issue))));
-}
-
 export interface ServicesWorkspaceProps {
   services?: Service[];
   issues?: Issue[];
@@ -459,14 +442,15 @@ function IssueSynthesizerConsole({ issue }: { issue: Issue | null }) {
 
 /**
  * Right pane: the issue's concrete detail — agents involved, evidence, the
- * proposed fix — as collapsible sections, plus the pinned verification
- * actions. Same shape as the /agents PR panel (header + sections + footer).
+ * formatted pull request — repo target, the PR title/body, and the review
+ * comment(s) as they'll post — plus the send gate. Per the pipeline spec, the
+ * repo target and Post PR / Request changes live HERE (Services), not on Agents.
  */
 function IssuePanel({ issue }: { issue: Issue | null }) {
   return (
     <>
       <header className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-3">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Issue</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Pull request</h2>
         {issue && (
           <span className={`rounded-full border px-1.5 py-px text-[9.5px] font-bold uppercase tracking-wide ${SEV_PILL[issue.severity]}`}>{SEV_LABEL[issue.severity]}</span>
         )}
@@ -474,115 +458,108 @@ function IssuePanel({ issue }: { issue: Issue | null }) {
 
       {!issue ? (
         <>
-          {/* Idle: show the panel's real structure (same sections as when an
-              issue is selected) with placeholder copy, so it's clear what
-              lands here — mirrors the /agents PR panel's idle pattern. */}
+          {/* Idle: show the pull-request panel's structure (repo target, the
+              formatted PR, the review comments) so it reads as a real surface. */}
           <div className="shrink-0 border-b border-border-subtle px-3 py-2.5">
             <p className="text-[12.5px] text-content-muted">
-              Select an issue on the left. Its agents, evidence, and the proposed fix appear here.
+              Select an issue to load its pull request — the formatted review Areté will post, and where you approve sending it.
             </p>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <PanelSection title="Agents involved">
+            <PanelSection title="Repository">
               <p className="px-1 text-[11px] leading-4 text-content-muted">
-                The specialists that worked this issue — and the Synthesizer that verified it — list here.
+                The target repo and <span className="font-mono">base ← branch</span> the PR opens against.
               </p>
             </PanelSection>
-            <PanelSection title="Evidence">
+            <PanelSection title="Pull request">
               <p className="px-1 text-[11px] leading-4 text-content-muted">
-                The telemetry that flagged the issue (source, the offending values, the affected <span className="font-mono">file:line</span>) shows here.
+                The formatted PR — title and description — assembled from the verified findings.
               </p>
             </PanelSection>
-            <PanelSection title="Proposed fix">
+            <PanelSection title="Review comments">
               <p className="px-1 text-[11px] leading-4 text-content-muted">
-                The verified before → after diff Areté proposes — only what it can prove against the change.
+                Each verified finding, rendered as the <span className="font-mono">path:line</span> comment it posts to the PR.
               </p>
             </PanelSection>
           </div>
           <footer className="shrink-0 space-y-2 border-t border-border-subtle px-3 py-3">
             <button type="button" disabled className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent-primary px-3 py-1.5 text-[12px] font-semibold text-white opacity-50">
-              <IconCircleCheck size={14} stroke={2} /> Approve &amp; open PR
+              <IconGitPullRequest size={14} stroke={2} /> Post pull request
             </button>
             <div className="grid grid-cols-2 gap-1.5">
               <button type="button" disabled className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-1.5 text-[11px] font-semibold text-content-muted opacity-60">
-                <IconCopy size={13} stroke={1.75} /> Copy patch
+                Request changes
               </button>
               <button type="button" disabled className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-1.5 text-[11px] font-semibold text-content-muted opacity-60">
-                <IconX size={13} stroke={1.75} /> Dismiss
+                <IconCopy size={13} stroke={1.75} /> Copy patch
               </button>
             </div>
             <p className="text-[10px] leading-4 text-content-muted/80">
-              Actions enable once you pick an issue — Areté never changes your code without approval.
+              Posting opens the PR on your repo — the solution is approved on the Agents page first.
             </p>
           </footer>
         </>
       ) : (
         <>
-          <div className="shrink-0 border-b border-border-subtle px-3 py-2.5">
-            <h3 className="text-sm font-semibold leading-snug text-content-primary">{issue.title}</h3>
-            <p className="mt-1 font-mono text-[10.5px] text-content-muted">
-              {issue.serviceId} · {issue.where} · {issue.occurrences} · {issue.lastSeen}
-            </p>
+          {/* Repository target — repo + base ← branch live here (moved off the
+              Agents composition panel per the pipeline spec). */}
+          <div className="shrink-0 space-y-1.5 border-b border-border-subtle px-3 py-2.5">
+            <button type="button" className="flex w-full items-center gap-2 rounded-lg border border-border-default bg-surface-2 px-2.5 py-1.5 text-left text-[11px] text-content-secondary transition-colors hover:border-border-strong">
+              <IconGitBranch size={13} stroke={1.75} className="shrink-0 text-content-muted" aria-hidden />
+              <span className="min-w-0 flex-1 truncate font-mono">acme-corp/{issue.serviceId}</span>
+              <IconChevronDown size={12} stroke={2} className="shrink-0 text-content-muted" aria-hidden />
+            </button>
+            <p className="font-mono text-[10.5px] text-content-muted">main ← arete/fix-{issue.id}</p>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <PanelSection title="Agents involved">
-              <div className="flex flex-wrap gap-1.5 px-1">
-                {teamFor(issue).map((name) => (
-                  <span key={name} className="rounded-full border border-border-default bg-surface-2 px-2 py-0.5 text-[10.5px] font-medium text-content-secondary">
-                    {name}
-                  </span>
-                ))}
+            <PanelSection title="Pull request">
+              <div className="px-1">
+                <p className="text-[12.5px] font-semibold leading-snug text-content-primary">Fix: {issue.title}</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-content-muted">{issue.summary}</p>
               </div>
             </PanelSection>
 
-            <PanelSection title="Evidence">
-              <div className="mx-1 overflow-hidden rounded-lg border border-border-default bg-surface-2">
-                <div className="border-b border-border-subtle px-2.5 py-1.5 font-mono text-[10.5px] text-content-muted">{issue.evidence.file}</div>
-                <pre className="overflow-x-auto px-2.5 py-2 font-mono text-[11px] leading-relaxed text-content-secondary">
-                  {issue.evidence.rows.map(([k, v], idx) => (
-                    <div key={idx}>
-                      <span className="text-content-muted">{k}</span> = <span className={/null|missing|theft|500/.test(v) ? "text-accent-danger" : ""}>{v}</span>
-                    </div>
-                  ))}
-                </pre>
-              </div>
-            </PanelSection>
-
-            <PanelSection title="Proposed fix">
-              <div className="mx-1 overflow-hidden rounded-lg border border-border-default bg-surface-2">
-                <div className="border-b border-border-subtle px-2.5 py-1.5 font-mono text-[10.5px] text-content-muted">{issue.fix.file}</div>
-                <pre className="overflow-x-auto py-1 font-mono text-[11px] leading-relaxed">
-                  {issue.fix.rows.map((r, idx) => (
-                    <div
-                      key={idx}
-                      className={`flex gap-2 px-2 ${r.kind === "add" ? "bg-accent-success/10" : r.kind === "remove" ? "bg-accent-danger/10" : ""}`}
-                    >
-                      <span className={`select-none ${r.kind === "add" ? "text-accent-success" : r.kind === "remove" ? "text-accent-danger" : "text-content-muted/50"}`}>
-                        {r.kind === "add" ? "+" : r.kind === "remove" ? "-" : " "}
-                      </span>
-                      <span className={r.kind === "context" ? "text-content-muted" : "text-content-secondary"}>{r.text}</span>
-                    </div>
-                  ))}
-                </pre>
+            <PanelSection title="Review comment">
+              <div className="mx-1 space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <span className={`rounded-full border px-1.5 py-px text-[9px] font-bold uppercase tracking-wide ${SEV_PILL[issue.severity]}`}>{SEV_LABEL[issue.severity]}</span>
+                  <span className="font-mono text-[10.5px] text-content-muted">{issue.where}</span>
+                </div>
+                <div className="overflow-hidden rounded-lg border border-border-default bg-surface-2">
+                  <div className="border-b border-border-subtle px-2.5 py-1.5 font-mono text-[10.5px] text-content-muted">{issue.fix.file}</div>
+                  <pre className="overflow-x-auto py-1 font-mono text-[11px] leading-relaxed">
+                    {issue.fix.rows.map((r, idx) => (
+                      <div
+                        key={idx}
+                        className={`flex gap-2 px-2 ${r.kind === "add" ? "bg-accent-success/10" : r.kind === "remove" ? "bg-accent-danger/10" : ""}`}
+                      >
+                        <span className={`select-none ${r.kind === "add" ? "text-accent-success" : r.kind === "remove" ? "text-accent-danger" : "text-content-muted/50"}`}>
+                          {r.kind === "add" ? "+" : r.kind === "remove" ? "-" : " "}
+                        </span>
+                        <span className={r.kind === "context" ? "text-content-muted" : "text-content-secondary"}>{r.text}</span>
+                      </div>
+                    ))}
+                  </pre>
+                </div>
               </div>
             </PanelSection>
           </div>
 
           <footer className="shrink-0 space-y-2 border-t border-border-subtle px-3 py-3">
             <button type="button" className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent-primary px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-accent-primary/90">
-              <IconCircleCheck size={14} stroke={2} /> Approve &amp; open PR
+              <IconGitPullRequest size={14} stroke={2} /> Post pull request
             </button>
             <div className="grid grid-cols-2 gap-1.5">
               <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-1.5 text-[11px] font-semibold text-content-secondary transition-colors hover:bg-content-primary/5">
-                <IconCopy size={13} stroke={1.75} /> Copy patch
+                Request changes
               </button>
               <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-1.5 text-[11px] font-semibold text-content-secondary transition-colors hover:bg-content-primary/5">
-                <IconX size={13} stroke={1.75} /> Dismiss
+                <IconCopy size={13} stroke={1.75} /> Copy patch
               </button>
             </div>
             <p className="text-[10px] leading-4 text-content-muted/80">
-              You review and merge on your own terms — Areté never changes your code without approval.
+              Posting opens the pull request on your repo — the solution is approved on the Agents page first.
             </p>
           </footer>
         </>
