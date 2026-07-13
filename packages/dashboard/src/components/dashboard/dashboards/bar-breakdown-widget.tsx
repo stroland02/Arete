@@ -1,6 +1,6 @@
 import type { CategoryCount } from "@/lib/queries";
 import { Widget } from "./widget";
-import type { ConnectKind } from "./connect-prompt";
+import { BarsSkeleton } from "./dashboard-skeletons";
 
 export interface BarBreakdownWidgetProps {
   title: string;
@@ -8,12 +8,12 @@ export interface BarBreakdownWidgetProps {
   data: CategoryCount[];
   /** Map a row label to a bar color class; defaults to accent-primary. */
   colorFor?: (label: string) => string;
-  connect?: ConnectKind;
+  skeleton?: boolean;
 }
 
-export function BarBreakdownWidget({ title, caption, data, colorFor, connect }: BarBreakdownWidgetProps) {
-  if (connect) {
-    return <Widget title={title} caption={caption} connect={connect}><span /></Widget>;
+export function BarBreakdownWidget({ title, caption, data, colorFor, skeleton }: BarBreakdownWidgetProps) {
+  if (skeleton) {
+    return <Widget title={title}><BarsSkeleton rows={4} /></Widget>;
   }
   if (data.length === 0) {
     return <Widget title={title} caption={caption} isEmpty emptyLabel="Nothing to show yet"><span /></Widget>;

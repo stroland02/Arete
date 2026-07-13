@@ -10,8 +10,6 @@ const emptyConnected: Model = {
 };
 
 describe('DashboardsWorkspace', () => {
-  // renderToStaticMarkup renders the initial useState state only (no
-  // interaction), so we assert the default tab ("activity") here.
   it('shows the time-range control on the default (activity) tab when connected', () => {
     const html = renderToStaticMarkup(<DashboardsWorkspace model={emptyConnected} />);
     expect(html).toContain('7d');
@@ -26,11 +24,12 @@ describe('DashboardsWorkspace', () => {
     expect(html).toContain('Telemetry');
   });
 
-  it('renders the not-connected preview (tabs + connect prompt, no data wall, range control hidden)', () => {
+  it('shows the connect banner exactly once (not per-widget) when not connected', () => {
     const html = renderToStaticMarkup(<DashboardsWorkspace model={{ hasAccess: false }} />);
-    expect(html).toContain('Review Activity');
-    expect(html).toContain('Connect a repository');
+    const count = (html.match(/Connect a repository/g) || []).length;
+    expect(count).toBe(1);
     expect(html).toContain('Reviews over time');
+    expect(html).toContain('chart preview');
     expect(html).not.toContain('7d');
   });
 });

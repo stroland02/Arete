@@ -1,17 +1,17 @@
 import type { ReviewSummary } from "@/lib/queries";
 import { Widget } from "./widget";
 import { ActivityList, type ActivityItem } from "@/components/dashboard/activity-list";
-import type { ConnectKind } from "./connect-prompt";
+import { TableSkeleton } from "./dashboard-skeletons";
 
 export interface TableWidgetProps {
   title: string;
   reviews: ReviewSummary[];
-  connect?: ConnectKind;
+  skeleton?: boolean;
 }
 
-export function TableWidget({ title, reviews, connect }: TableWidgetProps) {
-  if (connect) {
-    return <Widget title={title} connect={connect}><span /></Widget>;
+export function TableWidget({ title, reviews, skeleton }: TableWidgetProps) {
+  if (skeleton) {
+    return <Widget title={title}><TableSkeleton rows={3} /></Widget>;
   }
   const items: ActivityItem[] = reviews.map((r) => ({
     id: r.id,

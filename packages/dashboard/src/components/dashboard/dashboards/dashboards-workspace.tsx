@@ -6,12 +6,12 @@ import { ReviewActivityPreset } from "./presets/review-activity";
 import { FindingsPreset } from "./presets/findings";
 import { TelemetryPreset } from "./presets/telemetry";
 import { TimeRangeControl, type Range } from "./time-range-control";
+import { DashboardConnectBanner } from "./dashboard-connect-banner";
 
 type Model = Extract<DashboardsViewModel, { hasAccess: true }>;
 
-/** Zero-valued model used to render the dashboard LAYOUT in the not-connected
- *  preview — every widget shows a "connect …" prompt (see ConnectPrompt),
- *  never fabricated data. */
+/** Zero-valued model that renders the dashboard LAYOUT for the not-connected
+ *  preview — every widget draws a structural skeleton, never fabricated data. */
 const EMPTY_MODEL: Model = {
   hasAccess: true,
   totalPrs: 0,
@@ -43,6 +43,8 @@ export function DashboardsWorkspace({ model }: { model: DashboardsViewModel }) {
 
   return (
     <div className="space-y-6">
+      {!connected && <DashboardConnectBanner kind={tab === "telemetry" ? "service" : "repository"} />}
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-1.5 overflow-x-auto">
           {PRESETS.map((p) => (

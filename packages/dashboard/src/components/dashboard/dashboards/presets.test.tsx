@@ -32,11 +32,12 @@ describe('ReviewActivityPreset', () => {
     const html = renderToStaticMarkup(<ReviewActivityPreset model={emptyModel} days={30} connected />);
     expect(html).toContain('No reviews yet');
   });
-  it('shows the connect-a-repository preview when not connected', () => {
+  it('renders the skeleton layout when not connected (titles present, NO per-widget connect text)', () => {
     const html = renderToStaticMarkup(<ReviewActivityPreset model={emptyModel} days={30} connected={false} />);
-    expect(html).toContain('Connect a repository');
     expect(html).toContain('Reviews over time');
     expect(html).toContain('Pull requests reviewed');
+    expect(html).toContain('chart preview');
+    expect(html).not.toContain('Connect a repository');
   });
 });
 
@@ -50,16 +51,21 @@ describe('FindingsPreset', () => {
     const html = renderToStaticMarkup(<FindingsPreset model={emptyModel} days={30} connected />);
     expect(html).toContain('Nothing to show yet');
   });
-  it('shows the connect-a-repository preview when not connected', () => {
+  it('renders the skeleton layout when not connected', () => {
     const html = renderToStaticMarkup(<FindingsPreset model={emptyModel} days={30} connected={false} />);
-    expect(html).toContain('Connect a repository');
     expect(html).toContain('Findings by severity');
+    expect(html).toContain('breakdown preview');
+    expect(html).not.toContain('Connect a repository');
   });
 });
 
 describe('TelemetryPreset', () => {
-  it('shows the connect-a-service empty state when nothing is connected', () => {
+  it('renders skeleton cards when not connected (no per-card CTA)', () => {
     const html = renderToStaticMarkup(<TelemetryPreset model={emptyModel} days={30} connected={false} />);
+    expect(html).not.toContain('Connect a service');
+  });
+  it('shows the connect-a-service prompt when connected but no telemetry', () => {
+    const html = renderToStaticMarkup(<TelemetryPreset model={emptyModel} days={30} connected />);
     expect(html.toLowerCase()).toContain('connect a service');
   });
   it('renders one panel per connected provider', () => {

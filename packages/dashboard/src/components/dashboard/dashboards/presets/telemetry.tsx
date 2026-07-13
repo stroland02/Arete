@@ -4,11 +4,22 @@ import { IconPlugConnected, IconArrowRight } from "@tabler/icons-react";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { TelemetryMetricWidget } from "../telemetry-metric-widget";
+import { TelemetryCardSkeleton } from "../dashboard-skeletons";
 
 type Model = Extract<DashboardsViewModel, { hasAccess: true }>;
 
 export function TelemetryPreset({ model, connected }: { model: Model; days: number; connected: boolean }) {
-  if (!connected || model.telemetry.length === 0) {
+  // Not connected at all → structural skeleton (the workspace banner carries the CTA).
+  if (!connected) {
+    return (
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <TelemetryCardSkeleton />
+        <TelemetryCardSkeleton />
+      </div>
+    );
+  }
+  // Connected (has a repo) but no telemetry service linked → single honest prompt.
+  if (model.telemetry.length === 0) {
     return (
       <Card>
         <EmptyState
