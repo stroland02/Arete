@@ -550,11 +550,18 @@ function IssuePanel({ issue, isReplaying }: { issue: Issue | null; isReplaying: 
         >
           {/* Repository target */}
           <div className="shrink-0 space-y-1.5 border-b border-border-subtle px-3 py-2.5">
-            <button type="button" className="flex w-full items-center gap-2 rounded-lg border border-border-default bg-surface-2 px-2.5 py-1.5 text-left text-[11px] text-content-secondary transition-colors hover:border-border-strong">
+            {/* Repo selector → Connections: the direct path to install/manage
+                the Areté GitHub App, where repos are actually connected. When no
+                repo is connected the same link is how you add one. */}
+            <Link
+              href="/connections"
+              title="Manage connected repositories"
+              className="flex w-full items-center gap-2 rounded-lg border border-border-default bg-surface-2 px-2.5 py-1.5 text-left text-[11px] text-content-secondary transition-colors hover:border-border-strong hover:bg-content-primary/5"
+            >
               <IconGitBranch size={13} stroke={1.75} className="shrink-0 text-content-muted" aria-hidden />
               <span className="min-w-0 flex-1 truncate font-mono">acme-corp/{issue.serviceId}</span>
               <IconChevronDown size={12} stroke={2} className="shrink-0 text-content-muted" aria-hidden />
-            </button>
+            </Link>
             <p className="font-mono text-[10.5px] text-content-muted">main ← arete/fix-{issue.id}</p>
           </div>
 
