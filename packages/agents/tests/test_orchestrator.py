@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from langchain_core.messages import AIMessage
 
@@ -635,3 +635,17 @@ def test_large_patch_is_truncated(cyclic_llm):
     human_content = call_args[1].content  # HumanMessage is index 1
     assert len(human_content) < len(big_patch)
     assert "[Diff truncated:" in human_content
+
+
+def test_run_completes_when_context_mapping_raises_unexpectedly(cyclic_llm, sample_pr):
+    """ensure_indexed already fails open internally, but this proves the
+    invariant holds even if it raises something unexpected — context-
+    mapping must never be able to fail a review."""
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    orch = ReviewOrchestrator(llm=cyclic_llm)
+    with patch("arete_agents.orchestrator.ensure_indexed", side_effect=RuntimeError("boom")):
+        result = orch.run(sample_pr)
+
+    assert result is not None
+    assert result.pr_context == sample_pr
