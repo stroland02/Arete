@@ -33,9 +33,54 @@ def test_ensure_repo_checked_out_clones_when_not_present(tmp_path):
             root=root,
         )
     assert repo_dir == root / "42" / "acme__api"
-    args = run.call_args[0][0]
-    assert args[:2] == ["git", "clone"]
-    assert "x-access-token:ghs_abc123@github.com" in args[-2]
+    clone_args = run.call_args_list[0][0][0]
+    assert clone_args[:2] == ["git", "clone"]
+    assert "x-access-token:ghs_abc123@github.com" in clone_args[-2]
+
+
+def test_ensure_repo_checked_out_strips_token_from_remote_after_fresh_clone(tmp_path):
+    root = tmp_path / "repos"
+    fake_result = MagicMock(returncode=0, stderr="")
+    with patch(
+        "arete_agents.context_map.repo_cache.subprocess.run", return_value=fake_result
+    ) as run:
+        ensure_repo_checked_out(
+            clone_url="https://github.com/acme/api.git",
+            installation_token="ghs_abc123",
+            installation_id=42,
+            repo_slug="acme/api",
+            root=root,
+        )
+
+    assert run.call_count == 2
+    repo_dir = root / "42" / "acme__api"
+    cleanup_args = run.call_args_list[1][0][0]
+    assert cleanup_args == [
+        "git", "-C", str(repo_dir), "remote", "set-url", "origin",
+        "https://github.com/acme/api.git",
+    ]
+    assert "ghs_abc123" not in " ".join(cleanup_args)
+
+
+def test_ensure_repo_checked_out_does_not_run_cleanup_on_pull(tmp_path):
+    root = tmp_path / "repos"
+    repo_dir = root / "42" / "acme__api"
+    (repo_dir / ".git").mkdir(parents=True)
+    fake_result = MagicMock(returncode=0, stderr="")
+    with patch(
+        "arete_agents.context_map.repo_cache.subprocess.run", return_value=fake_result
+    ) as run:
+        ensure_repo_checked_out(
+            clone_url="https://github.com/acme/api.git",
+            installation_token="ghs_abc123",
+            installation_id=42,
+            repo_slug="acme/api",
+            root=root,
+        )
+
+    # Only the pull itself — no cleanup needed, since `git pull <url>`
+    # never persists the URL to .git/config in the first place.
+    assert run.call_count == 1
 
 
 def test_ensure_repo_checked_out_pulls_when_already_cloned(tmp_path):

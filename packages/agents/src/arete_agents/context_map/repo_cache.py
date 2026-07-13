@@ -49,13 +49,14 @@ def ensure_repo_checked_out(
     silently."""
     repo_dir = _repo_dir(root, installation_id, repo_slug)
     authed_url = _with_token(clone_url, installation_token)
+    is_fresh_clone = not (repo_dir / ".git").exists()
 
     try:
-        if (repo_dir / ".git").exists():
-            command = ["git", "-C", str(repo_dir), "pull", "--ff-only", authed_url]
-        else:
+        if is_fresh_clone:
             repo_dir.parent.mkdir(parents=True, exist_ok=True)
             command = ["git", "clone", "--depth", "1", authed_url, str(repo_dir)]
+        else:
+            command = ["git", "-C", str(repo_dir), "pull", "--ff-only", authed_url]
 
         result = subprocess.run(command, capture_output=True, text=True, timeout=120)
     except (subprocess.TimeoutExpired, OSError) as exc:
@@ -67,4 +68,27 @@ def ensure_repo_checked_out(
         raise RepoCacheError(
             f"git operation failed for {repo_slug}: {_redact(result.stderr)}"
         )
+
+    if is_fresh_clone:
+        # `git clone <authed_url>` persists the credential-embedded URL
+        # into .git/config's remote.origin.url. Strip it back to the
+        # plain clone_url immediately after a successful clone so the
+        # token never lives on disk beyond the single clone invocation
+        # that needed it. `git pull <url>` (the branch above, once the
+        # repo already exists) does NOT rewrite the stored remote config,
+        # so no equivalent cleanup is needed on that path.
+        _strip_token_from_remote(repo_dir, clone_url, repo_slug)
+
     return repo_dir
+
+
+def _strip_token_from_remote(repo_dir: Path, clone_url: str, repo_slug: str) -> None:
+    cleanup = subprocess.run(
+        ["git", "-C", str(repo_dir), "remote", "set-url", "origin", clone_url],
+        capture_output=True, text=True, timeout=10,
+    )
+    if cleanup.returncode != 0:
+        raise RepoCacheError(
+            f"Cloned {repo_slug} but failed to strip the token from "
+            f"its stored remote URL: {_redact(cleanup.stderr)}"
+        )
