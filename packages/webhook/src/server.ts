@@ -60,6 +60,17 @@ export async function createServer(): Promise<express.Application> {
   // GitLab webhook needs JSON body
   server.post('/gitlab-webhook', express.json(), handleGitLabWebhook)
   
+  // Infrastructure Approvals Endpoint
+  // Receives clicks from the dashboard when a human approves an LLM's infrastructure command.
+  server.post('/api/approvals/:id/execute', express.json(), async (req, res) => {
+    const { id } = req.params;
+    // 1. Fetch ApprovalPrompt from DB
+    // 2. Spawn secure docker sandbox to execute the saved command
+    // 3. Resume the waiting LangGraph session with the stdout results
+    console.log(`[approvals] Executing infrastructure command for approval ${id}...`)
+    res.json({ status: 'executing' })
+  })
+  
   // Mount at root and let createNodeMiddleware own the path matching —
   // Express strips the mount prefix from req.url, so mounting at '/webhook'
   // would make the middleware see '/' and never match its configured path.

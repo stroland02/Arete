@@ -58,5 +58,18 @@ def place_under_observation(issue_id: str, escalate_on: str, threshold: int, rea
     # Simulate API call to DB to update noiseState and triggers
     return f"Issue {issue_id} placed under observation. Escalate if {escalate_on} >= {threshold}. Reason: {reason}"
 
+class RequestInfrastructureApprovalInput(BaseModel):
+    command: str = Field(description="The exact CLI command (e.g., AWS CLI, kubectl) that must be executed to remediate the issue.")
+    reason: str = Field(description="Clear explanation of why this infrastructure change is necessary, to be read by the approving human.")
+
+@tool("request_infrastructure_approval", args_schema=RequestInfrastructureApprovalInput)
+def request_infrastructure_approval(command: str, reason: str) -> str:
+    """
+    Request human approval to execute a potentially dangerous infrastructure command.
+    The run pauses until a human clicks 'Approve' or 'Reject'. If approved, the platform executes the command and returns the stdout.
+    """
+    # Simulate suspension of state, sending notification to UI
+    return f"Paused run. Sent approval request for command: `{command}`. Reason: {reason}. Waiting for human response..."
+
 def get_native_action_tools():
-    return [propose_pr, ask_human, add_project_memory, silence_as_noise, place_under_observation]
+    return [propose_pr, ask_human, add_project_memory, silence_as_noise, place_under_observation, request_infrastructure_approval]
