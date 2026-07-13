@@ -1,13 +1,18 @@
 import type { ReviewSummary } from "@/lib/queries";
 import { Widget } from "./widget";
 import { ActivityList, type ActivityItem } from "@/components/dashboard/activity-list";
+import { TableSkeleton } from "./dashboard-skeletons";
 
 export interface TableWidgetProps {
   title: string;
   reviews: ReviewSummary[];
+  skeleton?: boolean;
 }
 
-export function TableWidget({ title, reviews }: TableWidgetProps) {
+export function TableWidget({ title, reviews, skeleton }: TableWidgetProps) {
+  if (skeleton) {
+    return <Widget title={title}><TableSkeleton rows={3} /></Widget>;
+  }
   const items: ActivityItem[] = reviews.map((r) => ({
     id: r.id,
     repositoryName: r.repositoryFullName,

@@ -1,17 +1,23 @@
 import { bucketByDay } from "@/lib/trends";
 import { Widget } from "./widget";
+import { TimeseriesSkeleton } from "./dashboard-skeletons";
 
 export interface TimeseriesWidgetProps {
   title: string;
   caption?: string;
   dates: Date[];
   days: number;
+  skeleton?: boolean;
 }
 
 const W = 600;
 const H = 160;
 
-export function TimeseriesWidget({ title, caption, dates, days }: TimeseriesWidgetProps) {
+export function TimeseriesWidget({ title, caption, dates, days, skeleton }: TimeseriesWidgetProps) {
+  if (skeleton) {
+    return <Widget title={title}><TimeseriesSkeleton /></Widget>;
+  }
+
   const series = bucketByDay(dates, days);
   const total = series.reduce((a, b) => a + b, 0);
 
