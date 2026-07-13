@@ -21,6 +21,12 @@ class ChatAgent:
             "on a Pull Request. Respond to the user's reply in a helpful, conversational manner using markdown."
         )
         
+        from arete_agents.skills.loader import load_installed_skills
+        skills = load_installed_skills()
+        if skills:
+            system_prompt += "\n\nYou have been equipped with the following skills/guidelines:\n"
+            system_prompt += "\n\n---\n\n".join(skills)
+        
         # Metadata and conversational fields are escaped to prevent a malicious
         # title/comment/reply (e.g. containing "</user_reply>") from breaking
         # out of its delimiter and injecting fake instructions. diff_hunk is

@@ -119,8 +119,49 @@ If no issues found, return empty comments array."""
             SystemMessage(content=prompt),
             HumanMessage(content=self._build_user_prompt(file, pr_context)),
         ]
-        llm_with_retry = self._llm.with_retry(stop_after_attempt=2)
-        response = llm_with_retry.invoke(messages)
+        
+        # Load authorized tools specifically for this agent type
+        from arete_agents.mcp.client import get_mcp_tools_for_agent
+        mcp_tools = get_mcp_tools_for_agent(self.agent_name)
+        
+        # Bind the tools if the server is authenticated and has tools available
+        llm_with_tools = self._llm.bind_tools(mcp_tools) if mcp_tools else self._llm
+        llm_with_retry = llm_with_tools.with_retry(stop_after_attempt=2)
+        
+        # Tool execution loop
+        from langchain_core.messages import ToolMessage
+        
+        while True:
+            response = llm_with_retry.invoke(messages)
+            
+            # If the LLM didn't request any tools, it's done reviewing
+            if not response.tool_calls:
+                break
+                
+            # The LLM wants to use an MCP tool, so we append its request to the history
+            messages.append(response)
+            
+            # Execute each requested tool
+            for tool_call in response.tool_calls:
+                tool_name = tool_call["name"]
+                tool_args = tool_call["args"]
+                
+                # Find the actual tool function from our loaded mcp_tools
+                tool_instance = next((t for t in mcp_tools if t.name == tool_name), None)
+                
+                if tool_instance:
+                    try:
+                        # Execute the tool and get the string result
+                        result = tool_instance.invoke(tool_args)
+                    except Exception as e:
+                        result = f"Error executing tool: {e}"
+                else:
+                    result = f"Error: Tool '{tool_name}' not found."
+                    
+                # Append the tool's result back to the messages so the LLM can read it
+                messages.append(ToolMessage(content=str(result), tool_call_id=tool_call["id"]))
+        
+        # Once the loop exits, response.content holds the final JSON
         raw = response.content if isinstance(response.content, str) else ""
         comments, summary = self._parse_response(file.path, raw)
         return FileReview(path=file.path, comments=comments, summary=summary)
