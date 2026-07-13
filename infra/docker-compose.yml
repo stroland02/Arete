@@ -27,6 +27,25 @@ services:
       timeout: 5s
       retries: 5
 
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3-alpine
+    environment:
+      CLICKHOUSE_DB: superlog
+      CLICKHOUSE_USER: superlog
+      CLICKHOUSE_PASSWORD: superlog
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ../packages/db/clickhouse/schema/ha-replicated-otel.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres_data:
   redis_data:
+  clickhouse_data:
