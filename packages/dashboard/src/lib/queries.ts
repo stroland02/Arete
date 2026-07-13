@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@arete/db';
 import type { AuthorizedInstallation } from './installations';
+import { clickhouse } from './clickhouse';
 
 /**
  * Picks which authorized installation(s) the current page view should query:
@@ -636,4 +637,44 @@ export async function getAgentActivity(
     body: c.body,
     severity: c.severity,
   }));
+}
+
+export interface AgentEventData {
+  minute: Date;
+  count: number;
+}
+
+/**
+ * Loads agent events per minute from the ClickHouse analytics backend.
+ * Uses the events_per_minute Materialized View fast-path.
+ */
+export async function getAgentEventsPerMinute(
+  installationIds: string[],
+  limitMinutes: number = 60
+): Promise<AgentEventData[]> {
+  if (installationIds.length === 0) return [];
+
+  // project_id maps to installationId in Areté's schema adaptation
+  const inClause = installationIds.map(id => `'${id}'`).join(', ');
+  
+  const result = await clickhouse.query({
+    query: `
+      SELECT
+        minute,
+        sum(c) as count
+      FROM superlog.events_per_minute
+      WHERE project_id IN (${inClause})
+      GROUP BY minute
+      ORDER BY minute DESC
+      LIMIT ${limitMinutes}
+    `,
+    format: 'JSONEachRow',
+  });
+
+  const rows: any[] = await result.json();
+  
+  return rows.map(r => ({
+    minute: new Date(r.minute),
+    count: Number(r.count),
+  })).reverse(); // chronological order
 }
