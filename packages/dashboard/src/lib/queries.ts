@@ -437,3 +437,141 @@ export async function getMasterGridSnapshots(
     fetchedAt: r.fetchedAt,
   }));
 }
+
+export interface RepoActivity {
+  fullName: string;
+  count: number;
+}
+
+export type DashboardsViewModel =
+  | { hasAccess: false }
+  | {
+      hasAccess: true;
+      totalPrs: number;
+      criticalBugs: number;
+      recentReviews: number;
+      weeklyDelta: number;
+      /** Raw review creation timestamps — the client re-buckets these per range. */
+      reviewDates: Date[];
+      byCategory: CategoryCount[];
+      bySeverity: CategoryCount[];
+      byRisk: CategoryCount[];
+      byRepo: RepoActivity[];
+      latestReviews: ReviewSummary[];
+      telemetry: TelemetryGridSnapshot[];
+    };
+
+// Stable display order for severity bars (most→least severe).
+const SEVERITY_ORDER = ['error', 'warning', 'info'];
+
+/**
+ * One tenant-scoped aggregate powering the /dashboards presets. Every query
+ * filters through `repository: { installationId: { in: installationIds } }`,
+ * so a review outside the caller's authorized installations can never appear
+ * (same tenancy property as getDashboardViewModel). Returns raw review
+ * timestamps so the client owns time-range bucketing without re-querying.
+ */
+export async function getDashboardsViewModel(
+  db: PrismaClient,
+  installationIds: string[]
+): Promise<DashboardsViewModel> {
+  if (installationIds.length === 0) {
+    return { hasAccess: false };
+  }
+
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+  const repoScope = { installationId: { in: installationIds } } as const;
+  const reviewScope = { repository: repoScope } as const;
+
+  const [
+    totalPrs,
+    criticalBugs,
+    recentReviews,
+    previousWeekReviews,
+    reviewRows,
+    byCategoryRaw,
+    bySeverityRaw,
+    byRiskRaw,
+    byRepoRaw,
+    repos,
+    latestReviews,
+    telemetryRows,
+  ] = await Promise.all([
+    db.review.count({ where: reviewScope }),
+    db.reviewComment.count({ where: { severity: 'error', review: reviewScope } }),
+    db.review.count({ where: { ...reviewScope, createdAt: { gte: sevenDaysAgo } } }),
+    db.review.count({ where: { ...reviewScope, createdAt: { gte: fourteenDaysAgo, lt: sevenDaysAgo } } }),
+    db.review.findMany({ where: reviewScope, select: { createdAt: true } }),
+    db.reviewComment.groupBy({
+      by: ['category'],
+      where: { review: reviewScope },
+      _count: { category: true },
+      orderBy: { _count: { category: 'desc' } },
+    }),
+    db.reviewComment.groupBy({
+      by: ['severity'],
+      where: { review: reviewScope },
+      _count: { severity: true },
+    }),
+    db.review.groupBy({
+      by: ['riskLevel'],
+      where: reviewScope,
+      _count: { riskLevel: true },
+      orderBy: { _count: { riskLevel: 'desc' } },
+    }),
+    db.review.groupBy({
+      by: ['repositoryId'],
+      where: reviewScope,
+      _count: { repositoryId: true },
+      orderBy: { _count: { repositoryId: 'desc' } },
+      take: 8,
+    }),
+    db.repository.findMany({ where: repoScope, select: { id: true, fullName: true } }),
+    db.review.findMany({ where: reviewScope, take: 5, orderBy: { createdAt: 'desc' }, include: { repository: true } }),
+    db.telemetrySnapshotRecord.findMany({ where: { installationId: { in: installationIds } }, orderBy: { fetchedAt: 'desc' } }),
+  ]);
+
+  const repoName = new Map(repos.map((r) => [r.id, r.fullName]));
+
+  const bySeverity: CategoryCount[] = (bySeverityRaw as Array<{ severity: string; _count: { severity: number } }>)
+    .map((s) => ({ category: s.severity, count: s._count.severity }))
+    .sort((a, b) => SEVERITY_ORDER.indexOf(a.category) - SEVERITY_ORDER.indexOf(b.category));
+
+  return {
+    hasAccess: true,
+    totalPrs,
+    criticalBugs,
+    recentReviews,
+    weeklyDelta: recentReviews - previousWeekReviews,
+    reviewDates: reviewRows.map((r) => r.createdAt),
+    byCategory: (byCategoryRaw as Array<{ category: string; _count: { category: number } }>).map((c) => ({
+      category: c.category,
+      count: c._count.category,
+    })),
+    bySeverity,
+    byRisk: (byRiskRaw as Array<{ riskLevel: string; _count: { riskLevel: number } }>).map((r) => ({
+      category: r.riskLevel,
+      count: r._count.riskLevel,
+    })),
+    byRepo: (byRepoRaw as Array<{ repositoryId: string; _count: { repositoryId: number } }>).map((r) => ({
+      fullName: repoName.get(r.repositoryId) ?? r.repositoryId,
+      count: r._count.repositoryId,
+    })),
+    latestReviews: latestReviews.map((r) => ({
+      id: r.id,
+      prNumber: r.prNumber,
+      riskLevel: r.riskLevel,
+      createdAt: r.createdAt,
+      repositoryFullName: r.repository.fullName,
+    })),
+    telemetry: telemetryRows.map((r) => ({
+      provider: r.provider,
+      sourceRef: r.sourceRef,
+      summaryText: r.summaryText,
+      metrics: r.metrics as Record<string, number>,
+      links: r.links as string[],
+      fetchedAt: r.fetchedAt,
+    })),
+  };
+}

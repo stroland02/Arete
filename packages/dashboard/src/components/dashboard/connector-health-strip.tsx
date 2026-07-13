@@ -38,10 +38,10 @@ export function ConnectorHealthStrip() {
           <Link
             key={connector.id}
             href={`/connections/${connector.id}`}
-            className="group flex flex-col gap-3 p-4 rounded-xl border border-border-subtle bg-white/[0.02] text-left transition-colors hover:border-border-default hover:bg-white/[0.04]"
+            className="group flex flex-col gap-3 p-4 rounded-xl border border-border-subtle bg-content-primary/[0.02] text-left transition-colors hover:border-border-default hover:bg-content-primary/[0.04]"
           >
             <div className="flex items-center justify-between">
-              <span className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/5 border border-border-default text-content-secondary">
+              <span className="flex items-center justify-center w-9 h-9 rounded-lg bg-content-primary/5 border border-border-default text-content-secondary">
                 <ConnectorIcon id={connector.id} className="w-4 h-4" />
               </span>
               {connector.connected ? (

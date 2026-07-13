@@ -70,7 +70,7 @@ export default async function ConnectorDetailPage({
         </Link>
 
         <div className="flex items-center gap-3 mb-2">
-          <span className="flex items-center justify-center w-11 h-11 rounded-xl bg-white/5 border border-border-default text-content-secondary">
+          <span className="flex items-center justify-center w-11 h-11 rounded-xl bg-content-primary/5 border border-border-default text-content-secondary">
             <ConnectorIcon id={connector.id} className="w-5 h-5" />
           </span>
           <h1 className="text-xl font-semibold text-content-primary">Connect {connector.name}</h1>

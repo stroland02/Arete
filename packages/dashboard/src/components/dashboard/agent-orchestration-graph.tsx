@@ -185,7 +185,7 @@ export function AgentOrchestrationGraph({
 
   return (
     <TooltipProvider delayDuration={150}>
-      <div className="flex flex-col border border-border-subtle rounded-xl bg-white/[0.02] backdrop-blur-sm overflow-hidden">
+      <div className="flex flex-col border border-border-subtle rounded-xl bg-content-primary/[0.02] backdrop-blur-sm overflow-hidden">
         <div className="min-h-72 flex items-center justify-center py-6">
           <svg
             viewBox={`0 0 440 ${svgHeight}`}

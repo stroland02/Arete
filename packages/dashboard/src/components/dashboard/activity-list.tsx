@@ -26,17 +26,19 @@ function timeAgo(date: Date): string {
   return date.toLocaleDateString();
 }
 
+// Semantic risk colors come from the accent-{danger,warning,success} tokens so
+// they adapt across both themes (never a fixed light/dark hue).
 function riskBadgeClasses(riskLevel: string): string {
   switch (riskLevel.toLowerCase()) {
     case "critical":
     case "high":
-      return "bg-rose-500/10 text-rose-400 border-rose-500/20";
+      return "bg-accent-danger/10 text-accent-danger border-accent-danger/25";
     case "medium":
-      return "bg-amber-500/10 text-amber-400 border-amber-500/20";
+      return "bg-accent-warning/10 text-accent-warning border-accent-warning/25";
     case "low":
-      return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+      return "bg-accent-success/10 text-accent-success border-accent-success/25";
     default:
-      return "bg-slate-500/10 text-slate-400 border-slate-500/20";
+      return "bg-content-primary/5 text-content-muted border-border-default";
   }
 }
 
@@ -57,9 +59,9 @@ export function ActivityList({ reviews }: { reviews: ActivityItem[] }) {
         <motion.div key={review.id} variants={fadeSlideUp}>
           <Link
             href={`/reviews/${review.id}`}
-            className="flex gap-4 p-3 rounded-xl hover:bg-white/[0.04] transition-colors cursor-pointer border border-transparent hover:border-border-subtle"
+            className="flex gap-4 p-3 rounded-xl hover:bg-content-primary/[0.04] transition-colors cursor-pointer border border-transparent hover:border-border-subtle"
           >
-            <div className="w-2 h-2 mt-2 rounded-full bg-accent-primary shadow-[0_0_8px_rgba(129,140,248,0.8)]" />
+            <div className="w-2 h-2 mt-2 rounded-full bg-accent-primary" />
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-medium text-content-secondary font-mono tabular-nums truncate">{review.repositoryName}</p>

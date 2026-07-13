@@ -50,9 +50,9 @@ export default function ConnectionsPage() {
             <Link
               key={connector.id}
               href={`/connections/${connector.id}`}
-              className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-white/[0.03] group"
+              className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-content-primary/[0.03] group"
             >
-              <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-white/5 border border-border-default text-content-secondary shrink-0">
+              <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-content-primary/5 border border-border-default text-content-secondary shrink-0">
                 <ConnectorIcon id={connector.id} className="w-5 h-5" />
               </span>
 

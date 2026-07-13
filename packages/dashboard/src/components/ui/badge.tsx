@@ -9,7 +9,7 @@ const badgeVariants = cva(
       variant: {
         positive: "bg-accent-success/10 text-accent-success border-accent-success/20",
         negative: "bg-accent-danger/10 text-accent-danger border-accent-danger/20",
-        neutral: "bg-white/5 text-content-secondary border-white/10",
+        neutral: "bg-content-primary/5 text-content-secondary border-border-default",
       },
     },
     defaultVariants: { variant: "neutral" },

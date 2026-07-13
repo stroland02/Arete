@@ -17,13 +17,13 @@ function riskBadgeClasses(riskLevel: string): string {
   switch (riskLevel.toLowerCase()) {
     case "critical":
     case "high":
-      return "bg-rose-500/10 text-rose-400 border-rose-500/20";
+      return "bg-accent-danger/10 text-accent-danger border-accent-danger/25";
     case "medium":
-      return "bg-amber-500/10 text-amber-400 border-amber-500/20";
+      return "bg-accent-warning/10 text-accent-warning border-accent-warning/25";
     case "low":
-      return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+      return "bg-accent-success/10 text-accent-success border-accent-success/25";
     default:
-      return "bg-slate-500/10 text-slate-400 border-slate-500/20";
+      return "bg-content-primary/5 text-content-muted border-border-default";
   }
 }
 
@@ -96,8 +96,8 @@ export default async function ReviewHistoryPage({
                 href={tabHref(tab)}
                 className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
                   isActive
-                    ? "bg-white/10 text-content-primary border border-border-default"
-                    : "text-content-muted hover:text-content-secondary hover:bg-white/[0.03]"
+                    ? "bg-content-primary/10 text-content-primary border border-border-default"
+                    : "text-content-muted hover:text-content-secondary hover:bg-content-primary/[0.03]"
                 }`}
               >
                 {tab === "all" ? "All" : tab.charAt(0).toUpperCase() + tab.slice(1)}{" "}
@@ -123,7 +123,7 @@ export default async function ReviewHistoryPage({
               <Link
                 key={review.id}
                 href={`/reviews/${review.id}`}
-                className="flex items-center justify-between gap-4 px-5 py-4 hover:bg-white/[0.03] transition-colors"
+                className="flex items-center justify-between gap-4 px-5 py-4 hover:bg-content-primary/[0.03] transition-colors"
               >
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-content-secondary font-mono truncate">

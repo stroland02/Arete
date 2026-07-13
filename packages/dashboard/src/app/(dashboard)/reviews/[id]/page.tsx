@@ -12,24 +12,24 @@ function riskBadgeClasses(riskLevel: string): string {
   switch (riskLevel.toLowerCase()) {
     case "critical":
     case "high":
-      return "bg-rose-500/10 text-rose-400 border-rose-500/20";
+      return "bg-accent-danger/10 text-accent-danger border-accent-danger/25";
     case "medium":
-      return "bg-amber-500/10 text-amber-400 border-amber-500/20";
+      return "bg-accent-warning/10 text-accent-warning border-accent-warning/25";
     case "low":
-      return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+      return "bg-accent-success/10 text-accent-success border-accent-success/25";
     default:
-      return "bg-slate-500/10 text-slate-400 border-slate-500/20";
+      return "bg-content-primary/5 text-content-muted border-border-default";
   }
 }
 
 function severityBadgeClasses(severity: string): string {
   switch (severity.toLowerCase()) {
     case "error":
-      return "bg-rose-500/10 text-rose-400 border-rose-500/20";
+      return "bg-accent-danger/10 text-accent-danger border-accent-danger/25";
     case "warning":
-      return "bg-amber-500/10 text-amber-400 border-amber-500/20";
+      return "bg-accent-warning/10 text-accent-warning border-accent-warning/25";
     default:
-      return "bg-cyan-500/10 text-cyan-400 border-cyan-500/20";
+      return "bg-accent-info/10 text-accent-info border-accent-info/25";
   }
 }
 

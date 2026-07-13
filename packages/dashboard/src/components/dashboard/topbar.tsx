@@ -5,6 +5,9 @@ import { IconSearch, IconBell } from "@tabler/icons-react";
 
 const BREADCRUMB_LABELS: Record<string, string> = {
   "/": "Overview",
+  "/overview": "Overview",
+  "/dashboards": "Dashboards",
+  "/agents": "Agents",
   "/connections": "Connections",
   "/reviews": "Review",
   "/history": "Review History",
@@ -39,7 +42,7 @@ export function Topbar() {
         <button
           disabled
           title="Command palette coming soon"
-          className="flex items-center gap-2 px-3 h-9 rounded-xl border border-border-default bg-white/5 text-sm text-content-muted opacity-60 cursor-not-allowed"
+          className="flex items-center gap-2 px-3 h-9 rounded-xl border border-border-default bg-content-primary/5 text-sm text-content-muted opacity-60 cursor-not-allowed"
         >
           <IconSearch className="w-4 h-4" />
           Search
@@ -51,7 +54,7 @@ export function Topbar() {
           disabled
           title="Notifications coming soon"
           aria-label="Notifications (coming soon)"
-          className="h-9 w-9 flex items-center justify-center rounded-xl border border-border-default bg-white/5 text-content-muted opacity-60 cursor-not-allowed"
+          className="h-9 w-9 flex items-center justify-center rounded-xl border border-border-default bg-content-primary/5 text-content-muted opacity-60 cursor-not-allowed"
         >
           <IconBell className="w-4 h-4" />
         </button>

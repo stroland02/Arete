@@ -1,33 +1,21 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
+import {
+  IconArrowRight,
+  IconCircleCheck,
+  IconCircleDashed,
+  IconShieldCheck,
+} from "@tabler/icons-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import {
-  getConnectedTelemetryProviders,
-  getDashboardViewModel,
-  getTrendSeries,
-  resolveSelectedInstallationIds,
-} from "@/lib/queries";
-import { bucketByDay, cumulativeByDay } from "@/lib/trends";
+import { getDashboardViewModel, resolveSelectedInstallationIds } from "@/lib/queries";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
-import { ValueLedger } from "@/components/dashboard/value-ledger";
-import { ConnectorHealthStrip } from "@/components/dashboard/connector-health-strip";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ActivityList } from "@/components/dashboard/activity-list";
-import { MetricsGrid, type Metric } from "@/components/dashboard/metrics-grid";
-import { CommentsByCategory } from "@/components/dashboard/comments-by-category";
-import { SetupChecklist, type SetupStep } from "@/components/dashboard/setup-checklist";
-import {
-  IconBug,
-  IconCalendarStats,
-  IconFolders,
-  IconGitPullRequest,
-} from "@tabler/icons-react";
 
 // This page reads the session and queries Prisma scoped to it on every
 // request — it must never be statically prerendered (that would either fail
-// at build time for lack of a session, or worse, bake one user's tenant
-// data into a page served to everyone). `force-dynamic` makes that explicit
-// instead of relying on Next's heuristics.
+// at build time for lack of a session, or worse, bake one user's tenant data
+// into a page served to everyone). `force-dynamic` makes that explicit.
 export const dynamic = "force-dynamic";
 
 export default async function DashboardOverview({
@@ -46,150 +34,199 @@ export default async function DashboardOverview({
     installation
   );
 
-  const [viewModel, trendSeries, telemetryProviders] = await Promise.all([
-    getDashboardViewModel(db, installationIds),
-    getTrendSeries(db, installationIds),
-    getConnectedTelemetryProviders(db, installationIds),
-  ]);
+  const viewModel = await getDashboardViewModel(db, installationIds);
 
-  // Don't wall the whole dashboard behind "install the GitHub App". A
-  // signed-in user always sees the real overview; when no installation is
-  // linked yet we render it in a zero-state and show a non-blocking banner
-  // that points to the Connections page (where the GitHub App is connected).
   const connected = viewModel.hasAccess;
-  const {
-    totalPrs,
-    activeRepos,
-    criticalBugs,
-    recentReviews,
-    weeklyDelta,
-    totalPrsChange,
-    criticalBugsChange,
-    repoDelta,
-    commentsByCategory,
-    latestReviews,
-  } = viewModel.hasAccess
+  const { totalPrs, criticalBugs, recentReviews, latestReviews } = viewModel.hasAccess
     ? viewModel
-    : {
-        totalPrs: 0,
-        activeRepos: 0,
-        criticalBugs: 0,
-        recentReviews: 0,
-        weeklyDelta: 0,
-        totalPrsChange: { change: "+0", positive: true },
-        criticalBugsChange: { change: "+0", positive: true },
-        repoDelta: 0,
-        commentsByCategory: [],
-        latestReviews: [],
-      };
+    : { totalPrs: 0, criticalBugs: 0, recentReviews: 0, latestReviews: [] };
 
-  // Trends are derived from real createdAt data via getTrendSeries — never
-  // fabricated. "Critical Bugs Prevented" deliberately has no sparkline:
-  // scoped out of this port (see docs/superpowers/specs/2026-07-11-dashboard-ui-port-design.md
-  // §3.2) even though ReviewComment now has a createdAt column on main.
-  const totalPrsTrend = cumulativeByDay(trendSeries.reviewDates, 7);
-  const reviewsThisWeekTrend = bucketByDay(trendSeries.reviewDates, 7);
-  const activeReposTrend = cumulativeByDay(trendSeries.repoDates, 7);
+  const hasReviews = connected && totalPrs > 0;
+  const firstName = (session.user.name ?? "").trim().split(" ")[0];
 
-  // Setup checklist — every `done` value is a real fact, not an estimate.
-  // "account" is honestly true by construction (this page is auth-gated).
-  const setupSteps: SetupStep[] = [
-    { id: "account", label: "Create your Areté account", done: true },
-    {
-      id: "repo",
-      label: "Connect your GitHub repository",
-      done: connected,
-      href: "/connections",
-    },
-    {
-      id: "telemetry",
-      label: "Connect a telemetry source",
-      done: telemetryProviders.length > 0,
-      href: "/connections",
-    },
-    {
-      id: "first-review",
-      label: "See your first automated review",
-      done: totalPrs > 0,
-    },
+  // Onboarding progress — honest, derived from real state. The setup card
+  // disappears once reviews are actually flowing.
+  const steps = [
+    { label: "Create your Areté account", done: true },
+    { label: "Connect a repository", done: connected },
+    { label: "Open a pull request", done: hasReviews },
+    { label: "Get your first verified review", done: hasReviews },
   ];
-
-  // SuperLog-style analytics grid — every value and weekly change comes from
-  // the view model (real Prisma aggregations), every sparkline from real
-  // createdAt series. "Critical Issues Caught" deliberately has no sparkline
-  // (ReviewComment.createdAt exists but this metric was scoped out of the
-  // original port — see docs/superpowers/specs/2026-07-11-dashboard-ui-port-design.md §3.2).
-  const metrics: Metric[] = [
-    {
-      title: "Total PRs Reviewed",
-      value: totalPrs.toString(),
-      change: totalPrsChange.change,
-      positive: totalPrsChange.positive,
-      icon: <IconGitPullRequest className="h-5 w-5 text-accent-primary" />,
-      trend: totalPrsTrend,
-    },
-    {
-      title: "Critical Issues Caught",
-      value: criticalBugs.toString(),
-      change: criticalBugsChange.change,
-      positive: criticalBugsChange.positive,
-      icon: <IconBug className="h-5 w-5 text-accent-danger" />,
-    },
-    {
-      title: "Reviews This Week",
-      value: recentReviews.toString(),
-      change: `${weeklyDelta >= 0 ? "+" : ""}${weeklyDelta}`,
-      positive: weeklyDelta >= 0,
-      icon: <IconCalendarStats className="h-5 w-5 text-accent-info" />,
-      trend: reviewsThisWeekTrend,
-    },
-    {
-      title: "Active Repositories",
-      value: activeRepos.toString(),
-      change: `${repoDelta >= 0 ? "+" : ""}${repoDelta}`,
-      positive: repoDelta >= 0,
-      icon: <IconFolders className="h-5 w-5 text-accent-success" />,
-      trend: activeReposTrend,
-    },
-  ];
+  const doneCount = steps.filter((s) => s.done).length;
+  const setupComplete = hasReviews;
+  const nextStep = steps.find((s) => !s.done);
 
   return (
-    <PageReveal className="space-y-8">
-      <RevealItem>
-        <SetupChecklist steps={setupSteps} />
-      </RevealItem>
-
-      <RevealItem>
-        <ValueLedger />
-      </RevealItem>
-
-      <MetricsGrid metrics={metrics} />
-
-      <div className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-2">
+    <div className="mx-auto max-w-5xl">
+      <PageReveal className="space-y-10">
+        {/* Greeting */}
         <RevealItem>
-          <CommentsByCategory categories={commentsByCategory} />
+          <h1 className="text-2xl font-semibold tracking-tight text-content-primary">
+            Good to see you{firstName ? `, ${firstName}` : ""}.
+          </h1>
+          <p className="mt-1 text-sm text-content-muted">
+            Here&apos;s what Areté is doing for your code.
+          </p>
         </RevealItem>
-        <RevealItem>
-          <Card className="h-full">
-            <CardHeader>
-              <CardTitle>What we caught for you</CardTitle>
-            </CardHeader>
-            <ActivityList
-              reviews={latestReviews.map((review) => ({
-                id: review.id,
-                repositoryName: review.repositoryFullName,
-                prNumber: review.prNumber,
-                createdAt: review.createdAt.toISOString(),
-                riskLevel: review.riskLevel,
-              }))}
-            />
-          </Card>
-        </RevealItem>
-      </div>
 
-      <RevealItem>
-        <ConnectorHealthStrip />
-      </RevealItem>
-    </PageReveal>
+        {/* Setup card (SuperLog-style onboarding) — only while not fully set up */}
+        {!setupComplete && (
+          <RevealItem>
+            <section className="rounded-2xl border border-border-default bg-surface-1 p-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-content-primary">
+                  Finish setting up Areté
+                </h2>
+                <span className="font-mono text-xs text-content-muted">
+                  {doneCount} of {steps.length}
+                </span>
+              </div>
+
+              {/* progress bar */}
+              <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
+                <div
+                  className="h-full rounded-full bg-accent-primary transition-all"
+                  style={{ width: `${(doneCount / steps.length) * 100}%` }}
+                />
+              </div>
+
+              {/* current-step highlight */}
+              {nextStep && (
+                <div className="mt-5 flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface-0/50 p-5 sm:flex-row sm:items-center">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-content-primary">{nextStep.label}</p>
+                    <p className="mt-0.5 text-xs leading-5 text-content-muted">
+                      {nextStep.label === "Connect a repository"
+                        ? "Install the Areté GitHub App on the repo you want reviewed. Every pull request is then reviewed automatically."
+                        : "Open a pull request on a connected repository — the six specialists review it and post verified findings back to the PR."}
+                    </p>
+                  </div>
+                  {nextStep.label === "Connect a repository" && (
+                    <Link
+                      href="/connections"
+                      className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-accent-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/90"
+                    >
+                      Connect a repository
+                      <IconArrowRight className="h-4 w-4" />
+                    </Link>
+                  )}
+                </div>
+              )}
+
+              {/* checklist */}
+              <ul className="mt-5 space-y-2.5">
+                {steps.map((step) => (
+                  <li key={step.label} className="flex items-center gap-2.5 text-sm">
+                    {step.done ? (
+                      <IconCircleCheck className="h-4 w-4 shrink-0 text-accent-success" stroke={2} />
+                    ) : (
+                      <IconCircleDashed className="h-4 w-4 shrink-0 text-content-muted/60" stroke={2} />
+                    )}
+                    <span className={step.done ? "text-content-secondary" : "text-content-muted"}>
+                      {step.label}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </RevealItem>
+        )}
+
+        {/* Metric tiles */}
+        <RevealItem>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <StatTile label="Pull requests reviewed" value={totalPrs} />
+            <StatTile label="Critical issues caught" value={criticalBugs} />
+            <StatTile label="Reviews this week" value={recentReviews} />
+          </div>
+        </RevealItem>
+
+        {/* Critical findings */}
+        <RevealItem className="space-y-3">
+          <SectionLabel>Critical findings</SectionLabel>
+          {criticalBugs > 0 ? (
+            <div className="flex items-center gap-3 rounded-2xl border border-accent-danger/30 bg-accent-danger/5 p-5">
+              <IconShieldCheck className="h-5 w-5 shrink-0 text-accent-danger" stroke={1.75} />
+              <p className="text-sm text-content-secondary">
+                <span className="font-semibold text-content-primary">{criticalBugs}</span> critical
+                {criticalBugs === 1 ? " issue" : " issues"} caught across your recent reviews.
+              </p>
+            </div>
+          ) : (
+            <StatePanel
+              icon={<IconShieldCheck className="h-5 w-5 text-accent-success" stroke={1.75} />}
+            >
+              All clear — no critical findings in your recent reviews.
+            </StatePanel>
+          )}
+        </RevealItem>
+
+        {/* Recent reviews */}
+        <RevealItem className="space-y-3">
+          <SectionLabel>Recent reviews</SectionLabel>
+          {latestReviews.length > 0 ? (
+            <div className="overflow-hidden rounded-2xl border border-border-default bg-surface-1">
+              <ActivityList
+                reviews={latestReviews.map((review) => ({
+                  id: review.id,
+                  repositoryName: review.repositoryFullName,
+                  prNumber: review.prNumber,
+                  createdAt: review.createdAt.toISOString(),
+                  riskLevel: review.riskLevel,
+                }))}
+              />
+            </div>
+          ) : (
+            <StatePanel>
+              {connected ? (
+                <>Open a pull request on a connected repository and its review appears here.</>
+              ) : (
+                <span className="inline-flex flex-wrap items-center gap-x-1.5">
+                  No reviews yet — connect a repository to get started.
+                  <Link
+                    href="/connections"
+                    className="inline-flex items-center gap-1 font-medium text-accent-primary hover:underline"
+                  >
+                    Connect a repository <IconArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </span>
+              )}
+            </StatePanel>
+          )}
+        </RevealItem>
+      </PageReveal>
+    </div>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="text-[11px] font-semibold uppercase tracking-wider text-content-muted">
+      {children}
+    </h2>
+  );
+}
+
+function StatTile({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-2xl border border-border-default bg-surface-1 p-5">
+      <p className="font-mono text-3xl font-semibold tabular-nums text-content-primary">{value}</p>
+      <p className="mt-1 text-xs text-content-muted">{label}</p>
+    </div>
+  );
+}
+
+function StatePanel({
+  children,
+  icon,
+}: {
+  children: React.ReactNode;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-border-default bg-surface-1 p-5">
+      {icon && <span className="shrink-0">{icon}</span>}
+      <p className="text-sm text-content-secondary">{children}</p>
+    </div>
   );
 }

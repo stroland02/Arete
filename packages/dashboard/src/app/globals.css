@@ -1,81 +1,180 @@
 @import "tailwindcss";
 
+/*
+ * Areté — "Marble & Ink" design tokens (Phase A foundation).
+ * A light, austere, ink-on-warm-paper brand system (see
+ * docs/superpowers/specs/2026-07-12-marble-ink-design-system.md).
+ *
+ * Token NAMES are deliberately kept identical to the previous dark system so
+ * every component that references `bg-surface-0`, `text-content-primary`,
+ * `.glass-panel`, etc. keeps resolving — only the VALUES change here, which
+ * flips the bulk of the app to the new light world from one place. Components
+ * with hard-coded dark assumptions (white/[0.02] overlays, text-white) are
+ * migrated in the following primitive-reskin commits.
+ */
+
 @theme inline {
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-newsreader), "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, monospace;
-  --color-surface-0: #020617;
-  --color-surface-1: rgba(255, 255, 255, 0.03);
-  --color-surface-2: rgba(255, 255, 255, 0.08);
-  --color-border-subtle: rgba(255, 255, 255, 0.05);
-  --color-border-default: rgba(255, 255, 255, 0.08);
-  --color-border-strong: rgba(255, 255, 255, 0.15);
-  --color-accent-primary: #818cf8;
-  --color-accent-secondary: #c084fc;
-  --color-accent-info: #22d3ee;
-  --color-accent-success: #34d399;
-  --color-accent-danger: #fb7185;
-  --color-content-primary: #f1f5f9;
-  --color-content-secondary: #cbd5e1;
-  --color-content-muted: #94a3b8;
+
+  /* Light "Marble & Ink" is the default theme. */
+  --color-surface-0: #ECECE6; /* warm marble — app ground */
+  --color-surface-1: #F7F7F3; /* raised paper — cards */
+  --color-surface-2: #FFFFFF; /* highest paper — hover / active */
+  --color-border-subtle: #E2E2DA;
+  --color-border-default: #D4D4CA;
+  --color-border-strong: #BEBEB2;
+  --color-accent-primary: #2F55D4;   /* cobalt — the single brand accent */
+  --color-accent-secondary: #8A6D3B; /* bronze — the areté signature, used sparingly */
+  --color-accent-info: #2F6FB0;
+  --color-accent-success: #2F7D53;   /* semantic — separate from the accent */
+  --color-accent-warning: #9A6B15;
+  --color-accent-danger: #B23A34;
+  --color-content-primary: #1A1B18;  /* ink */
+  --color-content-secondary: #3C3E38;
+  --color-content-muted: #6C6E66;
+
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
 }
 
 :root {
-  --background: #020617;
-  --foreground: #f8fafc;
+  color-scheme: light;
+  --background: #ECECE6;
+  --foreground: #1A1B18;
+  --shadow-card: 0 1px 2px rgba(26, 27, 24, 0.04), 0 10px 30px -20px rgba(26, 27, 24, 0.18);
+  --shadow-card-hover: 0 2px 4px rgba(26, 27, 24, 0.06), 0 18px 40px -22px rgba(26, 27, 24, 0.28);
+}
+
+/* Theme-aware dark variant of Marble & Ink (warm graphite). The procedure
+   requires both themes to be deliberately styled; light remains the brand's
+   primary world. prefers-color-scheme carries the OS preference; a future
+   in-app toggle stamps data-theme on :root and must win over the media query. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --color-surface-0: #161613;
+    --color-surface-1: #1E1E1A;
+    --color-surface-2: #26261F;
+    --color-border-subtle: #2A2A24;
+    --color-border-default: #35352D;
+    --color-border-strong: #4A4A40;
+    --color-accent-primary: #7C97FF;
+    --color-accent-secondary: #C9A25A;
+    --color-accent-info: #6BA8DE;
+    --color-accent-success: #6FB98A;
+    --color-accent-warning: #D6A84A;
+    --color-accent-danger: #E08A85;
+    --color-content-primary: #F2F1EA;
+    --color-content-secondary: #C9C8BE;
+    --color-content-muted: #99988D;
+    --background: #161613;
+    --foreground: #F2F1EA;
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px -18px rgba(0, 0, 0, 0.6);
+    --shadow-card-hover: 0 2px 6px rgba(0, 0, 0, 0.5), 0 20px 44px -20px rgba(0, 0, 0, 0.7);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-surface-0: #161613;
+  --color-surface-1: #1E1E1A;
+  --color-surface-2: #26261F;
+  --color-border-subtle: #2A2A24;
+  --color-border-default: #35352D;
+  --color-border-strong: #4A4A40;
+  --color-accent-primary: #7C97FF;
+  --color-accent-secondary: #C9A25A;
+  --color-accent-info: #6BA8DE;
+  --color-accent-success: #6FB98A;
+  --color-accent-warning: #D6A84A;
+  --color-accent-danger: #E08A85;
+  --color-content-primary: #F2F1EA;
+  --color-content-secondary: #C9C8BE;
+  --color-content-muted: #99988D;
+  --background: #161613;
+  --foreground: #F2F1EA;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px -18px rgba(0, 0, 0, 0.6);
+  --shadow-card-hover: 0 2px 6px rgba(0, 0, 0, 0.5), 0 20px 44px -20px rgba(0, 0, 0, 0.7);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --color-surface-0: #ECECE6;
+  --color-surface-1: #F7F7F3;
+  --color-surface-2: #FFFFFF;
+  --color-border-subtle: #E2E2DA;
+  --color-border-default: #D4D4CA;
+  --color-border-strong: #BEBEB2;
+  --color-accent-primary: #2F55D4;
+  --color-accent-secondary: #8A6D3B;
+  --color-accent-info: #2F6FB0;
+  --color-accent-success: #2F7D53;
+  --color-accent-warning: #9A6B15;
+  --color-accent-danger: #B23A34;
+  --color-content-primary: #1A1B18;
+  --color-content-secondary: #3C3E38;
+  --color-content-muted: #6C6E66;
+  --background: #ECECE6;
+  --foreground: #1A1B18;
+  --shadow-card: 0 1px 2px rgba(26, 27, 24, 0.04), 0 10px 30px -20px rgba(26, 27, 24, 0.18);
+  --shadow-card-hover: 0 2px 4px rgba(26, 27, 24, 0.06), 0 18px 40px -22px rgba(26, 27, 24, 0.28);
 }
 
 body {
-  background: radial-gradient(ellipse at top, #1e293b 0%, #020617 100%);
+  background: var(--background);
   color: var(--foreground);
   min-height: 100vh;
   margin: 0;
-  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
+/* --- Surfaces -------------------------------------------------------------
+   Marble & Ink is solid paper, not glass: the `.glass*` class names are kept
+   for source compatibility, but they now render opaque, token-driven paper
+   cards that adapt across both themes. No backdrop-filter, tighter radius. */
+
 .glass {
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-border-default);
+  box-shadow: var(--shadow-card);
+  border-radius: 12px;
 }
 
 .glass-panel {
-  background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
-  transition: all 0.3s var(--ease-out-quart);
-  border-radius: 1rem;
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-border-subtle);
+  box-shadow: var(--shadow-card);
+  border-radius: 12px;
+  transition: border-color 0.3s var(--ease-out-quart), box-shadow 0.3s var(--ease-out-quart),
+    background 0.3s var(--ease-out-quart);
 }
 
-/* Static panels acknowledge the cursor faintly, but do NOT lift or shadow-pop —
-   that affordance is reserved for genuinely interactive cards (see .glass-panel-interactive
-   below). A panel that isn't clickable shouldn't move like a button. */
+/* Static panels acknowledge the cursor by firming their border, but do NOT
+   lift — that affordance is reserved for genuinely interactive cards. */
 .glass-panel:hover {
-  background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-color: var(--color-border-default);
 }
 
-/* Opt-in hover-lift for cards that represent a real, actionable target (e.g. a real link).
-   Apply via the `interactive` prop on <Card>.
-   The transition lives on the base selector (not :hover) so hover-enter and
-   hover-exit share the same timing/easing. */
+/* Opt-in hover-lift for cards that are a real, actionable target. Transition
+   lives on the base selector so enter and exit share timing. */
 .glass-panel-interactive {
-  transition: all 0.3s var(--ease-out-expo);
+  transition: transform 0.3s var(--ease-out-expo), box-shadow 0.3s var(--ease-out-expo),
+    border-color 0.3s var(--ease-out-expo);
 }
 
 .glass-panel-interactive:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--color-border-default);
 }
 
 .glass-panel-active {
-  background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%);
-  border: 1px solid rgba(129, 140, 248, 0.3);
-  box-shadow: 0 0 0 1px rgba(129, 140, 248, 0.15), 0 8px 32px 0 rgba(0, 0, 0, 0.3);
-  border-radius: 1rem;
+  background: var(--color-surface-2);
+  border: 1px solid color-mix(in srgb, var(--color-accent-primary) 40%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent-primary) 16%, transparent),
+    var(--shadow-card);
+  border-radius: 12px;
 }
