@@ -41,6 +41,8 @@ def test_role_tiers_defaults_match_spec():
         "ci_diagnostics": "opus",
         "synthesizer": "opus",
         "chat": "sonnet",
+        "critic_opus": "opus",
+        "critic_sonnet": "sonnet",
     }
 
 
@@ -87,3 +89,28 @@ def test_orchestrator_single_llm_maps_to_all_roles():
     assert orch.synthesizer._llm is single
     assert orch._llms["ci_diagnostics"] is single
     assert orch._llms["chat"] is single
+
+
+def test_critic_tiers_are_fixed_regardless_of_role_overrides():
+    """critic_opus/critic_sonnet never change even if every configurable
+    role is overridden to the same tier via env."""
+    tiers = role_tiers(_settings(
+        security_tier="sonnet", business_logic_tier="sonnet",
+        deployment_safety_tier="sonnet", ci_tier="sonnet",
+        synthesizer_tier="sonnet", chat_tier="sonnet",
+    ))
+    assert tiers["critic_opus"] == "opus"
+    assert tiers["critic_sonnet"] == "sonnet"
+
+
+def test_get_llms_by_role_always_builds_both_tiers_for_critic():
+    """Even when every one of the 9 configurable roles resolves to the same
+    tier, get_llms_by_role must still build BOTH an opus and a sonnet
+    client, because critic_opus/critic_sonnet are fixed."""
+    llms = get_llms_by_role(_settings(
+        security_tier="sonnet", business_logic_tier="sonnet",
+        deployment_safety_tier="sonnet", ci_tier="sonnet",
+        synthesizer_tier="sonnet", chat_tier="sonnet",
+    ))
+    assert llms["critic_opus"] is not llms["critic_sonnet"]
+    assert len({id(c) for c in llms.values()}) == 2
