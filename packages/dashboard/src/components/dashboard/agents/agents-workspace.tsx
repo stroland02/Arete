@@ -34,7 +34,6 @@ export function AgentsWorkspace({
   const [selectedAgentId, setSelectedAgentId] = useState<string>(AGENTS[0].id);
   const [configAgentId, setConfigAgentId] = useState<string | null>(null);
 
-  const selectedAgent = AGENTS.find((a) => a.id === selectedAgentId) ?? AGENTS[0];
   const configAgent = AGENTS.find((a) => a.id === configAgentId) ?? null;
 
   return (
@@ -51,12 +50,9 @@ export function AgentsWorkspace({
           onSelect={setSelectedAgentId}
           onConfigure={setConfigAgentId}
         />
-        <SynthesizerConsole
-          hasReviews={hasReviews}
-          totalFindings={totalFindings}
-          selectedAgentLabel={selectedAgent.label}
-          selectedAgentFindings={findingCountById[selectedAgent.id] ?? 0}
-        />
+        {/* Center pane streams the focused container's Synthesizer transcript.
+            No deep-link param yet → null shows the onboarding + sample opt-in. */}
+        <SynthesizerConsole containerId={null} />
         <PrPanel
           hasReviews={hasReviews}
           latestReview={latestReview}

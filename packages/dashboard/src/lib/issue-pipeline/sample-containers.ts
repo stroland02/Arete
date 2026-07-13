@@ -108,3 +108,12 @@ const DONE: IssueContainer = {
 };
 
 export const SAMPLE_CONTAINERS: IssueContainer[] = [WORKING, DONE];
+
+/** Stable ids for the sample containers, so UI can reference them without literals. */
+export const SAMPLE_WORKING_ID = WORKING.id;
+export const SAMPLE_DONE_ID = DONE.id;
+
+/** True for any container id served by the sample producer — drives the "Sample" chip. */
+export function isSampleContainerId(id: string): boolean {
+  return SAMPLE_CONTAINERS.some((c) => c.id === id);
+}
