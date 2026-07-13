@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { getReviewDetail, resolveSelectedInstallationIds } from "@/lib/queries";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 import { CopyAgentPrompt } from "@/components/dashboard/copy-agent-prompt";
-import { IconArrowLeft } from "@tabler/icons-react";
+import { IconArrowLeft, IconSparkles } from "@tabler/icons-react";
 
 export const dynamic = "force-dynamic";
 
@@ -107,6 +107,13 @@ export default async function ReviewDetailPage({
             </h1>
           </div>
           <div className="flex shrink-0 items-center gap-2.5">
+            <Link
+              href={`/agents?container=${review.id}`}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border-default bg-surface-1 px-3 py-1.5 text-xs font-medium text-content-secondary transition-colors hover:border-border-strong hover:bg-content-primary/5"
+            >
+              <IconSparkles size={14} stroke={1.75} aria-hidden />
+              View in Synthesizer
+            </Link>
             {review.findings.length > 0 && <CopyAgentPrompt prompt={agentPrompt} />}
             <span
               className={`px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wide border shrink-0 ${riskBadgeClasses(review.riskLevel)}`}
