@@ -81,3 +81,34 @@ def test_has_quoted_evidence_true_when_any_one_of_multiple_spans_matches():
     body = "Compare `real_symbol` against `fake_symbol` for context."
     patch = "+def real_symbol():\n+    pass\n"
     assert has_quoted_evidence(body, patch) is True
+
+
+def test_has_quoted_evidence_rejects_short_generic_name_via_empty_parens():
+    """A short/generic bare name (from `x()`-style stripping) must not
+    trivially match unrelated diff text via raw substring containment —
+    the whole point of this gate is to prevent exactly that kind of
+    trivially-satisfied 'evidence'."""
+    body = "This calls `x()` somewhere dangerous."
+    patch = "+def existing_function():\n+    return context.get('x_value')\n"
+    # "x" is a substring of "context" and "x_value", but this must NOT
+    # count as real evidence for a one-character stripped name.
+    assert has_quoted_evidence(body, patch) is False
+
+
+def test_has_quoted_evidence_rejects_partial_word_match_for_stripped_name():
+    """A stripped name must match a real whole word in the patch, not just
+    appear as a substring inside a longer, unrelated identifier."""
+    body = "This calls `eval()` on user input."
+    patch = "+result = my_evaluator(user_input)\n"
+    # "eval" is a substring of "my_evaluator", but they are not the same
+    # symbol — must not count as evidence.
+    assert has_quoted_evidence(body, patch) is False
+
+
+def test_has_quoted_evidence_accepts_real_whole_word_match_for_stripped_name():
+    """A sufficiently long stripped name matching a real whole word in the
+    patch still counts as evidence (this is the legitimate case the
+    empty-parens normalization exists for)."""
+    body = "This calls `dangerous_eval()` on user input."
+    patch = "+result = dangerous_eval(user_input)\n"
+    assert has_quoted_evidence(body, patch) is True

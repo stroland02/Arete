@@ -52,14 +52,19 @@ def has_quoted_evidence(body: str, patch: str) -> bool:
     """True if at least one backtick-quoted span in body appears verbatim
     as a substring of patch. A span written as a call with empty parens
     (e.g. `dangerous_eval()`) also matches when the bare callable name
-    appears in the patch (e.g. ``dangerous_eval(user_input)``). False if
-    body has no backtick spans at all, or none of them match."""
+    appears in the patch (e.g. ``dangerous_eval(user_input)``) — but only
+    when the stripped name is at least 4 characters long and matches as a
+    whole word (word-boundary), so short/generic names like `x()` or
+    `run()` can't trivially "match" as substrings of unrelated identifiers.
+    False if body has no backtick spans at all, or none of them match."""
     spans = _BACKTICK_SPAN.findall(body)
     if not spans:
         return False
     for span in spans:
         if span in patch:
             return True
-        if span.endswith("()") and span[:-2] and span[:-2] in patch:
-            return True
+        if span.endswith("()"):
+            name = span[:-2]
+            if len(name) >= 4 and re.search(rf"\b{re.escape(name)}\b", patch):
+                return True
     return False
