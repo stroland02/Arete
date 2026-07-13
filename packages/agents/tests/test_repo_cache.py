@@ -82,11 +82,23 @@ def test_ensure_repo_checked_out_wraps_subprocess_timeout(tmp_path):
     import subprocess as subprocess_module
 
     root = tmp_path / "repos"
+    repo_dir = root / "42" / "acme__api"
+    # Mirror the real authed command the code builds right before
+    # subprocess.run — TimeoutExpired's str() includes the full cmd, so
+    # the token would leak without _redact().
+    authed_command = [
+        "git",
+        "clone",
+        "--depth",
+        "1",
+        "https://x-access-token:ghs_abc123@github.com/acme/api.git",
+        str(repo_dir),
+    ]
     with patch(
         "arete_agents.context_map.repo_cache.subprocess.run",
-        side_effect=subprocess_module.TimeoutExpired(cmd="git clone", timeout=120),
+        side_effect=subprocess_module.TimeoutExpired(cmd=authed_command, timeout=120),
     ):
-        with pytest.raises(RepoCacheError):
+        with pytest.raises(RepoCacheError) as exc_info:
             ensure_repo_checked_out(
                 clone_url="https://github.com/acme/api.git",
                 installation_token="ghs_abc123",
@@ -94,6 +106,8 @@ def test_ensure_repo_checked_out_wraps_subprocess_timeout(tmp_path):
                 repo_slug="acme/api",
                 root=root,
             )
+    assert "ghs_abc123" not in str(exc_info.value)
+    assert "x-access-token:***@" in str(exc_info.value)
 
 
 def test_ensure_repo_checked_out_wraps_mkdir_oserror(tmp_path):
