@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import Link from "next/link";
-import { IconChevronDown, IconCopy, IconGitBranch, IconGitPullRequest, IconHourglassHigh, IconPlus } from "@tabler/icons-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { IconChevronDown, IconCopy, IconGitBranch, IconGitPullRequest, IconHourglassHigh, IconPlus, IconLoader2, IconCheck } from "@tabler/icons-react";
 
 /**
  * Services "Triage Inbox" workspace. Production signals from CONNECTED
@@ -248,9 +249,31 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
     issues.find((i) => i.serviceId === services[0]?.id)?.id ?? null
   );
 
+  const [isReplaying, setIsReplaying] = useState(false);
+  const [replayStep, setReplayStep] = useState(0);
+
   const hasServices = services.length > 0;
   const activeService = serviceId ?? services[0]?.id ?? null;
   const selected = issues.find((i) => i.id === issueId) ?? null;
+
+  function handleSelectIssue(id: string) {
+    if (id === issueId) return;
+    setIssueId(id);
+    setReplayStep(0);
+    setIsReplaying(true);
+  }
+
+  useEffect(() => {
+    if (isReplaying && selected) {
+      setReplayStep(0);
+      const totalSteps = selected.timeline.length;
+      const timers = selected.timeline.map((_, idx) => 
+        setTimeout(() => setReplayStep(idx + 1), (idx + 1) * 700)
+      );
+      timers.push(setTimeout(() => setIsReplaying(false), (totalSteps * 700) + 400));
+      return () => timers.forEach(clearTimeout);
+    }
+  }, [isReplaying, selected]);
 
   function toggleService(id: string) {
     setServiceId((current) => (current === id ? null : id));
@@ -315,7 +338,7 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
                               <li key={iss.id}>
                                 <button
                                   type="button"
-                                  onClick={() => setIssueId(iss.id)}
+                                  onClick={() => handleSelectIssue(iss.id)}
                                   aria-current={on ? "true" : undefined}
                                   className={`flex w-full items-center gap-2 py-1.5 pl-9 pr-3 text-left transition-colors ${
                                     on ? "bg-accent-primary/[0.1] text-content-primary" : "text-content-secondary hover:bg-content-primary/[0.04]"
@@ -348,19 +371,14 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
         </div>
       </section>
 
-      {/* Center: Synthesizer console, scoped to the selected issue — same
-          shape as the /agents Synthesizer console, so the verification
-          narrative for a given issue/PR is the same whether you're looking
-          at it here or on the Agents page. */}
+      {/* Center: Synthesizer console, scoped to the selected issue */}
       <section className="flex min-h-0 flex-1 flex-col" aria-label="Synthesizer">
-        <IssueSynthesizerConsole issue={selected} />
+        <IssueSynthesizerConsole issue={selected} isReplaying={isReplaying} replayStep={replayStep} />
       </section>
 
-      {/* Right: the issue's own detail — agents involved, evidence, proposed
-          fix — collapsible sections + pinned verification actions, same
-          shape as the /agents PR panel. */}
+      {/* Right: the issue's own detail */}
       <section className="flex min-h-0 flex-1 flex-col" aria-label="Issue panel">
-        <IssuePanel issue={selected} />
+        <IssuePanel issue={selected} isReplaying={isReplaying} />
       </section>
     </div>
   );
@@ -374,7 +392,7 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
  * instead of the whole account, so the verification record for a given
  * issue/PR reads the same on both pages.
  */
-function IssueSynthesizerConsole({ issue }: { issue: Issue | null }) {
+function IssueSynthesizerConsole({ issue, isReplaying, replayStep }: { issue: Issue | null; isReplaying: boolean; replayStep: number }) {
   return (
     <>
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border-subtle px-3">
@@ -390,17 +408,33 @@ function IssueSynthesizerConsole({ issue }: { issue: Issue | null }) {
             <li className="pb-2 text-[10px] uppercase tracking-wider text-content-muted">
               Scripted replay of this issue&apos;s verification — not a live model
             </li>
-            {issue.timeline.map((t, idx) => (
-              <li key={idx} className="rounded-md px-2 py-1.5 hover:bg-content-primary/[0.03]">
-                <div className="flex items-start gap-2.5">
-                  <span className={`shrink-0 leading-4 ${TONE_TEXT[t.tone]}`} aria-hidden>{markerForTone(t.tone)}</span>
-                  <div className="min-w-0">
-                    <p className="text-content-secondary">{t.text}</p>
-                    <p className="mt-0.5 text-[11px] leading-4 text-content-muted">{t.when}</p>
+            {issue.timeline.map((t, idx) => {
+              const status = isReplaying ? (replayStep > idx ? 'done' : replayStep === idx ? 'running' : 'waiting') : 'done';
+              if (status === 'waiting') return null;
+
+              return (
+                <motion.div
+                  key={idx}
+                  initial={{ opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="rounded-md px-2 py-1.5 hover:bg-content-primary/[0.03]"
+                >
+                  <div className="flex items-start gap-2.5">
+                    {status === 'running' ? (
+                      <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }} className="shrink-0 leading-4 text-accent-primary">
+                        <IconLoader2 size={13} stroke={2} />
+                      </motion.div>
+                    ) : (
+                      <span className={`shrink-0 leading-4 ${TONE_TEXT[t.tone]}`} aria-hidden>{markerForTone(t.tone)}</span>
+                    )}
+                    <div className="min-w-0">
+                      <p className={`text-content-secondary ${status === 'running' ? 'font-medium' : ''}`}>{t.text}</p>
+                      <p className="mt-0.5 text-[11px] leading-4 text-content-muted">{t.when}</p>
+                    </div>
                   </div>
-                </div>
-              </li>
-            ))}
+                </motion.div>
+              );
+            })}
           </ol>
         ) : (
           <div className="mx-auto flex h-full max-w-md flex-col items-center justify-center gap-5 px-4 text-center">
@@ -446,25 +480,31 @@ function IssueSynthesizerConsole({ issue }: { issue: Issue | null }) {
  * comment(s) as they'll post — plus the send gate. Per the pipeline spec, the
  * repo target and Post PR / Request changes live HERE (Services), not on Agents.
  */
-function IssuePanel({ issue }: { issue: Issue | null }) {
+function IssuePanel({ issue, isReplaying }: { issue: Issue | null; isReplaying: boolean }) {
   return (
     <>
       <header className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-3">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Pull request</h2>
-        {issue && (
+        {issue && !isReplaying && (
           <span className={`rounded-full border px-1.5 py-px text-[9.5px] font-bold uppercase tracking-wide ${SEV_PILL[issue.severity]}`}>{SEV_LABEL[issue.severity]}</span>
         )}
       </header>
 
-      {!issue ? (
-        <>
-          {/* Idle: show the pull-request panel's structure (repo target, the
-              formatted PR, the review comments) so it reads as a real surface. */}
-          <div className="shrink-0 border-b border-border-subtle px-3 py-2.5">
-            <p className="text-[12.5px] text-content-muted">
-              Select an issue to load its pull request — the formatted review Areté will post, and where you approve sending it.
-            </p>
-          </div>
+      {!issue || isReplaying ? (
+        <AnimatePresence mode="wait">
+          <motion.div
+            key="loading"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <div className="shrink-0 border-b border-border-subtle px-3 py-2.5">
+              <p className="text-[12.5px] text-content-muted">
+                {isReplaying ? "Synthesizing pull request from verified findings..." : "Select an issue to load its pull request — the formatted review Areté will post, and where you approve sending it."}
+              </p>
+            </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             <PanelSection title="Repository">
               <p className="px-1 text-[11px] leading-4 text-content-muted">
@@ -498,11 +538,17 @@ function IssuePanel({ issue }: { issue: Issue | null }) {
               Posting opens the PR on your repo — the solution is approved on the Agents page first.
             </p>
           </footer>
-        </>
+          </motion.div>
+        </AnimatePresence>
       ) : (
-        <>
-          {/* Repository target — repo + base ← branch live here (moved off the
-              Agents composition panel per the pipeline spec). */}
+        <motion.div
+          key="content"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="flex min-h-0 flex-1 flex-col"
+        >
+          {/* Repository target */}
           <div className="shrink-0 space-y-1.5 border-b border-border-subtle px-3 py-2.5">
             <button type="button" className="flex w-full items-center gap-2 rounded-lg border border-border-default bg-surface-2 px-2.5 py-1.5 text-left text-[11px] text-content-secondary transition-colors hover:border-border-strong">
               <IconGitBranch size={13} stroke={1.75} className="shrink-0 text-content-muted" aria-hidden />
@@ -562,7 +608,7 @@ function IssuePanel({ issue }: { issue: Issue | null }) {
               Posting opens the pull request on your repo — the solution is approved on the Agents page first.
             </p>
           </footer>
-        </>
+        </motion.div>
       )}
     </>
   );

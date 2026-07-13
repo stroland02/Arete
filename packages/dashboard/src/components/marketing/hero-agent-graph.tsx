@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   IconShieldCheck,
   IconGauge,
@@ -10,10 +10,11 @@ import {
   IconSparkles,
   IconGitBranch,
   IconCheck,
+  IconLoader2,
   IconArrowRight,
   IconChevronDown,
 } from "@tabler/icons-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 
 /**
  * Hero-scale, self-contained INTERACTIVE illustration of Areté's product for
@@ -154,8 +155,41 @@ const SEVERITY_DOT: Record<Finding["severity"], string> = {
 export function HeroAgentGraph() {
   const [selectedId, setSelectedId] = useState(FINDINGS[0].id);
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
+  const [isThinking, setIsThinking] = useState(false);
+  const [thinkingStep, setThinkingStep] = useState(0);
+
+  const handleSelectFinding = (id: string) => {
+    if (id === selectedId) return;
+    setSelectedId(id);
+    setThinkingStep(0);
+    setIsThinking(true);
+  };
+
+  useEffect(() => {
+    if (isThinking) {
+      setThinkingStep(0);
+      const timers = [
+        setTimeout(() => setThinkingStep(1), 700),
+        setTimeout(() => setThinkingStep(2), 1400),
+        setTimeout(() => setThinkingStep(3), 2100),
+        setTimeout(() => {
+          setThinkingStep(4);
+          setTimeout(() => setIsThinking(false), 500);
+        }, 2800),
+      ];
+      return () => timers.forEach(clearTimeout);
+    }
+  }, [isThinking, selectedId]);
+
   const selected = FINDINGS.find((f) => f.id === selectedId) ?? FINDINGS[0];
   const SelectedIcon = selected.icon;
+
+  const THOUGHT_STEPS = [
+    `Reading ${selected.file}`,
+    `Analyzing AST context`,
+    `Synthesizing code patch`,
+    `Verifying against guidelines`,
+  ];
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border-default bg-surface-1 shadow-[0_30px_80px_-30px_rgba(26,27,24,0.35)]">
@@ -191,19 +225,29 @@ export function HeroAgentGraph() {
             {AGENTS.map((a) => {
               const Icon = a.icon;
               const expanded = expandedAgent === a.label;
+              const isThisAgentThinking = isThinking && selected.agent === a.label;
               return (
                 <li key={a.label} className="border-b border-border-subtle last:border-b-0">
                   <button
                     type="button"
                     onClick={() => setExpandedAgent((cur) => (cur === a.label ? null : a.label))}
                     aria-expanded={expanded}
-                    className="flex w-full items-start gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-content-primary/[0.03]"
+                    className={`flex w-full items-start gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-content-primary/[0.03] ${isThisAgentThinking ? "bg-content-primary/[0.02]" : ""}`}
                   >
-                    <span
-                      className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${a.active ? "bg-accent-success" : "bg-content-muted/40"}`}
-                      aria-hidden
-                    />
-                    <Icon size={14} stroke={1.75} className="mt-0.5 shrink-0 text-content-muted" aria-hidden />
+                    {isThisAgentThinking ? (
+                      <motion.div
+                        animate={{ scale: [1, 1.3, 1], opacity: [0.6, 1, 0.6] }}
+                        transition={{ repeat: Infinity, duration: 1 }}
+                        className="mt-1 h-2 w-2 shrink-0 rounded-full bg-accent-primary shadow-[0_0_8px_rgba(var(--accent-primary),0.8)]"
+                        aria-hidden
+                      />
+                    ) : (
+                      <span
+                        className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${a.active ? "bg-accent-success" : "bg-content-muted/40"}`}
+                        aria-hidden
+                      />
+                    )}
+                    <Icon size={14} stroke={1.75} className={`mt-0.5 shrink-0 ${isThisAgentThinking ? "text-accent-primary" : "text-content-muted"}`} aria-hidden />
                     <span className="min-w-0 flex-1">
                       {/* Full name, never truncated — wraps rather than cuts off. */}
                       <span className="block text-[13px] font-medium leading-snug text-content-secondary">{a.label}</span>
@@ -242,11 +286,66 @@ export function HeroAgentGraph() {
             </span>
           </div>
 
-          <div className="flex-1 px-4 py-4">
-            <div className="flex items-start gap-2.5">
-              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border-default bg-surface-2 text-content-secondary">
-                <SelectedIcon size={15} stroke={1.75} aria-hidden />
-              </span>
+          <div className="flex-1 px-4 py-4 relative">
+            <AnimatePresence mode="wait">
+              {isThinking ? (
+                <motion.div
+                  key="thinking"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="absolute inset-0 flex flex-col justify-center px-8 z-10 bg-surface-1"
+                >
+                  <div className="flex items-center gap-2 mb-6">
+                    <SelectedIcon size={18} stroke={1.75} className="text-content-secondary" aria-hidden />
+                    <span className="text-sm font-semibold text-content-primary">{selected.agent} Synthesizer</span>
+                  </div>
+                  
+                  <div className="flex flex-col gap-3">
+                    {THOUGHT_STEPS.map((step, idx) => {
+                      const status = thinkingStep > idx ? 'done' : thinkingStep === idx ? 'running' : 'waiting';
+                      if (status === 'waiting') return null;
+                      
+                      return (
+                        <motion.div
+                          key={idx}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="flex items-center gap-3 rounded-xl border border-border-default bg-surface-0 px-4 py-3 shadow-sm"
+                        >
+                          {status === 'done' ? (
+                            <div className="flex h-5 w-5 items-center justify-center rounded-full bg-accent-success/10">
+                              <IconCheck size={12} className="text-accent-success" stroke={2.5} />
+                            </div>
+                          ) : (
+                            <motion.div
+                              animate={{ rotate: 360 }}
+                              transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                              className="flex h-5 w-5 items-center justify-center text-accent-primary"
+                            >
+                              <IconLoader2 size={16} stroke={2} />
+                            </motion.div>
+                          )}
+                          <span className={`font-mono text-[12px] ${status === 'done' ? 'text-content-secondary' : 'text-content-primary font-medium'}`}>
+                            {step}
+                          </span>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="content"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border-default bg-surface-2 text-content-secondary">
+                      <SelectedIcon size={15} stroke={1.75} aria-hidden />
+                    </span>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-sm font-semibold text-content-primary">{selected.title}</h3>
@@ -311,14 +410,17 @@ export function HeroAgentGraph() {
               >
                 <IconCheck size={13} stroke={2} aria-hidden />
                 Apply fix
-              </button>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-1.5 text-[12px] font-medium text-content-secondary transition-colors hover:bg-content-primary/5"
-              >
-                Copy patch
-              </button>
-            </div>
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-1.5 text-[12px] font-medium text-content-secondary transition-colors hover:bg-content-primary/5"
+                  >
+                    Copy patch
+                  </button>
+                </div>
+              </motion.div>
+            )}
+            </AnimatePresence>
           </div>
 
           {/* Pinned Synthesizer input — same disabled-shell pattern as the
@@ -359,7 +461,7 @@ export function HeroAgentGraph() {
                 <li key={f.id}>
                   <button
                     type="button"
-                    onClick={() => setSelectedId(f.id)}
+                    onClick={() => handleSelectFinding(f.id)}
                     aria-pressed={isActive}
                     className={`flex w-full items-start gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors ${
                       isActive

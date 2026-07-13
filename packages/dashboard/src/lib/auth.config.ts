@@ -21,7 +21,10 @@ export const authConfig = {
         pathname === '/' ||
         pathname.startsWith('/login') ||
         pathname.startsWith('/signup') ||
-        pathname.startsWith('/api/auth');
+        pathname.startsWith('/api/auth') ||
+        pathname.endsWith('.jpg') ||
+        pathname.endsWith('.png') ||
+        pathname.endsWith('.svg');
       if (isPublic) return true;
       return !!auth?.user;
     },

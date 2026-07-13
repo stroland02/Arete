@@ -1,4 +1,8 @@
+"use client";
+
 import Link from "next/link";
+import Image from "next/image";
+import { motion } from "framer-motion";
 import {
   IconArrowRight,
   IconBriefcase,
@@ -10,6 +14,13 @@ import {
   IconShieldCheck,
   IconSparkles,
   IconTestPipe,
+  IconBrandGithub,
+  IconBrandVercel,
+  IconBrandStripe,
+  IconBrandAws,
+  IconBrandDocker,
+  IconBrandSlack,
+  IconBrandNotion,
 } from "@tabler/icons-react";
 import { Card } from "@/components/ui/card";
 
@@ -48,14 +59,15 @@ const AGENTS = [
   { label: "Business Logic", description: "Checks your diff against connected production signals.", icon: IconBriefcase, color: "#2f55d4" },
 ];
 
-// Dot colors are the connectors' own brand hues, darkened where needed so they
-// stay visible on the light ground (GitHub/Vercel would be invisible near-white).
+// Authentic connector brands rendered as clean, blended SVG logos
 const CONNECTORS = [
-  { name: "GitHub Actions", color: "#24292f" },
-  { name: "Sentry", color: "#7c3aed" },
-  { name: "Vercel", color: "#1a1b18" },
-  { name: "Stripe", color: "#635bff" },
-  { name: "PostHog", color: "#b45309" },
+  { name: "GitHub", icon: IconBrandGithub },
+  { name: "Vercel", icon: IconBrandVercel },
+  { name: "Stripe", icon: IconBrandStripe },
+  { name: "Docker", icon: IconBrandDocker },
+  { name: "AWS", icon: IconBrandAws },
+  { name: "Slack", icon: IconBrandSlack },
+  { name: "Notion", icon: IconBrandNotion },
 ];
 
 // Pricing mirrors docs/proposal/TYME-platform-proposal.md §9 "Code Review
@@ -151,25 +163,44 @@ export function HowItWorks() {
 }
 
 export function ConnectorStrip() {
+  const marqueeItems = [...CONNECTORS, ...CONNECTORS, ...CONNECTORS, ...CONNECTORS];
+
   return (
-    <section id="connectors" className="border-y border-border-subtle bg-surface-1">
-      <div className="mx-auto max-w-6xl px-6 py-16 text-center">
+    <section id="connectors" className="border-y border-border-subtle bg-surface-1 overflow-hidden">
+      <div className="mx-auto max-w-6xl py-16 text-center">
         <div className="mb-7 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-content-muted">
           <IconPlugConnected className="h-4 w-4" />
           Connects to what you already run
         </div>
-        <div className="flex flex-wrap items-center justify-center gap-3">
-          {CONNECTORS.map((c) => (
-            <span
-              key={c.name}
-              className="inline-flex items-center gap-2 rounded-full border border-border-default bg-surface-0 px-4 py-2 text-sm text-content-secondary transition-colors hover:border-border-strong"
-            >
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: c.color }} />
-              {c.name}
-            </span>
-          ))}
+        
+        {/* Infinite Marquee Container */}
+        <div className="relative flex w-full overflow-hidden whitespace-nowrap">
+          {/* Fading Edges */}
+          <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 md:w-32 bg-gradient-to-r from-surface-1 to-transparent"></div>
+          <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 md:w-32 bg-gradient-to-l from-surface-1 to-transparent"></div>
+          
+          <motion.div
+            className="flex w-max items-center gap-16 px-8"
+            animate={{ x: ["0%", "-25%"] }}
+            transition={{ repeat: Infinity, ease: "linear", duration: 25 }}
+          >
+            {marqueeItems.map((c, idx) => {
+              const Icon = c.icon;
+              return (
+                <div
+                  key={`${c.name}-${idx}`}
+                  className="flex flex-shrink-0 items-center gap-3 text-content-muted opacity-60 transition-all hover:scale-105 hover:opacity-100 hover:text-content-primary"
+                  title={c.name}
+                >
+                  <Icon size={36} stroke={1.5} />
+                  <span className="text-xl font-semibold tracking-tight">{c.name}</span>
+                </div>
+              );
+            })}
+          </motion.div>
         </div>
-        <p className="mx-auto mt-7 max-w-md text-sm leading-relaxed text-content-muted">
+
+        <p className="mx-auto mt-10 max-w-md px-6 text-sm leading-relaxed text-content-muted">
           The Business Logic agent reads your connected telemetry to catch production-shaped bugs
           before they ship.
         </p>
@@ -233,22 +264,29 @@ export function PricingSection() {
 export function FinalCta() {
   return (
     <section className="mx-auto max-w-6xl px-6 pb-24">
-      <Card elevated className="relative flex flex-col items-center gap-6 overflow-hidden py-16 text-center">
-        <div className="absolute left-1/2 top-0 -z-10 h-64 w-64 -translate-x-1/2 rounded-full bg-accent-primary/10 blur-[100px]" />
-        <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-accent-primary/30 bg-accent-primary/10 text-accent-primary">
-          <IconGitPullRequest className="h-6 w-6" />
+      <Card elevated className="relative flex flex-col items-center gap-6 overflow-hidden py-20 text-center">
+        <Image
+          src="/kanagawa-bg-v3.jpg"
+          alt="Kanagawa Background"
+          fill
+          className="absolute inset-0 z-0 object-cover opacity-90 transition-transform duration-1000 hover:scale-105"
+        />
+        <div className="absolute inset-0 z-0 bg-black/40" />
+
+        <span className="relative z-10 flex h-14 w-14 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-white backdrop-blur-md shadow-lg">
+          <IconGitPullRequest className="h-7 w-7" />
         </span>
-        <h2 className="max-w-lg font-serif text-2xl font-semibold tracking-tight text-content-primary sm:text-3xl">
+        <h2 className="relative z-10 max-w-lg font-serif text-3xl font-semibold tracking-tight text-white drop-shadow-md sm:text-4xl">
           Verified code review, posted straight to your next PR.
         </h2>
         <Link
           href="/login"
-          className="group inline-flex h-11 items-center justify-center gap-2 rounded-full bg-accent-primary px-6 text-sm font-medium text-white shadow-sm transition-colors hover:bg-accent-primary/90"
+          className="relative z-10 group inline-flex h-12 items-center justify-center gap-2 rounded-full bg-white px-8 text-sm font-semibold text-black shadow-xl transition-all hover:scale-105 hover:bg-gray-100"
         >
           Get started free
-          <IconArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+          <IconArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
         </Link>
-        <p className="text-xs text-content-muted">First 50 PRs free · no credit card required</p>
+        <p className="relative z-10 text-sm font-medium text-white/80 drop-shadow-sm">First 50 PRs free · no credit card required</p>
       </Card>
     </section>
   );

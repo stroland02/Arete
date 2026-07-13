@@ -77,7 +77,7 @@ export default async function ReviewHistoryPage({
   }
 
   return (
-    <PageReveal className="max-w-4xl space-y-6">
+    <PageReveal className="mx-auto max-w-5xl space-y-6">
       <RevealItem>
         <div className="space-y-1.5">
           <h1 className="text-lg font-semibold text-content-primary">Review History</h1>

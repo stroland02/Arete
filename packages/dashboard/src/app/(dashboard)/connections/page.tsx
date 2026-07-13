@@ -6,7 +6,7 @@ import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 
 export default function ConnectionsPage() {
   return (
-    <PageReveal className="space-y-6 max-w-3xl">
+    <PageReveal className="mx-auto max-w-5xl space-y-6">
       <RevealItem>
         <div className="space-y-1.5">
           <h1 className="text-lg font-semibold text-content-primary">Connect your data</h1>
