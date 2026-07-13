@@ -28,13 +28,20 @@ can run. Nothing reaches a real repo without both.
 | | Agents right panel — "Solution" | Services right panel — "Pull request" |
 |---|---|---|
 | Framing | the PR being composed in code | the formatted PR ready to send |
-| Content | verified findings -> review comments; per-agent provenance; files touched; the diff | PR title + body; comments rendered as they'll appear; `base <- branch`; verified/dropped counts |
+| Content | verified findings -> review comments; per-agent provenance; files touched; the diff | **target repository** + `base <- branch`; PR title + body; comments rendered as they'll appear; verified/dropped counts |
+| Repo/target context | NOT here | **here** — repository selector + base/branch live on Services |
 | Primary action | **Approve solution** | **Post PR** |
 | Secondary | (re-run / request re-verify) | **Request changes** · Copy patch |
 | Never | posts to the repo | re-derives findings — it renders what Agents composed |
 | State chip | shared PR state (drafting -> composing -> ready -> …) | same shared PR state, in lockstep |
 
 Both read `container.pr`; the chip is identical on both pages at all times.
+
+**Repository / target context lives on Services only.** Which repo the PR
+targets and its `base <- branch` are part of *where the PR is sent* — so the
+repository selector belongs on the Services PR panel, not the Agents
+composition panel. (Today's `pr-panel.tsx` has a disabled repo selector on the
+Agents side; the refactor moves it to Services.)
 
 ## 3. Data model
 
