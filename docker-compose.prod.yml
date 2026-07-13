@@ -108,6 +108,25 @@ services:
       agents:
         condition: service_started
 
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3-alpine
+    environment:
+      CLICKHOUSE_DB: superlog
+      CLICKHOUSE_USER: superlog
+      CLICKHOUSE_PASSWORD: superlog
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_prod_data:/var/lib/clickhouse
+      # Mount the schema so it runs on init
+      - ./packages/db/clickhouse/schema/ha-replicated-otel.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   dashboard:
     build:
       context: .
@@ -127,3 +146,4 @@ services:
 volumes:
   postgres_prod_data:
   redis_prod_data:
+  clickhouse_prod_data:
