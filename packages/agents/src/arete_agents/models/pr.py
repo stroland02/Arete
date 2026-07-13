@@ -41,3 +41,4 @@ class PRContext(BaseModel):
     telemetry: list[TelemetrySnapshot] = Field(default_factory=list)
     predecessor_handoff_notes: str | None = Field(None, alias="predecessorHandoffNotes")
     predecessor_root_cause: str | None = Field(None, alias="predecessorRootCause")
+    project_memories: list[str] = Field(default_factory=list, alias="projectMemories")

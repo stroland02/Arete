@@ -29,5 +29,7 @@ def ask_human(question: str) -> str:
     # Simulate suspension of state
     return f"Paused run. Sent human prompt: '{question}'. Resuming..."
 
+from arete_agents.tools.memory import add_project_memory
+
 def get_native_action_tools():
-    return [propose_pr, ask_human]
+    return [propose_pr, ask_human, add_project_memory]

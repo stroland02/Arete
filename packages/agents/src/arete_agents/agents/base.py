@@ -124,6 +124,8 @@ If no issues found, return empty comments array."""
         prompt = self.system_prompt
         if pr_context.custom_rules:
             prompt += "\n\nCUSTOM RULES:\n" + "\n".join(f"- {rule}" for rule in pr_context.custom_rules)
+        if getattr(pr_context, "project_memories", None):
+            prompt += "\n\nPROJECT MEMORY:\n" + "\n".join(f"- {mem}" for mem in pr_context.project_memories)
         messages = [
             SystemMessage(content=prompt),
             HumanMessage(content=self._build_user_prompt(file, pr_context)),
