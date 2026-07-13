@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getReviewDetail, resolveSelectedInstallationIds } from "@/lib/queries";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
+import { CopyAgentPrompt } from "@/components/dashboard/copy-agent-prompt";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { AgentRunExplorer } from "@/components/dashboard/agent-run-explorer";
 
@@ -79,6 +80,15 @@ export default async function ReviewDetailPage({
     );
   }
 
+  // Paste-ready prompt for a coding agent, from the real verified findings.
+  const agentPrompt = [
+    `Fix the following ${review.findings.length} code review ${review.findings.length === 1 ? "finding" : "findings"} on ${review.repositoryFullName} (PR #${review.prNumber}):`,
+    "",
+    ...review.findings.map(
+      (f, i) => `${i + 1}. [${formatCategory(f.category)} · ${f.severity}] ${f.path}:${f.line}\n   ${f.body}`,
+    ),
+  ].join("\n");
+
   return (
     <PageReveal className="max-w-5xl space-y-6">
       <RevealItem>
@@ -97,11 +107,14 @@ export default async function ReviewDetailPage({
               PR #{review.prNumber}
             </h1>
           </div>
-          <span
-            className={`px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wide border shrink-0 ${riskBadgeClasses(review.riskLevel)}`}
-          >
-            {review.riskLevel}
-          </span>
+          <div className="flex shrink-0 items-center gap-2.5">
+            {review.findings.length > 0 && <CopyAgentPrompt prompt={agentPrompt} />}
+            <span
+              className={`px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wide border shrink-0 ${riskBadgeClasses(review.riskLevel)}`}
+            >
+              {review.riskLevel}
+            </span>
+          </div>
         </div>
       </RevealItem>
 
