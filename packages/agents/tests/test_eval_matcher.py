@@ -144,14 +144,30 @@ def test_llm_judge_sends_system_and_human_messages():
     assert "SQL injection via string formatting" in fake.last_messages[1].content
 
 
-def test_build_judge_gemini_and_anthropic_are_not_stub():
-    judge, is_stub = build_judge("gemini", gemini_api_key="k")
-    assert is_stub is False
-    assert hasattr(judge, "confirm")
+def test_build_judge_cross_tier_uses_anthropic_judge_tier(monkeypatch):
+    captured = {}
 
-    judge, is_stub = build_judge("anthropic", anthropic_api_key="k")
+    def _fake_build_anthropic_llm(api_key, tier="opus"):
+        captured["api_key"] = api_key
+        captured["tier"] = tier
+        return _FakeLLM("YES")
+
+    monkeypatch.setattr(
+        "arete_agents.llm.anthropic.build_anthropic_llm",
+        _fake_build_anthropic_llm,
+    )
+    judge, is_stub = build_judge("cross-tier", "key", "sonnet")
     assert is_stub is False
-    assert hasattr(judge, "confirm")
+    assert isinstance(judge, LLMJudge)
+    assert captured["api_key"] == "key"
+    assert captured["tier"] == "sonnet"
+
+
+def test_build_judge_old_modes_removed():
+    with pytest.raises(ValueError):
+        build_judge("gemini")
+    with pytest.raises(ValueError):
+        build_judge("anthropic")
 
 
 def test_build_judge_unknown_mode_raises():
