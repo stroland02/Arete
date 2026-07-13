@@ -75,6 +75,7 @@ model Repository {
   createdAt      DateTime     @default(now())
   installation   Installation @relation(fields: [installationId], references: [id])
   reviews        Review[]
+  agentMemories  AgentMemory[]
 
   @@unique([provider, externalId])
 }
@@ -107,6 +108,21 @@ model ReviewComment {
   category  String
   createdAt DateTime @default(now())
   review    Review   @relation(fields: [reviewId], references: [id])
+}
+
+model AgentMemory {
+  id           String       @id @default(uuid())
+  repositoryId String
+  kind         String       /// "feedback", "terminology", "infra", "project"
+  title        String
+  body         String
+  status       String       @default("active") /// "active", "archived"
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  repository   Repository   @relation(fields: [repositoryId], references: [id])
+
+  @@index([repositoryId, status])
 }
 
 /// Latest known telemetry snapshot per (installation, provider, sourceRef) —

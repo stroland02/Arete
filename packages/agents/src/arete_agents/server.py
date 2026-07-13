@@ -57,6 +57,6 @@ def review(pr: PRContext):
     return _orchestrator.run(pr)
 
 
-@app.post("/chat", response_class=PlainTextResponse)
+@app.post("/chat")
 def chat(context: Dict[str, Any]):
     return _chat_agent.reply(context)

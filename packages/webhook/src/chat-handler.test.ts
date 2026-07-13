@@ -6,6 +6,12 @@ function mockPrisma(installation: any = null) {
     PrismaClient.prototype.installation = {
       findUnique: vi.fn().mockResolvedValue(installation),
     }
+    PrismaClient.prototype.repository = {
+      findFirst: vi.fn().mockResolvedValue({ id: 'repo-1' }),
+    }
+    PrismaClient.prototype.agentMemory = {
+      create: vi.fn().mockResolvedValue({}),
+    }
     return { PrismaClient }
   })
 }
@@ -102,7 +108,7 @@ describe('handleReviewCommentEvent', () => {
     mockPrisma({ id: 'inst-1', subscriptionStatus: 'trialing', usageCount: 5 })
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
-      text: vi.fn().mockResolvedValue('Because it can leak memory.'),
+      json: vi.fn().mockResolvedValue({ reply: 'Because it can leak memory.', actions: [] }),
     })
     vi.stubGlobal('fetch', mockFetch)
     const { octokit, createReplyForReviewComment } = makeOctokit({ userType: 'Bot', body: 'Areté: consider X' })

@@ -95,7 +95,32 @@ export async function handleReviewCommentEvent(
     user_reply: payload.comment.body
   }
 
-  const reply = await runChatPipeline(context)
+  const response = await runChatPipeline(context)
+  const reply = response.reply || 'Sorry, I encountered an error formatting my response.'
+
+  // Process Agent Actions (e.g. saving memory)
+  if (response.actions && response.actions.length > 0) {
+    const repoFullName = `${payload.repository.owner.login}/${payload.repository.name}`
+    const repo = await prisma.repository.findFirst({
+      where: { fullName: repoFullName }
+    })
+    
+    if (repo) {
+      for (const action of response.actions) {
+        if (action.type === 'save_memory') {
+          await prisma.agentMemory.create({
+            data: {
+              repositoryId: repo.id,
+              kind: action.kind || 'terminology',
+              title: action.title || 'Rule',
+              body: action.body
+            }
+          })
+          console.log(`[chat-handler] Saved memory for ${repoFullName}: ${action.title}`)
+        }
+      }
+    }
+  }
 
   await (octokit as any).rest.pulls.createReplyForReviewComment({
     owner: payload.repository.owner.login,
@@ -111,7 +136,7 @@ export async function handleReviewCommentEvent(
  * pattern: a hung Python service must not hang the webhook process, so the
  * request is aborted after 120s. Exported for testing.
  */
-export async function runChatPipeline(context: any): Promise<string> {
+export async function runChatPipeline(context: any): Promise<{ reply: string, actions?: any[] }> {
   const controller = new AbortController()
   const timer = setTimeout(() => { controller.abort() }, 120_000)
 
@@ -127,7 +152,7 @@ export async function runChatPipeline(context: any): Promise<string> {
       const errorText = await res.text()
       throw new Error(`Chat Agent failed (code ${res.status}): ${errorText}`)
     }
-    return (await res.text()).trim()
+    return await res.json()
   } catch (err: any) {
     if (err.name === 'AbortError') {
       throw new Error('Chat pipeline timed out after 120s')
