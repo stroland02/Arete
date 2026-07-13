@@ -198,11 +198,17 @@ async function criticReview(finding: Finding, diff: Diff, evidence: EvidenceRow[
   code: the caller filters through the gate first; `criticReview` output is used
   only to move `uphold → kept` or `drop → dropped`, so `kept ⊆ gatePassed` holds
   structurally.
-- **Model:** a strong Claude model (Opus-class) — this is the product's
-  code-review brain. *Note:* the memory's "Fable" preference governs **my** UI
-  subagent dispatch, not the shipped product's Critic; the product Critic is a
-  separate decision (Opus-class for review quality). Model id is config, not
-  hardcoded (`SYNTH_CRITIC_MODEL`).
+- **Model — DEFER TO THE CANONICAL DESIGN.** The product's real Critic is
+  **`CriticAgent`** in the backend (`packages/agents/src/arete_agents/critic.py`,
+  already built and in `main`), specified by
+  `2026-07-12-independent-critic-stage-design.md`. It is **cross-tier**
+  (an opus-authored finding is critiqued by *sonnet* and vice-versa, reusing the
+  existing tier infra — no new model wiring, no `SYNTH_CRITIC_MODEL`), does
+  **binary keep/drop only**, and runs as an independent second gate after the
+  Synthesizer, recording `critic_dropped_count` on `ReviewResult`. (An earlier
+  draft of this bullet wrongly proposed a dashboard-side "Opus-class
+  `SYNTH_CRITIC_MODEL`" model — that is superseded; there is one Critic and it
+  lives in the agents lane.)
 - **Prompt contract:** given `{ diff, finding (agentId, category, file:line,
   rationale), evidence }`, return strict JSON `CriticVerdict`. The model judges
   *whether the finding's reasoning actually holds against the changed code* — it
@@ -216,9 +222,21 @@ async function criticReview(finding: Finding, diff: Diff, evidence: EvidenceRow[
   unavailable — verify manually"). A model outage degrades to the deterministic
   gate, never to fabrication or to dropping real findings silently.
 
-> Implementation of the live model call is the following session's connector
-> work; this spec fixes its contract, its invariants, and its tests so the
-> component and the pipeline are built against a stable interface now.
+> **Dashboard role = consume, not re-run.** The real path is: backend
+> `CriticAgent` verifies during review → the result (kept comments +
+> `dropped_count`/`critic_dropped_count`) is persisted → the dashboard *displays*
+> it (`review-projection.ts` maps a stored review into a container; the console
+> renders it). The dashboard-side `critic.ts` (`verifyHybrid`/`CriticFn`) is NOT
+> a second live model — it's the pure display/pipeline contract that encodes the
+> `kept ⊆ gatePassed ⊆ candidates` invariant and can drive a future dashboard-side
+> live view; in production it is fed by the backend's verdicts, never a separate
+> Claude call.
+>
+> **Open cross-lane follow-up (from the canonical spec §"Out of scope"):** surface
+> `dropped_count` + `critic_dropped_count` in the dashboard. Blocked on a
+> single-owner DB change — the Prisma `Review` model + `getReviewDetail` +
+> `ProjectedReview` don't carry these yet. Dashboard lane is ready to plumb them
+> through the projection → console the moment the columns land.
 
 ---
 
