@@ -1,5 +1,6 @@
 import html
 import json
+import logging
 import re
 from abc import ABC, abstractmethod
 
@@ -10,6 +11,7 @@ from arete_agents.models.pr import FileChange, PRContext
 from arete_agents.models.review import FileReview, ReviewComment
 
 MAX_PATCH_CHARS = 50_000
+MAX_TOOL_ROUNDS = 5
 
 
 def escape_for_prompt(value: str) -> str:
@@ -142,13 +144,23 @@ If no issues found, return empty comments array."""
         # Tool execution loop
         from langchain_core.messages import ToolMessage
         
+        rounds = 0
         while True:
             response = llm_with_retry.invoke(messages)
-            
+
             # If the LLM didn't request any tools, it's done reviewing
             if not response.tool_calls:
                 break
-                
+
+            rounds += 1
+            if rounds > MAX_TOOL_ROUNDS:
+                logging.warning(
+                    f"{self.agent_name} exceeded {MAX_TOOL_ROUNDS} tool-call "
+                    f"rounds reviewing {file.path}; stopping and parsing the "
+                    "last response as-is."
+                )
+                break
+
             # The LLM wants to use an MCP tool, so we append its request to the history
             messages.append(response)
             
