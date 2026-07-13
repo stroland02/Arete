@@ -1,0 +1,28 @@
+{
+  "id": "performance-blocking-io",
+  "pr": {
+    "repo": "acme/billing",
+    "pr_number": 116,
+    "title": "Notify users after batch job",
+    "description": "Sends a notification to each affected user.",
+    "files": [
+      {
+        "path": "src/main/java/com/acme/notify/NotificationSender.java",
+        "patch": "@@ -0,0 +1,11 @@\n+package com.acme.notify;\n+\n+import java.util.List;\n+\n+public class NotificationSender {\n+    public void sendAll(List<String> userIds) {\n+        for (String userId : userIds) {\n+            httpClient.post(\"/notify/\" + userId);\n+        }\n+    }\n+}\n+",
+        "additions": 11,
+        "deletions": 0
+      }
+    ]
+  },
+  "planted_defects": [
+    {
+      "id": "blockingio-001",
+      "path": "src/main/java/com/acme/notify/NotificationSender.java",
+      "line": 8,
+      "target_agent": "performance",
+      "description": "Blocking I/O inside a loop: httpClient.post is a synchronous network call issued once per user, serializing network latency across the whole userIds list instead of batching the notifications or issuing the calls concurrently/async.",
+      "severity": "warning"
+    }
+  ],
+  "clean": false
+}

@@ -1,0 +1,28 @@
+{
+  "id": "quality-shadowed-builtin",
+  "pr": {
+    "repo": "acme/reports",
+    "pr_number": 118,
+    "title": "Render invoice line",
+    "description": "Formats a total with its currency for display.",
+    "files": [
+      {
+        "path": "app/services/invoice_formatter.rb",
+        "patch": "@@ -0,0 +1,7 @@\n+class InvoiceFormatter\n+  def render(total, currency)\n+    format = \"%.2f\"\n+    line = format(format, total)\n+    \"#{line} #{currency}\"\n+  end\n+end\n+",
+        "additions": 7,
+        "deletions": 0
+      }
+    ]
+  },
+  "planted_defects": [
+    {
+      "id": "shadowedbuiltin-001",
+      "path": "app/services/invoice_formatter.rb",
+      "line": 3,
+      "target_agent": "quality",
+      "description": "Shadowed builtin: the local variable 'format' shadows Kernel#format in this method scope, so the next line's 'format(format, total)' tries to call the String local variable as a method and raises NoMethodError instead of invoking the intended formatter.",
+      "severity": "warning"
+    }
+  ],
+  "clean": false
+}

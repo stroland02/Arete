@@ -1,0 +1,28 @@
+{
+  "id": "bizlogic-rounding-error",
+  "pr": {
+    "repo": "acme/billing",
+    "pr_number": 123,
+    "title": "Compute refund amount",
+    "description": "Computes a partial refund in cents.",
+    "files": [
+      {
+        "path": "src/main/java/com/acme/billing/RefundCalculator.java",
+        "patch": "@@ -0,0 +1,8 @@\n+package com.acme.billing;\n+\n+public class RefundCalculator {\n+    public long refundCents(long totalCents, double refundRate) {\n+        double refund = totalCents * refundRate;\n+        return (long) refund;\n+    }\n+}\n+",
+        "additions": 8,
+        "deletions": 0
+      }
+    ]
+  },
+  "planted_defects": [
+    {
+      "id": "rounding-001",
+      "path": "src/main/java/com/acme/billing/RefundCalculator.java",
+      "line": 6,
+      "target_agent": "business_logic",
+      "description": "Currency rounding error: casting 'refund' to long truncates toward zero instead of rounding to the nearest cent, so every refund with a fractional cent remainder systematically underpays the customer by up to a cent.",
+      "severity": "warning"
+    }
+  ],
+  "clean": false
+}
