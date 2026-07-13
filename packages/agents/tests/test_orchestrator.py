@@ -649,3 +649,121 @@ def test_run_completes_when_context_mapping_raises_unexpectedly(cyclic_llm, samp
 
     assert result is not None
     assert result.pr_context == sample_pr
+
+
+def _grounding_pr(patch: str):
+    from arete_agents.models.pr import FileChange, PRContext
+
+    return PRContext(
+        repo="acme/api",
+        pr_number=1,
+        title="t",
+        description="",
+        files=[FileChange(path="src/auth.py", patch=patch, additions=1, deletions=0)],
+    )
+
+
+def _grounding_result(comments: list[ReviewComment]) -> ReviewResult:
+    return ReviewResult(
+        pr_context=_grounding_pr(""),
+        file_reviews=[FileReview(path="src/auth.py", comments=comments, summary="s")],
+        overall_summary="s",
+        risk_level="low",
+    )
+
+
+def test_apply_grounding_keeps_comment_citing_a_real_line(cyclic_llm):
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    patch = "@@ -1,2 +1,2 @@\n line1\n+line2\n"
+    pr = _grounding_pr(patch)
+    result = _grounding_result([
+        ReviewComment(path="src/auth.py", line=2, body="ok", severity="info", category="quality"),
+    ])
+
+    orch = ReviewOrchestrator(llm=cyclic_llm)
+    out = orch._apply_grounding(pr, result)
+
+    assert len(out.file_reviews[0].comments) == 1
+    assert out.citation_dropped_count == 0
+
+
+def test_apply_grounding_drops_comment_citing_a_fabricated_line(cyclic_llm):
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    patch = "@@ -1,2 +1,2 @@\n line1\n+line2\n"
+    pr = _grounding_pr(patch)
+    result = _grounding_result([
+        ReviewComment(path="src/auth.py", line=999, body="ok", severity="info", category="quality"),
+    ])
+
+    orch = ReviewOrchestrator(llm=cyclic_llm)
+    out = orch._apply_grounding(pr, result)
+
+    assert len(out.file_reviews[0].comments) == 0
+    assert out.citation_dropped_count == 1
+
+
+def test_apply_grounding_keeps_security_comment_with_real_quoted_evidence(cyclic_llm):
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    patch = "@@ -1,1 +1,1 @@\n+result = dangerous_eval(user_input)\n"
+    pr = _grounding_pr(patch)
+    result = _grounding_result([
+        ReviewComment(
+            path="src/auth.py", line=1,
+            body="Calls `dangerous_eval(user_input)` on untrusted input.",
+            severity="error", category="security",
+        ),
+    ])
+
+    orch = ReviewOrchestrator(llm=cyclic_llm)
+    out = orch._apply_grounding(pr, result)
+
+    assert len(out.file_reviews[0].comments) == 1
+    assert out.security_evidence_dropped_count == 0
+
+
+def test_apply_grounding_drops_security_comment_without_quoted_evidence_on_parsed_patch(cyclic_llm):
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    patch = "@@ -1,1 +1,1 @@\n+result = something_safe(user_input)\n"
+    pr = _grounding_pr(patch)
+    result = _grounding_result([
+        ReviewComment(
+            path="src/auth.py", line=1,
+            body="This looks like a SQL injection risk.",
+            severity="error", category="security",
+        ),
+    ])
+
+    orch = ReviewOrchestrator(llm=cyclic_llm)
+    out = orch._apply_grounding(pr, result)
+
+    assert len(out.file_reviews[0].comments) == 0
+    assert out.security_evidence_dropped_count == 1
+
+
+def test_apply_grounding_skips_all_gates_when_patch_unparseable(cyclic_llm):
+    """Both gates must be skipped together when the patch can't be parsed —
+    including for a security comment with no quoted evidence at all, which
+    would otherwise be wrongly dropped by Gate 2 running independently of
+    Gate 1's parse result. This is the exact regression this plan's Task 3
+    note warns about."""
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    pr = _grounding_pr("not a real diff")
+    result = _grounding_result([
+        ReviewComment(path="src/auth.py", line=999, body="ok", severity="info", category="quality"),
+        ReviewComment(
+            path="src/auth.py", line=1, body="SQL injection.",
+            severity="error", category="security",
+        ),
+    ])
+
+    orch = ReviewOrchestrator(llm=cyclic_llm)
+    out = orch._apply_grounding(pr, result)
+
+    assert len(out.file_reviews[0].comments) == 2
+    assert out.citation_dropped_count == 0
+    assert out.security_evidence_dropped_count == 0

@@ -19,6 +19,7 @@ from arete_agents.agents.security import SecurityAgent
 from arete_agents.agents.test_coverage import TestCoverageAgent
 from arete_agents.context_map import ensure_indexed
 from arete_agents.critic import CriticAgent
+from arete_agents.grounding import has_quoted_evidence, valid_lines_for_patch
 from arete_agents.llm.base import ROLE_KEYS
 from arete_agents.models.pr import FileChange, PRContext
 from arete_agents.models.review import FileReview, ReviewResult
@@ -354,6 +355,7 @@ class ReviewOrchestrator:
             final_result = _fallback_synthesize(pr, raw_reviews)
 
         final_result = self._apply_critic(pr, final_result)
+        final_result = self._apply_grounding(pr, final_result)
 
         # "failed" only when every agent errored (total outage) — partial
         # failures still produced a real (if incomplete) review.
@@ -407,6 +409,48 @@ class ReviewOrchestrator:
 
         result.file_reviews = new_file_reviews
         result.critic_dropped_count = len(drop_keys)
+        return result
+
+    def _apply_grounding(self, pr: PRContext, result: ReviewResult) -> ReviewResult:
+        """Deterministic (non-LLM) final gate, run after the Critic stage.
+        Every surviving comment's line number must exist in its file's real
+        diff (any category); security comments must additionally quote real
+        code from that diff. Both checks for a given file are skipped
+        together when that file's patch can't be parsed at all (pass
+        every comment through unfiltered) — a bug in this gate must never
+        make a review worse than not having it, and Gate 2 must never run
+        against a diff we don't trust ourselves to have parsed correctly.
+        A security comment with no quoted evidence, on a patch that DID
+        parse, is dropped outright — the one deliberate fail-closed
+        exception to that rule."""
+        patches_by_path = {f.path: f.patch for f in pr.files}
+
+        citation_dropped = 0
+        security_evidence_dropped = 0
+        new_file_reviews = []
+
+        for fr in result.file_reviews:
+            patch = patches_by_path.get(fr.path)
+            valid_lines = valid_lines_for_patch(patch) if patch is not None else None
+
+            if valid_lines is None:
+                new_file_reviews.append(fr)
+                continue
+
+            kept = []
+            for c in fr.comments:
+                if c.line not in valid_lines:
+                    citation_dropped += 1
+                    continue
+                if c.category == "security" and not has_quoted_evidence(c.body, patch):
+                    security_evidence_dropped += 1
+                    continue
+                kept.append(c)
+            new_file_reviews.append(FileReview(path=fr.path, comments=kept, summary=fr.summary))
+
+        result.file_reviews = new_file_reviews
+        result.citation_dropped_count = citation_dropped
+        result.security_evidence_dropped_count = security_evidence_dropped
         return result
 
     def run(self, pr: PRContext) -> ReviewResult:
