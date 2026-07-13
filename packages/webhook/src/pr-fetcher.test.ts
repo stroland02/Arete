@@ -155,3 +155,67 @@ describe('fetchPRContext', () => {
     expect(result.telemetryConnectors).toEqual([])
   })
 })
+
+function makeContentAwareOctokit(fileContents: Record<string, string>) {
+  return {
+    rest: {
+      pulls: {
+        get: vi.fn().mockResolvedValue({ data: mockPR }),
+        listFiles: vi.fn().mockResolvedValue({ data: [] }),
+      },
+      repos: {
+        getContent: vi.fn().mockImplementation(async ({ path }: { path: string }) => {
+          if (path in fileContents) {
+            return {
+              data: {
+                type: 'file',
+                encoding: 'base64',
+                content: Buffer.from(fileContents[path]).toString('base64'),
+              },
+            }
+          }
+          const err: any = new Error('Not Found')
+          err.status = 404
+          throw err
+        }),
+      },
+    },
+  }
+}
+
+describe('fetchAgentsDoc (via fetchPRContext)', () => {
+  it('returns AGENTS.md content when present', async () => {
+    const octokit = makeContentAwareOctokit({ 'AGENTS.md': '# Project conventions\nUse tabs.' })
+    const result = await fetchPRContext(octokit as any, 'acme', 'api', 42)
+    expect(result.repoConventions).toBe('# Project conventions\nUse tabs.')
+  })
+
+  it('falls back to CONVENTIONS.md when AGENTS.md is absent', async () => {
+    const octokit = makeContentAwareOctokit({ 'CONVENTIONS.md': 'Use spaces.' })
+    const result = await fetchPRContext(octokit as any, 'acme', 'api', 42)
+    expect(result.repoConventions).toBe('Use spaces.')
+  })
+
+  it('leaves repoConventions undefined when neither file exists', async () => {
+    const octokit = makeContentAwareOctokit({})
+    const result = await fetchPRContext(octokit as any, 'acme', 'api', 42)
+    expect(result.repoConventions).toBeUndefined()
+  })
+
+  it('fetches AGENTS.md from the base branch SHA, never the PR head SHA', async () => {
+    const octokit = makeContentAwareOctokit({ 'AGENTS.md': 'convention text' })
+    await fetchPRContext(octokit as any, 'acme', 'api', 42)
+    const calls = (octokit.rest.repos.getContent as any).mock.calls
+    const agentsCall = calls.find((call: any[]) => call[0].path === 'AGENTS.md')
+    expect(agentsCall).toBeDefined()
+    expect(agentsCall[0].ref).toBe('basesha-trusted')
+    expect(agentsCall[0].ref).not.toBe('headsha-attacker-controlled')
+  })
+
+  it('truncates an oversized AGENTS.md to the 20,000 character cap', async () => {
+    const hugeContent = 'x'.repeat(30_000)
+    const octokit = makeContentAwareOctokit({ 'AGENTS.md': hugeContent })
+    const result = await fetchPRContext(octokit as any, 'acme', 'api', 42)
+    expect(result.repoConventions?.length).toBe(20_000)
+  })
+})
