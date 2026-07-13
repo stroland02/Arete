@@ -89,7 +89,7 @@ export default async function MasterGridPage({
                     {Object.entries(snapshot.metrics).map(([key, value]) => (
                       <span
                         key={key}
-                        className="text-xs font-mono px-2 py-1 rounded-lg bg-white/5 border border-border-subtle text-content-secondary"
+                        className="text-xs font-mono px-2 py-1 rounded-lg bg-content-primary/5 border border-border-subtle text-content-secondary"
                       >
                         {key}: {value}
                       </span>

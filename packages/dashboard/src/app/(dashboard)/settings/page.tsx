@@ -100,7 +100,7 @@ export default async function SettingsPage({
                       {billing.usageCount} / {FREE_TIER_REVIEW_LIMIT}
                     </span>
                   </div>
-                  <div className="h-2 rounded-full bg-white/5 border border-border-subtle overflow-hidden">
+                  <div className="h-2 rounded-full bg-content-primary/5 border border-border-subtle overflow-hidden">
                     <div
                       className={`h-full rounded-full ${
                         billing.usageCount >= FREE_TIER_REVIEW_LIMIT ? "bg-accent-danger" : "bg-accent-primary"

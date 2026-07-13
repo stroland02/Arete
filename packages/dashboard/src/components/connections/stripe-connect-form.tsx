@@ -21,7 +21,7 @@ export function StripeConnectForm({ installationId }: { installationId: string }
         autoComplete="off"
         placeholder="rk_live_..."
         required
-        className="rounded-xl border border-border-default bg-white/[0.02] px-4 py-2.5 text-sm text-content-primary placeholder:text-content-muted focus:outline-none focus:ring-2 focus:ring-accent-primary/50"
+        className="rounded-xl border border-border-default bg-content-primary/[0.02] px-4 py-2.5 text-sm text-content-primary placeholder:text-content-muted focus:outline-none focus:ring-2 focus:ring-accent-primary/50"
       />
       {state.error && <p className="text-xs text-accent-danger">{state.error}</p>}
       <button

@@ -119,7 +119,7 @@ export function SynthesizerConsole({
               Scripted replay of your last review workflow — not a live model
             </li>
             {steps.map((step) => (
-              <motion.li key={step.text} variants={fadeSlideUp} className="rounded-md px-2 py-1.5 hover:bg-white/[0.03]">
+              <motion.li key={step.text} variants={fadeSlideUp} className="rounded-md px-2 py-1.5 hover:bg-content-primary/[0.03]">
                 <div className="flex items-start gap-2.5">
                   <span className={cn("shrink-0 leading-4", TONE_CLASS[step.tone])} aria-hidden>
                     {step.marker}
@@ -138,7 +138,7 @@ export function SynthesizerConsole({
           </motion.ol>
         ) : (
           <div className="mx-auto flex h-full max-w-md flex-col items-center justify-center gap-5 px-4 text-center">
-            <div className="rounded-2xl border border-border-default bg-white/5 p-3 text-accent-primary">
+            <div className="rounded-2xl border border-border-default bg-content-primary/5 p-3 text-accent-primary">
               <IconHourglassHigh size={24} stroke={1.5} />
             </div>
 
@@ -160,7 +160,7 @@ export function SynthesizerConsole({
                 "Areté reviews it automatically — the workflow streams here",
               ].map((step, i) => (
                 <li key={step} className="flex items-start gap-2.5">
-                  <span className="mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border-default bg-white/5 font-mono text-[10px] text-content-secondary">
+                  <span className="mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border-default bg-content-primary/5 font-mono text-[10px] text-content-secondary">
                     {i + 1}
                   </span>
                   <span className="text-xs leading-5 text-content-secondary">{step}</span>

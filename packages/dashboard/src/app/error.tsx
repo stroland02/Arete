@@ -22,20 +22,20 @@ export default function Error({
 
   return (
     <div className="flex min-h-[60vh] items-center justify-center animate-in fade-in duration-500">
-      <div className="glass-panel max-w-md w-full p-8 flex flex-col items-center gap-6 text-center bg-white/5 border border-white/10 rounded-2xl">
-        <div className="p-4 bg-rose-500/10 rounded-2xl border border-rose-500/20">
-          <IconAlertTriangle className="w-8 h-8 text-rose-400" />
+      <div className="glass-panel max-w-md w-full p-8 flex flex-col items-center gap-6 text-center bg-content-primary/5 border border-border-default rounded-2xl">
+        <div className="p-4 bg-accent-danger/10 rounded-2xl border border-accent-danger/25">
+          <IconAlertTriangle className="w-8 h-8 text-accent-danger" />
         </div>
         <div className="flex flex-col gap-2">
           <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400">
             Something went wrong
           </h2>
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-content-muted">
             We couldn&apos;t load the dashboard data. This is usually temporary
             &mdash; try again in a moment.
           </p>
           {error.digest && (
-            <p className="text-xs text-slate-500 font-mono">Error digest: {error.digest}</p>
+            <p className="text-xs text-content-muted font-mono">Error digest: {error.digest}</p>
           )}
         </div>
         <button
