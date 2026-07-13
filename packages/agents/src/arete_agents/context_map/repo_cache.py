@@ -50,13 +50,18 @@ def ensure_repo_checked_out(
     repo_dir = _repo_dir(root, installation_id, repo_slug)
     authed_url = _with_token(clone_url, installation_token)
 
-    if (repo_dir / ".git").exists():
-        command = ["git", "-C", str(repo_dir), "pull", "--ff-only", authed_url]
-    else:
-        repo_dir.parent.mkdir(parents=True, exist_ok=True)
-        command = ["git", "clone", "--depth", "1", authed_url, str(repo_dir)]
+    try:
+        if (repo_dir / ".git").exists():
+            command = ["git", "-C", str(repo_dir), "pull", "--ff-only", authed_url]
+        else:
+            repo_dir.parent.mkdir(parents=True, exist_ok=True)
+            command = ["git", "clone", "--depth", "1", authed_url, str(repo_dir)]
 
-    result = subprocess.run(command, capture_output=True, text=True, timeout=120)
+        result = subprocess.run(command, capture_output=True, text=True, timeout=120)
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        raise RepoCacheError(
+            f"git operation failed for {repo_slug}: {_redact(str(exc))}"
+        ) from exc
 
     if result.returncode != 0:
         raise RepoCacheError(

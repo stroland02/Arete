@@ -76,3 +76,37 @@ def test_ensure_repo_checked_out_raises_and_redacts_token_on_git_failure(tmp_pat
             )
     assert "ghs_abc123" not in str(exc_info.value)
     assert "x-access-token:***@" in str(exc_info.value)
+
+
+def test_ensure_repo_checked_out_wraps_subprocess_timeout(tmp_path):
+    import subprocess as subprocess_module
+
+    root = tmp_path / "repos"
+    with patch(
+        "arete_agents.context_map.repo_cache.subprocess.run",
+        side_effect=subprocess_module.TimeoutExpired(cmd="git clone", timeout=120),
+    ):
+        with pytest.raises(RepoCacheError):
+            ensure_repo_checked_out(
+                clone_url="https://github.com/acme/api.git",
+                installation_token="ghs_abc123",
+                installation_id=42,
+                repo_slug="acme/api",
+                root=root,
+            )
+
+
+def test_ensure_repo_checked_out_wraps_mkdir_oserror(tmp_path):
+    root = tmp_path / "repos"
+    with patch(
+        "arete_agents.context_map.repo_cache.Path.mkdir",
+        side_effect=OSError("disk full"),
+    ):
+        with pytest.raises(RepoCacheError):
+            ensure_repo_checked_out(
+                clone_url="https://github.com/acme/api.git",
+                installation_token="ghs_abc123",
+                installation_id=42,
+                repo_slug="acme/api",
+                root=root,
+            )
