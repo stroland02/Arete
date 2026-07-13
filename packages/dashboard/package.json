@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@arete/db": "workspace:*",
+    "@arete/topology": "workspace:*",
     "@prisma/adapter-pg": "^7.8.0",
     "@radix-ui/react-slot": "^1.3.0",
     "@radix-ui/react-tooltip": "^1.2.12",

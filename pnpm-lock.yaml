@@ -13,6 +13,9 @@ importers:
       '@arete/db':
         specifier: workspace:*
         version: link:../db
+      '@arete/topology':
+        specifier: workspace:*
+        version: link:../topology
       '@prisma/adapter-pg':
         specifier: ^7.8.0
         version: 7.8.0
@@ -105,6 +108,18 @@ importers:
       undici:
         specifier: ^7.16.0
         version: 7.28.0
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.1
+        version: 22.20.1
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.0
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
+  packages/topology:
     devDependencies:
       '@types/node':
         specifier: ^22.10.1
