@@ -4,7 +4,7 @@ import sys
 
 from arete_agents.agents.chat import ChatAgent
 from arete_agents.config import get_settings
-from arete_agents.llm.base import get_llms_by_role
+from arete_agents.llm.base import get_llms_by_role, role_tiers
 from arete_agents.models.pr import PRContext
 from arete_agents.orchestrator import ReviewOrchestrator
 
@@ -43,7 +43,7 @@ def main() -> None:
             print(result)
         else:
             pr = PRContext.model_validate(context_dict)
-            orch = ReviewOrchestrator(llm=llms)
+            orch = ReviewOrchestrator(llm=llms, tiers=role_tiers(settings))
             result = orch.run(pr)
             print(result.model_dump_json())
     except Exception as exc:

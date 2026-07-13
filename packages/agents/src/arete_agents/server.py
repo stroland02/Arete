@@ -6,7 +6,7 @@ from fastapi.responses import PlainTextResponse
 
 from arete_agents.agents.chat import ChatAgent
 from arete_agents.config import get_settings
-from arete_agents.llm.base import get_llms_by_role
+from arete_agents.llm.base import get_llms_by_role, role_tiers
 from arete_agents.models.pr import PRContext
 from arete_agents.orchestrator import ReviewOrchestrator
 
@@ -48,7 +48,7 @@ except Exception:
     )
     raise
 _llms = get_llms_by_role(_settings)
-_orchestrator = ReviewOrchestrator(llm=_llms)
+_orchestrator = ReviewOrchestrator(llm=_llms, tiers=role_tiers(_settings))
 _chat_agent = ChatAgent(llm=_llms["chat"])
 
 
