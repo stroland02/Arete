@@ -31,5 +31,32 @@ def ask_human(question: str) -> str:
 
 from arete_agents.tools.memory import add_project_memory
 
+class SilenceAsNoiseInput(BaseModel):
+    issue_id: str = Field(description="The unique identifier of the issue/comment.")
+    reason: str = Field(description="Full text explanation of why this is considered noise (e.g., intended framework behavior).")
+
+@tool("silence_as_noise", args_schema=SilenceAsNoiseInput)
+def silence_as_noise(issue_id: str, reason: str) -> str:
+    """
+    Permanently silence an issue that is proven to be a false positive or intended behavior.
+    Silenced issues will never be posted to GitHub.
+    """
+    # Simulate API call to DB to update noiseState
+    return f"Issue {issue_id} silenced permanently. Reason: {reason}"
+
+class PlaceUnderObservationInput(BaseModel):
+    issue_id: str = Field(description="The unique identifier of the issue/comment.")
+    escalate_on: str = Field(description="The trigger type: 'events_per_minute' or 'additional_events'.")
+    threshold: int = Field(description="The threshold count that must be crossed to trigger escalation.")
+    reason: str = Field(description="Explanation of why this is suspicious but not yet proven to be an incident.")
+
+@tool("place_under_observation", args_schema=PlaceUnderObservationInput)
+def place_under_observation(issue_id: str, escalate_on: str, threshold: int, reason: str) -> str:
+    """
+    Place a suspicious (but unproven) issue in a watch state. It stays quiet until the escalation trigger trips.
+    """
+    # Simulate API call to DB to update noiseState and triggers
+    return f"Issue {issue_id} placed under observation. Escalate if {escalate_on} >= {threshold}. Reason: {reason}"
+
 def get_native_action_tools():
-    return [propose_pr, ask_human, add_project_memory]
+    return [propose_pr, ask_human, add_project_memory, silence_as_noise, place_under_observation]
