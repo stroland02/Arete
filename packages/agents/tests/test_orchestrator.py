@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from langchain_core.messages import AIMessage
 
@@ -66,6 +66,7 @@ def test_orchestrator_survives_agent_exception(sample_pr):
 
     from arete_agents.orchestrator import ReviewOrchestrator
     boom = MagicMock()
+    boom.bind_tools.return_value = boom
     boom.with_retry.return_value = boom
     boom.invoke.side_effect = RuntimeError("boom")
     result = ReviewOrchestrator(llm=boom).run(sample_pr)
@@ -80,6 +81,7 @@ def test_all_agents_fail_sets_analysis_status_failed(sample_pr):
     risk_level behavior is unchanged (still 'low' with zero comments)."""
     from arete_agents.orchestrator import ReviewOrchestrator
     boom = MagicMock()
+    boom.bind_tools.return_value = boom
     boom.with_retry.return_value = boom
     boom.invoke.side_effect = RuntimeError("total LLM outage")
     result = ReviewOrchestrator(llm=boom).run(sample_pr)
@@ -113,6 +115,7 @@ def test_partial_agent_failure_keeps_analysis_status_complete(sample_pr):
         raise RuntimeError("provider outage for this agent")
 
     mock = MagicMock()
+    mock.bind_tools.return_value = mock
     mock.with_retry.return_value = mock
     mock.invoke.side_effect = fake_invoke
 
@@ -225,6 +228,7 @@ def test_synthesizer_invalid_json_falls_back_without_rerunning_agents(sample_pr)
     invalid_synth_response = "Sorry, I can't produce JSON right now."
 
     mock = MagicMock()
+    mock.bind_tools.return_value = mock
     mock.with_retry.return_value = mock
     # sample_pr has 1 file -> 6 specialist-agent calls, then 1 synthesizer
     # call. The synthesizer call is always chronologically last because the
@@ -450,6 +454,7 @@ def test_critic_drops_comment_that_survived_synthesizer(sample_pr):
         return AIMessage(content=agent_response)
 
     mock = MagicMock()
+    mock.bind_tools.return_value = mock
     mock.with_retry.return_value = mock
     mock.invoke.side_effect = fake_invoke
 
@@ -481,6 +486,7 @@ def test_critic_keeps_comment_it_approves(sample_pr):
         return AIMessage(content=agent_response)
 
     mock = MagicMock()
+    mock.bind_tools.return_value = mock
     mock.with_retry.return_value = mock
     mock.invoke.side_effect = fake_invoke
 
@@ -504,6 +510,7 @@ def test_critic_routes_opus_authored_comment_to_sonnet_critic(sample_pr):
         '"dropped_count": 0}'
     )
     agent_llm = MagicMock()
+    agent_llm.bind_tools.return_value = agent_llm
     agent_llm.with_retry.return_value = agent_llm
     agent_llm.invoke.return_value = AIMessage(content='{"comments": [], "summary": "clean"}')
 
@@ -553,6 +560,7 @@ def test_critic_call_failure_keeps_comments_uncritiqued(sample_pr):
         return AIMessage(content=agent_response)
 
     mock = MagicMock()
+    mock.bind_tools.return_value = mock
     mock.with_retry.return_value = mock
     mock.invoke.side_effect = fake_invoke
 
@@ -576,6 +584,7 @@ def test_orchestrator_accepts_explicit_tiers(sample_pr):
         '"dropped_count": 0}'
     )
     agent_llm = MagicMock()
+    agent_llm.bind_tools.return_value = agent_llm
     agent_llm.with_retry.return_value = agent_llm
     agent_llm.invoke.return_value = AIMessage(content='{"comments": [], "summary": "clean"}')
 
@@ -626,3 +635,17 @@ def test_large_patch_is_truncated(cyclic_llm):
     human_content = call_args[1].content  # HumanMessage is index 1
     assert len(human_content) < len(big_patch)
     assert "[Diff truncated:" in human_content
+
+
+def test_run_completes_when_context_mapping_raises_unexpectedly(cyclic_llm, sample_pr):
+    """ensure_indexed already fails open internally, but this proves the
+    invariant holds even if it raises something unexpected — context-
+    mapping must never be able to fail a review."""
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    orch = ReviewOrchestrator(llm=cyclic_llm)
+    with patch("arete_agents.orchestrator.ensure_indexed", side_effect=RuntimeError("boom")):
+        result = orch.run(sample_pr)
+
+    assert result is not None
+    assert result.pr_context == sample_pr

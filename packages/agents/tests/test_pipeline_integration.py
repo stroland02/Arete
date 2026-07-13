@@ -111,6 +111,7 @@ def make_router_llm(*, synth_ok: bool = True, agents_raise: bool = False) -> Mag
         raise AssertionError(f"Unrouted system prompt: {system_content[:120]!r}")
 
     mock.invoke.side_effect = _invoke
+    mock.bind_tools.return_value = mock
     mock.with_retry.return_value = mock
     return mock
 

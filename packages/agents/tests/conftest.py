@@ -50,5 +50,6 @@ def cyclic_llm():
         AIMessage(content=r)
         for r in [SEC, PERF, QUAL, TEST_COV, DEPLOY, BIZ] * 20
     ]
+    mock.bind_tools.return_value = mock
     mock.with_retry.return_value = mock
     return mock

@@ -10,6 +10,7 @@ from arete_agents.models.review import FileReview
 def make_mock_llm(json_response: str):
     mock = MagicMock()
     mock.invoke.return_value = AIMessage(content=json_response)
+    mock.bind_tools.return_value = mock
     mock.with_retry.return_value = mock
     return mock
 
@@ -385,6 +386,33 @@ def test_other_agents_do_not_include_telemetry_block():
     assert "pr_telemetry" not in human_content
 
 
+def test_review_file_caps_tool_call_rounds_and_does_not_hang():
+    """Regression test for the unbounded tool-execution loop: a mock LLM
+    whose .invoke() always returns a response with (fake) tool_calls must
+    not cause review_file() to loop forever."""
+    from arete_agents.agents.security import SecurityAgent
+
+    mock_llm = MagicMock()
+    mock_llm.bind_tools.return_value = mock_llm
+    mock_llm.with_retry.return_value = mock_llm
+
+    looping_response = AIMessage(
+        content="not done yet",
+        tool_calls=[{"name": "ask_human", "args": {"question": "?"}, "id": "call_1"}],
+    )
+    mock_llm.invoke.return_value = looping_response
+
+    agent = SecurityAgent(llm=mock_llm)
+    result = agent.review_file(make_file(), make_pr())
+
+    assert isinstance(result, FileReview)
+    # The mock always returns tool_calls, so the loop must have hit a cap
+    # rather than run forever — bound the number of invoke() calls tightly
+    # enough to prove a real cap exists, loosely enough not to overfit an
+    # exact constant.
+    assert mock_llm.invoke.call_count <= 10
+
+
 def test_business_logic_agent_returns_file_review():
     from arete_agents.agents.business_logic import BusinessLogicAgent
     mock_llm = make_mock_llm(
@@ -401,3 +429,76 @@ def test_business_logic_agent_returns_file_review():
     )
     result = agent.review_file(file, make_pr([file]))
     assert result.comments[0].category == "business_logic"
+
+
+from unittest.mock import patch
+
+from langchain_core.messages import ToolMessage
+from langchain_core.tools import tool
+
+from arete_agents.agents.security import SecurityAgent
+
+
+def test_agent_calls_context_map_tool_then_finalizes(sample_pr):
+    @tool
+    def search_graph(query: str) -> str:
+        """Search the codebase graph."""
+        return "def login(user): ..."
+
+    llm = MagicMock()
+    llm.invoke.side_effect = [
+        AIMessage(content="", tool_calls=[
+            {"name": "search_graph", "args": {"query": "login"}, "id": "c1"}
+        ]),
+        AIMessage(content='{"comments": [], "summary": "checked call sites"}'),
+    ]
+    llm.bind_tools.return_value = llm
+    llm.with_retry.return_value = llm
+
+    sample_pr.installation_id = 42
+    with patch(
+        "arete_agents.context_map.tools.get_context_map_tools",
+        return_value=[search_graph],
+    ):
+        review = SecurityAgent(llm).review_file(sample_pr.files[0], sample_pr)
+
+    assert review.summary == "checked call sites"
+    assert llm.invoke.call_count == 2  # one tool round + final answer
+
+    # Prove the wiring, not just that the mocked LLM produced two responses:
+    # `search_graph` must actually have been passed to bind_tools...
+    bound_tools = llm.bind_tools.call_args[0][0]
+    assert any(t.name == "search_graph" for t in bound_tools)
+
+    # ...and REALLY invoked (not swallowed by the "Tool not found" fallback
+    # the pre-existing loop uses for unbound tool names). If the context-map
+    # tool weren't wired into `mcp_tools`, this would instead be
+    # "Error: Tool 'search_graph' not found."
+    messages = llm.invoke.call_args[0][0]
+    tool_messages = [m for m in messages if isinstance(m, ToolMessage)]
+    assert len(tool_messages) == 1
+    assert tool_messages[0].content == "def login(user): ..."
+
+    # And the system prompt must carry the shared guidance block.
+    system_prompt = messages[0].content
+    assert "CODEBASE CONTEXT TOOLS" in system_prompt
+
+
+def test_agent_single_shot_and_no_guidance_when_no_index(sample_pr):
+    llm = MagicMock()
+    llm.invoke.side_effect = [
+        AIMessage(content='{"comments": [], "summary": "no index"}'),
+    ]
+    llm.bind_tools.return_value = llm
+    llm.with_retry.return_value = llm
+
+    with patch(
+        "arete_agents.context_map.tools.get_context_map_tools",
+        return_value=[],
+    ):
+        review = SecurityAgent(llm).review_file(sample_pr.files[0], sample_pr)
+
+    assert review.summary == "no index"
+    assert llm.invoke.call_count == 1
+    system_prompt = llm.invoke.call_args[0][0][0].content
+    assert "CODEBASE CONTEXT TOOLS" not in system_prompt
