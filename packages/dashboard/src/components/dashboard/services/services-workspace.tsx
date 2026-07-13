@@ -3,7 +3,9 @@
 import { useState, useEffect, type ReactNode } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { IconArrowRight, IconChevronDown, IconCopy, IconGitBranch, IconGitPullRequest, IconHourglassHigh, IconPlus, IconLoader2, IconCheck } from "@tabler/icons-react";
+import { IconChevronDown, IconCopy, IconGitBranch, IconGitPullRequest, IconHourglassHigh, IconPlus, IconLoader2, IconCheck } from "@tabler/icons-react";
+import { SynthesizerSummary } from "../agents/synthesizer/synthesizer-summary";
+import { SAMPLE_WORKING_ID } from "@/lib/issue-pipeline/sample-containers";
 
 /**
  * Services "Triage Inbox" workspace. Production signals from CONNECTED
@@ -558,6 +560,15 @@ function IssuePanel({ issue, isReplaying }: { issue: Issue | null; isReplaying: 
           transition={{ duration: 0.3 }}
           className="flex min-h-0 flex-1 flex-col"
         >
+          {/* Big-picture Synthesizer projection (spec §3 Services variant): the
+              same container/stream the Agents console shows, condensed, with the
+              deep-link into the detailed Agents view. Streams the sample
+              container for now (labelled Sample) — the whole Services surface is
+              sample until Issue↔Container ids unify at the connector step. */}
+          <div className="shrink-0 border-b border-border-subtle p-3">
+            <SynthesizerSummary containerId={SAMPLE_WORKING_ID} />
+          </div>
+
           {/* Repository target */}
           <div className="shrink-0 space-y-1.5 border-b border-border-subtle px-3 py-2.5">
             {/* Repo selector → Connections: the direct path to install/manage

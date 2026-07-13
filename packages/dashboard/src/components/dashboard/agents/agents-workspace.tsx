@@ -18,6 +18,8 @@ export interface AgentsWorkspaceProps {
     prNumber: number;
     riskLevel: string;
   } | null;
+  /** Focused container from the Services→Agents deep-link (?container=). */
+  containerId?: string | null;
 }
 
 /**
@@ -33,6 +35,7 @@ export function AgentsWorkspace({
   hasReviews,
   activity,
   latestReview = null,
+  containerId = null,
 }: AgentsWorkspaceProps) {
   const [selectedAgentId, setSelectedAgentId] = useState<string>(AGENTS[0].id);
   const [configAgentId, setConfigAgentId] = useState<string | null>(null);
@@ -55,8 +58,9 @@ export function AgentsWorkspace({
           onConfigure={setConfigAgentId}
         />
         {/* Center pane streams the focused container's Synthesizer transcript.
-            No deep-link param yet → null shows the onboarding + sample opt-in. */}
-        <SynthesizerConsole containerId={null} />
+            containerId comes from the Services→Agents deep-link; null shows the
+            onboarding + "watch a sample review" opt-in. */}
+        <SynthesizerConsole containerId={containerId} />
         <PrPanel
           hasReviews={hasReviews}
           latestReview={latestReview}

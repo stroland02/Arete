@@ -12,14 +12,14 @@ export const dynamic = "force-dynamic";
 export default async function AgentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ installation?: string }>;
+  searchParams: Promise<{ installation?: string; container?: string }>;
 }) {
   const session = await auth();
   if (!session?.user) {
     redirect("/login");
   }
 
-  const { installation } = await searchParams;
+  const { installation, container } = await searchParams;
   const installationIds = resolveSelectedInstallationIds(
     session.installations ?? [],
     installation
@@ -47,7 +47,7 @@ export default async function AgentsPage({
       )}
       totalFindings={commentsByCategory.reduce((sum, c) => sum + c.count, 0)}
       hasReviews={hasReviews}
-      activity={activity}
+      containerId={container ?? null}
       latestReview={
         latest
           ? {
