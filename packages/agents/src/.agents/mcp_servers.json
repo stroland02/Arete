@@ -1,0 +1,11 @@
+{
+  "superlog": {
+    "transport": "http",
+    "target": "https://api.superlog.sh/mcp",
+    "status": "Needs authentication",
+    "token": null,
+    "allowed_agents": [
+      "SecurityAgent"
+    ]
+  }
+}

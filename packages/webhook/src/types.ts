@@ -60,4 +60,9 @@ export interface ReviewResult {
   risk_level: 'low' | 'medium' | 'high' | 'critical'
   total_comments: number
   analysis_status?: 'complete' | 'failed'
+  actions?: AgentAction[]
 }
+
+export type AgentAction = 
+  | { type: 'save_memory', kind: string, title: string, body: string }
+  | { type: 'ask_human', question: string }

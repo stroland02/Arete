@@ -21,6 +21,12 @@ class ChatAgent:
             "on a Pull Request. Respond to the user's reply in a helpful, conversational manner using markdown."
         )
         
+        from arete_agents.skills.loader import load_installed_skills
+        skills = load_installed_skills()
+        if skills:
+            system_prompt += "\n\nYou have been equipped with the following skills/guidelines:\n"
+            system_prompt += "\n\n---\n\n".join(skills)
+        
         # Metadata and conversational fields are escaped to prevent a malicious
         # title/comment/reply (e.g. containing "</user_reply>") from breaking
         # out of its delimiter and injecting fake instructions. diff_hunk is
@@ -43,7 +49,18 @@ File: {escape_for_prompt(file_path)}
 {escape_for_prompt(user_reply)}
 </user_reply>
 
-Please provide a helpful and conversational response to the user's reply."""
+Please provide a helpful and conversational response to the user's reply.
+If the user provides a repository-specific rule or correction that should be remembered for future PRs, you must include an action to save memory. If you need a human to clarify something before you can proceed with a review, you must include an ask_human action.
+Return your response ONLY as valid JSON matching this schema:
+{{
+  "reply": "<your markdown conversational response>",
+  "actions": [
+    {{ "type": "save_memory", "kind": "terminology", "title": "<short title>", "body": "<the rule to remember>" }},
+    {{ "type": "ask_human", "question": "<question for human>" }}
+  ]
+}}
+Only include the 'actions' array if you actually need to perform an action.
+"""
 
         messages = [
             SystemMessage(content=system_prompt),
@@ -52,4 +69,12 @@ Please provide a helpful and conversational response to the user's reply."""
         
         llm_with_retry = self._llm.with_retry(stop_after_attempt=2)
         response = llm_with_retry.invoke(messages)
-        return response.content if isinstance(response.content, str) else ""
+        
+        import json
+        import re
+        raw_str = response.content if isinstance(response.content, str) else ""
+        clean = re.sub(r"```(?:json)?\n?|```$", "", raw_str, flags=re.MULTILINE).strip()
+        try:
+            return json.loads(clean)
+        except Exception:
+            return {"reply": raw_str, "actions": []}

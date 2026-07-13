@@ -6,11 +6,29 @@ from fastapi.responses import PlainTextResponse
 
 from arete_agents.agents.chat import ChatAgent
 from arete_agents.config import get_settings
-from arete_agents.llm.base import get_llms_by_role
+from arete_agents.llm.base import get_llms_by_role, role_tiers
 from arete_agents.models.pr import PRContext
 from arete_agents.orchestrator import ReviewOrchestrator
 
 app = FastAPI()
+
+# OpenTelemetry Auto-Instrumentation
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import Resource, SERVICE_NAME
+
+# Set up the tracer provider with service name
+resource = Resource(attributes={SERVICE_NAME: "arete-agents"})
+provider = TracerProvider(resource=resource)
+
+# Export traces to the OTel Collector in the infra stack
+# The infra docker-compose sets up the collector at localhost:4317
+otlp_exporter = OTLPSpanExporter(endpoint="http://localhost:4317", insecure=True)
+processor = BatchSpanProcessor(otlp_exporter)
+provider.add_span_processor(processor)
+trace.set_tracer_provider(provider)
 
 # Module-level singletons — LangGraph graph compilation is expensive;
 # one orchestrator and one chat agent serve all requests. Fail-fast on
@@ -30,7 +48,7 @@ except Exception:
     )
     raise
 _llms = get_llms_by_role(_settings)
-_orchestrator = ReviewOrchestrator(llm=_llms)
+_orchestrator = ReviewOrchestrator(llm=_llms, tiers=role_tiers(_settings))
 _chat_agent = ChatAgent(llm=_llms["chat"])
 
 
@@ -39,6 +57,6 @@ def review(pr: PRContext):
     return _orchestrator.run(pr)
 
 
-@app.post("/chat", response_class=PlainTextResponse)
+@app.post("/chat")
 def chat(context: Dict[str, Any]):
     return _chat_agent.reply(context)

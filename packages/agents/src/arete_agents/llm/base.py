@@ -33,6 +33,12 @@ ROLE_KEYS: tuple[str, ...] = (
     "ci_diagnostics",
     "synthesizer",
     "chat",
+    # Fixed-tier critic roles (independent verification stage) — always
+    # opus/sonnet respectively, deliberately not env-configurable via
+    # Settings, so both critic tiers are always available regardless of
+    # how the 9 roles above are configured. See ReviewOrchestrator._apply_critic.
+    "critic_opus",
+    "critic_sonnet",
 )
 
 
@@ -48,6 +54,9 @@ def role_tiers(settings: Settings) -> dict[str, str]:
         "ci_diagnostics": settings.ci_tier,
         "synthesizer": settings.synthesizer_tier,
         "chat": settings.chat_tier,
+        # Fixed, not settings-derived — see ROLE_KEYS comment above.
+        "critic_opus": "opus",
+        "critic_sonnet": "sonnet",
     }
 
 

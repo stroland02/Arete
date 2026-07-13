@@ -4,12 +4,24 @@ import sys
 
 from arete_agents.agents.chat import ChatAgent
 from arete_agents.config import get_settings
-from arete_agents.llm.base import get_llms_by_role
+from arete_agents.llm.base import get_llms_by_role, role_tiers
 from arete_agents.models.pr import PRContext
 from arete_agents.orchestrator import ReviewOrchestrator
 
 
 def main() -> None:
+    # Safely intercept 'skills' and 'mcp' commands to avoid interfering with other agents
+    if len(sys.argv) > 1:
+        cmd = sys.argv[1]
+        if cmd == "skills":
+            from arete_agents.skills.cli import handle_skills_cli
+            handle_skills_cli(sys.argv[2:])
+            return
+        elif cmd == "mcp":
+            from arete_agents.mcp.cli import handle_mcp_cli
+            handle_mcp_cli(sys.argv[2:])
+            return
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", default="review", choices=["review", "chat"])
     args, unknown = parser.parse_known_args()
@@ -31,7 +43,7 @@ def main() -> None:
             print(result)
         else:
             pr = PRContext.model_validate(context_dict)
-            orch = ReviewOrchestrator(llm=llms)
+            orch = ReviewOrchestrator(llm=llms, tiers=role_tiers(settings))
             result = orch.run(pr)
             print(result.model_dump_json())
     except Exception as exc:

@@ -1,0 +1,14 @@
+{
+  "baseline": {
+    "strategy": "baseline",
+    "total_processing_ms": 53605.252757769165,
+    "api_requests_fired": 21446,
+    "peak_memory_mb": 921.3252757769158
+  },
+  "advanced": {
+    "strategy": "advanced_infra",
+    "total_processing_ms": 3042.3300999696303,
+    "api_requests_fired": 236,
+    "peak_memory_mb": 5.0
+  }
+}

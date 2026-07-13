@@ -71,6 +71,15 @@ Other files changed in this same PR (peripheral context only — review ONLY the
                 f"\n[Diff truncated: showing first {MAX_PATCH_CHARS} chars only]"
             )
 
+        predecessor_block = ""
+        if pr_context.predecessor_handoff_notes or pr_context.predecessor_root_cause:
+            predecessor_block = "\n<predecessor_context>\nThis is a follow-up review on a previously flagged PR. Use this context from the prior agent review pass to avoid repeating past mistakes or feedback:\n"
+            if pr_context.predecessor_root_cause:
+                predecessor_block += f"Prior Root Cause:\n{escape_for_prompt(pr_context.predecessor_root_cause)}\n"
+            if pr_context.predecessor_handoff_notes:
+                predecessor_block += f"Handoff Notes:\n{escape_for_prompt(pr_context.predecessor_handoff_notes)}\n"
+            predecessor_block += "</predecessor_context>\n"
+
         return f"""Review this pull request file for {self.agent_name} issues.
 
 <pr_metadata>
@@ -78,7 +87,7 @@ PR: "{escape_for_prompt(pr_context.title)}" in {escape_for_prompt(pr_context.rep
 Description: {escape_for_prompt(pr_context.description)}
 File: {escape_for_prompt(file.path)} ({file.language})
 </pr_metadata>
-{self._build_pr_manifest(file, pr_context)}{self._build_telemetry_block(pr_context)}
+{predecessor_block}{self._build_pr_manifest(file, pr_context)}{self._build_telemetry_block(pr_context)}
 <diff>
 {patch}{truncation_note}
 </diff>
@@ -115,12 +124,57 @@ If no issues found, return empty comments array."""
         prompt = self.system_prompt
         if pr_context.custom_rules:
             prompt += "\n\nCUSTOM RULES:\n" + "\n".join(f"- {rule}" for rule in pr_context.custom_rules)
+        if getattr(pr_context, "project_memories", None):
+            prompt += "\n\nPROJECT MEMORY:\n" + "\n".join(f"- {mem}" for mem in pr_context.project_memories)
         messages = [
             SystemMessage(content=prompt),
             HumanMessage(content=self._build_user_prompt(file, pr_context)),
         ]
-        llm_with_retry = self._llm.with_retry(stop_after_attempt=2)
-        response = llm_with_retry.invoke(messages)
+        
+        # Load authorized tools specifically for this agent type
+        from arete_agents.mcp.client import get_mcp_tools_for_agent
+        from arete_agents.tools.actions import get_native_action_tools
+        mcp_tools = get_mcp_tools_for_agent(self.agent_name)
+        mcp_tools.extend(get_native_action_tools())
+        
+        # Bind the tools if the server is authenticated and has tools available
+        llm_with_tools = self._llm.bind_tools(mcp_tools) if mcp_tools else self._llm
+        llm_with_retry = llm_with_tools.with_retry(stop_after_attempt=2)
+        
+        # Tool execution loop
+        from langchain_core.messages import ToolMessage
+        
+        while True:
+            response = llm_with_retry.invoke(messages)
+            
+            # If the LLM didn't request any tools, it's done reviewing
+            if not response.tool_calls:
+                break
+                
+            # The LLM wants to use an MCP tool, so we append its request to the history
+            messages.append(response)
+            
+            # Execute each requested tool
+            for tool_call in response.tool_calls:
+                tool_name = tool_call["name"]
+                tool_args = tool_call["args"]
+                
+                # Find the actual tool function from our loaded mcp_tools
+                tool_instance = next((t for t in mcp_tools if t.name == tool_name), None)
+                
+                if tool_instance:
+                    try:
+                        # Execute the tool and get the string result
+                        result = tool_instance.invoke(tool_args)
+                    except Exception as e:
+                        result = f"Error executing tool: {e}"
+                else:
+                    result = f"Error: Tool '{tool_name}' not found."
+                    
+                # Append the tool's result back to the messages so the LLM can read it
+                messages.append(ToolMessage(content=str(result), tool_call_id=tool_call["id"]))
+        
+        # Once the loop exits, response.content holds the final JSON
         raw = response.content if isinstance(response.content, str) else ""
         comments, summary = self._parse_response(file.path, raw)
         return FileReview(path=file.path, comments=comments, summary=summary)
