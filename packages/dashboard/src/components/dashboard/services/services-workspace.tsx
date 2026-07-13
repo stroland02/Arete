@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { IconChevronDown, IconCircleCheck, IconCopy, IconX } from "@tabler/icons-react";
+import { IconChevronDown, IconCircleCheck, IconCopy, IconHourglassHigh, IconX } from "@tabler/icons-react";
 import { CONNECTORS } from "@/lib/connector-catalog";
 import { ConnectorIcon } from "@/components/connections/connector-icon";
 
@@ -215,10 +215,16 @@ const SEV_PILL: Record<Severity, string> = {
   medium: "text-accent-info border-accent-info/30 bg-accent-info/10",
 };
 const SEV_LABEL: Record<Severity, string> = { critical: "Critical", high: "High", medium: "Medium" };
-const TONE_DOT: Record<string, string> = {
-  critical: "bg-accent-danger", high: "bg-accent-warning", medium: "bg-accent-info",
-  good: "bg-accent-success", accent: "bg-accent-primary",
+const TONE_TEXT: Record<string, string> = {
+  critical: "text-accent-danger", high: "text-accent-warning", medium: "text-accent-info",
+  good: "text-accent-success", accent: "text-accent-primary",
 };
+
+function markerForTone(tone: Issue["timeline"][number]["tone"]): string {
+  if (tone === "good") return "✓";
+  if (tone === "accent") return "◈";
+  return "●"; // critical/high/medium — the telemetry source's own detection
+}
 
 /**
  * Who "said" a given timeline entry, for the team-chat transcript — derived
@@ -373,123 +379,92 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
         </div>
       </section>
 
-      {/* Center: full issue detail — evidence, proposed fix, activity, actions */}
-      <section className="flex min-h-0 flex-1 flex-col" aria-label="Issue detail">
-        {!selected ? (
-          <>
-            <header className="flex h-10 shrink-0 items-center border-b border-border-subtle px-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Issue</h2>
-            </header>
-            <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center">
-              <p className="text-sm text-content-muted">
-                {hasServices
-                  ? "Select an issue from a service on the left to see what happened and the proposed fix."
-                  : "Connect a tool on the left to start compiling issues here."}
-              </p>
-            </div>
-          </>
-        ) : (
-          <IssueDetail issue={selected} />
-        )}
+      {/* Center: Synthesizer console, scoped to the selected issue — same
+          shape as the /agents Synthesizer console, so the verification
+          narrative for a given issue/PR is the same whether you're looking
+          at it here or on the Agents page. */}
+      <section className="flex min-h-0 flex-1 flex-col" aria-label="Synthesizer">
+        <IssueSynthesizerConsole issue={selected} />
       </section>
 
-      {/* Right: per-issue team chat — scripted from the SAME agents/telemetry
-          in the issue's own timeline, never a free-floating assistant. */}
-      <section className="flex min-h-0 flex-1 flex-col" aria-label="Team chat">
-        <TeamChat issue={selected} />
+      {/* Right: the issue's own detail — agents involved, evidence, proposed
+          fix — collapsible sections + pinned verification actions, same
+          shape as the /agents PR panel. */}
+      <section className="flex min-h-0 flex-1 flex-col" aria-label="Issue panel">
+        <IssuePanel issue={selected} />
       </section>
     </div>
   );
 }
 
-function IssueDetail({ issue }: { issue: Issue }) {
+/**
+ * Center pane: the Synthesizer's verification narrative for the selected
+ * issue. Structurally identical to the /agents Synthesizer console (header +
+ * scripted transcript + pinned, disabled chat input) — reusing the same
+ * shape is deliberate: it's the same Synthesizer, just focused on one issue
+ * instead of the whole account, so the verification record for a given
+ * issue/PR reads the same on both pages.
+ */
+function IssueSynthesizerConsole({ issue }: { issue: Issue | null }) {
   return (
     <>
-      <header className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-3">
-        <span className="min-w-0 truncate font-mono text-[12px] text-content-secondary">
-          {issue.serviceId} <span className="text-content-muted">·</span> issue
-        </span>
-        <span className={`shrink-0 rounded-full border px-1.5 py-px text-[9.5px] font-bold uppercase tracking-wide ${SEV_PILL[issue.severity]}`}>{SEV_LABEL[issue.severity]}</span>
+      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border-subtle px-3">
+        <span className={`h-1.5 w-1.5 rounded-full ${issue ? "bg-accent-success" : "bg-content-muted/40"}`} aria-hidden />
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Synthesizer</h2>
+        <span className="rounded-full border border-accent-info/25 bg-accent-info/10 px-1.5 py-px text-[10px] font-medium text-accent-info">Preview</span>
+        {issue && <span className="ml-auto truncate text-[11px] text-content-muted">focused on {issue.title}</span>}
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        <div className="flex flex-col gap-4">
-          <div>
-            <h3 className="font-serif text-lg font-semibold leading-tight text-content-primary">{issue.title}</h3>
-            <p className="mt-1 font-mono text-[11px] text-content-muted">{issue.source} · {issue.where} · {issue.occurrences} · {issue.lastSeen}</p>
-          </div>
-
-          <div>
-            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-content-muted">What happened</p>
-            <p className="mb-2 text-[13px] leading-relaxed text-content-secondary">{issue.summary}</p>
-            <div className="overflow-hidden rounded-lg border border-border-default bg-surface-2">
-              <div className="border-b border-border-subtle px-3 py-1.5 font-mono text-[11px] text-content-muted">{issue.evidence.file}</div>
-              <pre className="overflow-x-auto px-3 py-2 font-mono text-[11.5px] leading-relaxed text-content-secondary">
-                {issue.evidence.rows.map(([k, v], idx) => (
-                  <div key={idx}>
-                    <span className="text-content-muted">{k}</span> = <span className={/null|missing|theft|500/.test(v) ? "text-accent-danger" : ""}>{v}</span>
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+        {issue ? (
+          <ol className="space-y-0.5 font-mono text-xs">
+            <li className="pb-2 text-[10px] uppercase tracking-wider text-content-muted">
+              Scripted replay of this issue&apos;s verification — not a live model
+            </li>
+            {issue.timeline.map((t, idx) => (
+              <li key={idx} className="rounded-md px-2 py-1.5 hover:bg-content-primary/[0.03]">
+                <div className="flex items-start gap-2.5">
+                  <span className={`shrink-0 leading-4 ${TONE_TEXT[t.tone]}`} aria-hidden>{markerForTone(t.tone)}</span>
+                  <div className="min-w-0">
+                    <p className="text-content-secondary">{t.text}</p>
+                    <p className="mt-0.5 text-[11px] leading-4 text-content-muted">{t.when}</p>
                   </div>
-                ))}
-              </pre>
+                </div>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <div className="mx-auto flex h-full max-w-md flex-col items-center justify-center gap-5 px-4 text-center">
+            <div className="rounded-2xl border border-border-default bg-content-primary/5 p-3 text-accent-primary">
+              <IconHourglassHigh size={24} stroke={1.5} />
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-sm font-semibold text-content-primary">The Synthesizer verifies every issue</p>
+              <p className="text-xs leading-5 text-content-muted">
+                Pick a service and an issue on the left to see how the Synthesizer verified it — the
+                same verification record whether you look at it here or on the Agents page.
+              </p>
             </div>
           </div>
-
-          <div>
-            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-content-muted">
-              Proposed fix <span className="font-normal normal-case tracking-normal text-accent-info">· verified against the diff</span>
-            </p>
-            <div className="overflow-hidden rounded-lg border border-border-default bg-surface-2">
-              <div className="border-b border-border-subtle px-3 py-1.5 font-mono text-[11px] text-content-muted">{issue.fix.file}</div>
-              <pre className="overflow-x-auto py-1 font-mono text-[11.5px] leading-relaxed">
-                {issue.fix.rows.map((r, idx) => (
-                  <div
-                    key={idx}
-                    className={`flex gap-2 px-2 ${r.kind === "add" ? "bg-accent-success/10" : r.kind === "remove" ? "bg-accent-danger/10" : ""}`}
-                  >
-                    <span className={`select-none ${r.kind === "add" ? "text-accent-success" : r.kind === "remove" ? "text-accent-danger" : "text-content-muted/50"}`}>
-                      {r.kind === "add" ? "+" : r.kind === "remove" ? "-" : " "}
-                    </span>
-                    <span className={r.kind === "context" ? "text-content-muted" : "text-content-secondary"}>{r.text}</span>
-                  </div>
-                ))}
-              </pre>
-            </div>
-          </div>
-
-          <div>
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-content-muted">Activity</p>
-            <ol>
-              {issue.timeline.map((t, idx) => (
-                <li key={idx} className="grid grid-cols-[16px_1fr] gap-2.5 pb-3">
-                  <div className="flex flex-col items-center">
-                    <span className={`mt-0.5 h-2.5 w-2.5 rounded-full ${TONE_DOT[t.tone]}`} />
-                    {idx < issue.timeline.length - 1 && <span className="mt-1 w-0.5 flex-1 bg-border-default" />}
-                  </div>
-                  <div>
-                    <p className="text-[12px] text-content-secondary">{t.text}</p>
-                    <p className="mt-0.5 font-mono text-[10.5px] text-content-muted">{t.when}</p>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          </div>
-        </div>
+        )}
       </div>
 
-      <footer className="shrink-0 space-y-2 border-t border-border-subtle px-3 py-3">
-        <button type="button" className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent-primary px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-accent-primary/90">
-          <IconCircleCheck size={14} stroke={2} /> Approve &amp; open PR
-        </button>
-        <div className="grid grid-cols-2 gap-1.5">
-          <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-1.5 text-[11px] font-semibold text-content-secondary transition-colors hover:bg-content-primary/5">
-            <IconCopy size={13} stroke={1.75} /> Copy patch
-          </button>
-          <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-1.5 text-[11px] font-semibold text-content-secondary transition-colors hover:bg-content-primary/5">
-            <IconX size={13} stroke={1.75} /> Dismiss
-          </button>
+      {/* Pinned input strip — deliberately disabled: no live model yet, same
+          honesty pattern as the /agents Synthesizer console. */}
+      <footer className="shrink-0 border-t border-border-subtle px-3 py-2.5">
+        <div className="flex items-center gap-2 rounded-lg border border-border-default bg-surface-2/60 px-3 py-2">
+          <span className="font-mono text-xs text-content-muted" aria-hidden>&gt;</span>
+          <input
+            type="text"
+            disabled
+            placeholder="Ask the Synthesizer…"
+            aria-label="Ask the Synthesizer (live chat coming soon)"
+            title="Live chat coming soon"
+            className="w-full cursor-not-allowed bg-transparent font-mono text-xs text-content-primary placeholder:text-content-muted/70 focus:outline-none"
+          />
         </div>
-        <p className="text-[10px] leading-4 text-content-muted/80">
-          You review and merge on your own terms — Areté never changes your code without approval.
+        <p className="mt-1.5 px-1 font-mono text-[10px] text-content-muted/80">
+          preview shell · live chat coming soon{issue ? ` · focused on ${issue.serviceId}` : ""}
         </p>
       </footer>
     </>
@@ -497,71 +472,119 @@ function IssueDetail({ issue }: { issue: Issue }) {
 }
 
 /**
- * Right-pane per-issue team chat. HONESTY: this is a scripted transcript of
- * the issue's own timeline, re-narrated as a conversation between whichever
- * telemetry source / specialist agent / Synthesizer actually touched it
- * (see speakerFor above) — not a live model. The input is disabled, same
- * pattern as the Synthesizer console, until a real chat agent is wired up.
+ * Right pane: the issue's concrete detail — agents involved, evidence, the
+ * proposed fix — as collapsible sections, plus the pinned verification
+ * actions. Same shape as the /agents PR panel (header + sections + footer).
  */
-function TeamChat({ issue }: { issue: Issue | null }) {
-  const team = issue ? teamFor(issue) : [];
-
+function IssuePanel({ issue }: { issue: Issue | null }) {
   return (
     <>
-      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border-subtle px-3">
-        <span className={`h-1.5 w-1.5 rounded-full ${issue ? "bg-accent-success" : "bg-content-muted/40"}`} aria-hidden />
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Team chat</h2>
-        <span className="rounded-full border border-accent-info/25 bg-accent-info/10 px-1.5 py-px text-[10px] font-medium text-accent-info">Preview</span>
+      <header className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Issue</h2>
+        {issue && (
+          <span className={`rounded-full border px-1.5 py-px text-[9.5px] font-bold uppercase tracking-wide ${SEV_PILL[issue.severity]}`}>{SEV_LABEL[issue.severity]}</span>
+        )}
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-        {!issue ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 px-2 text-center">
-            <p className="text-xs leading-5 text-content-muted">
-              Select an issue to see the agents working on it and what they found.
+      {!issue ? (
+        <div className="flex min-h-0 flex-1 items-center justify-center px-4 text-center">
+          <p className="text-sm text-content-muted">Select an issue to see its details here.</p>
+        </div>
+      ) : (
+        <>
+          <div className="shrink-0 border-b border-border-subtle px-3 py-2.5">
+            <h3 className="text-sm font-semibold leading-snug text-content-primary">{issue.title}</h3>
+            <p className="mt-1 font-mono text-[10.5px] text-content-muted">
+              {issue.serviceId} · {issue.where} · {issue.occurrences} · {issue.lastSeen}
             </p>
           </div>
-        ) : (
-          <>
-            <div className="mb-3 flex flex-wrap gap-1.5">
-              {team.map((name) => (
-                <span key={name} className="rounded-full border border-border-default bg-surface-2 px-2 py-0.5 text-[10.5px] font-medium text-content-secondary">
-                  {name}
-                </span>
-              ))}
-            </div>
-            <p className="mb-2 text-[10px] uppercase tracking-wider text-content-muted">
-              Scripted from this issue&apos;s activity — not a live model
-            </p>
-            <ol className="space-y-2">
-              {issue.timeline.map((t, idx) => (
-                <li key={idx} className="rounded-lg border border-border-subtle bg-surface-2/60 px-2.5 py-2">
-                  <p className="text-[10px] font-semibold text-content-muted">{speakerFor(t.tone, issue)}</p>
-                  <p className="mt-0.5 text-[12px] leading-relaxed text-content-secondary">{t.text}</p>
-                  <p className="mt-1 font-mono text-[10px] text-content-muted/80">{t.when}</p>
-                </li>
-              ))}
-            </ol>
-          </>
-        )}
-      </div>
 
-      <footer className="shrink-0 border-t border-border-subtle px-3 py-2.5">
-        <div className="flex items-center gap-2 rounded-lg border border-border-default bg-surface-2/60 px-3 py-2">
-          <span className="font-mono text-xs text-content-muted" aria-hidden>&gt;</span>
-          <input
-            type="text"
-            disabled
-            placeholder="Ask the team about this issue…"
-            aria-label="Ask the team about this issue (live chat coming soon)"
-            title="Live chat coming soon"
-            className="w-full cursor-not-allowed bg-transparent font-mono text-xs text-content-primary placeholder:text-content-muted/70 focus:outline-none"
-          />
-        </div>
-        <p className="mt-1.5 px-1 font-mono text-[10px] text-content-muted/80">
-          preview shell · live chat coming soon
-        </p>
-      </footer>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <PanelSection title="Agents involved">
+              <div className="flex flex-wrap gap-1.5 px-1">
+                {teamFor(issue).map((name) => (
+                  <span key={name} className="rounded-full border border-border-default bg-surface-2 px-2 py-0.5 text-[10.5px] font-medium text-content-secondary">
+                    {name}
+                  </span>
+                ))}
+              </div>
+            </PanelSection>
+
+            <PanelSection title="Evidence">
+              <div className="mx-1 overflow-hidden rounded-lg border border-border-default bg-surface-2">
+                <div className="border-b border-border-subtle px-2.5 py-1.5 font-mono text-[10.5px] text-content-muted">{issue.evidence.file}</div>
+                <pre className="overflow-x-auto px-2.5 py-2 font-mono text-[11px] leading-relaxed text-content-secondary">
+                  {issue.evidence.rows.map(([k, v], idx) => (
+                    <div key={idx}>
+                      <span className="text-content-muted">{k}</span> = <span className={/null|missing|theft|500/.test(v) ? "text-accent-danger" : ""}>{v}</span>
+                    </div>
+                  ))}
+                </pre>
+              </div>
+            </PanelSection>
+
+            <PanelSection title="Proposed fix">
+              <div className="mx-1 overflow-hidden rounded-lg border border-border-default bg-surface-2">
+                <div className="border-b border-border-subtle px-2.5 py-1.5 font-mono text-[10.5px] text-content-muted">{issue.fix.file}</div>
+                <pre className="overflow-x-auto py-1 font-mono text-[11px] leading-relaxed">
+                  {issue.fix.rows.map((r, idx) => (
+                    <div
+                      key={idx}
+                      className={`flex gap-2 px-2 ${r.kind === "add" ? "bg-accent-success/10" : r.kind === "remove" ? "bg-accent-danger/10" : ""}`}
+                    >
+                      <span className={`select-none ${r.kind === "add" ? "text-accent-success" : r.kind === "remove" ? "text-accent-danger" : "text-content-muted/50"}`}>
+                        {r.kind === "add" ? "+" : r.kind === "remove" ? "-" : " "}
+                      </span>
+                      <span className={r.kind === "context" ? "text-content-muted" : "text-content-secondary"}>{r.text}</span>
+                    </div>
+                  ))}
+                </pre>
+              </div>
+            </PanelSection>
+          </div>
+
+          <footer className="shrink-0 space-y-2 border-t border-border-subtle px-3 py-3">
+            <button type="button" className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent-primary px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-accent-primary/90">
+              <IconCircleCheck size={14} stroke={2} /> Approve &amp; open PR
+            </button>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-1.5 text-[11px] font-semibold text-content-secondary transition-colors hover:bg-content-primary/5">
+                <IconCopy size={13} stroke={1.75} /> Copy patch
+              </button>
+              <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-1.5 text-[11px] font-semibold text-content-secondary transition-colors hover:bg-content-primary/5">
+                <IconX size={13} stroke={1.75} /> Dismiss
+              </button>
+            </div>
+            <p className="text-[10px] leading-4 text-content-muted/80">
+              You review and merge on your own terms — Areté never changes your code without approval.
+            </p>
+          </footer>
+        </>
+      )}
     </>
+  );
+}
+
+function PanelSection({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(true);
+
+  return (
+    <div className="border-b border-border-subtle">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-content-muted transition-colors hover:text-content-secondary"
+      >
+        <IconChevronDown
+          size={12}
+          stroke={2}
+          className={`shrink-0 transition-transform duration-150 ${!open ? "-rotate-90" : ""}`}
+          aria-hidden
+        />
+        {title}
+      </button>
+      {open && <div className="px-2 pb-3">{children}</div>}
+    </div>
   );
 }
