@@ -295,91 +295,118 @@ class ReviewOrchestrator:
         return workflow.compile()
 
     def _execute_agent_review(self, state: ReviewTaskState) -> dict:
+        from opentelemetry import trace
+        tracer = trace.get_tracer(__name__)
+        
         pr = state["pr"]
         file = state["file"]
         agent_name = state["agent_name"]
 
-        agent = None
-        if agent_name == "CIAgent":
-            agent = CIAgent(self._llms["ci_diagnostics"])
-        else:
-            for a in self._agents:
-                if a.agent_name == agent_name:
-                    agent = a
-                    break
+        with tracer.start_as_current_span(
+            f"agent_review:{agent_name}",
+            attributes={
+                "pr_number": pr.pr_number,
+                "file_path": file.path,
+                "agent_name": agent_name,
+            }
+        ) as span:
+            agent = None
+            if agent_name == "CIAgent":
+                agent = CIAgent(self._llms["ci_diagnostics"])
+            else:
+                for a in self._agents:
+                    if a.agent_name == agent_name:
+                        agent = a
+                        break
 
-        if not agent:
-            return {
-                "raw_reviews": [FileReview(
-                    path=file.path,
-                    comments=[],
-                    summary=f"Unknown agent: {agent_name}",
-                )],
-                "agent_failures": 1,
-            }
+            if not agent:
+                span.record_exception(ValueError(f"Unknown agent: {agent_name}"))
+                return {
+                    "raw_reviews": [FileReview(
+                        path=file.path,
+                        comments=[],
+                        summary=f"Unknown agent: {agent_name}",
+                    )],
+                    "agent_failures": 1,
+                }
 
-        try:
-            result = agent.review_file(file, pr)
-            return {
-                "raw_reviews": [result],
-                "noise_decisions": result.noise_decisions,
-                "agent_successes": 1,
-            }
-        except Exception as exc:
-            return {
-                "raw_reviews": [FileReview(
-                    path=file.path,
-                    comments=[],
-                    summary=f"{agent.agent_name} error: {exc}",
-                )],
-                "agent_failures": 1,
-            }
+            try:
+                result = agent.review_file(file, pr)
+                span.set_attribute("comment_count", len(result.comments))
+                return {
+                    "raw_reviews": [result],
+                    "noise_decisions": result.noise_decisions,
+                    "agent_successes": 1,
+                }
+            except Exception as exc:
+                span.record_exception(exc)
+                return {
+                    "raw_reviews": [FileReview(
+                        path=file.path,
+                        comments=[],
+                        summary=f"{agent.agent_name} error: {exc}",
+                    )],
+                    "agent_failures": 1,
+                }
 
     def _synthesize_reviews(self, state: GraphState) -> dict:
+        from opentelemetry import trace
+        tracer = trace.get_tracer(__name__)
+        
         pr = state["pr"]
         raw_reviews = state.get("raw_reviews", [])
         
-        if not raw_reviews:
-            empty_result = ReviewResult(
-                pr_context=pr,
-                file_reviews=[],
-                overall_summary="No files changed.",
-                risk_level="low",
-            )
-            empty_result.verdict, empty_result.verdict_reason = decide_verdict(empty_result)
-            return {"final_result": empty_result}
+        with tracer.start_as_current_span(
+            "synthesize_reviews",
+            attributes={
+                "pr_number": pr.pr_number,
+                "raw_review_count": len(raw_reviews)
+            }
+        ) as span:
+            if not raw_reviews:
+                empty_result = ReviewResult(
+                    pr_context=pr,
+                    file_reviews=[],
+                    overall_summary="No files changed.",
+                    risk_level="low",
+                )
+                empty_result.verdict, empty_result.verdict_reason = decide_verdict(empty_result)
+                return {"final_result": empty_result}
 
-        try:
-            final_result = self.synthesizer.synthesize(pr, raw_reviews)
-        except Exception as exc:
-            # Catch synthesis failures (e.g. the LLM returned invalid JSON)
-            # here, rather than letting them bubble up to run()'s outer
-            # except. That outer handler re-runs every specialist agent from
-            # scratch, doubling LLM cost/latency for a failure that has
-            # nothing to do with the agents themselves. We already have all
-            # the raw per-agent reviews in hand, so fall back to a blind
-            # merge of them directly.
-            logging.warning(
-                f"Synthesizer failed: {exc}. Falling back to blind merge of "
-                "already-gathered agent reviews (no agent LLM calls re-issued)."
-            )
-            final_result = _fallback_synthesize(pr, raw_reviews)
+            try:
+                final_result = self.synthesizer.synthesize(pr, raw_reviews)
+            except Exception as exc:
+                # Catch synthesis failures (e.g. the LLM returned invalid JSON)
+                # here, rather than letting them bubble up to run()'s outer
+                # except. That outer handler re-runs every specialist agent from
+                # scratch, doubling LLM cost/latency for a failure that has
+                # nothing to do with the agents themselves. We already have all
+                # the raw per-agent reviews in hand, so fall back to a blind
+                # merge of them directly.
+                logging.warning(
+                    f"Synthesizer failed: {exc}. Falling back to blind merge of "
+                    "already-gathered agent reviews (no agent LLM calls re-issued)."
+                )
+                span.record_exception(exc)
+                final_result = _fallback_synthesize(pr, raw_reviews)
 
-        final_result = self._apply_critic(pr, final_result)
-        final_result = self._apply_grounding(pr, final_result)
-        final_result = self._apply_noise_decisions(final_result, state.get("noise_decisions", []))
+            final_result = self._apply_critic(pr, final_result)
+            final_result = self._apply_grounding(pr, final_result)
+            final_result = self._apply_noise_decisions(final_result, state.get("noise_decisions", []))
+            span.set_attribute("final_risk_level", final_result.risk_level)
+            span.set_attribute("critic_dropped_count", final_result.critic_dropped_count)
 
-        # "failed" only when every agent errored (total outage) — partial
-        # failures still produced a real (if incomplete) review.
-        if state.get("agent_failures", 0) > 0 and state.get("agent_successes", 0) == 0:
-            final_result.analysis_status = "failed"
+            # "failed" only when every agent errored (total outage) — partial
+            # failures still produced a real (if incomplete) review.
+            if state.get("agent_failures", 0) > 0 and state.get("agent_successes", 0) == 0:
+                final_result.analysis_status = "failed"
 
-        # Deterministic risk-tiered verdict — computed LAST, after grounding
-        # (which can drop comments) and after the failed-status assignment
-        # above, so it reflects the final analysis_status and risk_level.
-        final_result.verdict, final_result.verdict_reason = decide_verdict(final_result)
+            # Deterministic risk-tiered verdict — computed LAST, after grounding
+            # (which can drop comments) and after the failed-status assignment
+            # above, so it reflects the final analysis_status and risk_level.
+            final_result.verdict, final_result.verdict_reason = decide_verdict(final_result)
 
-        return {"final_result": final_result}
+            return {"final_result": final_result}
 
     def _apply_critic(self, pr: PRContext, result: ReviewResult) -> ReviewResult:
         """Independent second gate on the Synthesizer's output. Every
