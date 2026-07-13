@@ -148,6 +148,18 @@ def test_review_result_analysis_status_defaults_to_complete(sample_pr):
     assert result.analysis_status == "complete"
 
 
+def test_review_result_critic_dropped_count_defaults_to_zero(sample_pr):
+    """Additive field: existing constructors that don't pass
+    critic_dropped_count keep working and get 0."""
+    result = ReviewResult(
+        pr_context=sample_pr,
+        file_reviews=[],
+        overall_summary="ok",
+        risk_level="low",
+    )
+    assert result.critic_dropped_count == 0
+
+
 def _comment(severity: str, line: int = 1) -> ReviewComment:
     return ReviewComment(
         path="a.py", line=line, body="issue", severity=severity, category="security"

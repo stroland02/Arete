@@ -32,6 +32,12 @@ class ReviewResult(BaseModel):
     # so filtering is observable/testable rather than silent). 0 for the
     # deterministic fallback paths, which never filter.
     dropped_count: int = 0
+    # Number of already-synthesized comments the independent critic stage
+    # DROPPED as not evidence-backed against the diff (tracked separately
+    # from dropped_count — that field is the Synthesizer's own same-model
+    # self-check; this one is the genuinely independent cross-tier gate).
+    # 0 when the critic bucket was empty or a critic call failed (fail-open).
+    critic_dropped_count: int = 0
 
     @computed_field
     @property
