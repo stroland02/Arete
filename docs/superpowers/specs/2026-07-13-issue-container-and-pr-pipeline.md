@@ -118,12 +118,22 @@ kept finding can never exist without a real `file:line` in the diff.
 4. **Agent fan-out** (`state: fanning_out`). The 6 specialists each analyze the
    change and emit candidate `Finding`s tagged with `agentId` + `evidenceRef`.
    No verdict yet.
-5. **Synthesizer verification** (`state: verifying`). The independent Critic
-   checks each candidate **against the diff**: `verdict = kept` iff its
-   `file:line` is in the changed lines and the evidence holds; else `dropped`
-   with a `droppedReason`. Emits ordered `SynthStep`s (this *is* the transcript
-   the thinking console renders). Verification is a **pure function** of
-   `(candidates, diff, telemetry snapshot)` -> deterministic, replayable, testable.
+5. **Synthesizer verification** (`state: verifying`). **Two stages, and the
+   order is the guarantee** (refined in
+   `2026-07-13-synthesizer-component-and-critic.md` §1; implemented in
+   `lib/issue-pipeline/critic.ts` `verifyHybrid`):
+   - **① Deterministic gate** — `kept`-eligible iff its `file:line` is in the
+     changed lines. A **pure function** of `(candidates, diff)`: deterministic,
+     replayable, testable. A gate-failed candidate is `dropped` with a
+     `droppedReason` and never reaches the model.
+   - **② LLM Critic** — a separate model reasons about each *gate-passed*
+     finding and may only **uphold, drop, or flag** it (low confidence →
+     `needsAttention`). It is never consulted about a gate-failed finding, so
+     the containment law **`kept ⊆ gatePassed ⊆ candidates`** holds
+     structurally. Fails open (a Critic outage keeps the gate-proven finding and
+     flags it — never a silent drop, never a fabrication).
+   Both stages emit ordered `SynthStep`s (this *is* the transcript the thinking
+   console renders).
 6. **PR compose** (`state: composing -> ready`). Kept findings -> review
    `comments`; assemble `title`/`body`. This is what the **Agents** panel shows.
 7. **Gate 1 — approve solution** (Agents). Human sign-off -> set
