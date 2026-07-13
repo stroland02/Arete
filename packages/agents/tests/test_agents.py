@@ -429,3 +429,57 @@ def test_business_logic_agent_returns_file_review():
     )
     result = agent.review_file(file, make_pr([file]))
     assert result.comments[0].category == "business_logic"
+
+
+from unittest.mock import patch
+
+from langchain_core.tools import tool
+
+from arete_agents.agents.security import SecurityAgent
+
+
+def test_agent_calls_context_map_tool_then_finalizes(sample_pr):
+    @tool
+    def search_graph(query: str) -> str:
+        """Search the codebase graph."""
+        return "def login(user): ..."
+
+    llm = MagicMock()
+    llm.invoke.side_effect = [
+        AIMessage(content="", tool_calls=[
+            {"name": "search_graph", "args": {"query": "login"}, "id": "c1"}
+        ]),
+        AIMessage(content='{"comments": [], "summary": "checked call sites"}'),
+    ]
+    llm.bind_tools.return_value = llm
+    llm.with_retry.return_value = llm
+
+    sample_pr.installation_id = 42
+    with patch(
+        "arete_agents.context_map.tools.get_context_map_tools",
+        return_value=[search_graph],
+    ):
+        review = SecurityAgent(llm).review_file(sample_pr.files[0], sample_pr)
+
+    assert review.summary == "checked call sites"
+    assert llm.invoke.call_count == 2  # one tool round + final answer
+
+
+def test_agent_single_shot_and_no_guidance_when_no_index(sample_pr):
+    llm = MagicMock()
+    llm.invoke.side_effect = [
+        AIMessage(content='{"comments": [], "summary": "no index"}'),
+    ]
+    llm.bind_tools.return_value = llm
+    llm.with_retry.return_value = llm
+
+    with patch(
+        "arete_agents.context_map.tools.get_context_map_tools",
+        return_value=[],
+    ):
+        review = SecurityAgent(llm).review_file(sample_pr.files[0], sample_pr)
+
+    assert review.summary == "no index"
+    assert llm.invoke.call_count == 1
+    system_prompt = llm.invoke.call_args[0][0][0].content
+    assert "CODEBASE CONTEXT TOOLS" not in system_prompt
