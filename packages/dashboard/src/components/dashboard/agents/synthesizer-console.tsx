@@ -1,11 +1,10 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { useReducedMotion } from "framer-motion";
-import { IconArrowRight, IconHourglassHigh, IconPlayerPlay } from "@tabler/icons-react";
+import { IconArrowRight, IconHourglassHigh } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
-import { isSampleContainerId, SAMPLE_WORKING_ID } from "@/lib/issue-pipeline/sample-containers";
+import { isSampleContainerId } from "@/lib/issue-pipeline/sample-containers";
 import { useSynthStream } from "./synthesizer/use-synth-stream";
 import { shouldAnimate } from "./synthesizer/synth-transcript-visual";
 import { SynthProgress } from "./synthesizer/synth-progress";
@@ -21,13 +20,13 @@ import type { SynthPhase } from "./synthesizer/synth-phase";
  *
  * The left AgentRail (selection) and right PrPanel (the Solution + Approve gate)
  * already frame this pane, so the console deliberately holds NO second rail and
- * NO approve button — it points the human to the Solution panel when ready. The
- * detailed inner rail + ledger + gate live on the Services summary variant.
+ * NO approve button — it points the human to the Solution panel when ready.
  *
- * HONESTY: with no real container pipeline yet, the console defaults to the
- * empty/onboarding state; "Watch a sample review" opts into a clearly-labelled
- * ("Sample") live stream of a fixture through the real SSE path — never the
- * user's data, never presented as a real review.
+ * HONESTY: the console animates ONLY when a real workflow is running (a real
+ * `containerId`, deep-linked from a Services issue). With no live review it
+ * shows the onboarding state — it never streams sample/illustrative data into
+ * the product surface. (The `isSampleContainerId` chip stays as a guard: if a
+ * sample ever reaches this surface it is unmistakably labelled.)
  */
 export interface SynthesizerConsoleProps {
   /** Focused container to stream (deep-linked from a Services issue). Null → empty. */
@@ -35,12 +34,11 @@ export interface SynthesizerConsoleProps {
 }
 
 export function SynthesizerConsole({ containerId = null }: SynthesizerConsoleProps) {
-  const [activeId, setActiveId] = useState<string | null>(containerId);
-  if (!activeId) {
-    return <ConsoleEmpty onSample={() => setActiveId(SAMPLE_WORKING_ID)} />;
+  if (!containerId) {
+    return <ConsoleEmpty />;
   }
   // key resets the stream hook's reducer when the focused container changes.
-  return <ConsoleStream key={activeId} containerId={activeId} />;
+  return <ConsoleStream key={containerId} containerId={containerId} />;
 }
 
 const PHASE_LABEL: Record<SynthPhase, string> = {
@@ -91,11 +89,6 @@ function ConsoleStream({ containerId }: { containerId: string }) {
       <SynthProgress phase={view.phase} />
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-        {isSample && (
-          <p className="mb-2 font-mono text-[10px] uppercase tracking-wider text-content-muted">
-            Sample review streamed through the real pipeline — not your data
-          </p>
-        )}
         <SynthTranscript steps={view.steps} animating={animating} />
       </div>
 
@@ -120,7 +113,7 @@ function ConsoleStream({ containerId }: { containerId: string }) {
   );
 }
 
-function ConsoleEmpty({ onSample }: { onSample: () => void }) {
+function ConsoleEmpty() {
   return (
     <section className="flex min-h-0 flex-1 flex-col" aria-label="Synthesizer console">
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border-subtle px-3">
@@ -139,25 +132,18 @@ function ConsoleEmpty({ onSample }: { onSample: () => void }) {
             It gathers findings from all six specialists, then verifies each one against your diff and drops anything not
             backed by real evidence. Only the proven findings reach your pull request — you see signal, not noise.
           </p>
+          <p className="text-xs leading-5 text-content-muted">
+            Connect a repository and open a pull request — the review streams here live as it runs.
+          </p>
         </div>
 
-        <div className="flex flex-col items-center gap-2">
-          <button
-            type="button"
-            onClick={onSample}
-            className="inline-flex items-center gap-2 rounded-xl border border-accent-primary/30 bg-accent-primary/15 px-4 py-2 text-sm font-medium text-accent-primary transition-colors hover:bg-accent-primary/25"
-          >
-            <IconPlayerPlay size={15} stroke={2} />
-            Watch a sample review
-          </button>
-          <Link
-            href="/connections"
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-content-secondary transition-colors hover:text-content-primary"
-          >
-            Connect a repository to run it on your PRs
-            <IconArrowRight size={13} stroke={2} />
-          </Link>
-        </div>
+        <Link
+          href="/connections"
+          className="inline-flex items-center gap-2 rounded-xl border border-accent-primary/30 bg-accent-primary/15 px-4 py-2 text-sm font-medium text-accent-primary transition-colors hover:bg-accent-primary/25"
+        >
+          Connect a repository
+          <IconArrowRight size={15} stroke={2} />
+        </Link>
       </div>
     </section>
   );
