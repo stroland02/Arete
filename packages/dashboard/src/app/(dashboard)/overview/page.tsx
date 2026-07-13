@@ -11,6 +11,7 @@ import { db } from "@/lib/db";
 import { getDashboardViewModel, resolveSelectedInstallationIds } from "@/lib/queries";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 import { ActivityList } from "@/components/dashboard/activity-list";
+import { AgentsAtWorkStrip } from "@/components/dashboard/agents-at-work-strip";
 
 // This page reads the session and queries Prisma scoped to it on every
 // request — it must never be statically prerendered (that would either fail
@@ -37,9 +38,13 @@ export default async function DashboardOverview({
   const viewModel = await getDashboardViewModel(db, installationIds);
 
   const connected = viewModel.hasAccess;
-  const { totalPrs, criticalBugs, recentReviews, latestReviews } = viewModel.hasAccess
+  const { totalPrs, criticalBugs, recentReviews, latestReviews, commentsByCategory } = viewModel.hasAccess
     ? viewModel
-    : { totalPrs: 0, criticalBugs: 0, recentReviews: 0, latestReviews: [] };
+    : { totalPrs: 0, criticalBugs: 0, recentReviews: 0, latestReviews: [], commentsByCategory: [] };
+
+  const findingCountById = Object.fromEntries(
+    commentsByCategory.map((c) => [c.category, c.count])
+  );
 
   const hasReviews = connected && totalPrs > 0;
   const firstName = (session.user.name ?? "").trim().split(" ")[0];
@@ -47,7 +52,7 @@ export default async function DashboardOverview({
   // Onboarding progress — honest, derived from real state. The setup card
   // disappears once reviews are actually flowing.
   const steps = [
-    { label: "Create your Areté account", done: true },
+    { label: "Create your Kuma account", done: true },
     { label: "Connect a repository", done: connected },
     { label: "Open a pull request", done: hasReviews },
     { label: "Get your first verified review", done: hasReviews },
@@ -65,7 +70,7 @@ export default async function DashboardOverview({
             Good to see you{firstName ? `, ${firstName}` : ""}.
           </h1>
           <p className="mt-1 text-sm text-content-muted">
-            Here&apos;s what Areté is doing for your code.
+            Here&apos;s what Kuma is doing for your code.
           </p>
         </RevealItem>
 
@@ -75,7 +80,7 @@ export default async function DashboardOverview({
             <section className="rounded-2xl border border-border-default bg-surface-1 p-6">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-content-primary">
-                  Finish setting up Areté
+                  Finish setting up Kuma
                 </h2>
                 <span className="font-mono text-xs text-content-muted">
                   {doneCount} of {steps.length}
@@ -97,7 +102,7 @@ export default async function DashboardOverview({
                     <p className="text-sm font-medium text-content-primary">{nextStep.label}</p>
                     <p className="mt-0.5 text-xs leading-5 text-content-muted">
                       {nextStep.label === "Connect a repository"
-                        ? "Install the Areté GitHub App on the repo you want reviewed. Every pull request is then reviewed automatically."
+                        ? "Install the Kuma GitHub App on the repo you want reviewed. Every pull request is then reviewed automatically."
                         : "Open a pull request on a connected repository — the six specialists review it and post verified findings back to the PR."}
                     </p>
                   </div>
@@ -139,6 +144,12 @@ export default async function DashboardOverview({
             <StatTile label="Critical issues caught" value={criticalBugs} />
             <StatTile label="Reviews this week" value={recentReviews} />
           </div>
+        </RevealItem>
+
+        {/* Agents at work — the six specialists and what each has caught */}
+        <RevealItem className="space-y-3">
+          <SectionLabel>Agents at work</SectionLabel>
+          <AgentsAtWorkStrip findingCountById={findingCountById} hasReviews={hasReviews} />
         </RevealItem>
 
         {/* Critical findings */}
