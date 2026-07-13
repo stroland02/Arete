@@ -17,6 +17,7 @@ from arete_agents.agents.performance import PerformanceAgent
 from arete_agents.agents.quality import QualityAgent
 from arete_agents.agents.security import SecurityAgent
 from arete_agents.agents.test_coverage import TestCoverageAgent
+from arete_agents.context_map import ensure_indexed
 from arete_agents.critic import CriticAgent
 from arete_agents.llm.base import ROLE_KEYS
 from arete_agents.models.pr import FileChange, PRContext
@@ -416,7 +417,18 @@ class ReviewOrchestrator:
                 overall_summary="No files changed.",
                 risk_level="low",
             )
-            
+
+        try:
+            ensure_indexed(pr)
+        except Exception as exc:
+            # ensure_indexed already fails open internally on every known
+            # failure mode (RepoCacheError, IndexerError). This is a second,
+            # defensive layer so a genuinely unexpected bug in that path
+            # still can't fail the review itself.
+            logging.warning(
+                f"Context-mapping raised unexpectedly: {exc}. Continuing without it."
+            )
+
         try:
             state = self.graph.invoke({"pr": pr})
             return state["final_result"]

@@ -242,6 +242,7 @@ async function loadHandlers(fake: Fake, opts: { reviewResult?: any; stripeEvent?
   vi.doMock('./github-auth.js', () => ({
     createApp: vi.fn(() => ({})),
     getInstallationOctokit: vi.fn(async () => makeOctokit()),
+    getInstallationToken: vi.fn(async () => 'ghs_test_token'),
   }))
   vi.doMock('./queue.js', () => ({
     enqueueReviewJob: vi.fn(async (data: any) => {

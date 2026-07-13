@@ -6,6 +6,7 @@ from fastapi.responses import PlainTextResponse
 
 from arete_agents.agents.chat import ChatAgent
 from arete_agents.config import get_settings
+from arete_agents.context_map.ui import ContextMapUIError, get_or_start_ui
 from arete_agents.llm.base import get_llms_by_role, role_tiers
 from arete_agents.models.pr import PRContext
 from arete_agents.orchestrator import ReviewOrchestrator
@@ -60,3 +61,12 @@ def review(pr: PRContext):
 @app.post("/chat")
 def chat(context: Dict[str, Any]):
     return _chat_agent.reply(context)
+
+
+@app.get("/context-map/ui-url/{installation_id}")
+def context_map_ui_url(installation_id: int):
+    try:
+        url = get_or_start_ui(installation_id)
+        return {"available": True, "url": url}
+    except ContextMapUIError as exc:
+        return {"available": False, "url": None, "reason": str(exc)}

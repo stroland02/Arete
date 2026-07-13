@@ -17,3 +17,8 @@ export async function getInstallationOctokit(
 ): Promise<Octokit> {
   return app.getInstallationOctokit(installationId)
 }
+
+export async function getInstallationToken(app: App, installationId: number): Promise<string> {
+  const auth = (await app.octokit.auth({ type: 'installation', installationId })) as { token: string }
+  return auth.token
+}

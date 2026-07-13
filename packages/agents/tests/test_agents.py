@@ -10,6 +10,7 @@ from arete_agents.models.review import FileReview
 def make_mock_llm(json_response: str):
     mock = MagicMock()
     mock.invoke.return_value = AIMessage(content=json_response)
+    mock.bind_tools.return_value = mock
     mock.with_retry.return_value = mock
     return mock
 
@@ -383,6 +384,33 @@ def test_other_agents_do_not_include_telemetry_block():
     SecurityAgent(llm).review_file(pr.files[0], pr)
     human_content = llm.invoke.call_args[0][0][1].content
     assert "pr_telemetry" not in human_content
+
+
+def test_review_file_caps_tool_call_rounds_and_does_not_hang():
+    """Regression test for the unbounded tool-execution loop: a mock LLM
+    whose .invoke() always returns a response with (fake) tool_calls must
+    not cause review_file() to loop forever."""
+    from arete_agents.agents.security import SecurityAgent
+
+    mock_llm = MagicMock()
+    mock_llm.bind_tools.return_value = mock_llm
+    mock_llm.with_retry.return_value = mock_llm
+
+    looping_response = AIMessage(
+        content="not done yet",
+        tool_calls=[{"name": "ask_human", "args": {"question": "?"}, "id": "call_1"}],
+    )
+    mock_llm.invoke.return_value = looping_response
+
+    agent = SecurityAgent(llm=mock_llm)
+    result = agent.review_file(make_file(), make_pr())
+
+    assert isinstance(result, FileReview)
+    # The mock always returns tool_calls, so the loop must have hit a cap
+    # rather than run forever — bound the number of invoke() calls tightly
+    # enough to prove a real cap exists, loosely enough not to overfit an
+    # exact constant.
+    assert mock_llm.invoke.call_count <= 10
 
 
 def test_business_logic_agent_returns_file_review():

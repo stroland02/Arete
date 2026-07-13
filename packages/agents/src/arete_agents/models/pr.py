@@ -42,3 +42,10 @@ class PRContext(BaseModel):
     predecessor_handoff_notes: str | None = Field(None, alias="predecessorHandoffNotes")
     predecessor_root_cause: str | None = Field(None, alias="predecessorRootCause")
     project_memories: list[str] = Field(default_factory=list, alias="projectMemories")
+    # Populated by the webhook (best-effort) so agents can clone-and-index
+    # the repository for context-mapping. All three are optional together —
+    # CLI/eval/local callers omit them and context-mapping is simply
+    # skipped for that review (see arete_agents/context_map).
+    clone_url: str | None = Field(None, alias="cloneUrl")
+    installation_token: str | None = Field(None, alias="installationToken")
+    installation_id: int | None = Field(None, alias="installationId")

@@ -133,5 +133,37 @@ def get_mcp_tools_for_agent(agent_name: str, workspace_root: str = None) -> List
         if server_name in _tool_definitions:
             for mcp_tool in _tool_definitions[server_name]:
                 langchain_tools.append(_create_langchain_tool(server_name, mcp_tool))
-                
+
     return langchain_tools
+
+
+def get_or_create_session(server_name: str, command: str) -> "ClientSession":
+    """Public entry point for callers that need a raw stdio MCP session
+    directly (not a LangChain tool list) — e.g. context_map.indexer talking
+    to a local codebase-memory-mcp binary that needs no auth/config file at
+    all. Reuses the same background event loop and session cache as
+    get_mcp_tools_for_agent so both code paths share one connection per
+    server_name."""
+    if not HAS_MCP:
+        raise RuntimeError("The 'mcp' package is not installed.")
+
+    loop = _ensure_bg_loop()
+    if server_name not in _sessions:
+        future = asyncio.run_coroutine_threadsafe(_connect_stdio(server_name, command), loop)
+        future.result(timeout=15)
+    return _sessions[server_name]
+
+
+def call_tool_sync(server_name: str, tool_name: str, arguments: dict, timeout: float = 60) -> Any:
+    """Synchronously call a tool on an already-connected stdio session
+    (see get_or_create_session). Raises RuntimeError if server_name has no
+    active session."""
+    session = _sessions.get(server_name)
+    if not session:
+        raise RuntimeError(f"No MCP session for server '{server_name}'.")
+
+    async def _call():
+        return await session.call_tool(tool_name, arguments=arguments)
+
+    future = asyncio.run_coroutine_threadsafe(_call(), _bg_loop)
+    return future.result(timeout=timeout)
