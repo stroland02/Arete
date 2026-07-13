@@ -1,5 +1,5 @@
 import type { Job } from 'bullmq'
-import { Worker } from 'bullmq'
+import { Worker, UnrecoverableError } from 'bullmq'
 import { pathToFileURL } from 'node:url'
 // Named import rather than the default export — see the comment in queue.ts:
 // under "moduleResolution": "nodenext", ioredis's default export can't be
@@ -231,6 +231,15 @@ async function processGitLabMergeRequest(data: GitLabMergeRequestJobData): Promi
  * simulate what the worker process would do.
  */
 export async function processReviewJob(data: ReviewJobData): Promise<void> {
+  // Poison Message Guard: Structurally malformed payloads are permanently rejected.
+  // This prevents BullMQ from retrying them (which creates a sawtooth pattern in latency).
+  if (!data || !data.provider) {
+    throw new UnrecoverableError('PoisonMessage: Job data is empty or missing provider')
+  }
+  if (data.provider === 'github' && (!data.headSha || !data.prNumber || !data.owner || !data.repo)) {
+    throw new UnrecoverableError('PoisonMessage: GitHub job missing critical identifier fields')
+  }
+
   if (data.provider === 'github') {
     const app = createApp()
     const octokit = await getInstallationOctokit(app, data.installationId)
