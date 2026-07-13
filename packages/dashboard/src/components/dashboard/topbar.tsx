@@ -6,6 +6,7 @@ import { IconSearch, IconBell } from "@tabler/icons-react";
 const BREADCRUMB_LABELS: Record<string, string> = {
   "/": "Overview",
   "/overview": "Overview",
+  "/dashboards": "Dashboards",
   "/agents": "Agents",
   "/connections": "Connections",
   "/reviews": "Review",
