@@ -87,16 +87,16 @@ export function HeroAgentGraph() {
   const animated = !reduce;
 
   return (
-    <div className="relative rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md shadow-[0_20px_70px_-30px_rgba(2,6,23,0.9)] overflow-hidden">
+    <div className="relative rounded-2xl border border-border-default bg-surface-1 shadow-[0_20px_60px_-30px_rgba(26,27,24,0.4)] overflow-hidden">
       {/* window chrome / context bar */}
-      <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-2.5">
+      <div className="flex items-center justify-between border-b border-border-subtle px-4 py-2.5">
         <div className="flex items-center gap-2 min-w-0">
           <IconGitPullRequest size={14} className="text-content-muted shrink-0" />
           <span className="font-mono text-[11px] text-content-secondary truncate">
             PR #418 · auth: rotate refresh tokens
           </span>
         </div>
-        <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] font-medium tracking-wide text-content-muted">
+        <span className="shrink-0 rounded-full border border-border-default bg-surface-2 px-2 py-0.5 text-[10px] font-medium tracking-wide text-content-muted">
           Illustrative
         </span>
       </div>
@@ -111,7 +111,7 @@ export function HeroAgentGraph() {
         >
           <defs>
             <pattern id={dotId} width={22} height={22} patternUnits="userSpaceOnUse">
-              <circle cx={1.5} cy={1.5} r={1} fill="rgba(255,255,255,0.035)" />
+              <circle cx={1.5} cy={1.5} r={1} fill="rgba(26,27,24,0.05)" />
             </pattern>
             <filter id={glowId} x="-80%" y="-80%" width="260%" height="260%">
               <feGaussianBlur stdDeviation={7} />
@@ -174,7 +174,7 @@ export function HeroAgentGraph() {
 
           {/* telemetry input node */}
           <g>
-            <circle cx={TEL_X} cy={bizY} r={TEL_R} fill="rgba(255,255,255,0.03)" stroke="#818cf8" strokeOpacity={0.5} strokeWidth={1.25} strokeDasharray="3 4" />
+            <circle cx={TEL_X} cy={bizY} r={TEL_R} fill="#FFFFFF" stroke="#2f55d4" strokeOpacity={0.5} strokeWidth={1.25} strokeDasharray="3 4" />
             <foreignObject x={TEL_X - 11} y={bizY - 11} width={22} height={22}>
               <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#818cf8" }}>
                 <IconPlugConnected size={15} stroke={1.75} />
@@ -203,7 +203,7 @@ export function HeroAgentGraph() {
                   animate={animated ? { opacity: [0.1, 0.24, 0.1] } : { opacity: 0.16 }}
                   transition={animated ? { duration: 2.6, delay: i * 0.28, repeat: Infinity, ease: "easeInOut" } : undefined}
                 />
-                <circle cx={AGENT_X} cy={y} r={AGENT_R} fill="rgba(2,6,23,0.6)" stroke={a.color} strokeOpacity={0.85} strokeWidth={1.5} />
+                <circle cx={AGENT_X} cy={y} r={AGENT_R} fill="#FFFFFF" stroke={a.color} strokeOpacity={0.85} strokeWidth={1.5} />
                 <foreignObject x={AGENT_X - 12} y={y - 12} width={24} height={24}>
                   <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: a.color }}>
                     <Icon size={17} stroke={1.75} />
@@ -239,7 +239,7 @@ export function HeroAgentGraph() {
               animate={animated ? { opacity: [0.08, 0.18, 0.08] } : { opacity: 0.12 }}
               transition={animated ? { duration: 3, repeat: Infinity, ease: "easeInOut" } : undefined}
             />
-            <circle cx={SYNTH_X} cy={HUB_Y} r={SYNTH_R} fill="rgba(2,6,23,0.7)" stroke="#818cf8" strokeOpacity={0.9} strokeWidth={1.75} />
+            <circle cx={SYNTH_X} cy={HUB_Y} r={SYNTH_R} fill="#FFFFFF" stroke="#2f55d4" strokeOpacity={0.9} strokeWidth={1.75} />
             <foreignObject x={SYNTH_X - 16} y={HUB_Y - 16} width={32} height={32}>
               <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#a5b4fc" }}>
                 <IconTopologyStar3 size={26} stroke={1.75} />
@@ -266,7 +266,7 @@ export function HeroAgentGraph() {
               animate={animated ? { opacity: [0.08, 0.16, 0.08] } : { opacity: 0.12 }}
               transition={animated ? { duration: 2.4, repeat: Infinity, ease: "easeInOut" } : undefined}
             />
-            <rect x={OUT_X - OUT_HALF} y={HUB_Y - OUT_HALF} width={OUT_HALF * 2} height={OUT_HALF * 2} rx={15} fill="rgba(2,6,23,0.7)" stroke="#34d399" strokeOpacity={0.9} strokeWidth={1.75} />
+            <rect x={OUT_X - OUT_HALF} y={HUB_Y - OUT_HALF} width={OUT_HALF * 2} height={OUT_HALF * 2} rx={15} fill="#FFFFFF" stroke="#047857" strokeOpacity={0.9} strokeWidth={1.75} />
             <foreignObject x={OUT_X - 13} y={HUB_Y - 13} width={26} height={26}>
               <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#6ee7b7" }}>
                 <IconChecks size={20} stroke={1.75} />
@@ -283,7 +283,7 @@ export function HeroAgentGraph() {
       </div>
 
       {/* value footer: the signal-vs-noise funnel, honestly labelled */}
-      <div className="flex items-center gap-4 border-t border-white/[0.06] px-4 py-3 text-[11px]">
+      <div className="flex items-center gap-4 border-t border-border-subtle px-4 py-3 text-[11px]">
         <FunnelStat color="#94a3b8" label={`${RAISED} raised`} />
         <span className="text-content-muted/40">→</span>
         <FunnelStat color="#34d399" label={`${VERIFIED} verified & posted`} />

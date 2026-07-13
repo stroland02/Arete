@@ -37,22 +37,25 @@ const HOW_IT_WORKS = [
 // Mirrors the real agent set in packages/agents/src/arete_agents/agents/*.py
 // (agent_name values) — same 6 agents shown in the authenticated dashboard's
 // AgentOrchestrationGraph and the hero graph, not a marketing-only invented
-// list. Colors match the hero graph's per-agent hues.
+// list. Colors match the hero graph's per-agent hues (chosen to read on the
+// light Marble & Ink ground).
 const AGENTS = [
-  { label: "Security", description: "Scans for vulnerabilities and OWASP-class issues.", icon: IconShieldCheck, color: "#fb7185" },
-  { label: "Performance", description: "Flags algorithmic and resource-usage regressions.", icon: IconGauge, color: "#22d3ee" },
-  { label: "Quality", description: "Reviews style, readability, and maintainability.", icon: IconSparkles, color: "#c084fc" },
-  { label: "Test Coverage", description: "Checks whether behavior changes are actually tested.", icon: IconTestPipe, color: "#34d399" },
-  { label: "Deployment Safety", description: "Looks for migration, rollout, and config risks.", icon: IconRocket, color: "#f59e0b" },
-  { label: "Business Logic", description: "Checks your diff against connected production signals.", icon: IconBriefcase, color: "#818cf8" },
+  { label: "Security", description: "Scans for vulnerabilities and OWASP-class issues.", icon: IconShieldCheck, color: "#c2410c" },
+  { label: "Performance", description: "Flags algorithmic and resource-usage regressions.", icon: IconGauge, color: "#0e7490" },
+  { label: "Quality", description: "Reviews style, readability, and maintainability.", icon: IconSparkles, color: "#7c3aed" },
+  { label: "Test Coverage", description: "Checks whether behavior changes are actually tested.", icon: IconTestPipe, color: "#047857" },
+  { label: "Deployment Safety", description: "Looks for migration, rollout, and config risks.", icon: IconRocket, color: "#b45309" },
+  { label: "Business Logic", description: "Checks your diff against connected production signals.", icon: IconBriefcase, color: "#2f55d4" },
 ];
 
+// Dot colors are the connectors' own brand hues, darkened where needed so they
+// stay visible on the light ground (GitHub/Vercel would be invisible near-white).
 const CONNECTORS = [
-  { name: "GitHub Actions", color: "#f1f5f9" },
-  { name: "Sentry", color: "#c084fc" },
-  { name: "Vercel", color: "#f1f5f9" },
-  { name: "Stripe", color: "#818cf8" },
-  { name: "PostHog", color: "#f59e0b" },
+  { name: "GitHub Actions", color: "#24292f" },
+  { name: "Sentry", color: "#7c3aed" },
+  { name: "Vercel", color: "#1a1b18" },
+  { name: "Stripe", color: "#635bff" },
+  { name: "PostHog", color: "#b45309" },
 ];
 
 // Pricing mirrors docs/proposal/TYME-platform-proposal.md §9 "Code Review
@@ -89,7 +92,7 @@ function SectionHeading({ eyebrow, title, subtitle }: { eyebrow: string; title: 
   return (
     <div className="mb-14 text-center">
       <span className="text-xs font-semibold uppercase tracking-[0.2em] text-accent-primary">{eyebrow}</span>
-      <h2 className="mt-3 text-3xl font-bold tracking-tight text-content-primary">{title}</h2>
+      <h2 className="mt-3 font-serif text-3xl font-semibold tracking-tight text-content-primary">{title}</h2>
       <p className="mt-3 text-content-muted">{subtitle}</p>
     </div>
   );
@@ -106,10 +109,10 @@ export function HowItWorks() {
 
       <div className="relative mb-20 grid grid-cols-1 gap-6 md:grid-cols-3">
         {/* connecting line behind the step badges (desktop) */}
-        <div className="absolute inset-x-[16%] top-11 hidden h-px bg-gradient-to-r from-transparent via-white/10 to-transparent md:block" />
+        <div className="absolute inset-x-[16%] top-11 hidden h-px bg-gradient-to-r from-transparent via-border-default to-transparent md:block" />
         {HOW_IT_WORKS.map((item) => (
           <div key={item.step} className="relative flex flex-col items-start">
-            <span className="mb-5 flex h-10 w-10 items-center justify-center rounded-full border border-accent-primary/30 bg-surface-0 font-mono text-sm font-semibold text-accent-primary shadow-[0_0_0_4px_rgba(2,6,23,1)]">
+            <span className="mb-5 flex h-10 w-10 items-center justify-center rounded-full border border-accent-primary/30 bg-surface-0 font-mono text-sm font-semibold text-accent-primary ring-4 ring-surface-0">
               {item.step}
             </span>
             <h3 className="mb-2 text-lg font-semibold text-content-primary">{item.title}</h3>
@@ -127,7 +130,7 @@ export function HowItWorks() {
           return (
             <div
               key={agent.label}
-              className="group flex items-start gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 transition-colors hover:border-white/15 hover:bg-white/[0.04]"
+              className="group flex items-start gap-3 rounded-xl border border-border-subtle bg-surface-1 p-4 transition-colors hover:border-border-default hover:bg-surface-2"
             >
               <div
                 className="shrink-0 rounded-lg border p-2"
@@ -149,7 +152,7 @@ export function HowItWorks() {
 
 export function ConnectorStrip() {
   return (
-    <section id="connectors" className="border-y border-white/[0.06] bg-white/[0.01]">
+    <section id="connectors" className="border-y border-border-subtle bg-surface-1">
       <div className="mx-auto max-w-6xl px-6 py-16 text-center">
         <div className="mb-7 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-content-muted">
           <IconPlugConnected className="h-4 w-4" />
@@ -159,9 +162,9 @@ export function ConnectorStrip() {
           {CONNECTORS.map((c) => (
             <span
               key={c.name}
-              className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.02] px-4 py-2 text-sm text-content-secondary transition-colors hover:border-white/20"
+              className="inline-flex items-center gap-2 rounded-full border border-border-default bg-surface-0 px-4 py-2 text-sm text-content-secondary transition-colors hover:border-border-strong"
             >
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: c.color, boxShadow: `0 0 8px ${c.color}66` }} />
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: c.color }} />
               {c.name}
             </span>
           ))}
@@ -192,14 +195,14 @@ export function PricingSection() {
             className={`relative flex flex-col ${tier.featured ? "md:-mt-3 md:pb-8" : ""}`}
           >
             {tier.featured && (
-              <span className="absolute -top-3 left-6 inline-flex items-center rounded-full bg-accent-primary px-3 py-1 text-[11px] font-semibold text-white shadow-[0_6px_14px_-6px_rgba(129,140,248,0.6)]">
+              <span className="absolute -top-3 left-6 inline-flex items-center rounded-full bg-accent-primary px-3 py-1 text-[11px] font-semibold text-white shadow-sm">
                 Most popular
               </span>
             )}
             <h3 className="text-lg font-semibold text-content-primary">{tier.name}</h3>
             <p className="mt-1 text-sm text-content-muted">{tier.tagline}</p>
             <div className="mt-4 mb-5 flex items-baseline gap-1">
-              <span className="text-4xl font-bold tracking-tight text-content-primary">{tier.price}</span>
+              <span className="font-serif text-4xl font-semibold tracking-tight text-content-primary">{tier.price}</span>
               <span className="text-sm text-content-muted">{tier.unit}</span>
             </div>
             <ul className="mb-6 flex flex-1 flex-col gap-2.5">
@@ -214,8 +217,8 @@ export function PricingSection() {
               href="/login"
               className={
                 tier.featured
-                  ? "inline-flex h-10 items-center justify-center rounded-full bg-accent-primary px-4 text-sm font-medium text-white shadow-[0_1px_0_0_rgba(255,255,255,0.15)_inset,0_6px_14px_-6px_rgba(129,140,248,0.55)] transition-[filter] hover:brightness-110 active:brightness-95"
-                  : "inline-flex h-10 items-center justify-center rounded-full border border-white/15 px-4 text-sm font-medium text-content-secondary transition-colors hover:border-white/30 hover:bg-white/5"
+                  ? "inline-flex h-10 items-center justify-center rounded-full bg-accent-primary px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-accent-primary/90"
+                  : "inline-flex h-10 items-center justify-center rounded-full border border-border-default px-4 text-sm font-medium text-content-secondary transition-colors hover:border-border-strong hover:bg-content-primary/5"
               }
             >
               {tier.name === "Enterprise" ? "Contact sales" : "Get started"}
@@ -231,16 +234,16 @@ export function FinalCta() {
   return (
     <section className="mx-auto max-w-6xl px-6 pb-24">
       <Card elevated className="relative flex flex-col items-center gap-6 overflow-hidden py-16 text-center">
-        <div className="absolute left-1/2 top-0 -z-10 h-64 w-64 -translate-x-1/2 rounded-full bg-accent-primary/15 blur-[100px]" />
+        <div className="absolute left-1/2 top-0 -z-10 h-64 w-64 -translate-x-1/2 rounded-full bg-accent-primary/10 blur-[100px]" />
         <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-accent-primary/30 bg-accent-primary/10 text-accent-primary">
           <IconGitPullRequest className="h-6 w-6" />
         </span>
-        <h2 className="max-w-lg text-2xl font-bold tracking-tight text-content-primary sm:text-3xl">
+        <h2 className="max-w-lg font-serif text-2xl font-semibold tracking-tight text-content-primary sm:text-3xl">
           Verified code review, posted straight to your next PR.
         </h2>
         <Link
           href="/login"
-          className="group inline-flex h-11 items-center justify-center gap-2 rounded-full bg-accent-primary px-6 text-sm font-medium text-white shadow-[0_1px_0_0_rgba(255,255,255,0.15)_inset,0_10px_24px_-8px_rgba(129,140,248,0.6)] transition-[filter,transform] hover:brightness-110 active:brightness-95"
+          className="group inline-flex h-11 items-center justify-center gap-2 rounded-full bg-accent-primary px-6 text-sm font-medium text-white shadow-sm transition-colors hover:bg-accent-primary/90"
         >
           Get started free
           <IconArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
@@ -253,10 +256,10 @@ export function FinalCta() {
 
 export function MarketingFooter() {
   return (
-    <footer className="border-t border-white/[0.06]">
+    <footer className="border-t border-border-subtle">
       <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-10 sm:flex-row">
-        <span className="bg-gradient-to-r from-indigo-300 via-cyan-300 to-teal-200 bg-clip-text text-sm font-semibold text-transparent">
-          Areté AI
+        <span className="font-serif text-sm font-semibold text-content-primary">
+          Aret<span className="text-accent-secondary">é</span> AI
         </span>
         <nav className="flex items-center gap-6 text-xs text-content-muted">
           <a href="#how-it-works" className="transition-colors hover:text-content-primary">How it works</a>

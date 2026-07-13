@@ -3,14 +3,14 @@ import { IconTopologyStar3 } from "@tabler/icons-react";
 
 export function MarketingNav() {
   return (
-    <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-surface-0/70 backdrop-blur-xl">
+    <header className="sticky top-0 z-30 border-b border-border-subtle bg-surface-0/80 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
         <Link href="/" className="group flex items-center gap-2">
           <span className="flex h-7 w-7 items-center justify-center rounded-lg border border-accent-primary/30 bg-accent-primary/10 text-accent-primary">
             <IconTopologyStar3 className="h-4 w-4" stroke={1.75} />
           </span>
-          <span className="bg-gradient-to-r from-indigo-300 via-cyan-300 to-teal-200 bg-clip-text text-lg font-bold tracking-tight text-transparent">
-            Areté AI
+          <span className="font-serif text-xl font-semibold tracking-tight text-content-primary">
+            Aret<span className="text-accent-secondary">é</span> AI
           </span>
         </Link>
 
@@ -35,7 +35,7 @@ export function MarketingNav() {
           </Link>
           <Link
             href="/login"
-            className="inline-flex h-9 items-center justify-center rounded-full bg-accent-primary px-4 text-[13px] font-medium text-white shadow-[0_1px_0_0_rgba(255,255,255,0.15)_inset,0_6px_14px_-6px_rgba(129,140,248,0.55)] transition-[filter] hover:brightness-110 active:brightness-95"
+            className="inline-flex h-9 items-center justify-center rounded-full bg-accent-primary px-4 text-[13px] font-medium text-white shadow-sm transition-colors hover:bg-accent-primary/90"
           >
             Get started
           </Link>
