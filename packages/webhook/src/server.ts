@@ -65,6 +65,9 @@ export async function createServer(): Promise<express.Application> {
   // would make the middleware see '/' and never match its configured path.
   server.use(createNodeMiddleware(app.webhooks, { path: '/webhook' }))
 
+  const { handleMetricsStream } = await import('./sse-handler.js')
+  server.get('/metrics/stream', handleMetricsStream)
+
   server.get('/oauth/:provider/authorize', (req, res) => {
     const installationId = req.query.installationId as string | undefined
     if (!installationId) {
