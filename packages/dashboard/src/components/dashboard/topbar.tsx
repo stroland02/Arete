@@ -7,6 +7,7 @@ const BREADCRUMB_LABELS: Record<string, string> = {
   "/": "Overview",
   "/overview": "Overview",
   "/dashboards": "Dashboards",
+  "/services": "Services",
   "/agents": "Agents",
   "/connections": "Connections",
   "/reviews": "Review",

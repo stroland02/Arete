@@ -11,7 +11,9 @@ import {
   IconGitBranch,
   IconCheck,
   IconArrowRight,
+  IconChevronDown,
 } from "@tabler/icons-react";
+import { motion } from "framer-motion";
 
 /**
  * Hero-scale, self-contained INTERACTIVE illustration of Areté's product for
@@ -126,13 +128,15 @@ const FINDINGS: Finding[] = [
   },
 ];
 
+// Descriptions match landing-sections.tsx's AGENTS grid / agent-catalog.ts's
+// `description` field verbatim — same wording everywhere this list appears.
 const AGENTS = [
-  { label: "Security", icon: IconShieldCheck, note: "3 findings", active: true },
-  { label: "Performance", icon: IconGauge, note: "2 findings", active: true },
-  { label: "Quality", icon: IconSparkles, note: "clear", active: false },
-  { label: "Test Coverage", icon: IconTestPipe, note: "1 finding", active: true },
-  { label: "Deployment Safety", icon: IconRocket, note: "clear", active: false },
-  { label: "Business Logic", icon: IconBriefcase, note: "3 findings", active: true },
+  { label: "Security", icon: IconShieldCheck, note: "3 findings", active: true, description: "Scans for vulnerabilities and OWASP-class issues." },
+  { label: "Performance", icon: IconGauge, note: "2 findings", active: true, description: "Flags algorithmic and resource-usage regressions." },
+  { label: "Quality", icon: IconSparkles, note: "clear", active: false, description: "Reviews style, readability, and maintainability." },
+  { label: "Test Coverage", icon: IconTestPipe, note: "1 finding", active: true, description: "Checks whether behavior changes are actually tested." },
+  { label: "Deployment Safety", icon: IconRocket, note: "clear", active: false, description: "Looks for migration, rollout, and config risks." },
+  { label: "Business Logic", icon: IconBriefcase, note: "3 findings", active: true, description: "Checks your diff against connected production signals." },
 ];
 
 const SEVERITY_CLASS: Record<Finding["severity"], string> = {
@@ -149,6 +153,7 @@ const SEVERITY_DOT: Record<Finding["severity"], string> = {
 
 export function HeroAgentGraph() {
   const [selectedId, setSelectedId] = useState(FINDINGS[0].id);
+  const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
   const selected = FINDINGS.find((f) => f.id === selectedId) ?? FINDINGS[0];
   const SelectedIcon = selected.icon;
 
@@ -170,33 +175,65 @@ export function HeroAgentGraph() {
       </div>
 
       {/* Three-pane body — expansive height so it reads like the real dashboard */}
-      <div className="grid min-h-[520px] grid-cols-1 divide-y divide-border-subtle lg:min-h-[600px] lg:grid-cols-[minmax(190px,220px)_minmax(0,1fr)_minmax(240px,300px)] lg:divide-x lg:divide-y-0">
+      <div className="grid min-h-[520px] grid-cols-1 divide-y divide-border-subtle lg:min-h-[600px] lg:grid-cols-[minmax(220px,260px)_minmax(0,1fr)_minmax(240px,300px)] lg:divide-x lg:divide-y-0">
         {/* Left: agents rail */}
-        <div className="min-w-0">
+        <motion.div 
+          className="min-w-0"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.1, ease: "easeOut" }}
+        >
           <div className="flex items-center justify-between border-b border-border-subtle px-4 py-2.5">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-content-secondary">Agents</span>
             <span className="font-mono text-[10px] text-content-muted">6</span>
           </div>
-          <ul className="py-1.5">
+          <ul className="py-1">
             {AGENTS.map((a) => {
               const Icon = a.icon;
+              const expanded = expandedAgent === a.label;
               return (
-                <li key={a.label} className="flex items-center gap-2.5 px-4 py-2.5">
-                  <span
-                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${a.active ? "bg-accent-success" : "bg-content-muted/40"}`}
-                    aria-hidden
-                  />
-                  <Icon size={14} stroke={1.75} className="shrink-0 text-content-muted" aria-hidden />
-                  <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-content-secondary">{a.label}</span>
-                  <span className="shrink-0 font-mono text-[10px] text-content-muted">{a.active ? a.note : "clear"}</span>
+                <li key={a.label} className="border-b border-border-subtle last:border-b-0">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedAgent((cur) => (cur === a.label ? null : a.label))}
+                    aria-expanded={expanded}
+                    className="flex w-full items-start gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-content-primary/[0.03]"
+                  >
+                    <span
+                      className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${a.active ? "bg-accent-success" : "bg-content-muted/40"}`}
+                      aria-hidden
+                    />
+                    <Icon size={14} stroke={1.75} className="mt-0.5 shrink-0 text-content-muted" aria-hidden />
+                    <span className="min-w-0 flex-1">
+                      {/* Full name, never truncated — wraps rather than cuts off. */}
+                      <span className="block text-[13px] font-medium leading-snug text-content-secondary">{a.label}</span>
+                      <span className="mt-0.5 block font-mono text-[10px] text-content-muted">{a.active ? a.note : "clear"}</span>
+                    </span>
+                    <IconChevronDown
+                      size={12}
+                      stroke={2}
+                      className={`mt-1 shrink-0 text-content-muted transition-transform ${expanded ? "" : "-rotate-90"}`}
+                      aria-hidden
+                    />
+                  </button>
+                  {expanded && (
+                    <p className="px-4 pb-2.5 pl-[2.6rem] text-[11px] leading-relaxed text-content-muted">
+                      {a.description}
+                    </p>
+                  )}
                 </li>
               );
             })}
           </ul>
-        </div>
+        </motion.div>
 
         {/* Center: the selected finding's code fix (before → after) */}
-        <div className="flex min-w-0 flex-col">
+        <motion.div 
+          className="flex min-w-0 flex-col"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
+        >
           <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-2.5">
             <span className="h-1.5 w-1.5 rounded-full bg-accent-success" aria-hidden />
             <span className="text-[11px] font-semibold uppercase tracking-wider text-content-secondary">Proposed fix</span>
@@ -283,10 +320,24 @@ export function HeroAgentGraph() {
               </button>
             </div>
           </div>
-        </div>
+
+          {/* Pinned Synthesizer input — same disabled-shell pattern as the
+              real /agents console: honest that there's no live model yet. */}
+          <div className="border-t border-border-subtle px-4 py-3">
+            <div className="flex items-center gap-2 rounded-lg border border-border-default bg-surface-2/60 px-3 py-2">
+              <span className="font-mono text-xs text-content-muted" aria-hidden>&gt;</span>
+              <span className="font-mono text-xs text-content-muted/70">Ask the Synthesizer…</span>
+            </div>
+          </div>
+        </motion.div>
 
         {/* Right: verified findings — click to view its fix */}
-        <div className="flex min-w-0 flex-col">
+        <motion.div 
+          className="flex min-w-0 flex-col"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.3, ease: "easeOut" }}
+        >
           <div className="flex items-center justify-between border-b border-border-subtle px-4 py-2.5">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-content-secondary">Verified findings</span>
             <span className="rounded-md border border-accent-primary/25 bg-accent-primary/10 px-2 py-0.5 text-[10px] font-medium text-accent-primary">
@@ -340,7 +391,7 @@ export function HeroAgentGraph() {
             </div>
             <p className="mt-2 text-center text-[10px] text-content-muted">You review and merge on your own terms.</p>
           </div>
-        </div>
+        </motion.div>
       </div>
     </div>
   );

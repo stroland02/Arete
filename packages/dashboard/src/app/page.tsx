@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "../lib/auth";
 import { MarketingNav } from "@/components/marketing/marketing-nav";
 import { LandingHero } from "@/components/marketing/landing-hero";
+import { ServicesPreview } from "@/components/marketing/services-preview";
 import {
   ConnectorStrip,
   FinalCta,
@@ -26,6 +27,7 @@ export default async function LandingPage() {
       <MarketingNav />
       <LandingHero />
       <HowItWorks />
+      <ServicesPreview />
       <ConnectorStrip />
       <PricingSection />
       <FinalCta />
