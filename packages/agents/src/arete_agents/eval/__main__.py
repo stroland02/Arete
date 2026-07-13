@@ -6,9 +6,14 @@ from pathlib import Path
 from langchain_core.language_models import BaseChatModel
 
 from arete_agents.config import Settings, get_settings
-from arete_agents.eval.loader import load_fixtures
+from arete_agents.eval.loader import compute_composition, load_fixtures
 from arete_agents.eval.matcher import DEFAULT_WINDOW, build_judge
-from arete_agents.eval.report import build_report, render_json, render_markdown
+from arete_agents.eval.report import (
+    build_report,
+    render_card,
+    render_json,
+    render_markdown,
+)
 from arete_agents.eval.runner import build_agents, run_all
 from arete_agents.eval.scorer import f1_regressed
 
@@ -48,7 +53,8 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--judge", choices=["gemini", "anthropic", "stub"], default=None
     )
-    parser.add_argument("--report", choices=["md", "json"], default="md")
+    parser.add_argument("--report", choices=["md", "json", "card"], default="md")
+    parser.add_argument("--card-out", default=None)
     parser.add_argument("--window", type=int, default=DEFAULT_WINDOW)
     parser.add_argument("--update-baseline", action="store_true")
     parser.add_argument("--baseline", default=str(_DEFAULT_BASELINE))
@@ -76,12 +82,22 @@ def main(argv: list[str] | None = None) -> int:
         "window": str(args.window),
         "fixtures": str(len(fixtures)),
     }
-    report = build_report(results, meta=meta)
+    composition = compute_composition(fixtures)
+    report = build_report(results, meta=meta, composition=composition)
+
+    verified = (judge_mode != "stub") and (report.overall.errors == 0)
 
     if args.report == "json":
         print(render_json(report))
+    elif args.report == "card":
+        print(render_card(report, verified))
     else:
         print(render_markdown(report))
+
+    if args.card_out:
+        Path(args.card_out).write_text(
+            render_card(report, verified), encoding="utf-8"
+        )
 
     if report.overall.errors:
         print(
