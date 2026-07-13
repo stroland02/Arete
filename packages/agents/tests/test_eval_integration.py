@@ -40,6 +40,7 @@ def _finder_llm():
         return AIMessage(content=_EMPTY)
 
     mock.invoke.side_effect = _invoke
+    mock.bind_tools.return_value = mock
     mock.with_retry.return_value = mock
     return mock
 

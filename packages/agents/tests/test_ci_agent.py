@@ -127,6 +127,7 @@ def test_orchestrator_skips_ci_agent_without_ci_logs():
     )
     llm = MagicMock()
     llm.invoke.side_effect = [AIMessage(content=normal_response)] * 40
+    llm.bind_tools.return_value = llm
     llm.with_retry.return_value = llm
 
     pr = PRContext(

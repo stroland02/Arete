@@ -38,6 +38,7 @@ SAMPLE_PR = PRContext(
 
 def test_cli_reads_stdin_and_writes_stdout(monkeypatch, capsys):
     mock_llm = MagicMock()
+    mock_llm.bind_tools.return_value = mock_llm
     mock_llm.with_retry.return_value = mock_llm
     mock_llm.invoke.return_value = AIMessage(content=MOCK_LLM_RESPONSE)
 
