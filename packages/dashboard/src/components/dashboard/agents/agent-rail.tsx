@@ -1,13 +1,12 @@
 "use client";
 
-import { IconSettings } from "@tabler/icons-react";
 import { AGENTS, type Agent } from "./agent-catalog";
 import { cn } from "@/lib/utils";
 
 const TIER_LABEL = { opus: "Opus", sonnet: "Sonnet" } as const;
 const TIER_CLASS = {
   opus: "border-accent-primary/25 bg-accent-primary/10 text-accent-primary",
-  sonnet: "border-white/10 bg-white/5 text-content-secondary",
+  sonnet: "border-border-default bg-surface-2 text-content-secondary",
 } as const;
 
 export interface AgentRailProps {
@@ -16,15 +15,16 @@ export interface AgentRailProps {
   hasReviews: boolean;
   selectedAgentId: string;
   onSelect: (agentId: string) => void;
-  /** Opens the existing AgentConfigDrawer for this agent. */
+  /** Opens the AgentConfigDrawer for this agent. */
   onConfigure: (agentId: string) => void;
 }
 
 /**
  * Left pane of the /agents workspace: an Orca-style navigator of the six
- * specialists. Each row = status dot + icon + name + tier badge + a real
- * derived status line; the selected row gets a left accent bar. The gear
- * (revealed on hover/focus) opens the existing config drawer.
+ * specialists. Each row = status dot + icon + name + model badge + a real
+ * derived status line. Clicking a row selects that agent AND opens its config
+ * drawer (no separate gear button); the whole row highlights on hover and
+ * gets a left accent bar + tinted background when it's the open one.
  */
 export function AgentRail({
   agents = AGENTS,
@@ -55,28 +55,32 @@ export function AgentRail({
             : "Idle";
 
           return (
-            <li key={agent.id} className="group relative">
+            <li key={agent.id} className="relative">
               {selected && (
                 <span
-                  className="absolute inset-y-1 left-0 w-0.5 rounded-r bg-accent-primary"
+                  className="absolute inset-y-1 left-0 z-10 w-0.5 rounded-r bg-accent-primary"
                   aria-hidden
                 />
               )}
               <button
                 type="button"
-                onClick={() => onSelect(agent.id)}
+                onClick={() => {
+                  onSelect(agent.id);
+                  onConfigure(agent.id);
+                }}
                 aria-current={selected ? "true" : undefined}
+                aria-label={`Open the ${agent.label} agent`}
                 className={cn(
-                  "flex w-full items-start gap-2.5 py-2.5 pl-3 pr-9 text-left transition-colors",
-                  selected ? "bg-white/[0.06]" : "hover:bg-white/[0.03]"
+                  "flex w-full items-start gap-2.5 py-2.5 pl-3 pr-3 text-left transition-colors",
+                  selected
+                    ? "bg-accent-primary/[0.06]"
+                    : "hover:bg-content-primary/[0.04]"
                 )}
               >
                 <span
                   className={cn(
                     "mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full",
-                    hasReviews
-                      ? "bg-accent-success shadow-[0_0_6px_rgba(52,211,153,0.8)]"
-                      : "bg-content-muted/40"
+                    hasReviews ? "bg-accent-success" : "bg-content-muted/40"
                   )}
                   aria-hidden
                 />
@@ -111,14 +115,6 @@ export function AgentRail({
                     {status}
                   </span>
                 </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onConfigure(agent.id)}
-                aria-label={`Configure the ${agent.label} agent`}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-content-muted opacity-0 transition-opacity hover:bg-white/10 hover:text-content-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/50 group-hover:opacity-100"
-              >
-                <IconSettings size={14} stroke={1.75} />
               </button>
             </li>
           );
