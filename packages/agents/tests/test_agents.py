@@ -433,6 +433,7 @@ def test_business_logic_agent_returns_file_review():
 
 from unittest.mock import patch
 
+from langchain_core.messages import ToolMessage
 from langchain_core.tools import tool
 
 from arete_agents.agents.security import SecurityAgent
@@ -463,6 +464,24 @@ def test_agent_calls_context_map_tool_then_finalizes(sample_pr):
 
     assert review.summary == "checked call sites"
     assert llm.invoke.call_count == 2  # one tool round + final answer
+
+    # Prove the wiring, not just that the mocked LLM produced two responses:
+    # `search_graph` must actually have been passed to bind_tools...
+    bound_tools = llm.bind_tools.call_args[0][0]
+    assert any(t.name == "search_graph" for t in bound_tools)
+
+    # ...and REALLY invoked (not swallowed by the "Tool not found" fallback
+    # the pre-existing loop uses for unbound tool names). If the context-map
+    # tool weren't wired into `mcp_tools`, this would instead be
+    # "Error: Tool 'search_graph' not found."
+    messages = llm.invoke.call_args[0][0]
+    tool_messages = [m for m in messages if isinstance(m, ToolMessage)]
+    assert len(tool_messages) == 1
+    assert tool_messages[0].content == "def login(user): ..."
+
+    # And the system prompt must carry the shared guidance block.
+    system_prompt = messages[0].content
+    assert "CODEBASE CONTEXT TOOLS" in system_prompt
 
 
 def test_agent_single_shot_and_no_guidance_when_no_index(sample_pr):
