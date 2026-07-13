@@ -2,13 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import {
-  IconArrowRight,
-  IconCircleCheck,
-  IconCopy,
-  IconPlugConnected,
-  IconX,
-} from "@tabler/icons-react";
+import { IconChevronDown, IconCircleCheck, IconCopy, IconX } from "@tabler/icons-react";
+import { CONNECTORS } from "@/lib/connector-catalog";
+import { ConnectorIcon } from "@/components/connections/connector-icon";
 
 /**
  * Services "Triage Inbox" workspace. Production signals from CONNECTED
@@ -17,10 +13,19 @@ import {
  * telemetry evidence and the specialist agent's proposed code fix; the human
  * approves.
  *
+ * Layout mirrors /agents: a 260px rail, a flexible center pane, a 320px right
+ * pane. Rail = services, each expandable to its issues, plus a "connect more"
+ * list drawn from the real connector catalog. Center = the selected issue's
+ * full detail (what happened, proposed fix, activity, actions) — this is the
+ * pane that needs the width. Right = a per-issue "team chat": a scripted
+ * transcript of the SAME agents/telemetry that appear in the issue's own
+ * timeline, narrated as a conversation — never a live/free-floating
+ * assistant, same honesty pattern as the Synthesizer console.
+ *
  * Data comes in as props (the real Service/Issue contract). The authenticated
  * /services page renders it EMPTY by default — no fabricated services or
- * incidents — with an honest empty state that routes to /connections. The
- * SAMPLE_* exports below drive the illustrative marketing preview only.
+ * incidents. The SAMPLE_* exports below drive the illustrative marketing
+ * preview only.
  */
 
 export type Severity = "critical" | "high" | "medium";
@@ -215,6 +220,23 @@ const TONE_DOT: Record<string, string> = {
   good: "bg-accent-success", accent: "bg-accent-primary",
 };
 
+/**
+ * Who "said" a given timeline entry, for the team-chat transcript — derived
+ * entirely from fields the issue already carries (tone/source/agent), never
+ * invented. Detection-tone entries (critical/high/medium) are the telemetry
+ * source reporting; "accent" is the specialist agent working it; "good" is
+ * the Synthesizer's verification step.
+ */
+function speakerFor(tone: Issue["timeline"][number]["tone"], issue: Issue): string {
+  if (tone === "accent") return issue.agent;
+  if (tone === "good") return "Synthesizer";
+  return issue.source;
+}
+
+function teamFor(issue: Issue): string[] {
+  return Array.from(new Set(issue.timeline.map((t) => speakerFor(t.tone, issue))));
+}
+
 export interface ServicesWorkspaceProps {
   services?: Service[];
   issues?: Issue[];
@@ -228,10 +250,10 @@ export interface ServicesWorkspaceProps {
 }
 
 /**
- * Embedded (full-bleed) triage workspace. When no services are connected it
- * renders an honest empty state that routes to /connections — never fabricated
- * sample rows. The marketing preview passes SAMPLE_* + variant="framed" to
- * show the populated UI inside a card.
+ * Embedded (full-bleed) triage workspace. When no services are connected,
+ * the rail's "Connect your tools" list is still real and actionable — never
+ * fabricated rows. The marketing preview passes SAMPLE_* + variant="framed"
+ * to show the populated UI inside a card.
  */
 export function ServicesWorkspace({ services = [], issues = [], variant = "embedded" }: ServicesWorkspaceProps) {
   const [serviceId, setServiceId] = useState<string | null>(services[0]?.id ?? null);
@@ -241,53 +263,52 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
 
   const hasServices = services.length > 0;
   const activeService = serviceId ?? services[0]?.id ?? null;
-  const serviceIssues = activeService ? issues.filter((i) => i.serviceId === activeService) : [];
-  const selected = serviceIssues.find((i) => i.id === issueId) ?? serviceIssues[0] ?? null;
+  const selected = issues.find((i) => i.id === issueId) ?? null;
 
-  function selectService(id: string) {
-    setServiceId(id);
-    const first = issues.find((i) => i.serviceId === id);
-    setIssueId(first ? first.id : null);
+  function toggleService(id: string) {
+    setServiceId((current) => (current === id ? null : id));
   }
 
-  // Same column widths as the /agents workspace (260px rail / flexible
-  // center / 320px detail) so the two pages read as one consistent system.
+  // Same column widths as /agents (260px rail / flexible center / 320px
+  // right) so the two pages read as one consistent system.
   const outerClass =
     variant === "embedded"
       ? "-m-8 grid min-h-[540px] grid-cols-1 divide-y divide-border-subtle border-t border-border-subtle bg-surface-1/20 overflow-hidden lg:grid lg:h-[calc(100vh-4.5rem)] lg:min-h-0 lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:divide-x lg:divide-y-0"
       : "grid min-h-[560px] grid-cols-1 divide-y divide-border-subtle overflow-hidden lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:divide-x lg:divide-y-0";
 
   return (
-    // "embedded": full-bleed, cancels the dashboard shell's p-8 (the /agents
-    // pattern). "framed": fixed height, no negative margin, for the marketing
-    // preview card. Each pane below mirrors agent-rail/synthesizer-console/
-    // pr-panel's structure exactly: flex-col with a h-10 header, a scrollable
-    // body, and (where relevant) a pinned footer.
     <div className={outerClass}>
-      {/* Services rail */}
+      {/* Rail: services (each expandable to its issues) + connect catalog */}
       <section className="flex min-h-0 flex-1 flex-col" aria-label="Services">
         <header className="flex h-10 shrink-0 items-center justify-between border-b border-border-subtle px-3">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Services</h2>
           <span className="font-mono text-[10px] tabular-nums text-content-muted">{services.length}</span>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {hasServices ? (
-            <ul className="py-1">
+          {hasServices && (
+            <ul className="border-b border-border-subtle py-1">
               {services.map((s) => {
-                const on = s.id === activeService;
+                const expanded = s.id === activeService;
+                const svcIssues = issues.filter((i) => i.serviceId === s.id);
                 return (
                   <li key={s.id} className="relative">
-                    {on && (
+                    {expanded && (
                       <span className="absolute inset-y-1 left-0 z-10 w-0.5 rounded-r bg-accent-primary" aria-hidden />
                     )}
                     <button
                       type="button"
-                      onClick={() => selectService(s.id)}
-                      aria-current={on ? "true" : undefined}
-                      className={`flex w-full items-center gap-2.5 py-2.5 pl-3 pr-3 text-left transition-colors ${
-                        on ? "bg-accent-primary/[0.06]" : "hover:bg-content-primary/[0.04]"
+                      onClick={() => toggleService(s.id)}
+                      aria-expanded={expanded}
+                      className={`flex w-full items-center gap-2 py-2.5 pl-3 pr-3 text-left transition-colors ${
+                        expanded ? "bg-accent-primary/[0.06]" : "hover:bg-content-primary/[0.04]"
                       }`}
                     >
+                      <IconChevronDown
+                        size={12}
+                        stroke={2}
+                        className={`shrink-0 text-content-muted transition-transform ${expanded ? "" : "-rotate-90"}`}
+                        aria-hidden
+                      />
                       <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${SEV_DOT[s.worst]}`} />
                       <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-content-primary">{s.id}</span>
                       {s.open > 0 ? (
@@ -296,104 +317,86 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
                         <span className="shrink-0 font-mono text-[10px] text-content-muted">clear</span>
                       )}
                     </button>
+                    {expanded && (
+                      <ul className="pb-1">
+                        {svcIssues.length === 0 ? (
+                          <li className="px-3 py-2 pl-9 text-[11px] text-content-muted">All clear — no open issues.</li>
+                        ) : (
+                          svcIssues.map((iss) => {
+                            const on = iss.id === selected?.id;
+                            return (
+                              <li key={iss.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => setIssueId(iss.id)}
+                                  aria-current={on ? "true" : undefined}
+                                  className={`flex w-full items-center gap-2 py-1.5 pl-9 pr-3 text-left transition-colors ${
+                                    on ? "bg-accent-primary/[0.1] text-content-primary" : "text-content-secondary hover:bg-content-primary/[0.04]"
+                                  }`}
+                                >
+                                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${SEV_DOT[iss.severity]}`} />
+                                  <span className="min-w-0 flex-1 truncate text-[11.5px]">{iss.title}</span>
+                                </button>
+                              </li>
+                            );
+                          })
+                        )}
+                      </ul>
+                    )}
                   </li>
                 );
               })}
             </ul>
-          ) : (
-            <p className="px-3 py-6 text-center text-[11.5px] leading-relaxed text-content-muted">
-              Your connected services will list here.
+          )}
+
+          <div className="px-3 py-3">
+            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-content-muted">
+              {hasServices ? "Connect more" : "Connect your tools"}
             </p>
-          )}
-        </div>
-        <footer className="shrink-0 border-t border-border-subtle px-3 py-2">
-          <p className="font-mono text-[10px] leading-4 text-content-muted/80">
-            {hasServices ? "compiled from your connected telemetry" : "connect a tool to see services here"}
-          </p>
-        </footer>
-      </section>
-
-      {/* Issue stream */}
-      <section className="flex min-h-0 flex-1 flex-col" aria-label="Issues">
-        <header className="flex h-10 shrink-0 items-center justify-between border-b border-border-subtle px-3">
-          <span className="font-mono text-[12px] text-content-secondary">
-            {hasServices ? `${activeService} · issues` : "Issues"}
-          </span>
-          {serviceIssues.length > 0 && (
-            <span className="text-[10.5px] text-content-muted">{serviceIssues.length} open</span>
-          )}
-        </header>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {!hasServices ? (
-            <div className="mx-auto flex h-full max-w-xs flex-col items-center justify-center gap-4 px-4 text-center">
-              <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-accent-primary/20 bg-accent-primary/10 text-accent-primary">
-                <IconPlugConnected size={22} stroke={1.75} />
-              </span>
-              <div>
-                <h3 className="font-serif text-base font-semibold text-content-primary">No services connected yet</h3>
-                <p className="mt-1.5 text-[12.5px] leading-relaxed text-content-muted">
-                  Connect Sentry, Vercel, Stripe, CI, or PostHog and Areté compiles their issues here, per
-                  service, with a fix already proposed.
-                </p>
-              </div>
-              <Link
-                href="/connections"
-                className="group inline-flex h-9 items-center justify-center gap-1.5 rounded-full bg-accent-primary px-4 text-[13px] font-medium text-white shadow-sm transition-colors hover:bg-accent-primary/90"
-              >
-                Add your services
-                <IconArrowRight size={14} stroke={2} className="transition-transform group-hover:translate-x-0.5" />
-              </Link>
-            </div>
-          ) : serviceIssues.length === 0 ? (
-            <p className="px-4 py-10 text-center text-sm text-content-muted">All clear — no open issues for this service.</p>
-          ) : (
-            <ul>
-              {serviceIssues.map((i) => {
-                const on = i.id === selected?.id;
-                return (
-                  <li key={i.id} className="grid grid-cols-[3px_1fr] border-b border-border-subtle">
-                    <span className={`${SEV_DOT[i.severity]} rounded-r`} aria-hidden />
-                    <button
-                      type="button"
-                      onClick={() => setIssueId(i.id)}
-                      className={`px-3 py-2.5 text-left transition-colors ${on ? "bg-accent-primary/[0.06]" : "hover:bg-content-primary/[0.04]"}`}
-                    >
-                      <div className="mb-1 flex items-center gap-2">
-                        <span className={`rounded-full border px-1.5 py-px text-[9.5px] font-bold uppercase tracking-wide ${SEV_PILL[i.severity]}`}>{SEV_LABEL[i.severity]}</span>
-                        <span className="rounded border border-border-default bg-surface-2 px-1.5 text-[10px] font-medium text-content-secondary">{i.source}</span>
-                        <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-medium text-content-muted">
-                          <span className="h-1 w-1 rounded-full bg-accent-primary" />{i.status}
-                        </span>
-                      </div>
-                      <p className="text-[13px] font-semibold leading-tight text-content-primary">{i.title}</p>
-                      <p className="mt-1 font-mono text-[11px] text-content-muted">{i.occurrences} · {i.lastSeen} · {i.agent}</p>
-                    </button>
-                  </li>
-                );
-              })}
+            <ul className="space-y-1">
+              {CONNECTORS.map((c) => (
+                <li key={c.id} className="flex items-center gap-2 rounded-lg border border-border-subtle px-2 py-1.5">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-border-default bg-surface-2 text-content-secondary">
+                    <ConnectorIcon id={c.id} className="h-3.5 w-3.5" />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-content-secondary">{c.name}</span>
+                  <Link
+                    href={`/connections/${c.id}`}
+                    className="shrink-0 rounded-full border border-accent-primary/30 bg-accent-primary/10 px-2 py-0.5 text-[10px] font-semibold text-accent-primary transition-colors hover:bg-accent-primary/20"
+                  >
+                    Connect
+                  </Link>
+                </li>
+              ))}
             </ul>
-          )}
+          </div>
         </div>
       </section>
 
-      {/* Detail */}
+      {/* Center: full issue detail — evidence, proposed fix, activity, actions */}
       <section className="flex min-h-0 flex-1 flex-col" aria-label="Issue detail">
         {!selected ? (
           <>
-            <header className="flex h-10 shrink-0 items-center justify-between border-b border-border-subtle px-3">
+            <header className="flex h-10 shrink-0 items-center border-b border-border-subtle px-3">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Issue</h2>
             </header>
             <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center">
               <p className="text-sm text-content-muted">
                 {hasServices
-                  ? "Select an issue to see what happened and the proposed fix."
-                  : "An issue's evidence and proposed fix will appear here."}
+                  ? "Select an issue from a service on the left to see what happened and the proposed fix."
+                  : "Connect a tool on the left to start compiling issues here."}
               </p>
             </div>
           </>
         ) : (
           <IssueDetail issue={selected} />
         )}
+      </section>
+
+      {/* Right: per-issue team chat — scripted from the SAME agents/telemetry
+          in the issue's own timeline, never a free-floating assistant. */}
+      <section className="flex min-h-0 flex-1 flex-col" aria-label="Team chat">
+        <TeamChat issue={selected} />
       </section>
     </div>
   );
@@ -402,18 +405,17 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
 function IssueDetail({ issue }: { issue: Issue }) {
   return (
     <>
-      <header className="flex h-10 shrink-0 items-center justify-between border-b border-border-subtle px-3">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Issue</h2>
-        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-accent-primary">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-primary" />{issue.agent} agent
+      <header className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-3">
+        <span className="min-w-0 truncate font-mono text-[12px] text-content-secondary">
+          {issue.serviceId} <span className="text-content-muted">·</span> issue
         </span>
+        <span className={`shrink-0 rounded-full border px-1.5 py-px text-[9.5px] font-bold uppercase tracking-wide ${SEV_PILL[issue.severity]}`}>{SEV_LABEL[issue.severity]}</span>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <div className="flex flex-col gap-4">
           <div>
-            <span className={`rounded-full border px-1.5 py-px text-[9.5px] font-bold uppercase tracking-wide ${SEV_PILL[issue.severity]}`}>{SEV_LABEL[issue.severity]}</span>
-            <h3 className="mt-1.5 font-serif text-base font-semibold leading-tight text-content-primary">{issue.title}</h3>
+            <h3 className="font-serif text-lg font-semibold leading-tight text-content-primary">{issue.title}</h3>
             <p className="mt-1 font-mono text-[11px] text-content-muted">{issue.source} · {issue.where} · {issue.occurrences} · {issue.lastSeen}</p>
           </div>
 
@@ -474,14 +476,10 @@ function IssueDetail({ issue }: { issue: Issue }) {
         </div>
       </div>
 
-      {/* Pinned actions — same treatment as the PR panel's human-verification
-          footer: primary action, secondary actions, a note underneath. */}
       <footer className="shrink-0 space-y-2 border-t border-border-subtle px-3 py-3">
-        <div className="flex flex-wrap gap-1.5">
-          <button type="button" className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-accent-primary px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-accent-primary/90">
-            <IconCircleCheck size={14} stroke={2} /> Approve &amp; open PR
-          </button>
-        </div>
+        <button type="button" className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent-primary px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-accent-primary/90">
+          <IconCircleCheck size={14} stroke={2} /> Approve &amp; open PR
+        </button>
         <div className="grid grid-cols-2 gap-1.5">
           <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-1.5 text-[11px] font-semibold text-content-secondary transition-colors hover:bg-content-primary/5">
             <IconCopy size={13} stroke={1.75} /> Copy patch
@@ -492,6 +490,76 @@ function IssueDetail({ issue }: { issue: Issue }) {
         </div>
         <p className="text-[10px] leading-4 text-content-muted/80">
           You review and merge on your own terms — Areté never changes your code without approval.
+        </p>
+      </footer>
+    </>
+  );
+}
+
+/**
+ * Right-pane per-issue team chat. HONESTY: this is a scripted transcript of
+ * the issue's own timeline, re-narrated as a conversation between whichever
+ * telemetry source / specialist agent / Synthesizer actually touched it
+ * (see speakerFor above) — not a live model. The input is disabled, same
+ * pattern as the Synthesizer console, until a real chat agent is wired up.
+ */
+function TeamChat({ issue }: { issue: Issue | null }) {
+  const team = issue ? teamFor(issue) : [];
+
+  return (
+    <>
+      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border-subtle px-3">
+        <span className={`h-1.5 w-1.5 rounded-full ${issue ? "bg-accent-success" : "bg-content-muted/40"}`} aria-hidden />
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Team chat</h2>
+        <span className="rounded-full border border-accent-info/25 bg-accent-info/10 px-1.5 py-px text-[10px] font-medium text-accent-info">Preview</span>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+        {!issue ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 px-2 text-center">
+            <p className="text-xs leading-5 text-content-muted">
+              Select an issue to see the agents working on it and what they found.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="mb-3 flex flex-wrap gap-1.5">
+              {team.map((name) => (
+                <span key={name} className="rounded-full border border-border-default bg-surface-2 px-2 py-0.5 text-[10.5px] font-medium text-content-secondary">
+                  {name}
+                </span>
+              ))}
+            </div>
+            <p className="mb-2 text-[10px] uppercase tracking-wider text-content-muted">
+              Scripted from this issue&apos;s activity — not a live model
+            </p>
+            <ol className="space-y-2">
+              {issue.timeline.map((t, idx) => (
+                <li key={idx} className="rounded-lg border border-border-subtle bg-surface-2/60 px-2.5 py-2">
+                  <p className="text-[10px] font-semibold text-content-muted">{speakerFor(t.tone, issue)}</p>
+                  <p className="mt-0.5 text-[12px] leading-relaxed text-content-secondary">{t.text}</p>
+                  <p className="mt-1 font-mono text-[10px] text-content-muted/80">{t.when}</p>
+                </li>
+              ))}
+            </ol>
+          </>
+        )}
+      </div>
+
+      <footer className="shrink-0 border-t border-border-subtle px-3 py-2.5">
+        <div className="flex items-center gap-2 rounded-lg border border-border-default bg-surface-2/60 px-3 py-2">
+          <span className="font-mono text-xs text-content-muted" aria-hidden>&gt;</span>
+          <input
+            type="text"
+            disabled
+            placeholder="Ask the team about this issue…"
+            aria-label="Ask the team about this issue (live chat coming soon)"
+            title="Live chat coming soon"
+            className="w-full cursor-not-allowed bg-transparent font-mono text-xs text-content-primary placeholder:text-content-muted/70 focus:outline-none"
+          />
+        </div>
+        <p className="mt-1.5 px-1 font-mono text-[10px] text-content-muted/80">
+          preview shell · live chat coming soon
         </p>
       </footer>
     </>
