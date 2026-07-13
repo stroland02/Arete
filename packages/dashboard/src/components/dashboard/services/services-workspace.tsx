@@ -1,25 +1,27 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
+  IconArrowRight,
   IconCircleCheck,
   IconCopy,
   IconGitPullRequest,
+  IconPlugConnected,
   IconX,
 } from "@tabler/icons-react";
 
 /**
- * Services "Triage Inbox" — the service-oriented /services workspace.
+ * Services "Triage Inbox" workspace. Production signals from CONNECTED
+ * telemetry (Sentry, Vercel, Stripe, CI, PostHog) plus Areté's own review
+ * findings are compiled and deduped PER SERVICE and shown here, each with the
+ * telemetry evidence and the specialist agent's proposed code fix; the human
+ * approves.
  *
- * Production signals from CONNECTED telemetry (Sentry, Vercel, Stripe, CI,
- * PostHog) plus Areté's own review findings are compiled and deduped PER
- * SERVICE, and land here as issues. Each issue carries the telemetry evidence
- * and the specialist agent's proposed code fix; the human approves.
- *
- * This first cut renders illustrative SAMPLE data (clearly labelled) against
- * the real Service/Issue shape below — the same contract the backend
- * ingestion pipeline will populate. It never fabricates a connected state: a
- * real deployment shows only connected services and honest empty states.
+ * Data comes in as props (the real Service/Issue contract). The authenticated
+ * /services page renders it EMPTY by default — no fabricated services or
+ * incidents — with an honest empty state that routes to /connections. The
+ * SAMPLE_* exports below drive the illustrative marketing preview only.
  */
 
 export type Severity = "critical" | "high" | "medium";
@@ -34,7 +36,7 @@ export interface Issue {
   serviceId: string;
   source: string; // Sentry | Stripe | CI | Vercel | PostHog | Areté
   severity: Severity;
-  status: string; // Agent fixing | Fix proposed | Triaging …
+  status: string;
   agent: string;
   title: string;
   occurrences: string;
@@ -52,8 +54,8 @@ export interface Service {
   worst: Severity | "clear";
 }
 
-// ── Illustrative sample data ────────────────────────────────────────────────
-const SERVICES: Service[] = [
+// ── Illustrative SAMPLE data — marketing preview ONLY, never the real page ──
+export const SAMPLE_SERVICES: Service[] = [
   { id: "payments-api", open: 3, worst: "critical" },
   { id: "auth-gateway", open: 2, worst: "high" },
   { id: "orders-service", open: 2, worst: "high" },
@@ -61,7 +63,7 @@ const SERVICES: Service[] = [
   { id: "web-dashboard", open: 0, worst: "clear" },
 ];
 
-const ISSUES: Issue[] = [
+export const SAMPLE_ISSUES: Issue[] = [
   {
     id: "p1", serviceId: "payments-api", source: "Sentry", severity: "critical",
     status: "Agent fixing", agent: "Business Logic",
@@ -214,42 +216,61 @@ const TONE_DOT: Record<string, string> = {
   good: "bg-accent-success", accent: "bg-accent-primary",
 };
 
-export function ServicesWorkspace() {
-  const [serviceId, setServiceId] = useState(SERVICES[0].id);
-  const [issueId, setIssueId] = useState<string | null>(ISSUES[0].id);
+export interface ServicesWorkspaceProps {
+  services?: Service[];
+  issues?: Issue[];
+  /**
+   * "embedded" (default) cancels the dashboard shell's padding and stretches
+   * to the viewport height — the /agents pattern. "framed" is a fixed-height
+   * variant with no negative margin, for embedding inside a card elsewhere
+   * (e.g. the marketing landing page preview).
+   */
+  variant?: "embedded" | "framed";
+}
 
-  const serviceIssues = ISSUES.filter((i) => i.serviceId === serviceId);
+/**
+ * Embedded (full-bleed) triage workspace. When no services are connected it
+ * renders an honest empty state that routes to /connections — never fabricated
+ * sample rows. The marketing preview passes SAMPLE_* + variant="framed" to
+ * show the populated UI inside a card.
+ */
+export function ServicesWorkspace({ services = [], issues = [], variant = "embedded" }: ServicesWorkspaceProps) {
+  const [serviceId, setServiceId] = useState<string | null>(services[0]?.id ?? null);
+  const [issueId, setIssueId] = useState<string | null>(
+    issues.find((i) => i.serviceId === services[0]?.id)?.id ?? null
+  );
+
+  const hasServices = services.length > 0;
+  const activeService = serviceId ?? services[0]?.id ?? null;
+  const serviceIssues = activeService ? issues.filter((i) => i.serviceId === activeService) : [];
   const selected = serviceIssues.find((i) => i.id === issueId) ?? serviceIssues[0] ?? null;
 
   function selectService(id: string) {
     setServiceId(id);
-    const first = ISSUES.find((i) => i.serviceId === id);
+    const first = issues.find((i) => i.serviceId === id);
     setIssueId(first ? first.id : null);
   }
 
-  return (
-    <div className="overflow-hidden rounded-2xl border border-border-default bg-surface-1 shadow-sm">
-      {/* live chrome */}
-      <div className="flex items-center gap-3 border-b border-border-subtle bg-surface-2/60 px-4 py-2.5">
-        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-accent-success">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-success" /> Live
-        </span>
-        <span className="text-[11px] text-content-muted">Issues compiled from your connected telemetry</span>
-        <span className="ml-auto rounded-full border border-border-default bg-surface-2 px-2 py-0.5 text-[10px] font-medium text-content-muted">
-          Illustrative
-        </span>
-      </div>
+  const outerClass =
+    variant === "embedded"
+      ? "-m-8 grid min-h-[540px] grid-cols-1 divide-y divide-border-subtle border-t border-border-subtle bg-surface-1/20 overflow-hidden lg:h-[calc(100vh-4.5rem)] lg:min-h-0 lg:grid-cols-[210px_minmax(0,1fr)_minmax(0,1.1fr)] lg:divide-x lg:divide-y-0"
+      : "grid min-h-[560px] grid-cols-1 divide-y divide-border-subtle overflow-hidden lg:grid-cols-[210px_minmax(0,1fr)_minmax(0,1.1fr)] lg:divide-x lg:divide-y-0";
 
-      <div className="grid min-h-[600px] grid-cols-1 divide-y divide-border-subtle lg:grid-cols-[210px_minmax(0,1fr)_minmax(0,1.1fr)] lg:divide-x lg:divide-y-0">
-        {/* Services rail */}
-        <aside className="min-w-0">
-          <div className="flex h-10 items-center justify-between border-b border-border-subtle px-3">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-content-secondary">Services</span>
-            <span className="font-mono text-[10px] text-content-muted">{SERVICES.length}</span>
-          </div>
+  return (
+    // "embedded": full-bleed, cancels the dashboard shell's p-8 (the /agents
+    // pattern). "framed": fixed height, no negative margin, for the marketing
+    // preview card.
+    <div className={outerClass}>
+      {/* Services rail */}
+      <aside className="min-w-0">
+        <div className="flex h-10 items-center justify-between border-b border-border-subtle px-3">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-content-secondary">Services</span>
+          <span className="font-mono text-[10px] text-content-muted">{services.length}</span>
+        </div>
+        {hasServices ? (
           <ul>
-            {SERVICES.map((s) => {
-              const on = s.id === serviceId;
+            {services.map((s) => {
+              const on = s.id === activeService;
               return (
                 <li key={s.id}>
                   <button
@@ -271,56 +292,86 @@ export function ServicesWorkspace() {
               );
             })}
           </ul>
-        </aside>
+        ) : (
+          <p className="px-3 py-6 text-center text-[11.5px] leading-relaxed text-content-muted">
+            Your connected services will list here.
+          </p>
+        )}
+      </aside>
 
-        {/* Issue stream */}
-        <section className="min-w-0">
-          <div className="flex h-10 items-center justify-between border-b border-border-subtle px-3">
-            <span className="font-mono text-[12px] text-content-secondary">{serviceId} · issues</span>
-            {serviceIssues.length > 0 && (
-              <span className="text-[10.5px] text-content-muted">{serviceIssues.length} open · updated live</span>
-            )}
+      {/* Issue stream */}
+      <section className="min-w-0">
+        <div className="flex h-10 items-center justify-between border-b border-border-subtle px-3">
+          <span className="font-mono text-[12px] text-content-secondary">
+            {hasServices ? `${activeService} · issues` : "Issues"}
+          </span>
+          {serviceIssues.length > 0 && (
+            <span className="text-[10.5px] text-content-muted">{serviceIssues.length} open</span>
+          )}
+        </div>
+        {!hasServices ? (
+          <div className="flex flex-col items-center justify-center gap-4 px-6 py-14 text-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-accent-primary/20 bg-accent-primary/10 text-accent-primary">
+              <IconPlugConnected size={22} stroke={1.75} />
+            </span>
+            <div className="max-w-xs">
+              <h3 className="font-serif text-base font-semibold text-content-primary">No services connected yet</h3>
+              <p className="mt-1.5 text-[12.5px] leading-relaxed text-content-muted">
+                Connect Sentry, Vercel, Stripe, CI, or PostHog and Areté compiles their issues here, per
+                service, with a fix already proposed.
+              </p>
+            </div>
+            <Link
+              href="/connections"
+              className="group inline-flex h-9 items-center justify-center gap-1.5 rounded-full bg-accent-primary px-4 text-[13px] font-medium text-white shadow-sm transition-colors hover:bg-accent-primary/90"
+            >
+              Add your services
+              <IconArrowRight size={14} stroke={2} className="transition-transform group-hover:translate-x-0.5" />
+            </Link>
           </div>
-          {serviceIssues.length === 0 ? (
-            <p className="px-4 py-10 text-center text-sm text-content-muted">All clear — no open issues for this service.</p>
-          ) : (
-            <ul>
-              {serviceIssues.map((i) => {
-                const on = i.id === selected?.id;
-                return (
-                  <li key={i.id} className="grid grid-cols-[3px_1fr] border-b border-border-subtle">
-                    <span className={`${SEV_DOT[i.severity]} rounded-r`} aria-hidden />
-                    <button
-                      type="button"
-                      onClick={() => setIssueId(i.id)}
-                      className={`px-3 py-2.5 text-left transition-colors ${on ? "bg-accent-primary/[0.06]" : "hover:bg-content-primary/[0.04]"}`}
-                    >
-                      <div className="mb-1 flex items-center gap-2">
-                        <span className={`rounded-full border px-1.5 py-px text-[9.5px] font-bold uppercase tracking-wide ${SEV_PILL[i.severity]}`}>{SEV_LABEL[i.severity]}</span>
-                        <span className="rounded border border-border-default bg-surface-2 px-1.5 text-[10px] font-medium text-content-secondary">{i.source}</span>
-                        <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-medium text-content-muted">
-                          <span className="h-1 w-1 rounded-full bg-accent-primary" />{i.status}
-                        </span>
-                      </div>
-                      <p className="text-[13px] font-semibold leading-tight text-content-primary">{i.title}</p>
-                      <p className="mt-1 font-mono text-[11px] text-content-muted">{i.occurrences} · {i.lastSeen} · {i.agent}</p>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
+        ) : serviceIssues.length === 0 ? (
+          <p className="px-4 py-10 text-center text-sm text-content-muted">All clear — no open issues for this service.</p>
+        ) : (
+          <ul>
+            {serviceIssues.map((i) => {
+              const on = i.id === selected?.id;
+              return (
+                <li key={i.id} className="grid grid-cols-[3px_1fr] border-b border-border-subtle">
+                  <span className={`${SEV_DOT[i.severity]} rounded-r`} aria-hidden />
+                  <button
+                    type="button"
+                    onClick={() => setIssueId(i.id)}
+                    className={`px-3 py-2.5 text-left transition-colors ${on ? "bg-accent-primary/[0.06]" : "hover:bg-content-primary/[0.04]"}`}
+                  >
+                    <div className="mb-1 flex items-center gap-2">
+                      <span className={`rounded-full border px-1.5 py-px text-[9.5px] font-bold uppercase tracking-wide ${SEV_PILL[i.severity]}`}>{SEV_LABEL[i.severity]}</span>
+                      <span className="rounded border border-border-default bg-surface-2 px-1.5 text-[10px] font-medium text-content-secondary">{i.source}</span>
+                      <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-medium text-content-muted">
+                        <span className="h-1 w-1 rounded-full bg-accent-primary" />{i.status}
+                      </span>
+                    </div>
+                    <p className="text-[13px] font-semibold leading-tight text-content-primary">{i.title}</p>
+                    <p className="mt-1 font-mono text-[11px] text-content-muted">{i.occurrences} · {i.lastSeen} · {i.agent}</p>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
 
-        {/* Detail */}
-        <section className="min-w-0">
-          {!selected ? (
-            <p className="px-4 py-10 text-sm text-content-muted">Select an issue to see what happened and the proposed fix.</p>
-          ) : (
-            <IssueDetail issue={selected} />
-          )}
-        </section>
-      </div>
+      {/* Detail */}
+      <section className="min-w-0">
+        {!selected ? (
+          <p className="px-4 py-10 text-sm text-content-muted">
+            {hasServices
+              ? "Select an issue to see what happened and the proposed fix."
+              : "An issue's evidence and proposed fix will appear here."}
+          </p>
+        ) : (
+          <IssueDetail issue={selected} />
+        )}
+      </section>
     </div>
   );
 }
