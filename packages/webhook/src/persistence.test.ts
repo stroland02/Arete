@@ -8,13 +8,23 @@ import type { TelemetrySnapshot } from './types.js'
 function makePrismaMock() {
   const installationFindUnique = vi.fn()
   const telemetrySnapshotRecordUpsert = vi.fn()
+  const repositoryFindUnique = vi.fn()
+  const agentMemoryFindMany = vi.fn()
 
   class PrismaClient {
     installation = { findUnique: installationFindUnique }
     telemetrySnapshotRecord = { upsert: telemetrySnapshotRecordUpsert }
+    repository = { findUnique: repositoryFindUnique }
+    agentMemory = { findMany: agentMemoryFindMany }
   }
 
-  return { PrismaClient, installationFindUnique, telemetrySnapshotRecordUpsert }
+  return {
+    PrismaClient,
+    installationFindUnique,
+    telemetrySnapshotRecordUpsert,
+    repositoryFindUnique,
+    agentMemoryFindMany,
+  }
 }
 
 async function loadPersistence(mocks: ReturnType<typeof makePrismaMock>) {
@@ -85,5 +95,65 @@ describe('persistTelemetrySnapshots', () => {
 
     expect(mocks.installationFindUnique).not.toHaveBeenCalled()
     expect(mocks.telemetrySnapshotRecordUpsert).not.toHaveBeenCalled()
+  })
+})
+
+describe('fetchProjectMemories', () => {
+  let mocks: ReturnType<typeof makePrismaMock>
+
+  beforeEach(() => {
+    mocks = makePrismaMock()
+  })
+
+  it('returns active memory bodies for an existing repo, most recent first', async () => {
+    mocks.repositoryFindUnique.mockResolvedValue({ id: 'repo-uuid-1' })
+    mocks.agentMemoryFindMany.mockResolvedValue([
+      { body: 'Use tabs, not spaces.' },
+      { body: 'Always run the linter before committing.' },
+    ])
+    const { fetchProjectMemories } = await loadPersistence(mocks)
+
+    const result = await fetchProjectMemories('github', 1)
+
+    expect(result).toEqual(['Use tabs, not spaces.', 'Always run the linter before committing.'])
+    expect(mocks.agentMemoryFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { repositoryId: 'repo-uuid-1', status: 'active' },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      })
+    )
+  })
+
+  it('returns an empty array when no Repository row exists for that provider/externalId', async () => {
+    mocks.repositoryFindUnique.mockResolvedValue(null)
+    const { fetchProjectMemories } = await loadPersistence(mocks)
+
+    const result = await fetchProjectMemories('github', 999)
+
+    expect(result).toEqual([])
+    expect(mocks.agentMemoryFindMany).not.toHaveBeenCalled()
+  })
+
+  it('returns an empty array when the repo has no active memories', async () => {
+    mocks.repositoryFindUnique.mockResolvedValue({ id: 'repo-uuid-1' })
+    mocks.agentMemoryFindMany.mockResolvedValue([])
+    const { fetchProjectMemories } = await loadPersistence(mocks)
+
+    const result = await fetchProjectMemories('github', 1)
+
+    expect(result).toEqual([])
+  })
+
+  it('caps the query at 20 results', async () => {
+    mocks.repositoryFindUnique.mockResolvedValue({ id: 'repo-uuid-1' })
+    mocks.agentMemoryFindMany.mockResolvedValue([])
+    const { fetchProjectMemories } = await loadPersistence(mocks)
+
+    await fetchProjectMemories('github', 1)
+
+    expect(mocks.agentMemoryFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 20 })
+    )
   })
 })
