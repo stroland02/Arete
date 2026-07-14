@@ -130,6 +130,56 @@ def test_all_agents_succeed_analysis_status_complete(sample_pr, cyclic_llm):
     assert result.analysis_status == "complete"
 
 
+def test_high_risk_run_gets_review_required_verdict(sample_pr):
+    """SP4: a completed run whose synthesized risk_level is 'high' gets the
+    'review-required' verdict (not blocking, but a human must review)."""
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    sec_response = (
+        '{"comments": [{"path": "src/auth.py", "line": 5, "body": "SQL '
+        'injection.", "severity": "error", "category": "security"}], '
+        '"summary": "SQL injection."}'
+    )
+    synth_response = (
+        '{"file_reviews": [{"path": "src/auth.py", "comments": '
+        '[{"path": "src/auth.py", "line": 5, "body": "SQL injection.", '
+        '"severity": "error", "category": "security"}], '
+        '"summary": "SQL injection."}], '
+        '"overall_summary": "One security issue.", "risk_level": "high"}'
+    )
+
+    def fake_invoke(messages, **kwargs):
+        system = messages[0].content
+        if "Synthesizer" in system:
+            return AIMessage(content=synth_response)
+        return AIMessage(content=sec_response)
+
+    mock = MagicMock()
+    mock.bind_tools.return_value = mock
+    mock.with_retry.return_value = mock
+    mock.invoke.side_effect = fake_invoke
+
+    result = ReviewOrchestrator(llm=mock).run(sample_pr)
+    assert result.risk_level == "high"
+    assert result.verdict == "review-required"
+
+
+def test_total_failure_run_gets_blocked_verdict(sample_pr):
+    """SP4 precedence: a total agent failure blocks even though the fallback
+    leaves risk_level at 'low' — the verdict must reflect the FINAL
+    analysis_status ('failed'), proving it is computed after that assignment."""
+    from arete_agents.orchestrator import ReviewOrchestrator
+    boom = MagicMock()
+    boom.bind_tools.return_value = boom
+    boom.with_retry.return_value = boom
+    boom.invoke.side_effect = RuntimeError("total LLM outage")
+    result = ReviewOrchestrator(llm=boom).run(sample_pr)
+    assert result.analysis_status == "failed"
+    assert result.risk_level == "low"
+    assert result.verdict == "blocked"
+    assert "could not be completed" in result.verdict_reason
+
+
 def test_empty_pr_analysis_status_complete(cyclic_llm):
     """No files to review is NOT a failure — there was just nothing to do."""
     from arete_agents.models.pr import PRContext

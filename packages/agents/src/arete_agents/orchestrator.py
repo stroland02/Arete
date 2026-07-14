@@ -361,6 +361,13 @@ class ReviewOrchestrator:
         # failures still produced a real (if incomplete) review.
         if state.get("agent_failures", 0) > 0 and state.get("agent_successes", 0) == 0:
             final_result.analysis_status = "failed"
+
+        # Deterministic risk-tiered verdict — computed LAST, after grounding
+        # (which can drop comments) and after the failed-status assignment
+        # above, so it reflects the final analysis_status and risk_level.
+        from arete_agents.verdict import decide_verdict
+        final_result.verdict, final_result.verdict_reason = decide_verdict(final_result)
+
         return {"final_result": final_result}
 
     def _apply_critic(self, pr: PRContext, result: ReviewResult) -> ReviewResult:
