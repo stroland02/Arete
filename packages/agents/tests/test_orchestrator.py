@@ -843,3 +843,123 @@ def test_apply_grounding_skips_all_gates_when_patch_unparseable(cyclic_llm):
     assert len(out.file_reviews[0].comments) == 2
     assert out.citation_dropped_count == 0
     assert out.security_evidence_dropped_count == 0
+
+
+def test_apply_noise_decisions_silences_matching_comment():
+    from arete_agents.models.review import NoiseDecision
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    result = _grounding_result([
+        ReviewComment(path="src/auth.py", line=5, body="x", severity="info", category="quality"),
+    ])
+    orch = ReviewOrchestrator(llm=MagicMock())
+    out = orch._apply_noise_decisions(
+        result,
+        [NoiseDecision(path="src/auth.py", line=5, action="silence", reason="fp")],
+    )
+    assert out.file_reviews[0].comments[0].noise_state == "SILENCED"
+
+
+def test_apply_noise_decisions_observes_matching_comment():
+    from arete_agents.models.review import NoiseDecision
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    result = _grounding_result([
+        ReviewComment(path="src/auth.py", line=5, body="x", severity="info", category="quality"),
+    ])
+    orch = ReviewOrchestrator(llm=MagicMock())
+    out = orch._apply_noise_decisions(
+        result,
+        [NoiseDecision(
+            path="src/auth.py", line=5, action="observe", reason="watch",
+            escalate_on="additional_events", threshold=3,
+        )],
+    )
+    comment = out.file_reviews[0].comments[0]
+    assert comment.noise_state == "UNDER_OBSERVATION"
+    assert comment.escalate_on == "additional_events"
+    assert comment.threshold == 3
+
+
+def test_apply_noise_decisions_no_match_is_a_noop():
+    from arete_agents.models.review import NoiseDecision
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    result = _grounding_result([
+        ReviewComment(path="src/auth.py", line=5, body="x", severity="info", category="quality"),
+    ])
+    orch = ReviewOrchestrator(llm=MagicMock())
+    out = orch._apply_noise_decisions(
+        result,
+        [NoiseDecision(path="src/other.py", line=99, action="silence", reason="fp")],
+    )
+    assert out.file_reviews[0].comments[0].noise_state == "OPEN"
+
+
+def test_apply_noise_decisions_empty_list_is_a_noop():
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    result = _grounding_result([
+        ReviewComment(path="src/auth.py", line=5, body="x", severity="info", category="quality"),
+    ])
+    orch = ReviewOrchestrator(llm=MagicMock())
+    out = orch._apply_noise_decisions(result, [])
+    assert out.file_reviews[0].comments[0].noise_state == "OPEN"
+
+
+def test_execute_agent_review_propagates_noise_decisions(sample_pr):
+    from arete_agents.orchestrator import ReviewOrchestrator, ReviewTaskState
+
+    llm = MagicMock()
+    llm.bind_tools.return_value = llm
+    llm.with_retry.return_value = llm
+    llm.invoke.side_effect = [
+        AIMessage(content="", tool_calls=[{
+            "name": "silence_as_noise",
+            "args": {"issue_id": "src/auth.py:5", "reason": "fp"},
+            "id": "c1",
+        }]),
+        AIMessage(content='{"comments": [], "summary": "done"}'),
+    ]
+
+    orch = ReviewOrchestrator(llm=llm)
+    state = ReviewTaskState(pr=sample_pr, file=sample_pr.files[0], agent_name="security")
+    update = orch._execute_agent_review(state)
+
+    assert len(update["noise_decisions"]) == 1
+    assert update["noise_decisions"][0].action == "silence"
+
+
+def test_synthesize_reviews_applies_noise_decisions_from_state(sample_pr):
+    from arete_agents.llm.base import ROLE_KEYS
+    from arete_agents.models.review import FileReview, NoiseDecision
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    synth_response = (
+        '{"file_reviews": [{"path": "src/auth.py", "comments": '
+        '[{"path": "src/auth.py", "line": 5, "body": "Noisy.", '
+        '"severity": "info", "category": "quality"}], "summary": "s"}], '
+        '"overall_summary": "s", "risk_level": "low", "dropped_count": 0}'
+    )
+    synth_llm = MagicMock()
+    synth_llm.with_retry.return_value = synth_llm
+    synth_llm.invoke.return_value = AIMessage(content=synth_response)
+
+    llms = {role: MagicMock() for role in ROLE_KEYS}
+    llms["synthesizer"] = synth_llm
+
+    orch = ReviewOrchestrator(llm=llms)
+    raw = [FileReview(path="src/auth.py", comments=[], summary="s")]
+    state = {
+        "pr": sample_pr,
+        "raw_reviews": raw,
+        "noise_decisions": [
+            NoiseDecision(path="src/auth.py", line=5, action="silence", reason="fp"),
+        ],
+        "agent_successes": 1,
+        "agent_failures": 0,
+    }
+    update = orch._synthesize_reviews(state)
+
+    comment = update["final_result"].file_reviews[0].comments[0]
+    assert comment.noise_state == "SILENCED"
