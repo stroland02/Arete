@@ -12,7 +12,7 @@ describe('EmptyState', () => {
     const html = renderToStaticMarkup(<EmptyState />);
 
     expect(html).toContain('Install the Kuma GitHub App');
-    expect(html).toContain('https://github.com/apps/arete-ai-code-review');
+    expect(html).toContain('https://github.com/apps/kumaservices/installations/new');
   });
 
   it('does not render any metrics/numeric dashboard content', () => {

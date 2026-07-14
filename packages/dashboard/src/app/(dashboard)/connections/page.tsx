@@ -35,7 +35,7 @@ export default function ConnectionsPage() {
             </p>
           </div>
           <a
-            href="https://github.com/apps/arete-ai-code-review"
+            href={`https://github.com/apps/${process.env.GITHUB_APP_SLUG ?? 'kumaservices'}/installations/new`}
             className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-accent-primary/30 bg-accent-primary/20 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/30"
           >
             <IconBrandGithub className="h-4 w-4" />
