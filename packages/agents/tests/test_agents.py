@@ -502,3 +502,33 @@ def test_agent_single_shot_and_no_guidance_when_no_index(sample_pr):
     assert llm.invoke.call_count == 1
     system_prompt = llm.invoke.call_args[0][0][0].content
     assert "CODEBASE CONTEXT TOOLS" not in system_prompt
+
+
+def test_review_file_prompt_includes_repo_conventions_when_present():
+    from arete_agents.agents.security import SecurityAgent
+    from arete_agents.models.pr import PRContext
+
+    mock_llm = make_mock_llm('{"comments": [], "summary": "ok"}')
+    agent = SecurityAgent(llm=mock_llm)
+
+    pr = PRContext(
+        repo="acme/api", pr_number=1, title="t", description="",
+        files=[make_file()], repo_conventions="Always use parameterized queries.",
+    )
+    agent.review_file(make_file(), pr)
+
+    human_message = mock_llm.invoke.call_args[0][0][1]
+    assert "<repo_conventions>" in human_message.content
+    assert "Always use parameterized queries." in human_message.content
+
+
+def test_review_file_prompt_omits_repo_conventions_block_when_absent():
+    from arete_agents.agents.security import SecurityAgent
+
+    mock_llm = make_mock_llm('{"comments": [], "summary": "ok"}')
+    agent = SecurityAgent(llm=mock_llm)
+
+    agent.review_file(make_file(), make_pr())
+
+    human_message = mock_llm.invoke.call_args[0][0][1]
+    assert "<repo_conventions>" not in human_message.content

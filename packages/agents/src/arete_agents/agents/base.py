@@ -94,6 +94,16 @@ Other files changed in this same PR (peripheral context only — review ONLY the
                 predecessor_block += f"Handoff Notes:\n{escape_for_prompt(pr_context.predecessor_handoff_notes)}\n"
             predecessor_block += "</predecessor_context>\n"
 
+        repo_conventions_block = ""
+        if pr_context.repo_conventions:
+            repo_conventions_block = (
+                "\n<repo_conventions>\n"
+                "This repository has its own authoritative AGENTS.md/CONVENTIONS.md. "
+                "Follow its guidance over generic advice where the two conflict:\n"
+                f"{escape_for_prompt(pr_context.repo_conventions)}\n"
+                "</repo_conventions>\n"
+            )
+
         return f"""Review this pull request file for {self.agent_name} issues.
 
 <pr_metadata>
@@ -101,7 +111,7 @@ PR: "{escape_for_prompt(pr_context.title)}" in {escape_for_prompt(pr_context.rep
 Description: {escape_for_prompt(pr_context.description)}
 File: {escape_for_prompt(file.path)} ({file.language})
 </pr_metadata>
-{predecessor_block}{self._build_pr_manifest(file, pr_context)}{self._build_telemetry_block(pr_context)}
+{predecessor_block}{repo_conventions_block}{self._build_pr_manifest(file, pr_context)}{self._build_telemetry_block(pr_context)}
 <diff>
 {patch}{truncation_note}
 </diff>
