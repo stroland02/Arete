@@ -81,7 +81,7 @@ export default async function ReviewHistoryPage({
       <RevealItem>
         <div className="space-y-1.5">
           <h1 className="text-lg font-semibold text-content-primary">Review History</h1>
-          <p className="text-sm text-content-muted">Every pull request Areté has reviewed, most recent first.</p>
+          <p className="text-sm text-content-muted">Every pull request Kuma has reviewed, most recent first.</p>
         </div>
       </RevealItem>
 

@@ -11,7 +11,7 @@ describe('EmptyState', () => {
   it('renders the install-the-GitHub-App call to action', () => {
     const html = renderToStaticMarkup(<EmptyState />);
 
-    expect(html).toContain('Install the Areté GitHub App');
+    expect(html).toContain('Install the Kuma GitHub App');
     expect(html).toContain('https://github.com/apps/arete-ai-code-review');
   });
 

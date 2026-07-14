@@ -20,7 +20,7 @@ export function ValueLedger() {
     <div className="flex items-baseline justify-between">
       <h1 className="text-lg font-semibold text-content-primary">
         {greeting()}
-        <span className="text-content-muted font-normal"> — here&apos;s what Areté handled for you</span>
+        <span className="text-content-muted font-normal"> — here&apos;s what Kuma handled for you</span>
       </h1>
       <span className="hidden sm:block text-xs text-content-muted">{dateLabel()}</span>
     </div>

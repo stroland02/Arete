@@ -54,7 +54,7 @@ export default async function MasterGridPage({
           <h1 className="text-lg font-semibold text-content-primary">Master Grid</h1>
           <p className="text-sm text-content-muted">
             What your connected sources looked like as of your most recent review — not a live
-            feed. Each card refreshes the next time Areté reviews a PR that reads it.
+            feed. Each card refreshes the next time Kuma reviews a PR that reads it.
           </p>
         </div>
       </RevealItem>

@@ -162,7 +162,7 @@ function buildBody(kept: ReadonlyArray<Finding>): string {
     return m;
   }, {});
   const lines = Object.entries(byCategory).map(([cat, n]) => `- ${cat}: ${n}`);
-  return [`Areté verified ${kept.length} finding(s) against this diff.`, "", ...lines].join("\n");
+  return [`Kuma verified ${kept.length} finding(s) against this diff.`, "", ...lines].join("\n");
 }
 
 /**
@@ -184,7 +184,7 @@ export function composePr(
     number: null,
     base: opts.base,
     branch: opts.branch,
-    title: `Areté review — ${kept.length} verified finding${kept.length === 1 ? "" : "s"}`,
+    title: `Kuma review — ${kept.length} verified finding${kept.length === 1 ? "" : "s"}`,
     body: buildBody(kept),
     comments,
     state: "ready",

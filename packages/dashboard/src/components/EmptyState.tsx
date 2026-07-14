@@ -2,7 +2,7 @@ import { IconBrandGithub } from '@tabler/icons-react';
 
 /**
  * Shown when the logged-in user is authenticated but authorized for zero
- * Installations — either they haven't installed the Areté GitHub App yet,
+ * Installations — either they haven't installed the Kuma GitHub App yet,
  * or they aren't an admin of any org/account that has. Never falls back to
  * rendering empty/zeroed metrics for this case, which would be
  * indistinguishable from "everything is fine, zero reviews so far".
@@ -16,10 +16,10 @@ export function EmptyState() {
         </div>
         <div className="flex flex-col gap-2">
           <h2 className="text-2xl font-semibold font-serif text-content-primary">
-            Install the Areté GitHub App
+            Install the Kuma GitHub App
           </h2>
           <p className="text-sm text-content-muted">
-            We couldn&apos;t find any installation you administer. Install the Areté GitHub App on
+            We couldn&apos;t find any installation you administer. Install the Kuma GitHub App on
             your account or org, or ask an org admin to, then come back and refresh.
           </p>
         </div>

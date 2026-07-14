@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   IconShieldCheck,
   IconGauge,
@@ -17,7 +17,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 
 /**
- * Hero-scale, self-contained INTERACTIVE illustration of Areté's product for
+ * Hero-scale, self-contained INTERACTIVE illustration of Kuma's product for
  * the marketing landing page — a framed "app window" preview of the /agents
  * review interface (agents rail · code-fix viewer · verified findings). Takes
  * NO props and reads NO account data: everything below is fixed, illustrative
@@ -25,7 +25,7 @@ import { motion, AnimatePresence } from "framer-motion";
  * "Illustrative example" so a visitor can never mistake it for real activity
  * (mirrors the "sample data" pattern in docs/design-references/).
  *
- * Interaction: click a finding on the right to see the exact code fix Areté
+ * Interaction: click a finding on the right to see the exact code fix Kuma
  * proposes for it (before → after diff) in the centre pane. This demonstrates
  * what a verified solution looks like without touching any real repository.
  *
@@ -155,8 +155,22 @@ const SEVERITY_DOT: Record<Finding["severity"], string> = {
 export function HeroAgentGraph() {
   const [selectedId, setSelectedId] = useState(FINDINGS[0].id);
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
-  const [isThinking, setIsThinking] = useState(false);
+  const [isThinking, setIsThinking] = useState(true);
   const [thinkingStep, setThinkingStep] = useState(0);
+  
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Auto-play: fire the Synthesizer thinking animation shortly after mount.
+  // The hero is always at the top of the page, so no IntersectionObserver needed.
+  const hasAutoPlayedRef = useRef(false);
+  useEffect(() => {
+    if (hasAutoPlayedRef.current) return;
+    hasAutoPlayedRef.current = true;
+    const timer = setTimeout(() => {
+      setIsThinking(true);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, []);
 
   const handleSelectFinding = (id: string) => {
     if (id === selectedId) return;
@@ -192,7 +206,23 @@ export function HeroAgentGraph() {
   ];
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border-default bg-surface-1 shadow-[0_30px_80px_-30px_rgba(26,27,24,0.35)]">
+    <motion.div 
+      ref={containerRef} 
+      className="overflow-hidden rounded-2xl border bg-surface-1"
+      animate={{
+        boxShadow: [
+          "0 30px 80px -30px rgba(26,27,24,0.35), 0 0 0px rgba(0,212,255,0)",
+          "0 30px 80px -30px rgba(26,27,24,0.35), 0 0 25px rgba(0,212,255,0.15)",
+          "0 30px 80px -30px rgba(26,27,24,0.35), 0 0 0px rgba(0,212,255,0)"
+        ],
+        borderColor: [
+          "rgba(255,255,255,0.1)", // approximate border-default
+          "rgba(0,212,255,0.3)",
+          "rgba(255,255,255,0.1)"
+        ]
+      }}
+      transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
+    >
       {/* App-window title bar */}
       <div className="flex items-center gap-2 border-b border-border-subtle bg-surface-2/70 px-4 py-2.5">
         <span className="flex gap-1.5" aria-hidden>
@@ -495,6 +525,6 @@ export function HeroAgentGraph() {
           </div>
         </motion.div>
       </div>
-    </div>
+    </motion.div>
   );
 }

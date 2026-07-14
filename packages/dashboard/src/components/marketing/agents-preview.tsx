@@ -1,0 +1,69 @@
+"use client";
+
+import { motion } from "framer-motion";
+import { AgentsWorkspace } from "@/components/dashboard/agents/agents-workspace";
+
+export function AgentsPreview() {
+  return (
+    <section className="mx-auto max-w-7xl px-6 py-24">
+      <div className="mb-14 text-center">
+        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-accent-primary">Agents</span>
+        <h2 className="mt-3 font-serif text-3xl font-semibold tracking-tight text-content-primary">
+          See exactly how decisions are made
+        </h2>
+        <p className="mt-3 text-content-muted">
+          Your PR review is entirely transparent. Watch the agents deliberate, resolve conflicts, and synthesize a mathematically verifiable solution.
+        </p>
+      </div>
+
+      <motion.div 
+        className="overflow-hidden rounded-2xl border bg-surface-1 shadow-2xl relative"
+        animate={{
+          boxShadow: [
+            "0 30px 80px -30px rgba(26,27,24,0.35), 0 0 0px rgba(34,197,94,0)",
+            "0 30px 80px -30px rgba(26,27,24,0.35), 0 0 25px rgba(34,197,94,0.15)",
+            "0 30px 80px -30px rgba(26,27,24,0.35), 0 0 0px rgba(34,197,94,0)"
+          ],
+          borderColor: [
+            "rgba(255,255,255,0.1)",
+            "rgba(34,197,94,0.3)",
+            "rgba(255,255,255,0.1)"
+          ]
+        }}
+        transition={{ repeat: Infinity, duration: 4, ease: "easeInOut", delay: 2 }}
+      >
+        <div className="flex items-center gap-2 border-b border-border-subtle bg-surface-2/70 px-4 py-2.5">
+          <span className="flex gap-1.5" aria-hidden>
+            <span className="h-3 w-3 rounded-full bg-content-muted/30" />
+            <span className="h-3 w-3 rounded-full bg-content-muted/30" />
+            <span className="h-3 w-3 rounded-full bg-content-muted/30" />
+          </span>
+          <span className="mx-auto rounded-md border border-border-subtle bg-surface-0/60 px-4 py-1 font-mono text-xs text-content-muted">
+            app.arete.ai/agents
+          </span>
+          <span className="shrink-0 rounded-full border border-border-default bg-surface-2 px-2 py-0.5 text-[10px] font-medium tracking-wide text-content-muted">
+            Illustrative
+          </span>
+        </div>
+        
+        {/* We wrap the AgentsWorkspace in a fixed height container to simulate the full page */}
+        <div className="h-[700px] relative w-full overflow-hidden">
+          {/* We pass in some dummy props just so it renders something nice */}
+          <AgentsWorkspace 
+            findingCountById={{ "security": 2, "performance": 1, "business-logic": 3 }}
+            totalFindings={6}
+            hasReviews={true}
+            latestReview={{
+              repoFullName: "acme-corp/payments-api",
+              prNumber: 418,
+              riskLevel: "high"
+            }}
+          />
+        </div>
+      </motion.div>
+      <p className="mt-3 text-center text-xs text-content-muted/70">
+        Illustrative example — not live account data.
+      </p>
+    </section>
+  );
+}
