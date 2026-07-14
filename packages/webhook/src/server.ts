@@ -62,6 +62,38 @@ export async function createServer(): Promise<express.Application> {
     } catch (err) {
       console.error('[server] Error handling installation event:', err)
     }
+
+    // Backfill the repos' EXISTING open PRs so past work becomes visible
+    // right away, instead of only reviewing PRs opened after install. Kept
+    // in its own try/catch: a backfill failure must never be conflated with
+    // (or block on) the Installation row persisted just above.
+    try {
+      const { getInstallationOctokit } = await import('./github-auth.js')
+      const octokit = await getInstallationOctokit(app, payload.installation.id)
+      const { backfillInstallationPRs } = await import('./backfill.js')
+      // `repositories` is only present on some installation actions (e.g.
+      // 'created'); default to [] so e.g. 'unsuspend' deliveries without it
+      // are a no-op rather than a crash.
+      const repos = (payload as any).repositories ?? []
+      await backfillInstallationPRs(octokit as any, payload.installation.id, repos)
+    } catch (err) {
+      console.error('[server] Error backfilling PRs for installation:', err)
+    }
+  })
+
+  // A repo added to an EXISTING installation after the fact (the customer
+  // grants the app access to more repos later) never fires `installation`
+  // again, so without this its existing open PRs would never get backfilled.
+  app.webhooks.on('installation_repositories', async ({ payload }) => {
+    if (payload.action !== 'added') return
+    try {
+      const { getInstallationOctokit } = await import('./github-auth.js')
+      const octokit = await getInstallationOctokit(app, payload.installation.id)
+      const { backfillInstallationPRs } = await import('./backfill.js')
+      await backfillInstallationPRs(octokit as any, payload.installation.id, payload.repositories_added as any)
+    } catch (err) {
+      console.error('[server] Error handling installation_repositories event:', err)
+    }
   })
 
   const server = express()
