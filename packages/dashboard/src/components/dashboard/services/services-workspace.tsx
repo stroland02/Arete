@@ -236,6 +236,8 @@ export interface ServicesWorkspaceProps {
    * (e.g. the marketing landing page preview).
    */
   variant?: "embedded" | "framed";
+  /** Whether a repository is connected — switches empty copy from "connect" to "awaiting". */
+  connected?: boolean;
 }
 
 /**
@@ -244,7 +246,7 @@ export interface ServicesWorkspaceProps {
  * fabricated rows. The marketing preview passes SAMPLE_* + variant="framed"
  * to show the populated UI inside a card.
  */
-export function ServicesWorkspace({ services = [], issues = [], variant = "embedded" }: ServicesWorkspaceProps) {
+export function ServicesWorkspace({ services = [], issues = [], variant = "embedded", connected = false }: ServicesWorkspaceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const isInView = useInView(containerRef, { margin: "-100px 0px -100px 0px" });
 
@@ -391,7 +393,11 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
               className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-2 text-[12px] font-medium text-content-secondary transition-colors hover:border-border-strong hover:bg-content-primary/5"
             >
               <IconPlus size={14} stroke={2} aria-hidden />
-              {hasServices ? "Connect more services" : "Connect your services"}
+              {hasServices
+                ? "Connect more services"
+                : connected
+                  ? "Connect a telemetry source"
+                  : "Connect your services"}
             </Link>
           </div>
         </div>

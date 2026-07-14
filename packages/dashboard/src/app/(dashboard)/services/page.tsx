@@ -17,5 +17,6 @@ export default async function ServicesPage() {
     redirect("/login");
   }
 
-  return <ServicesWorkspace />;
+  const connected = (session.installations ?? []).length > 0;
+  return <ServicesWorkspace connected={connected} />;
 }
