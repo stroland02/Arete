@@ -123,7 +123,7 @@ export function PrPanel({ hasReviews, latestReview, totalFindings }: PrPanelProp
         </Button>
         <p className="text-[10px] leading-4 text-content-muted/80">
           Approving readies the fix — you post the pull request from the issue&apos;s Services view.
-          Areté never changes your code without approval.
+          Kuma never changes your code without approval.
         </p>
       </footer>
     </section>

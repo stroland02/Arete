@@ -5,6 +5,7 @@ import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { cn } from "@/lib/utils";
 import type { AuthorizedInstallation } from "@/lib/installations";
+import { LoadingProvider } from "@/lib/loading-context";
 
 interface DashboardShellProps {
   children: ReactNode;
@@ -17,7 +18,7 @@ export function DashboardShell({ children, installations, userName, signOutSlot 
   const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <>
+    <LoadingProvider>
       <Sidebar
         collapsed={collapsed}
         onToggleCollapsed={() => setCollapsed((c) => !c)}
@@ -36,6 +37,6 @@ export function DashboardShell({ children, installations, userName, signOutSlot 
         <Topbar />
         <div className="p-8">{children}</div>
       </main>
-    </>
+    </LoadingProvider>
   );
 }

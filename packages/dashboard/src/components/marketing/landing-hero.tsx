@@ -1,30 +1,35 @@
 import Link from "next/link";
 import { IconArrowRight, IconBrandGithub, IconBrandGitlab, IconSparkles } from "@tabler/icons-react";
 import { HeroAgentGraph } from "@/components/marketing/hero-agent-graph";
+import { AnimatedDiagonalLines } from "@/components/marketing/animated-diagonal-lines";
+import { HeroGrid } from "@/components/marketing/hero-grid";
 
 export function LandingHero() {
   return (
     <section className="relative overflow-hidden">
       {/* faint top hairline */}
-      <div className="absolute inset-x-0 top-0 -z-10 h-px bg-gradient-to-r from-transparent via-border-default to-transparent" />
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-border-default to-transparent opacity-50" />
+      
+      {/* Animated Floating Decor Grid */}
+      <HeroGrid />
+      
+      {/* <AnimatedDiagonalLines /> */}
 
-      <div className="mx-auto max-w-6xl px-6 pt-20 pb-20">
+      <div className="relative z-10 mx-auto max-w-6xl px-6 pt-20 pb-20">
         {/* Hero copy — centered, full width, ABOVE the product preview */}
-        <div className="mx-auto flex max-w-3xl flex-col items-center gap-6 text-center">
+        <div className="mx-auto flex max-w-4xl flex-col items-center gap-6 text-center">
           <span className="inline-flex w-fit items-center gap-2 rounded-full border border-border-default bg-surface-1 px-3 py-1 text-xs font-medium text-content-secondary">
             <IconSparkles className="h-3.5 w-3.5 text-accent-primary" />
             Verified AI code review
           </span>
 
-          <h1 className="font-serif text-4xl font-semibold leading-[1.06] tracking-tight text-content-primary sm:text-6xl">
-            Code review that{" "}
-            <span className="italic text-accent-primary">checks its own work</span>.
+          <h1 className="font-serif text-4xl font-semibold leading-[1.06] tracking-tight text-content-primary sm:whitespace-nowrap sm:text-6xl">
+            Total clarity.{" "}
+            <span className="italic text-accent-primary">Instant resolution</span>.
           </h1>
 
-          <p className="max-w-2xl text-lg leading-relaxed text-content-muted">
-            Six specialist agents review every pull request in parallel. A Synthesizer verifies
-            each finding against your actual diff and drops anything it can&apos;t prove — so what
-            lands in your PR is signal, not noise.
+          <p className="max-w-2xl text-[15px] font-medium leading-relaxed tracking-tight text-content-muted/80">
+            Kuma acts as an invisible safety net for your engineering team. By collecting all of your scattered issues into one elegant location and instantly proposing the exact code required to fix them, we give you your time back.
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-3">

@@ -1,3 +1,6 @@
+"use client";
+
+import { motion } from "framer-motion";
 import {
   ServicesWorkspace,
   SAMPLE_SERVICES,
@@ -17,15 +20,29 @@ export function ServicesPreview() {
       <div className="mb-14 text-center">
         <span className="text-xs font-semibold uppercase tracking-[0.2em] text-accent-primary">Services</span>
         <h2 className="mt-3 font-serif text-3xl font-semibold tracking-tight text-content-primary">
-          Every issue, compiled per service
+          Every alert, simplified into one workspace
         </h2>
         <p className="mt-3 text-content-muted">
-          Once you connect your tools, Areté triages what they report — one place per service, with
-          the fix already proposed.
+          Stop hunting for bugs across multiple platforms. Kuma collects everything into one centralized location and instantly provides the verified patch.
         </p>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-border-default bg-surface-1 shadow-[0_30px_80px_-30px_rgba(26,27,24,0.35)]">
+      <motion.div 
+        className="overflow-hidden rounded-2xl border bg-surface-1"
+        animate={{
+          boxShadow: [
+            "0 30px 80px -30px rgba(26,27,24,0.35), 0 0 0px rgba(0,212,255,0)",
+            "0 30px 80px -30px rgba(26,27,24,0.35), 0 0 25px rgba(0,212,255,0.15)",
+            "0 30px 80px -30px rgba(26,27,24,0.35), 0 0 0px rgba(0,212,255,0)"
+          ],
+          borderColor: [
+            "rgba(255,255,255,0.1)", // approximate border-default
+            "rgba(0,212,255,0.3)",
+            "rgba(255,255,255,0.1)"
+          ]
+        }}
+        transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
+      >
         <div className="flex items-center gap-2 border-b border-border-subtle bg-surface-2/70 px-4 py-2.5">
           <span className="flex gap-1.5" aria-hidden>
             <span className="h-3 w-3 rounded-full bg-content-muted/30" />
@@ -40,7 +57,7 @@ export function ServicesPreview() {
           </span>
         </div>
         <ServicesWorkspace services={SAMPLE_SERVICES} issues={SAMPLE_ISSUES} variant="framed" />
-      </div>
+      </motion.div>
       <p className="mt-3 text-center text-xs text-content-muted/70">
         Illustrative example — not live account data.
       </p>

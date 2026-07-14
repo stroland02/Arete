@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { SetupChecklist, type SetupStep } from "./setup-checklist";
 
 const partialSteps: SetupStep[] = [
-  { id: "account", label: "Create your Areté account", done: true },
+  { id: "account", label: "Create your Kuma account", done: true },
   { id: "repo", label: "Connect your GitHub repository", done: true, href: "/connections" },
   { id: "telemetry", label: "Connect a telemetry source", done: false, href: "/connections" },
   { id: "first-review", label: "See your first automated review", done: false },

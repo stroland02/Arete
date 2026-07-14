@@ -11,7 +11,7 @@ export function LoginForm() {
     <div className="flex w-full max-w-sm flex-col gap-6">
       <div className="text-center">
         <h1 className="font-serif text-3xl font-semibold tracking-tight text-content-primary">
-          Welcome to Aret<span className="text-accent-secondary">é</span>
+          Welcome to Kuma
         </h1>
         <p className="mt-2 text-sm text-content-muted">Sign in to your account. First 50 PRs free.</p>
       </div>
@@ -71,7 +71,7 @@ export function LoginForm() {
       </form>
 
       <p className="text-center text-sm text-content-muted">
-        New to Areté?{' '}
+        New to Kuma?{' '}
         <Link href="/signup" className="text-accent-primary hover:underline">
           Create an account
         </Link>

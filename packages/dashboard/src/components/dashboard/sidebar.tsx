@@ -7,6 +7,8 @@ import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import { springTransition } from "@/lib/motion";
 import { InstallationSwitcher } from "@/components/InstallationSwitcher";
+import { KumaLogo } from "@/components/ui/kuma-logo";
+import { useGlobalLoading } from "@/lib/loading-context";
 import type { ReactNode } from "react";
 import type { AuthorizedInstallation } from "@/lib/installations";
 
@@ -32,7 +34,14 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, onToggleCollapsed, installations, userName, signOutSlot }: SidebarProps) {
   const pathname = usePathname();
+  const { isLoading, setIsLoading } = useGlobalLoading();
   const initial = userName.charAt(0).toUpperCase();
+
+  // A quick demonstration handler to prove the decoupled data pipeline loading state
+  const handleSimulateLoad = () => {
+    setIsLoading(true);
+    setTimeout(() => setIsLoading(false), 3000); // Spins for 3 seconds simulating a heavy data fetch
+  };
 
   return (
     <aside
@@ -41,30 +50,39 @@ export function Sidebar({ collapsed, onToggleCollapsed, installations, userName,
         collapsed ? "w-20" : "w-64"
       )}
     >
-      <div className="p-6 h-[68px] flex items-center overflow-hidden">
+      <div 
+        className="p-6 h-[68px] flex items-center overflow-hidden cursor-pointer group" 
+        onClick={handleSimulateLoad} 
+        title="Click to simulate data pipeline loading!"
+      >
         <AnimatePresence mode="wait" initial={false}>
           {collapsed ? (
-            <motion.h1
+            <motion.div
               key="brand-mark"
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }}
               transition={collapseTransition}
-              className="text-2xl font-semibold font-serif text-content-primary tracking-tight"
+              className="flex items-center text-accent-primary drop-shadow-[0_0_8px_rgba(0,212,255,0.4)]"
             >
-              A
-            </motion.h1>
+              <KumaLogo size={28} isLoading={isLoading} />
+            </motion.div>
           ) : (
-            <motion.h1
+            <motion.div
               key="brand-wordmark"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={collapseTransition}
-              className="text-2xl font-semibold font-serif text-content-primary tracking-tight whitespace-nowrap"
+              className="flex items-center gap-2 text-accent-primary"
             >
-              Aret<span className="text-accent-secondary">é</span> AI
-            </motion.h1>
+              <span className="drop-shadow-[0_0_8px_rgba(0,212,255,0.4)]">
+                <KumaLogo size={28} isLoading={isLoading} />
+              </span>
+              <span className="text-2xl font-semibold font-serif text-content-primary tracking-tight whitespace-nowrap">
+                Kuma
+              </span>
+            </motion.div>
           )}
         </AnimatePresence>
       </div>
