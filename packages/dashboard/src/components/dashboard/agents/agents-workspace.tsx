@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { AGENTS } from "./agent-catalog";
 import { AgentRail } from "./agent-rail";
-import { SynthesizerConsole } from "./synthesizer-console";
+import { AgentConversation } from "./agent-conversation";
+import type { AgentActivityFinding } from "@/lib/queries";
 import { PrPanel } from "./pr-panel";
 import { AgentConfigDrawer } from "./agent-config-drawer";
 
@@ -11,6 +12,7 @@ export interface AgentsWorkspaceProps {
   findingCountById: Record<string, number>;
   totalFindings: number;
   hasReviews: boolean;
+  activity: AgentActivityFinding[];
   latestReview?: {
     repoFullName: string;
     prNumber: number;
@@ -29,6 +31,7 @@ export function AgentsWorkspace({
   findingCountById,
   totalFindings,
   hasReviews,
+  activity,
   latestReview = null,
 }: AgentsWorkspaceProps) {
   const [selectedAgentId, setSelectedAgentId] = useState<string>(AGENTS[0].id);
@@ -36,6 +39,7 @@ export function AgentsWorkspace({
 
   const selectedAgent = AGENTS.find((a) => a.id === selectedAgentId) ?? AGENTS[0];
   const configAgent = AGENTS.find((a) => a.id === configAgentId) ?? null;
+  const selectedAgentFindings = activity.filter((f) => f.category === selectedAgent.id);
 
   return (
     <>
@@ -51,11 +55,12 @@ export function AgentsWorkspace({
           onSelect={setSelectedAgentId}
           onConfigure={setConfigAgentId}
         />
-        <SynthesizerConsole
+        <AgentConversation
+          agent={selectedAgent}
+          findings={selectedAgentFindings}
+          findingCount={findingCountById[selectedAgent.id] ?? 0}
           hasReviews={hasReviews}
-          totalFindings={totalFindings}
-          selectedAgentLabel={selectedAgent.label}
-          selectedAgentFindings={findingCountById[selectedAgent.id] ?? 0}
+          onConfigure={setConfigAgentId}
         />
         <PrPanel
           hasReviews={hasReviews}
