@@ -1,0 +1,25 @@
+{
+  "id": "clean-ruby",
+  "pr": {
+    "repo": "acme/reports",
+    "pr_number": 205,
+    "title": "Add sum helper",
+    "description": "Simple pure function, tested.",
+    "files": [
+      {
+        "path": "lib/mathutil/sum.rb",
+        "patch": "@@ -0,0 +1,5 @@\n+module MathUtil\n+  def self.sum(a, b)\n+    a + b\n+  end\n+end\n+",
+        "additions": 5,
+        "deletions": 0
+      },
+      {
+        "path": "spec/mathutil/sum_spec.rb",
+        "patch": "@@ -0,0 +1,7 @@\n+require \"mathutil/sum\"\n+\n+RSpec.describe MathUtil do\n+  it \"adds two numbers\" do\n+    expect(MathUtil.sum(2, 3)).to eq(5)\n+  end\n+end\n+",
+        "additions": 7,
+        "deletions": 0
+      }
+    ]
+  },
+  "planted_defects": [],
+  "clean": true
+}

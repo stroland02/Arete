@@ -49,3 +49,4 @@ class PRContext(BaseModel):
     clone_url: str | None = Field(None, alias="cloneUrl")
     installation_token: str | None = Field(None, alias="installationToken")
     installation_id: int | None = Field(None, alias="installationId")
+    repo_conventions: str | None = Field(None, alias="repoConventions")

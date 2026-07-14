@@ -18,7 +18,12 @@ line so localization stays valid if the window is ever tightened.
 
 ## Fixture set
 
-12 defective fixtures (2 per agent: security, performance, quality, test_coverage,
-deployment_safety, business_logic) plus 3 clean fixtures (`clean-*.json`). Clean fixtures
-carry genuinely defect-free diffs — including companion test files where a new public
-function would otherwise invite a legitimate test-coverage comment.
+24 defective fixtures (4 per agent: security, performance, quality, test_coverage,
+deployment_safety, business_logic — two distinct defect types per agent) plus 5 clean
+fixtures (`clean-*.json`). Clean fixtures carry genuinely defect-free diffs — including
+companion test files where a new public function would otherwise invite a legitimate
+test-coverage comment.
+
+Defect fixtures span multiple languages (Python, TypeScript, Go, Java, Ruby, SQL) so the
+agents are exercised outside a single-language comfort zone. Clean fixtures cover Python,
+SQL, TypeScript, Go, and Ruby.

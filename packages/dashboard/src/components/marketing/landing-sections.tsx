@@ -302,6 +302,7 @@ export function MarketingFooter() {
         <nav className="flex items-center gap-6 text-xs text-content-muted">
           <a href="#how-it-works" className="transition-colors hover:text-content-primary">How it works</a>
           <a href="#pricing" className="transition-colors hover:text-content-primary">Pricing</a>
+          <a href="https://discord.gg/HyYVmVc6d" target="_blank" rel="noopener noreferrer" className="transition-colors hover:text-content-primary">Discord</a>
           <Link href="/login" className="transition-colors hover:text-content-primary">Sign in</Link>
         </nav>
         <p className="text-xs text-content-muted">© 2026 Areté AI. All rights reserved.</p>

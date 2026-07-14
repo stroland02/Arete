@@ -1,0 +1,28 @@
+{
+  "id": "deploysafety-destructive-migration",
+  "pr": {
+    "repo": "acme/api",
+    "pr_number": 121,
+    "title": "Drop legacy address column",
+    "description": "Removes an unused column from the users table.",
+    "files": [
+      {
+        "path": "migrations/0003_drop_legacy_address.sql",
+        "patch": "@@ -0,0 +1,1 @@\n+ALTER TABLE users DROP COLUMN legacy_address;\n+",
+        "additions": 1,
+        "deletions": 0
+      }
+    ]
+  },
+  "planted_defects": [
+    {
+      "id": "destructivemig-001",
+      "path": "migrations/0003_drop_legacy_address.sql",
+      "line": 1,
+      "target_agent": "deployment_safety",
+      "description": "Destructive migration: DROP COLUMN legacy_address permanently deletes existing data with no backup, backfill, or two-phase deprecate-then-drop rollout, so it cannot be rolled back once applied.",
+      "severity": "error"
+    }
+  ],
+  "clean": false
+}
