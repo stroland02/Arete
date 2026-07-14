@@ -23,6 +23,7 @@ from arete_agents.grounding import has_quoted_evidence, valid_lines_for_patch
 from arete_agents.llm.base import ROLE_KEYS
 from arete_agents.models.pr import FileChange, PRContext
 from arete_agents.models.review import FileReview, ReviewResult
+from arete_agents.verdict import decide_verdict
 
 _SEVERITY_WEIGHT = {"error": 3, "warning": 2, "info": 1}
 
@@ -331,12 +332,14 @@ class ReviewOrchestrator:
         raw_reviews = state.get("raw_reviews", [])
         
         if not raw_reviews:
-            return {"final_result": ReviewResult(
+            empty_result = ReviewResult(
                 pr_context=pr,
                 file_reviews=[],
                 overall_summary="No files changed.",
                 risk_level="low",
-            )}
+            )
+            empty_result.verdict, empty_result.verdict_reason = decide_verdict(empty_result)
+            return {"final_result": empty_result}
 
         try:
             final_result = self.synthesizer.synthesize(pr, raw_reviews)
@@ -365,7 +368,6 @@ class ReviewOrchestrator:
         # Deterministic risk-tiered verdict — computed LAST, after grounding
         # (which can drop comments) and after the failed-status assignment
         # above, so it reflects the final analysis_status and risk_level.
-        from arete_agents.verdict import decide_verdict
         final_result.verdict, final_result.verdict_reason = decide_verdict(final_result)
 
         return {"final_result": final_result}
@@ -462,12 +464,14 @@ class ReviewOrchestrator:
 
     def run(self, pr: PRContext) -> ReviewResult:
         if not pr.files:
-            return ReviewResult(
+            empty_result = ReviewResult(
                 pr_context=pr,
                 file_reviews=[],
                 overall_summary="No files changed.",
                 risk_level="low",
             )
+            empty_result.verdict, empty_result.verdict_reason = decide_verdict(empty_result)
+            return empty_result
 
         try:
             ensure_indexed(pr)
@@ -523,4 +527,5 @@ class ReviewOrchestrator:
             result = _fallback_synthesize(pr, flat_results)
             if failures > 0 and successes == 0:
                 result.analysis_status = "failed"
+            result.verdict, result.verdict_reason = decide_verdict(result)
             return result

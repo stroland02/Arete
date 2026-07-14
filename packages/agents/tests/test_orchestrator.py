@@ -180,6 +180,31 @@ def test_total_failure_run_gets_blocked_verdict(sample_pr):
     assert "could not be completed" in result.verdict_reason
 
 
+def test_graph_invocation_failure_with_all_agents_failing_still_blocks(sample_pr):
+    """Regression: run()'s OUTER fallback (triggered when self.graph.invoke()
+    itself raises — a distinct failure mode from individual agent errors
+    handled inside the graph) sets analysis_status='failed' when every
+    directly-invoked agent also fails, but previously never called
+    decide_verdict at all, silently leaving verdict at its 'pass' default.
+    A total outage must block regardless of which code path detects it."""
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    boom = MagicMock()
+    boom.bind_tools.return_value = boom
+    boom.with_retry.return_value = boom
+    boom.invoke.side_effect = RuntimeError("agent llm outage")
+
+    orch = ReviewOrchestrator(llm=boom)
+    with patch.object(
+        orch.graph, "invoke", side_effect=RuntimeError("graph invocation broke")
+    ):
+        result = orch.run(sample_pr)
+
+    assert result.analysis_status == "failed"
+    assert result.verdict == "blocked"
+    assert "could not be completed" in result.verdict_reason
+
+
 def test_empty_pr_analysis_status_complete(cyclic_llm):
     """No files to review is NOT a failure — there was just nothing to do."""
     from arete_agents.models.pr import PRContext
@@ -187,6 +212,7 @@ def test_empty_pr_analysis_status_complete(cyclic_llm):
     empty = PRContext(repo="x/y", pr_number=1, title="Empty", description="", files=[])
     result = ReviewOrchestrator(llm=cyclic_llm).run(empty)
     assert result.analysis_status == "complete"
+    assert result.verdict == "pass"
 
 
 def test_review_result_analysis_status_defaults_to_complete(sample_pr):
