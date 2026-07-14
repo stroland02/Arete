@@ -251,11 +251,12 @@ export function PricingSection() {
 export function FinalCta() {
   return (
     <section className="mx-auto max-w-6xl px-6 pb-24">
-      <Card elevated className="relative flex flex-col items-center gap-6 overflow-hidden pt-14 pb-32 text-center">
+      <Card elevated className="relative flex flex-col items-center gap-6 overflow-hidden pt-12 pb-44 text-center">
         <Image
           src="/kanagawa-bg-v3.jpg"
           alt="Kanagawa Background"
           fill
+          sizes="100vw"
           className="absolute inset-0 z-0 object-cover object-bottom opacity-90 transition-transform duration-1000 hover:scale-105"
         />
         <div className="absolute inset-0 z-0 bg-gradient-to-b from-black/50 via-black/30 to-transparent" />
@@ -273,7 +274,6 @@ export function FinalCta() {
           Get started free
           <IconArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
         </Link>
-        <p className="relative z-10 text-sm font-medium text-white/80 drop-shadow-sm">First 50 PRs free · no credit card required</p>
       </Card>
     </section>
   );
