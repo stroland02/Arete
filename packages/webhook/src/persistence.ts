@@ -169,6 +169,12 @@ export async function persistReview(params: PersistReviewParams): Promise<void> 
         category: c.category,
         review: { repositoryId: repository.id },
       },
+      // Each review ALSO persists its own UNDER_OBSERVATION comment as a new
+      // row (createMany below), so several rows can exist for the same
+      // (repo, path, category). Always accumulate onto the OLDEST row so the
+      // escalation counter stays monotonic and deterministic instead of
+      // splitting across rows.
+      orderBy: { createdAt: 'asc' },
     })
     if (!priorObserved) continue
 

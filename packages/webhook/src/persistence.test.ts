@@ -300,6 +300,9 @@ describe('persistReview', () => {
           category: 'quality',
           review: { repositoryId: 'repo-uuid-1' },
         },
+        // Deterministic escalation: always accumulate onto the OLDEST prior
+        // row, since each review also persists its own UNDER_OBSERVATION row.
+        orderBy: { createdAt: 'asc' },
       })
     )
     expect(mocks.reviewCommentUpdate).not.toHaveBeenCalled()

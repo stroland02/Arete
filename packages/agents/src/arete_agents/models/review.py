@@ -39,8 +39,11 @@ class FileReview(BaseModel):
     summary: str
     # Tool calls recorded during this file's review_file() tool loop (see
     # agents/base.py). Consumed by orchestrator.py's GraphState reducer and
-    # discarded after _synthesize_reviews applies them -- never serialized
-    # onward as part of the public ReviewResult.
+    # applied by _apply_noise_decisions before the final result is returned.
+    # Note the field IS serialized as part of ReviewResult.file_reviews in
+    # the /review HTTP response, but downstream consumers (the TS FileReview
+    # type) don't declare or read it, so it's effectively inert past this
+    # point.
     noise_decisions: list[NoiseDecision] = Field(default_factory=list)
 
 

@@ -617,6 +617,45 @@ def test_review_file_ignores_malformed_issue_id():
     assert result.noise_decisions == []
 
 
+def test_review_file_ignores_non_coercible_threshold():
+    """A place_under_observation tool call whose threshold Pydantic can't
+    coerce to int (e.g. "high") must not raise out of _record_noise_decision
+    -- it's dropped like a malformed issue_id, and the rest of the review
+    (the agent's own comments/summary) still completes normally. Without the
+    local guard, the ValidationError would propagate up and discard the
+    ENTIRE file's review via orchestrator.py's coarse except."""
+    from arete_agents.agents.security import SecurityAgent
+
+    llm = MagicMock()
+    llm.bind_tools.return_value = llm
+    llm.with_retry.return_value = llm
+    llm.invoke.side_effect = [
+        AIMessage(content="", tool_calls=[
+            {
+                "name": "place_under_observation",
+                "args": {
+                    "issue_id": "src/auth.py:5",
+                    "escalate_on": "additional_events",
+                    "threshold": "high",
+                    "reason": "suspicious but unproven",
+                },
+                "id": "c1",
+            }
+        ]),
+        AIMessage(content=(
+            '{"comments": [{"path": "src/auth.py", "line": 1, '
+            '"body": "SQL injection risk.", "severity": "error", '
+            '"category": "security"}], "summary": "reviewed"}'
+        )),
+    ]
+
+    result = SecurityAgent(llm).review_file(make_file(), make_pr())
+
+    assert result.noise_decisions == []
+    assert len(result.comments) == 1
+    assert result.summary == "reviewed"
+
+
 def test_review_file_without_noise_tool_calls_has_empty_decisions():
     from arete_agents.agents.security import SecurityAgent
 
