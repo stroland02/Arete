@@ -3,6 +3,7 @@ import {
   buildGithubLinkAuthorizeUrl,
   exchangeGithubLinkCode,
   linkGithubAccount,
+  isGithubLinked,
   GithubAccountConflictError,
   type GithubLinkDb,
 } from './github-link';
@@ -162,5 +163,37 @@ describe('linkGithubAccount', () => {
     await expect(
       linkGithubAccount(db, { userId: 'user-2', githubUserId: 42, accessToken: 'gho_new' })
     ).rejects.toThrow(GithubAccountConflictError);
+  });
+});
+
+describe('isGithubLinked', () => {
+  it('returns true when the user has a linked github account', async () => {
+    const { db } = fakeDb([{ id: 'acc-1', userId: 'user-1', provider: 'github', providerAccountId: '42' }]);
+    expect(await isGithubLinked(db, 'user-1')).toBe(true);
+  });
+
+  it('returns false when the user has no github account', async () => {
+    const { db } = fakeDb();
+    expect(await isGithubLinked(db, 'user-1')).toBe(false);
+  });
+
+  it('returns false for a different user even when SOME github account exists (no leak)', async () => {
+    const { db } = fakeDb([{ id: 'acc-1', userId: 'user-1', provider: 'github', providerAccountId: '42' }]);
+    expect(await isGithubLinked(db, 'user-2')).toBe(false);
+  });
+
+  it('is a cheap existence check — selects only id, never touches the token or other account methods', async () => {
+    const { db } = fakeDb([{ id: 'acc-1', userId: 'user-1', provider: 'github', providerAccountId: '42' }]);
+    const findFirstSpy = vi.spyOn(db.account, 'findFirst');
+    const createSpy = vi.spyOn(db.account, 'create');
+    const updateSpy = vi.spyOn(db.account, 'update');
+
+    await isGithubLinked(db, 'user-1');
+
+    expect(findFirstSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ select: { id: true } })
+    );
+    expect(createSpy).not.toHaveBeenCalled();
+    expect(updateSpy).not.toHaveBeenCalled();
   });
 });
