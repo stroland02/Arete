@@ -47,6 +47,7 @@ export default async function AgentsPage({
       )}
       totalFindings={commentsByCategory.reduce((sum, c) => sum + c.count, 0)}
       hasReviews={hasReviews}
+      connected={viewModel.hasAccess}
       containerId={container ?? null}
       latestReview={
         latest

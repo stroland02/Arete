@@ -20,6 +20,8 @@ export interface AgentsWorkspaceProps {
   } | null;
   /** Focused container from the Services→Agents deep-link (?container=). */
   containerId?: string | null;
+  /** Whether a repository is connected (installations present) — drives the console's onboarding vs "awaiting review" copy. */
+  connected?: boolean;
 }
 
 /**
@@ -36,6 +38,7 @@ export function AgentsWorkspace({
   activity,
   latestReview = null,
   containerId = null,
+  connected = false,
 }: AgentsWorkspaceProps) {
   const [selectedAgentId, setSelectedAgentId] = useState<string>(AGENTS[0].id);
   const [configAgentId, setConfigAgentId] = useState<string | null>(null);
@@ -60,7 +63,7 @@ export function AgentsWorkspace({
         {/* Center pane streams the focused container's Synthesizer transcript.
             containerId comes from the Services→Agents deep-link; null shows the
             onboarding + "watch a sample review" opt-in. */}
-        <SynthesizerConsole containerId={containerId} />
+        <SynthesizerConsole containerId={containerId} connected={connected} />
         <PrPanel
           hasReviews={hasReviews}
           latestReview={latestReview}
