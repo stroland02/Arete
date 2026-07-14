@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence, useInView } from "framer-motion";
-import { IconChevronDown, IconCopy, IconGitBranch, IconGitPullRequest, IconHourglassHigh, IconPlus, IconLoader2, IconCheck } from "@tabler/icons-react";
+import { IconArrowRight, IconChevronDown, IconCopy, IconGitBranch, IconGitPullRequest, IconHourglassHigh, IconPlus, IconLoader2, IconCheck } from "@tabler/icons-react";
 import { KumaLogo } from "@/components/ui/kuma-logo";
 
 /**
@@ -486,6 +486,16 @@ function IssueSynthesizerConsole({ issue, isReplaying, replayStep }: { issue: Is
                 same verification record whether you look at it here or on the Agents page.
               </p>
             </div>
+
+            {/* Same connect CTA as the Agents page, so a fresh account has a
+                clear first step from the center pane, not just the rail. */}
+            <Link
+              href="/connections"
+              className="inline-flex items-center gap-2 rounded-xl border border-accent-primary/30 bg-accent-primary/20 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/30"
+            >
+              Connect a repository
+              <IconArrowRight size={15} stroke={2} />
+            </Link>
           </div>
         )}
       </div>

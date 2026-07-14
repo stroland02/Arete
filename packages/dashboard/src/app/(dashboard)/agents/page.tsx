@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { getDashboardViewModel, resolveSelectedInstallationIds } from "@/lib/queries";
+import { getDashboardViewModel, resolveSelectedInstallationIds, getAgentActivity } from "@/lib/queries";
 import { AgentsWorkspace } from "@/components/dashboard/agents/agents-workspace";
 
 // Same rationale as the overview: this page reads the session and queries
@@ -36,6 +36,12 @@ export default async function AgentsPage({
   const hasReviews = viewModel.hasAccess && totalPrs > 0;
   const latest = latestReviews[0];
 
+  // Real per-agent findings for the center conversation pane; empty (honest
+  // idle) when there's no access. Same tenant scoping as every other query.
+  const activity = viewModel.hasAccess
+    ? await getAgentActivity(db, installationIds)
+    : [];
+
   return (
     <AgentsWorkspace
       findingCountById={Object.fromEntries(
@@ -43,6 +49,7 @@ export default async function AgentsPage({
       )}
       totalFindings={commentsByCategory.reduce((sum, c) => sum + c.count, 0)}
       hasReviews={hasReviews}
+      activity={activity}
       connected={viewModel.hasAccess}
       containerId={container ?? null}
       latestReview={

@@ -575,3 +575,50 @@ export async function getDashboardsViewModel(
     })),
   };
 }
+
+export interface AgentActivityFinding {
+  reviewId: string;
+  prNumber: number;
+  repositoryFullName: string;
+  createdAt: Date;
+  category: string;
+  path: string;
+  line: number;
+  body: string;
+  severity: string;
+}
+
+/**
+ * Recent review findings across the caller's authorized installations, newest
+ * first. The Agents workspace slices these by the selected agent's category
+ * client-side. Scoped through the same `repository: { installationId: { in } }`
+ * choke point as every other query here, so a finding from an installation
+ * outside `installationIds` can never appear. Empty `installationIds` => no
+ * query, `[]` (the honest empty state).
+ */
+export async function getAgentActivity(
+  db: PrismaClient,
+  installationIds: string[],
+  limit = 60,
+): Promise<AgentActivityFinding[]> {
+  if (installationIds.length === 0) return [];
+
+  const rows = await db.reviewComment.findMany({
+    where: { review: { repository: { installationId: { in: installationIds } } } },
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+    include: { review: { include: { repository: true } } },
+  });
+
+  return rows.map((c) => ({
+    reviewId: c.reviewId,
+    prNumber: c.review.prNumber,
+    repositoryFullName: c.review.repository.fullName,
+    createdAt: c.createdAt,
+    category: c.category,
+    path: c.path,
+    line: c.line,
+    body: c.body,
+    severity: c.severity,
+  }));
+}
