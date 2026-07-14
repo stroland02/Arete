@@ -64,6 +64,11 @@ export interface ReviewResult {
   risk_level: 'low' | 'medium' | 'high' | 'critical'
   total_comments: number
   analysis_status?: 'complete' | 'failed'
+  // Deterministic risk-tiered gate from the agents service (SP4). Optional
+  // for backward-compat with older agent responses / non-review paths that
+  // don't set it — reviewConclusion() falls back to risk_level when absent.
+  verdict?: 'pass' | 'comment' | 'review-required' | 'blocked'
+  verdict_reason?: string
   actions?: AgentAction[]
 }
 

@@ -41,6 +41,29 @@ export async function createServer(): Promise<express.Application> {
     }
   })
 
+  // Create the Installation row as soon as the app is installed, so a fresh
+  // customer enters the dashboard's tenancy scope immediately (before any PR is
+  // reviewed). Only affirmative actions upsert; suspend/delete are left alone
+  // (deleting would cascade to repositories/reviews — destructive, out of scope).
+  app.webhooks.on('installation', async ({ payload }) => {
+    const affirmative = ['created', 'unsuspend', 'new_permissions_accepted']
+    if (!affirmative.includes(payload.action)) return
+    // account is a User/Org (has `login`) or an Enterprise (has `slug`, no login).
+    const account = payload.installation.account
+    const owner = account && 'login' in account ? account.login : undefined
+    if (!owner) return
+    try {
+      const { persistInstallation } = await import('./persistence.js')
+      await persistInstallation({
+        provider: 'github',
+        installationExternalId: payload.installation.id,
+        owner,
+      })
+    } catch (err) {
+      console.error('[server] Error handling installation event:', err)
+    }
+  })
+
   const server = express()
   
   // Pre-auth Poison Message Guard: Drop empty/malformed payloads instantly

@@ -1,7 +1,10 @@
 import { redirect } from "next/navigation";
+import { IconBrandGithub, IconCircleCheck, IconAlertTriangle } from "@tabler/icons-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getInstallationBilling, resolveSelectedInstallationIds, FREE_TIER_REVIEW_LIMIT } from "@/lib/queries";
+import { isGithubLinked } from "@/lib/github-link";
+import { connectGithub } from "./github-link-actions";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -29,19 +32,47 @@ function statusLabel(status: string): string {
   }
 }
 
+function githubBanner(connected?: string, error?: string) {
+  if (connected === "github") {
+    return {
+      tone: "positive" as const,
+      Icon: IconCircleCheck,
+      message: "GitHub connected. Areté can now see the installations you administer.",
+    };
+  }
+  if (error === "github_account_conflict") {
+    return {
+      tone: "negative" as const,
+      Icon: IconAlertTriangle,
+      message:
+        "That GitHub account is already linked to a different Areté account. Sign in with that account to manage it, or connect a different GitHub account.",
+    };
+  }
+  if (error === "github_link_failed") {
+    return {
+      tone: "negative" as const,
+      Icon: IconAlertTriangle,
+      message: "We couldn't connect your GitHub account. Please try again.",
+    };
+  }
+  return null;
+}
+
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ installation?: string }>;
+  searchParams: Promise<{ installation?: string; connected?: string; error?: string }>;
 }) {
   const session = await auth();
   if (!session?.user) {
     redirect("/login");
   }
 
-  const { installation } = await searchParams;
+  const { installation, connected, error } = await searchParams;
   const installationIds = resolveSelectedInstallationIds(session.installations ?? [], installation);
   const billing = await getInstallationBilling(db, installationIds);
+  const githubLinked = await isGithubLinked(db, session.user.id);
+  const banner = githubBanner(connected, error);
 
   const userName = session.user.name ?? session.user.email ?? "Signed in";
   const userEmail = session.user.email ?? "";
@@ -55,6 +86,21 @@ export default async function SettingsPage({
         </div>
       </RevealItem>
 
+      {banner && (
+        <RevealItem>
+          <div
+            className={`flex items-start gap-3 rounded-xl border p-4 text-sm ${
+              banner.tone === "positive"
+                ? "border-accent-success/20 bg-accent-success/5 text-accent-success"
+                : "border-accent-danger/20 bg-accent-danger/5 text-accent-danger"
+            }`}
+          >
+            <banner.Icon className="w-4 h-4 mt-0.5 shrink-0" />
+            <p>{banner.message}</p>
+          </div>
+        </RevealItem>
+      )}
+
       <RevealItem>
         <Card>
           <CardHeader>
@@ -65,6 +111,52 @@ export default async function SettingsPage({
             {userEmail && <SettingRow label="Email" value={userEmail} mono />}
             {billing && <SettingRow label="Organization" value={billing.owner} mono />}
           </div>
+        </Card>
+      </RevealItem>
+
+      <RevealItem>
+        <Card>
+          <CardHeader>
+            <CardTitle>GitHub</CardTitle>
+            {githubLinked && <Badge variant="positive">Connected</Badge>}
+          </CardHeader>
+
+          {githubLinked ? (
+            <div className="space-y-3">
+              <p className="text-sm text-content-muted">
+                Your GitHub account is linked. Areté shows the installations you administer below.
+              </p>
+              {session.installations.length === 0 ? (
+                <p className="text-xs text-content-muted">
+                  No installations found for this GitHub account yet — install the Areté GitHub App
+                  on an account or org you administer, or ask an org admin to.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {session.installations.map((i) => (
+                    <SettingRow key={i.id} label="Authorized installation" value={i.owner} mono />
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-content-muted">
+                Connect GitHub so Areté knows which repositories and installations you administer.
+                This determines what shows up across your dashboard — nothing is visible until
+                you connect an account.
+              </p>
+              <form action={connectGithub}>
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-2 rounded-xl bg-accent-primary px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-primary/90"
+                >
+                  <IconBrandGithub className="w-4 h-4" />
+                  Connect GitHub
+                </button>
+              </form>
+            </div>
+          )}
         </Card>
       </RevealItem>
 

@@ -50,6 +50,13 @@ class ReviewResult(BaseModel):
     # stricter, security-only bar on top of the universal citation check
     # above.
     security_evidence_dropped_count: int = 0
+    # Deterministic, non-LLM risk-tiered gate (see verdict.decide_verdict).
+    # "pass"/"comment" are informational; "review-required"/"blocked" mean
+    # a human must act before merge — this field is advisory data only,
+    # never an auto-merge/auto-dismiss signal (human discussion is not
+    # merge authorization).
+    verdict: Literal["pass", "comment", "review-required", "blocked"] = "pass"
+    verdict_reason: str = ""
 
     @computed_field
     @property

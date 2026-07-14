@@ -37,6 +37,34 @@ export async function reviewExists(params: ReviewExistsParams): Promise<boolean>
   return existing !== null
 }
 
+export interface PersistInstallationParams {
+  provider: ScmProvider
+  /** GitHub App installation id, or GitLab project id. Unique per provider only. */
+  installationExternalId: number
+  /** Account the app was installed on (org login, or the user's own login). */
+  owner: string
+}
+
+/**
+ * Upserts an Installation row the moment the app is installed (from the GitHub
+ * `installation` webhook), so a freshly-installed account enters the dashboard's
+ * tenancy scope IMMEDIATELY — before any PR has been reviewed. Without this, the
+ * only place an Installation row was ever created was persistReview() on a first
+ * completed review, so a brand-new customer saw an empty dashboard until then.
+ *
+ * Keyed on the provider-scoped @@unique([provider, externalId]); idempotent on a
+ * re-delivered webhook (GitHub retries). Returns the installation's stable id.
+ */
+export async function persistInstallation(params: PersistInstallationParams): Promise<string> {
+  const { provider, installationExternalId, owner } = params
+  const installation = await prisma.installation.upsert({
+    where: { provider_externalId: { provider, externalId: installationExternalId } },
+    create: { provider, externalId: installationExternalId, owner },
+    update: { owner },
+  })
+  return installation.id
+}
+
 export interface PersistReviewParams {
   provider: ScmProvider
   /** GitHub App installation id, or GitLab project id. Unique per provider only. */
