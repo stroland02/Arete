@@ -24,7 +24,7 @@ export function EmptyState() {
           </p>
         </div>
         <a
-          href="https://github.com/apps/arete-ai-code-review"
+          href={`https://github.com/apps/${process.env.GITHUB_APP_SLUG ?? 'kumaservices'}/installations/new`}
           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium text-accent-primary bg-accent-primary/10 border border-accent-primary/30 hover:bg-accent-primary/15 transition-colors"
         >
           <IconBrandGithub className="w-4 h-4" />
