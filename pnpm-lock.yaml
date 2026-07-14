@@ -53,6 +53,9 @@ importers:
         specifier: ^3.6.0
         version: 3.6.0
     devDependencies:
+      '@auth/core':
+        specifier: 0.41.2
+        version: 0.41.2
       '@tailwindcss/postcss':
         specifier: ^4
         version: 4.3.2

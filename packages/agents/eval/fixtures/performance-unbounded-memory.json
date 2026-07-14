@@ -1,0 +1,28 @@
+{
+  "id": "performance-unbounded-memory",
+  "pr": {
+    "repo": "acme/web",
+    "pr_number": 115,
+    "title": "Add log export helper",
+    "description": "Exports a log file as an array of lines.",
+    "files": [
+      {
+        "path": "src/logs/exportLogs.ts",
+        "patch": "@@ -0,0 +1,6 @@\n+import { readFileSync } from \"fs\";\n+\n+export function exportLogs(path: string): string[] {\n+  const contents = readFileSync(path, \"utf-8\");\n+  return contents.split(\"\\n\");\n+}\n+",
+        "additions": 6,
+        "deletions": 0
+      }
+    ]
+  },
+  "planted_defects": [
+    {
+      "id": "unboundedmem-001",
+      "path": "src/logs/exportLogs.ts",
+      "line": 4,
+      "target_agent": "performance",
+      "description": "Unbounded memory load: readFileSync reads the entire log file into memory synchronously before splitting it, which can exhaust process memory and block the event loop for large log files; should stream the file line by line instead.",
+      "severity": "warning"
+    }
+  ],
+  "clean": false
+}

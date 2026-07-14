@@ -1,0 +1,28 @@
+{
+  "id": "deploysafety-missing-feature-flag",
+  "pr": {
+    "repo": "acme/web",
+    "pr_number": 122,
+    "title": "Switch checkout to new gateway",
+    "description": "Routes checkout through the new payment gateway.",
+    "files": [
+      {
+        "path": "src/payments/checkout.ts",
+        "patch": "@@ -1,3 +1,3 @@\n export async function checkout(order: Order, ctx: RequestContext): Promise<Receipt> {\n-  return chargeWithLegacyGateway(order, ctx.user);\n+  return chargeWithNewGateway(order, ctx.user);\n }\n",
+        "additions": 1,
+        "deletions": 1
+      }
+    ]
+  },
+  "planted_defects": [
+    {
+      "id": "missingflag-001",
+      "path": "src/payments/checkout.ts",
+      "line": 2,
+      "target_agent": "deployment_safety",
+      "description": "Missing feature-flag guard: checkout now routes 100% of traffic straight to the new payment gateway with no feature flag or gradual rollout, so a bug in the new gateway would break payments for every user at once instead of a controlled cohort.",
+      "severity": "error"
+    }
+  ],
+  "clean": false
+}

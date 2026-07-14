@@ -1,0 +1,28 @@
+{
+  "id": "security-weak-crypto",
+  "pr": {
+    "repo": "acme/mobile-gateway",
+    "pr_number": 114,
+    "title": "Add password hashing helper",
+    "description": "Hashes user passwords before storing them.",
+    "files": [
+      {
+        "path": "internal/auth/password.go",
+        "patch": "@@ -0,0 +1,11 @@\n+package auth\n+\n+import (\n+\t\"crypto/md5\"\n+\t\"encoding/hex\"\n+)\n+\n+func HashPassword(password string) string {\n+\tsum := md5.Sum([]byte(password))\n+\treturn hex.EncodeToString(sum[:])\n+}\n+",
+        "additions": 11,
+        "deletions": 0
+      }
+    ]
+  },
+  "planted_defects": [
+    {
+      "id": "weakcrypto-001",
+      "path": "internal/auth/password.go",
+      "line": 9,
+      "target_agent": "security",
+      "description": "Weak cryptography: passwords are hashed with unsalted MD5, which is fast and broken, making stored password hashes trivial to crack with rainbow tables or brute force; use bcrypt, scrypt, or argon2 instead.",
+      "severity": "error"
+    }
+  ],
+  "clean": false
+}

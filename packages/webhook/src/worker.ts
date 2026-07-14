@@ -16,6 +16,7 @@ import { postReview } from './comment-poster.js'
 import { postGitLabReview, type DiffRefs } from './gitlab-comment-poster.js'
 import { persistReview, persistTelemetrySnapshots } from './persistence.js'
 import { ARETE_CHECK_RUN_NAME } from './constants.js'
+import { reviewConclusion } from './verdict-conclusion.js'
 import {
   REVIEW_QUEUE_NAME,
   REVIEW_QUEUE_CONCURRENCY,
@@ -105,7 +106,7 @@ async function processGitHubPullRequest(octokit: Octokit, installationToken: str
     repo,
     check_run_id: checkRunId,
     status: 'completed',
-    conclusion: result.risk_level === 'high' || result.risk_level === 'critical' ? 'action_required' : 'success',
+    conclusion: reviewConclusion(result),
     output: { title: 'Review Complete', summary: result.overall_summary },
   })
 
@@ -184,7 +185,7 @@ async function processGitHubCheckRun(octokit: Octokit, installationToken: string
     repo,
     check_run_id: checkRunId,
     status: 'completed',
-    conclusion: result.risk_level === 'high' || result.risk_level === 'critical' ? 'action_required' : 'success',
+    conclusion: reviewConclusion(result),
     output: { title: 'Review Complete', summary: result.overall_summary },
   })
 

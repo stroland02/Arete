@@ -1,0 +1,28 @@
+{
+  "id": "testcoverage-untested-exception",
+  "pr": {
+    "repo": "acme/billing",
+    "pr_number": 119,
+    "title": "Handle gateway timeouts",
+    "description": "Wraps gateway timeouts in a domain exception but adds no test.",
+    "files": [
+      {
+        "path": "src/main/java/com/acme/billing/PaymentProcessor.java",
+        "patch": "@@ -1,5 +1,9 @@\n public class PaymentProcessor {\n     public Receipt charge(Account account, int amountCents) {\n-        return gateway.charge(account, amountCents);\n+        try {\n+            return gateway.charge(account, amountCents);\n+        } catch (GatewayTimeoutException e) {\n+            throw new PaymentFailedException(\"gateway timeout\", e);\n+        }\n     }\n }\n",
+        "additions": 5,
+        "deletions": 1
+      }
+    ]
+  },
+  "planted_defects": [
+    {
+      "id": "untestedexc-001",
+      "path": "src/main/java/com/acme/billing/PaymentProcessor.java",
+      "line": 6,
+      "target_agent": "test_coverage",
+      "description": "Untested exception path: the new catch block that wraps GatewayTimeoutException into PaymentFailedException has no accompanying test verifying the wrapping behavior or that the original cause is preserved.",
+      "severity": "warning"
+    }
+  ],
+  "clean": false
+}

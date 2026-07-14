@@ -6,9 +6,14 @@ from pathlib import Path
 from langchain_core.language_models import BaseChatModel
 
 from arete_agents.config import Settings, get_settings
-from arete_agents.eval.loader import load_fixtures
+from arete_agents.eval.loader import compute_composition, load_fixtures
 from arete_agents.eval.matcher import DEFAULT_WINDOW, build_judge
-from arete_agents.eval.report import build_report, render_json, render_markdown
+from arete_agents.eval.report import (
+    build_report,
+    render_card,
+    render_json,
+    render_markdown,
+)
 from arete_agents.eval.runner import build_agents, run_all
 from arete_agents.eval.scorer import f1_regressed
 
@@ -16,27 +21,12 @@ _DEFAULT_FIXTURES = Path(__file__).resolve().parents[3] / "eval" / "fixtures"
 _DEFAULT_BASELINE = Path(__file__).resolve().parents[3] / "eval" / "baseline.json"
 
 
-def resolve_providers(settings: Settings, judge_flag: str | None) -> tuple[str, str]:
-    finder = settings.eval_finder_provider or settings.llm_provider
-    if judge_flag is not None:
-        judge = judge_flag
-    elif settings.eval_judge_provider is not None:
-        judge = settings.eval_judge_provider
-    else:
-        judge = "anthropic" if finder == "gemini" else "gemini"
-    return finder, judge
+def build_finder_llm(settings: Settings) -> BaseChatModel:
+    from arete_agents.llm.anthropic import build_anthropic_llm
 
-
-def build_finder_llm(provider: str, settings: Settings) -> BaseChatModel:
-    if provider == "gemini":
-        from arete_agents.llm.gemini import build_gemini_llm
-
-        return build_gemini_llm(settings.gemini_api_key)
-    if provider == "anthropic":
-        from arete_agents.llm.anthropic import build_anthropic_llm
-
-        return build_anthropic_llm(settings.anthropic_api_key)
-    raise ValueError(f"Unknown finder provider: {provider!r}")
+    return build_anthropic_llm(
+        settings.anthropic_api_key, tier=settings.eval_finder_tier
+    )
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -46,9 +36,10 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     parser.add_argument("--fixtures", default=str(_DEFAULT_FIXTURES))
     parser.add_argument(
-        "--judge", choices=["gemini", "anthropic", "stub"], default=None
+        "--judge", choices=["stub", "cross-tier"], default="cross-tier"
     )
-    parser.add_argument("--report", choices=["md", "json"], default="md")
+    parser.add_argument("--report", choices=["md", "json", "card"], default="md")
+    parser.add_argument("--card-out", default=None)
     parser.add_argument("--window", type=int, default=DEFAULT_WINDOW)
     parser.add_argument("--update-baseline", action="store_true")
     parser.add_argument("--baseline", default=str(_DEFAULT_BASELINE))
@@ -58,30 +49,41 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     settings = get_settings()
-    finder_provider, judge_mode = resolve_providers(settings, args.judge)
+    judge_mode = args.judge
 
     fixtures = load_fixtures(Path(args.fixtures))
-    finder_llm = build_finder_llm(finder_provider, settings)
+    finder_llm = build_finder_llm(settings)
     agents = build_agents(finder_llm)
     if args.agent:
         agents = [a for a in agents if a.agent_name == args.agent]
     judge, is_stub = build_judge(
-        judge_mode, settings.gemini_api_key, settings.anthropic_api_key
+        judge_mode, settings.anthropic_api_key, settings.eval_judge_tier
     )
 
     results = run_all(fixtures, agents, judge, is_stub, args.window)
     meta = {
-        "finder_provider": finder_provider,
+        "finder_tier": settings.eval_finder_tier,
         "judge_mode": judge_mode,
+        "judge_tier": settings.eval_judge_tier,
         "window": str(args.window),
         "fixtures": str(len(fixtures)),
     }
-    report = build_report(results, meta=meta)
+    composition = compute_composition(fixtures)
+    report = build_report(results, meta=meta, composition=composition)
+
+    verified = (judge_mode != "stub") and (report.overall.errors == 0)
 
     if args.report == "json":
         print(render_json(report))
+    elif args.report == "card":
+        print(render_card(report, verified))
     else:
         print(render_markdown(report))
+
+    if args.card_out:
+        Path(args.card_out).write_text(
+            render_card(report, verified), encoding="utf-8"
+        )
 
     if report.overall.errors:
         print(

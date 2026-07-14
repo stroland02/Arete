@@ -24,6 +24,9 @@ export function MarketingNav() {
           <a href="#pricing" className="transition-colors hover:text-content-primary">
             Pricing
           </a>
+          <a href="https://discord.gg/HyYVmVc6d" target="_blank" rel="noopener noreferrer" className="transition-colors hover:text-content-primary">
+            Community
+          </a>
         </nav>
 
         <div className="flex items-center gap-3">

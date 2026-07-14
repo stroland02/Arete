@@ -55,19 +55,15 @@ class LLMJudge:
 
 def build_judge(
     mode: str,
-    gemini_api_key: str = "",
     anthropic_api_key: str = "",
+    judge_tier: str = "sonnet",
 ) -> tuple[object, bool]:
     if mode == "stub":
         return StubJudge(), True
-    if mode == "gemini":
-        from arete_agents.llm.gemini import build_gemini_llm
-
-        return LLMJudge(build_gemini_llm(gemini_api_key)), False
-    if mode == "anthropic":
+    if mode == "cross-tier":
         from arete_agents.llm.anthropic import build_anthropic_llm
 
-        return LLMJudge(build_anthropic_llm(anthropic_api_key)), False
+        return LLMJudge(build_anthropic_llm(anthropic_api_key, tier=judge_tier)), False
     raise ValueError(f"Unknown judge mode: {mode!r}")
 
 

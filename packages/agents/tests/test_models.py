@@ -169,3 +169,49 @@ def test_pr_context_clone_fields_default_to_none():
     assert pr.clone_url is None
     assert pr.installation_token is None
     assert pr.installation_id is None
+
+
+def test_review_result_verdict_fields_default_for_backward_compat():
+    """Additive fields: existing-style constructors that don't pass verdict
+    args keep working and get the advisory defaults."""
+    result = ReviewResult(
+        pr_context=PRContext(
+            repo="r/r", pr_number=1, title="t", description="d", files=[]
+        ),
+        file_reviews=[],
+        overall_summary="none",
+        risk_level="low",
+    )
+    assert result.verdict == "pass"
+    assert result.verdict_reason == ""
+
+
+def test_review_result_grounding_counters_default_to_zero():
+    from arete_agents.models.pr import PRContext
+    from arete_agents.models.review import ReviewResult
+
+    result = ReviewResult(
+        pr_context=PRContext(repo="r/r", pr_number=1, title="t", description="d", files=[]),
+        file_reviews=[],
+        overall_summary="none",
+        risk_level="low",
+    )
+    assert result.citation_dropped_count == 0
+    assert result.security_evidence_dropped_count == 0
+
+
+def test_pr_context_accepts_repo_conventions_field():
+    from arete_agents.models.pr import FileChange, PRContext
+
+    pr = PRContext.model_validate({
+        "repo": "acme/api", "pr_number": 1, "title": "t", "description": "d",
+        "files": [], "repoConventions": "# Conventions\nUse tabs.",
+    })
+    assert pr.repo_conventions == "# Conventions\nUse tabs."
+
+
+def test_pr_context_repo_conventions_defaults_to_none():
+    from arete_agents.models.pr import PRContext
+
+    pr = PRContext(repo="acme/api", pr_number=1, title="t", description="d", files=[])
+    assert pr.repo_conventions is None

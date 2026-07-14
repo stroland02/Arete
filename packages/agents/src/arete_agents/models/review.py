@@ -38,6 +38,25 @@ class ReviewResult(BaseModel):
     # self-check; this one is the genuinely independent cross-tier gate).
     # 0 when the critic bucket was empty or a critic call failed (fail-open).
     critic_dropped_count: int = 0
+    # Number of already-synthesized-and-critiqued comments dropped by the
+    # deterministic (non-LLM) grounding gate for citing a line number that
+    # doesn't exist in the file's real diff. Distinct from dropped_count
+    # (Synthesizer's own LLM self-check) and critic_dropped_count (the
+    # independent cross-tier LLM critic) — this one is pure text parsing,
+    # never an LLM judgment call.
+    citation_dropped_count: int = 0
+    # Number of security-category comments dropped specifically for lacking
+    # any quoted code snippet that actually appears in the diff — a
+    # stricter, security-only bar on top of the universal citation check
+    # above.
+    security_evidence_dropped_count: int = 0
+    # Deterministic, non-LLM risk-tiered gate (see verdict.decide_verdict).
+    # "pass"/"comment" are informational; "review-required"/"blocked" mean
+    # a human must act before merge — this field is advisory data only,
+    # never an auto-merge/auto-dismiss signal (human discussion is not
+    # merge authorization).
+    verdict: Literal["pass", "comment", "review-required", "blocked"] = "pass"
+    verdict_reason: str = ""
 
     @computed_field
     @property

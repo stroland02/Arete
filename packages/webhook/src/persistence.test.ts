@@ -7,14 +7,15 @@ import type { TelemetrySnapshot } from './types.js'
 // the module under test is ever imported.
 function makePrismaMock() {
   const installationFindUnique = vi.fn()
+  const installationUpsert = vi.fn()
   const telemetrySnapshotRecordUpsert = vi.fn()
 
   class PrismaClient {
-    installation = { findUnique: installationFindUnique }
+    installation = { findUnique: installationFindUnique, upsert: installationUpsert }
     telemetrySnapshotRecord = { upsert: telemetrySnapshotRecordUpsert }
   }
 
-  return { PrismaClient, installationFindUnique, telemetrySnapshotRecordUpsert }
+  return { PrismaClient, installationFindUnique, installationUpsert, telemetrySnapshotRecordUpsert }
 }
 
 async function loadPersistence(mocks: ReturnType<typeof makePrismaMock>) {
@@ -85,5 +86,40 @@ describe('persistTelemetrySnapshots', () => {
 
     expect(mocks.installationFindUnique).not.toHaveBeenCalled()
     expect(mocks.telemetrySnapshotRecordUpsert).not.toHaveBeenCalled()
+  })
+})
+
+describe('persistInstallation', () => {
+  let mocks: ReturnType<typeof makePrismaMock>
+
+  beforeEach(() => {
+    mocks = makePrismaMock()
+  })
+
+  it('upserts the Installation row keyed on (provider, externalId) and returns its id', async () => {
+    mocks.installationUpsert.mockResolvedValue({ id: 'inst-uuid-1' })
+    const { persistInstallation } = await loadPersistence(mocks)
+
+    const id = await persistInstallation({ provider: 'github', installationExternalId: 12345, owner: 'acme' })
+
+    expect(id).toBe('inst-uuid-1')
+    expect(mocks.installationUpsert).toHaveBeenCalledWith({
+      where: { provider_externalId: { provider: 'github', externalId: 12345 } },
+      create: { provider: 'github', externalId: 12345, owner: 'acme' },
+      update: { owner: 'acme' },
+    })
+  })
+
+  it('is idempotent on re-delivery and tracks an owner rename in the update path', async () => {
+    mocks.installationUpsert.mockResolvedValue({ id: 'inst-uuid-1' })
+    const { persistInstallation } = await loadPersistence(mocks)
+
+    await persistInstallation({ provider: 'github', installationExternalId: 12345, owner: 'acme' })
+    await persistInstallation({ provider: 'github', installationExternalId: 12345, owner: 'acme-renamed' })
+
+    expect(mocks.installationUpsert).toHaveBeenCalledTimes(2)
+    expect(mocks.installationUpsert).toHaveBeenLastCalledWith(
+      expect.objectContaining({ update: { owner: 'acme-renamed' } })
+    )
   })
 })

@@ -1,0 +1,28 @@
+{
+  "id": "security-path-traversal",
+  "pr": {
+    "repo": "acme/api",
+    "pr_number": 113,
+    "title": "Add file download endpoint",
+    "description": "Serves a file from the uploads directory by name.",
+    "files": [
+      {
+        "path": "src/files/download.py",
+        "patch": "@@ -0,0 +1,7 @@\n+import os\n+\n+\n+def download_file(base_dir, filename):\n+    path = os.path.join(base_dir, filename)\n+    with open(path, \"rb\") as f:\n+        return f.read()\n+",
+        "additions": 7,
+        "deletions": 0
+      }
+    ]
+  },
+  "planted_defects": [
+    {
+      "id": "pathtraversal-001",
+      "path": "src/files/download.py",
+      "line": 5,
+      "target_agent": "security",
+      "description": "Path traversal: filename is joined onto base_dir with os.path.join without normalizing or validating it, so a value like '../../etc/passwd' escapes base_dir and reads arbitrary files on the server.",
+      "severity": "error"
+    }
+  ],
+  "clean": false
+}

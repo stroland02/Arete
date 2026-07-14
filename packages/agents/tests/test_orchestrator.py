@@ -130,6 +130,81 @@ def test_all_agents_succeed_analysis_status_complete(sample_pr, cyclic_llm):
     assert result.analysis_status == "complete"
 
 
+def test_high_risk_run_gets_review_required_verdict(sample_pr):
+    """SP4: a completed run whose synthesized risk_level is 'high' gets the
+    'review-required' verdict (not blocking, but a human must review)."""
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    sec_response = (
+        '{"comments": [{"path": "src/auth.py", "line": 5, "body": "SQL '
+        'injection.", "severity": "error", "category": "security"}], '
+        '"summary": "SQL injection."}'
+    )
+    synth_response = (
+        '{"file_reviews": [{"path": "src/auth.py", "comments": '
+        '[{"path": "src/auth.py", "line": 5, "body": "SQL injection.", '
+        '"severity": "error", "category": "security"}], '
+        '"summary": "SQL injection."}], '
+        '"overall_summary": "One security issue.", "risk_level": "high"}'
+    )
+
+    def fake_invoke(messages, **kwargs):
+        system = messages[0].content
+        if "Synthesizer" in system:
+            return AIMessage(content=synth_response)
+        return AIMessage(content=sec_response)
+
+    mock = MagicMock()
+    mock.bind_tools.return_value = mock
+    mock.with_retry.return_value = mock
+    mock.invoke.side_effect = fake_invoke
+
+    result = ReviewOrchestrator(llm=mock).run(sample_pr)
+    assert result.risk_level == "high"
+    assert result.verdict == "review-required"
+
+
+def test_total_failure_run_gets_blocked_verdict(sample_pr):
+    """SP4 precedence: a total agent failure blocks even though the fallback
+    leaves risk_level at 'low' — the verdict must reflect the FINAL
+    analysis_status ('failed'), proving it is computed after that assignment."""
+    from arete_agents.orchestrator import ReviewOrchestrator
+    boom = MagicMock()
+    boom.bind_tools.return_value = boom
+    boom.with_retry.return_value = boom
+    boom.invoke.side_effect = RuntimeError("total LLM outage")
+    result = ReviewOrchestrator(llm=boom).run(sample_pr)
+    assert result.analysis_status == "failed"
+    assert result.risk_level == "low"
+    assert result.verdict == "blocked"
+    assert "could not be completed" in result.verdict_reason
+
+
+def test_graph_invocation_failure_with_all_agents_failing_still_blocks(sample_pr):
+    """Regression: run()'s OUTER fallback (triggered when self.graph.invoke()
+    itself raises — a distinct failure mode from individual agent errors
+    handled inside the graph) sets analysis_status='failed' when every
+    directly-invoked agent also fails, but previously never called
+    decide_verdict at all, silently leaving verdict at its 'pass' default.
+    A total outage must block regardless of which code path detects it."""
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    boom = MagicMock()
+    boom.bind_tools.return_value = boom
+    boom.with_retry.return_value = boom
+    boom.invoke.side_effect = RuntimeError("agent llm outage")
+
+    orch = ReviewOrchestrator(llm=boom)
+    with patch.object(
+        orch.graph, "invoke", side_effect=RuntimeError("graph invocation broke")
+    ):
+        result = orch.run(sample_pr)
+
+    assert result.analysis_status == "failed"
+    assert result.verdict == "blocked"
+    assert "could not be completed" in result.verdict_reason
+
+
 def test_empty_pr_analysis_status_complete(cyclic_llm):
     """No files to review is NOT a failure — there was just nothing to do."""
     from arete_agents.models.pr import PRContext
@@ -137,6 +212,7 @@ def test_empty_pr_analysis_status_complete(cyclic_llm):
     empty = PRContext(repo="x/y", pr_number=1, title="Empty", description="", files=[])
     result = ReviewOrchestrator(llm=cyclic_llm).run(empty)
     assert result.analysis_status == "complete"
+    assert result.verdict == "pass"
 
 
 def test_review_result_analysis_status_defaults_to_complete(sample_pr):
@@ -649,3 +725,121 @@ def test_run_completes_when_context_mapping_raises_unexpectedly(cyclic_llm, samp
 
     assert result is not None
     assert result.pr_context == sample_pr
+
+
+def _grounding_pr(patch: str):
+    from arete_agents.models.pr import FileChange, PRContext
+
+    return PRContext(
+        repo="acme/api",
+        pr_number=1,
+        title="t",
+        description="",
+        files=[FileChange(path="src/auth.py", patch=patch, additions=1, deletions=0)],
+    )
+
+
+def _grounding_result(comments: list[ReviewComment]) -> ReviewResult:
+    return ReviewResult(
+        pr_context=_grounding_pr(""),
+        file_reviews=[FileReview(path="src/auth.py", comments=comments, summary="s")],
+        overall_summary="s",
+        risk_level="low",
+    )
+
+
+def test_apply_grounding_keeps_comment_citing_a_real_line(cyclic_llm):
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    patch = "@@ -1,2 +1,2 @@\n line1\n+line2\n"
+    pr = _grounding_pr(patch)
+    result = _grounding_result([
+        ReviewComment(path="src/auth.py", line=2, body="ok", severity="info", category="quality"),
+    ])
+
+    orch = ReviewOrchestrator(llm=cyclic_llm)
+    out = orch._apply_grounding(pr, result)
+
+    assert len(out.file_reviews[0].comments) == 1
+    assert out.citation_dropped_count == 0
+
+
+def test_apply_grounding_drops_comment_citing_a_fabricated_line(cyclic_llm):
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    patch = "@@ -1,2 +1,2 @@\n line1\n+line2\n"
+    pr = _grounding_pr(patch)
+    result = _grounding_result([
+        ReviewComment(path="src/auth.py", line=999, body="ok", severity="info", category="quality"),
+    ])
+
+    orch = ReviewOrchestrator(llm=cyclic_llm)
+    out = orch._apply_grounding(pr, result)
+
+    assert len(out.file_reviews[0].comments) == 0
+    assert out.citation_dropped_count == 1
+
+
+def test_apply_grounding_keeps_security_comment_with_real_quoted_evidence(cyclic_llm):
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    patch = "@@ -1,1 +1,1 @@\n+result = dangerous_eval(user_input)\n"
+    pr = _grounding_pr(patch)
+    result = _grounding_result([
+        ReviewComment(
+            path="src/auth.py", line=1,
+            body="Calls `dangerous_eval(user_input)` on untrusted input.",
+            severity="error", category="security",
+        ),
+    ])
+
+    orch = ReviewOrchestrator(llm=cyclic_llm)
+    out = orch._apply_grounding(pr, result)
+
+    assert len(out.file_reviews[0].comments) == 1
+    assert out.security_evidence_dropped_count == 0
+
+
+def test_apply_grounding_drops_security_comment_without_quoted_evidence_on_parsed_patch(cyclic_llm):
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    patch = "@@ -1,1 +1,1 @@\n+result = something_safe(user_input)\n"
+    pr = _grounding_pr(patch)
+    result = _grounding_result([
+        ReviewComment(
+            path="src/auth.py", line=1,
+            body="This looks like a SQL injection risk.",
+            severity="error", category="security",
+        ),
+    ])
+
+    orch = ReviewOrchestrator(llm=cyclic_llm)
+    out = orch._apply_grounding(pr, result)
+
+    assert len(out.file_reviews[0].comments) == 0
+    assert out.security_evidence_dropped_count == 1
+
+
+def test_apply_grounding_skips_all_gates_when_patch_unparseable(cyclic_llm):
+    """Both gates must be skipped together when the patch can't be parsed —
+    including for a security comment with no quoted evidence at all, which
+    would otherwise be wrongly dropped by Gate 2 running independently of
+    Gate 1's parse result. This is the exact regression this plan's Task 3
+    note warns about."""
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    pr = _grounding_pr("not a real diff")
+    result = _grounding_result([
+        ReviewComment(path="src/auth.py", line=999, body="ok", severity="info", category="quality"),
+        ReviewComment(
+            path="src/auth.py", line=1, body="SQL injection.",
+            severity="error", category="security",
+        ),
+    ])
+
+    orch = ReviewOrchestrator(llm=cyclic_llm)
+    out = orch._apply_grounding(pr, result)
+
+    assert len(out.file_reviews[0].comments) == 2
+    assert out.citation_dropped_count == 0
+    assert out.security_evidence_dropped_count == 0
