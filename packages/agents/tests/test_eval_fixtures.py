@@ -9,7 +9,7 @@ _FIXTURES = Path(__file__).resolve().parents[1] / "eval" / "fixtures"
 
 def test_fixtures_load():
     fixtures = load_fixtures(_FIXTURES)
-    assert len(fixtures) == 15
+    assert len(fixtures) == 29
 
 
 def test_two_defects_per_agent():
@@ -18,13 +18,13 @@ def test_two_defects_per_agent():
         d.target_agent for f in fixtures for d in f.planted_defects
     )
     for name in AGENT_NAMES:
-        assert counts[name] == 2, f"{name} should have exactly 2 planted defects"
+        assert counts[name] == 4, f"{name} should have exactly 4 planted defects"
 
 
-def test_three_clean_fixtures_have_no_defects():
+def test_five_clean_fixtures_have_no_defects():
     fixtures = load_fixtures(_FIXTURES)
     clean = [f for f in fixtures if f.clean]
-    assert len(clean) == 3
+    assert len(clean) == 5
     assert all(f.planted_defects == [] for f in clean)
 
 

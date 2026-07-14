@@ -1,0 +1,28 @@
+{
+  "id": "testcoverage-missing-boundary",
+  "pr": {
+    "repo": "acme/web",
+    "pr_number": 120,
+    "title": "Add tier discount rate",
+    "description": "Computes a discount rate from order quantity tiers.",
+    "files": [
+      {
+        "path": "src/pricing/tierDiscount.ts",
+        "patch": "@@ -0,0 +1,9 @@\n+export function tierDiscountRate(quantity: number): number {\n+  if (quantity >= 100) {\n+    return 0.2;\n+  }\n+  if (quantity >= 10) {\n+    return 0.1;\n+  }\n+  return 0;\n+}\n+",
+        "additions": 9,
+        "deletions": 0
+      }
+    ]
+  },
+  "planted_defects": [
+    {
+      "id": "boundarytest-001",
+      "path": "src/pricing/tierDiscount.ts",
+      "line": 1,
+      "target_agent": "test_coverage",
+      "description": "Missing boundary-value tests: tierDiscountRate has tier cutoffs at quantity 10 and 100, but the PR adds no test exercising the boundary values themselves (9/10 and 99/100), leaving an off-by-one in either threshold undetectable.",
+      "severity": "warning"
+    }
+  ],
+  "clean": false
+}

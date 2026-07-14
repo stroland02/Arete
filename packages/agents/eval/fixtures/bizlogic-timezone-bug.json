@@ -1,0 +1,28 @@
+{
+  "id": "bizlogic-timezone-bug",
+  "pr": {
+    "repo": "acme/mobile-gateway",
+    "pr_number": 124,
+    "title": "Check subscription expiry",
+    "description": "Determines whether a subscription has expired.",
+    "files": [
+      {
+        "path": "internal/billing/period.go",
+        "patch": "@@ -0,0 +1,8 @@\n+package billing\n+\n+import \"time\"\n+\n+func IsSubscriptionExpired(expiresAt time.Time) bool {\n+\tnow := time.Now()\n+\treturn now.After(expiresAt)\n+}\n+",
+        "additions": 8,
+        "deletions": 0
+      }
+    ]
+  },
+  "planted_defects": [
+    {
+      "id": "tzbug-001",
+      "path": "internal/billing/period.go",
+      "line": 6,
+      "target_agent": "business_logic",
+      "description": "Timezone bug: time.Now() returns the server's local time instead of UTC, so comparing it against expiresAt (stored in UTC) drifts by the server's UTC offset, flipping the expiry check early or late depending on where the server runs.",
+      "severity": "warning"
+    }
+  ],
+  "clean": false
+}
