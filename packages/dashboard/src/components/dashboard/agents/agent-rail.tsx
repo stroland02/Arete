@@ -23,9 +23,10 @@ export interface AgentRailProps {
 /**
  * Left pane of the /agents workspace: an Orca-style navigator of the six
  * specialists. Each row = status dot + icon + name + model badge + a real
- * derived status line. Clicking a row selects that agent AND opens its config
- * drawer (no separate gear button); the whole row highlights on hover and
- * gets a left accent bar + tinted background when it's the open one.
+ * derived status line. Clicking a row selects that agent, driving the center
+ * conversation pane; a separate gear button opens its config drawer. The
+ * whole row highlights on hover and gets a left accent bar + tinted
+ * background when it's the selected one.
  */
 export function AgentRail({
   agents = AGENTS,
