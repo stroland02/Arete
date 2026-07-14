@@ -251,14 +251,14 @@ export function PricingSection() {
 export function FinalCta() {
   return (
     <section className="mx-auto max-w-6xl px-6 pb-24">
-      <Card elevated className="relative flex flex-col items-center gap-6 overflow-hidden py-20 text-center">
+      <Card elevated className="relative flex flex-col items-center gap-6 overflow-hidden pt-14 pb-32 text-center">
         <Image
           src="/kanagawa-bg-v3.jpg"
           alt="Kanagawa Background"
           fill
-          className="absolute inset-0 z-0 object-cover opacity-90 transition-transform duration-1000 hover:scale-105"
+          className="absolute inset-0 z-0 object-cover object-bottom opacity-90 transition-transform duration-1000 hover:scale-105"
         />
-        <div className="absolute inset-0 z-0 bg-black/40" />
+        <div className="absolute inset-0 z-0 bg-gradient-to-b from-black/50 via-black/30 to-transparent" />
 
         <span className="relative z-10 flex h-14 w-14 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-white backdrop-blur-md shadow-lg">
           <IconGitPullRequest className="h-7 w-7" />
