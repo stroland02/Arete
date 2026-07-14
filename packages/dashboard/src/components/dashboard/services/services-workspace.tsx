@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence, useInView } from "framer-motion";
-import { IconChevronDown, IconCopy, IconGitBranch, IconGitPullRequest, IconHourglassHigh, IconPlus, IconLoader2, IconCheck } from "@tabler/icons-react";
+import { IconArrowRight, IconChevronDown, IconCopy, IconGitBranch, IconGitPullRequest, IconHourglassHigh, IconPlus, IconLoader2, IconCheck } from "@tabler/icons-react";
 import { KumaLogo } from "@/components/ui/kuma-logo";
 
 /**

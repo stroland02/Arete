@@ -4,45 +4,50 @@ import { useState } from "react";
 import { AGENTS } from "./agent-catalog";
 import { AgentRail } from "./agent-rail";
 import { AgentConversation } from "./agent-conversation";
-import type { AgentActivityFinding } from "@/lib/queries";
 import { PrPanel } from "./pr-panel";
 import { AgentConfigDrawer } from "./agent-config-drawer";
+import type { AgentActivityFinding } from "@/lib/queries";
 
 export interface AgentsWorkspaceProps {
   findingCountById: Record<string, number>;
   totalFindings: number;
   hasReviews: boolean;
-  activity: AgentActivityFinding[];
+  /** Recent findings across all agents; the workspace slices per selected agent.
+      Optional (defaults to none) so the marketing preview can render without it. */
+  activity?: AgentActivityFinding[];
   latestReview?: {
     repoFullName: string;
     prNumber: number;
     riskLevel: string;
   } | null;
-  /** Focused container from the Services→Agents deep-link (?container=). */
+  /**
+   * Focused container from the Services→Agents deep-link (?container=). Retained
+   * in the contract so the deep-link keeps type-checking; the center pane is now
+   * the selected agent's own conversation, and the account-level Synthesizer
+   * transcript lives on /services.
+   */
   containerId?: string | null;
-  /** Whether a repository is connected (installations present) — drives the console's onboarding vs "awaiting review" copy. */
+  /** Whether a repository is connected (installations present). */
   connected?: boolean;
 }
 
 /**
- * The Orca-style 3-pane workspace behind /agents: agents rail (left),
- * Synthesizer console shell (center), pull-request panel (right). One glass
- * panel, thin internal separators, each pane independently scrollable.
- * Owns which agent is selected (drives the console's focus) and which
- * agent's config drawer is open (reuses the existing AgentConfigDrawer).
+ * The Orca-style 3-pane workspace behind /agents: agents rail (left), the
+ * selected agent's own conversation (center), pull-request panel (right).
+ * Selecting an agent in the rail drives the center pane; the rail gear opens
+ * its config drawer. The account-level Synthesizer now lives on /services.
  */
 export function AgentsWorkspace({
   findingCountById,
   totalFindings,
   hasReviews,
-  activity,
+  activity = [],
   latestReview = null,
-  containerId = null,
-  connected = false,
 }: AgentsWorkspaceProps) {
   const [selectedAgentId, setSelectedAgentId] = useState<string>(AGENTS[0].id);
   const [configAgentId, setConfigAgentId] = useState<string | null>(null);
 
+  const selectedAgent = AGENTS.find((a) => a.id === selectedAgentId) ?? AGENTS[0];
   const configAgent = AGENTS.find((a) => a.id === configAgentId) ?? null;
   const selectedAgentFindings = activity.filter((f) => f.category === selectedAgent.id);
 
@@ -60,10 +65,13 @@ export function AgentsWorkspace({
           onSelect={setSelectedAgentId}
           onConfigure={setConfigAgentId}
         />
-        {/* Center pane streams the focused container's Synthesizer transcript.
-            containerId comes from the Services→Agents deep-link; null shows the
-            onboarding + "watch a sample review" opt-in. */}
-        <SynthesizerConsole containerId={containerId} connected={connected} />
+        <AgentConversation
+          agent={selectedAgent}
+          findings={selectedAgentFindings}
+          findingCount={findingCountById[selectedAgent.id] ?? 0}
+          hasReviews={hasReviews}
+          onConfigure={setConfigAgentId}
+        />
         <PrPanel
           hasReviews={hasReviews}
           latestReview={latestReview}
