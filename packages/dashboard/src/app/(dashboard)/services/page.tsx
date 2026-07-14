@@ -11,12 +11,17 @@ export const dynamic = "force-dynamic";
 // yet) — ServicesWorkspace shows its honest empty state and routes to
 // /connections. Real data will be passed in here once the backend ingestion
 // pipeline (Sentry etc.) populates the Service/Issue contract.
-export default async function ServicesPage() {
+export default async function ServicesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ container?: string }>;
+}) {
   const session = await auth();
   if (!session?.user) {
     redirect("/login");
   }
 
+  const { container } = await searchParams;
   const connected = (session.installations ?? []).length > 0;
-  return <ServicesWorkspace connected={connected} />;
+  return <ServicesWorkspace connected={connected} containerId={container ?? null} />;
 }
