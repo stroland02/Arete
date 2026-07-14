@@ -109,10 +109,11 @@ model ReviewComment {
   category         String
   
   // Noise Classification Fields
-  noiseState       String   @default("OPEN") // "OPEN", "SILENCED", "UNDER_OBSERVATION"
+  noiseState       String   @default("OPEN") // "OPEN", "SILENCED", "UNDER_OBSERVATION", "ESCALATED"
   escalateOn       String?  // "events_per_minute", "additional_events"
   threshold        Int?     // Threshold value for escalation
-  
+  occurrenceCount  Int      @default(1) // Times a matching (repo, path, category) issue has recurred while UNDER_OBSERVATION
+
   createdAt        DateTime @default(now())
   review           Review   @relation(fields: [reviewId], references: [id])
 }
