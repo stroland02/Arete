@@ -22,7 +22,7 @@ from arete_agents.critic import CriticAgent
 from arete_agents.grounding import has_quoted_evidence, valid_lines_for_patch
 from arete_agents.llm.base import ROLE_KEYS
 from arete_agents.models.pr import FileChange, PRContext
-from arete_agents.models.review import FileReview, ReviewResult
+from arete_agents.models.review import FileReview, NoiseDecision, ReviewResult
 from arete_agents.verdict import decide_verdict
 
 _SEVERITY_WEIGHT = {"error": 3, "warning": 2, "info": 1}
@@ -88,6 +88,10 @@ def _merge_reviews(reviews_per_file: list[list[FileReview]]) -> list[FileReview]
 class GraphState(TypedDict):
     pr: PRContext
     raw_reviews: Annotated[list[FileReview], operator.add]
+    # Tool calls recorded across every agent's review_file() run this PR
+    # (see agents/base.py). Applied to the synthesized result in
+    # _synthesize_reviews, after the critic/grounding gates.
+    noise_decisions: Annotated[list[NoiseDecision], operator.add]
     # Explicit success/failure tallies from the fan-out, so "all agents
     # errored" can be detected deterministically instead of pattern-matching
     # error text in FileReview summaries after the fact.
@@ -316,7 +320,11 @@ class ReviewOrchestrator:
 
         try:
             result = agent.review_file(file, pr)
-            return {"raw_reviews": [result], "agent_successes": 1}
+            return {
+                "raw_reviews": [result],
+                "noise_decisions": result.noise_decisions,
+                "agent_successes": 1,
+            }
         except Exception as exc:
             return {
                 "raw_reviews": [FileReview(
@@ -359,6 +367,7 @@ class ReviewOrchestrator:
 
         final_result = self._apply_critic(pr, final_result)
         final_result = self._apply_grounding(pr, final_result)
+        final_result = self._apply_noise_decisions(final_result, state.get("noise_decisions", []))
 
         # "failed" only when every agent errored (total outage) — partial
         # failures still produced a real (if incomplete) review.
@@ -460,6 +469,33 @@ class ReviewOrchestrator:
         result.file_reviews = new_file_reviews
         result.citation_dropped_count = citation_dropped
         result.security_evidence_dropped_count = security_evidence_dropped
+        return result
+
+    def _apply_noise_decisions(
+        self, result: ReviewResult, decisions: list[NoiseDecision]
+    ) -> ReviewResult:
+        """Deterministic post-synthesis stamp: for every recorded
+        silence_as_noise/place_under_observation tool call (see
+        agents/base.py's review_file()), find the surviving comment at the
+        same (path, line) and set its noise_state accordingly. A decision
+        with no matching surviving comment (e.g. the finding was dropped by
+        the critic or grounding gates) is silently a no-op -- same posture as
+        dropped_count/critic_dropped_count for comments that don't survive."""
+        if not decisions:
+            return result
+
+        by_key = {(d.path, d.line): d for d in decisions}
+        for fr in result.file_reviews:
+            for c in fr.comments:
+                decision = by_key.get((c.path, c.line))
+                if decision is None:
+                    continue
+                if decision.action == "silence":
+                    c.noise_state = "SILENCED"
+                else:
+                    c.noise_state = "UNDER_OBSERVATION"
+                    c.escalate_on = decision.escalate_on
+                    c.threshold = decision.threshold
         return result
 
     def run(self, pr: PRContext) -> ReviewResult:

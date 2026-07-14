@@ -8,14 +8,26 @@ import type { TelemetrySnapshot } from './types.js'
 function makePrismaMock() {
   const installationFindUnique = vi.fn()
   const installationUpsert = vi.fn()
+  const installationUpdate = vi.fn()
   const telemetrySnapshotRecordUpsert = vi.fn()
   const repositoryFindUnique = vi.fn()
+  const repositoryUpsert = vi.fn()
+  const reviewFindUnique = vi.fn()
+  const reviewCreate = vi.fn()
+  const reviewCommentFindFirst = vi.fn()
+  const reviewCommentUpdate = vi.fn()
   const agentMemoryFindMany = vi.fn()
 
   class PrismaClient {
-    installation = { findUnique: installationFindUnique, upsert: installationUpsert }
+    installation = {
+      findUnique: installationFindUnique,
+      upsert: installationUpsert,
+      update: installationUpdate,
+    }
     telemetrySnapshotRecord = { upsert: telemetrySnapshotRecordUpsert }
-    repository = { findUnique: repositoryFindUnique }
+    repository = { findUnique: repositoryFindUnique, upsert: repositoryUpsert }
+    review = { findUnique: reviewFindUnique, create: reviewCreate }
+    reviewComment = { findFirst: reviewCommentFindFirst, update: reviewCommentUpdate }
     agentMemory = { findMany: agentMemoryFindMany }
   }
 
@@ -23,8 +35,14 @@ function makePrismaMock() {
     PrismaClient,
     installationFindUnique,
     installationUpsert,
+    installationUpdate,
     telemetrySnapshotRecordUpsert,
     repositoryFindUnique,
+    repositoryUpsert,
+    reviewFindUnique,
+    reviewCreate,
+    reviewCommentFindFirst,
+    reviewCommentUpdate,
     agentMemoryFindMany,
   }
 }
@@ -192,5 +210,155 @@ describe('fetchProjectMemories', () => {
     expect(mocks.agentMemoryFindMany).toHaveBeenCalledWith(
       expect.objectContaining({ take: 20 })
     )
+  })
+})
+
+describe('persistReview', () => {
+  let mocks: ReturnType<typeof makePrismaMock>
+
+  const BASE_PARAMS = {
+    provider: 'github' as const,
+    installationExternalId: 1,
+    repositoryExternalId: 1,
+    owner: 'acme',
+    name: 'api',
+    fullName: 'acme/api',
+    prNumber: 1,
+    headSha: 'sha1',
+  }
+
+  function makeResult(comments: any[]) {
+    return {
+      pr_context: {} as any,
+      file_reviews: comments.length
+        ? [{ path: comments[0].path, comments, summary: 's' }]
+        : [],
+      overall_summary: 'ok',
+      risk_level: 'low' as const,
+      total_comments: comments.length,
+    }
+  }
+
+  beforeEach(() => {
+    mocks = makePrismaMock()
+    mocks.installationUpsert.mockResolvedValue({ id: 'inst-uuid-1' })
+    mocks.repositoryUpsert.mockResolvedValue({ id: 'repo-uuid-1' })
+    mocks.reviewFindUnique.mockResolvedValue(null)
+    mocks.reviewCreate.mockResolvedValue({ id: 'review-uuid-1' })
+    mocks.reviewCommentFindFirst.mockResolvedValue(null)
+  })
+
+  it('writes noiseState/escalateOn/threshold from the comment data onto each created row', async () => {
+    const { persistReview } = await loadPersistence(mocks)
+
+    await persistReview({
+      ...BASE_PARAMS,
+      result: makeResult([{
+        path: 'src/auth.py', line: 5, body: 'x', severity: 'info', category: 'quality',
+        noise_state: 'SILENCED', escalate_on: null, threshold: null,
+      }]),
+    })
+
+    const createArgs = mocks.reviewCreate.mock.calls[0][0]
+    expect(createArgs.data.comments.createMany.data[0]).toMatchObject({
+      noiseState: 'SILENCED',
+      escalateOn: null,
+      threshold: null,
+    })
+  })
+
+  it('defaults noiseState to OPEN when the comment carries no noise fields', async () => {
+    const { persistReview } = await loadPersistence(mocks)
+
+    await persistReview({
+      ...BASE_PARAMS,
+      result: makeResult([
+        { path: 'src/auth.py', line: 5, body: 'x', severity: 'info', category: 'quality' },
+      ]),
+    })
+
+    const createArgs = mocks.reviewCreate.mock.calls[0][0]
+    expect(createArgs.data.comments.createMany.data[0].noiseState).toBe('OPEN')
+  })
+
+  it('creates a fresh row with no recurrence check when there is no prior UNDER_OBSERVATION match', async () => {
+    const { persistReview } = await loadPersistence(mocks)
+
+    await persistReview({
+      ...BASE_PARAMS,
+      result: makeResult([{
+        path: 'src/auth.py', line: 5, body: 'x', severity: 'info', category: 'quality',
+        noise_state: 'UNDER_OBSERVATION', escalate_on: 'additional_events', threshold: 3,
+      }]),
+    })
+
+    expect(mocks.reviewCommentFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          noiseState: 'UNDER_OBSERVATION',
+          path: 'src/auth.py',
+          category: 'quality',
+          review: { repositoryId: 'repo-uuid-1' },
+        },
+        // Deterministic escalation: always accumulate onto the OLDEST prior
+        // row, since each review also persists its own UNDER_OBSERVATION row.
+        orderBy: { createdAt: 'asc' },
+      })
+    )
+    expect(mocks.reviewCommentUpdate).not.toHaveBeenCalled()
+  })
+
+  it('increments occurrenceCount on a matching prior UNDER_OBSERVATION comment', async () => {
+    mocks.reviewCommentFindFirst.mockResolvedValue({
+      id: 'comment-uuid-1', occurrenceCount: 1, threshold: 3,
+    })
+    const { persistReview } = await loadPersistence(mocks)
+
+    await persistReview({
+      ...BASE_PARAMS,
+      result: makeResult([{
+        path: 'src/auth.py', line: 5, body: 'x', severity: 'info', category: 'quality',
+        noise_state: 'UNDER_OBSERVATION', escalate_on: 'additional_events', threshold: 3,
+      }]),
+    })
+
+    expect(mocks.reviewCommentUpdate).toHaveBeenCalledWith({
+      where: { id: 'comment-uuid-1' },
+      data: { occurrenceCount: 2, noiseState: 'UNDER_OBSERVATION' },
+    })
+  })
+
+  it('escalates to ESCALATED once the incremented count reaches the threshold', async () => {
+    mocks.reviewCommentFindFirst.mockResolvedValue({
+      id: 'comment-uuid-1', occurrenceCount: 2, threshold: 3,
+    })
+    const { persistReview } = await loadPersistence(mocks)
+
+    await persistReview({
+      ...BASE_PARAMS,
+      result: makeResult([{
+        path: 'src/auth.py', line: 5, body: 'x', severity: 'info', category: 'quality',
+        noise_state: 'UNDER_OBSERVATION', escalate_on: 'additional_events', threshold: 3,
+      }]),
+    })
+
+    expect(mocks.reviewCommentUpdate).toHaveBeenCalledWith({
+      where: { id: 'comment-uuid-1' },
+      data: { occurrenceCount: 3, noiseState: 'ESCALATED' },
+    })
+  })
+
+  it('does not run a recurrence check for OPEN/SILENCED comments', async () => {
+    const { persistReview } = await loadPersistence(mocks)
+
+    await persistReview({
+      ...BASE_PARAMS,
+      result: makeResult([{
+        path: 'src/auth.py', line: 5, body: 'x', severity: 'info', category: 'quality',
+        noise_state: 'SILENCED',
+      }]),
+    })
+
+    expect(mocks.reviewCommentFindFirst).not.toHaveBeenCalled()
   })
 })
