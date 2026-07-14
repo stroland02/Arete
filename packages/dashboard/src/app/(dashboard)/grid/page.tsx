@@ -45,6 +45,7 @@ export default async function MasterGridPage({
 
   const { installation } = await searchParams;
   const installationIds = resolveSelectedInstallationIds(session.installations ?? [], installation);
+  const connected = installationIds.length > 0;
   const snapshots = await getMasterGridSnapshots(db, installationIds);
 
   return (
@@ -64,14 +65,20 @@ export default async function MasterGridPage({
           <Card>
             <EmptyState
               icon={<IconLayoutGrid className="w-6 h-6" />}
-              title="No telemetry snapshots yet"
-              description="Connect a source and merge a PR — the next review will populate this grid."
+              title={connected ? "Connected — no telemetry snapshots yet" : "No telemetry snapshots yet"}
+              description={
+                connected
+                  ? "Your repository is connected. Open a pull request — the next review will populate this grid."
+                  : "Connect a repository and merge a PR — the next review will populate this grid."
+              }
             />
-            <div className="flex justify-center mt-2">
-              <Link href="/connections" className="text-sm text-accent-primary hover:text-accent-primary/80">
-                Connect a source →
-              </Link>
-            </div>
+            {!connected && (
+              <div className="flex justify-center mt-2">
+                <Link href="/connections" className="text-sm text-accent-primary hover:text-accent-primary/80">
+                  Connect a repository →
+                </Link>
+              </div>
+            )}
           </Card>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
