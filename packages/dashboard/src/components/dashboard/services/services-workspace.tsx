@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import Link from "next/link";
+import { SynthesizerConsole } from "../agents/synthesizer-console";
 import { motion, AnimatePresence, useInView } from "framer-motion";
 import { IconArrowRight, IconChevronDown, IconCopy, IconGitBranch, IconGitPullRequest, IconHourglassHigh, IconPlus, IconLoader2, IconCheck } from "@tabler/icons-react";
 import { KumaLogo } from "@/components/ui/kuma-logo";
@@ -403,9 +404,19 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
         </div>
       </section>
 
-      {/* Center: Synthesizer console, scoped to the selected issue */}
+      {/* Center: the Synthesizer — its canonical home. The authenticated
+          (embedded) surface hosts the real streaming console (onboarding now,
+          live once an Issue↔Container backs the selected issue). The framed
+          marketing preview keeps the scripted per-issue replay (clearly
+          illustrative sample data). */}
       <section className="flex min-h-0 flex-1 flex-col" aria-label="Synthesizer">
-        <IssueSynthesizerConsole issue={selected} isReplaying={isReplaying} replayStep={replayStep} />
+        {variant === "embedded" ? (
+          // containerId stays null until the Issue↔Container connector ships;
+          // then map the selected issue to its container id here to stream live.
+          <SynthesizerConsole containerId={null} connected={connected} />
+        ) : (
+          <IssueSynthesizerConsole issue={selected} isReplaying={isReplaying} replayStep={replayStep} />
+        )}
       </section>
 
       {/* Right: the issue's own detail */}
