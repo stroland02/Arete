@@ -67,4 +67,61 @@ describe('postReview', () => {
     // Second call must have empty comments
     expect(createReview.mock.calls[1][0].comments).toHaveLength(0)
   })
+
+  it('excludes SILENCED comments from the GitHub post', async () => {
+    const result: ReviewResult = {
+      ...MOCK_RESULT,
+      file_reviews: [{
+        path: 'src/auth.py',
+        comments: [
+          { path: 'src/auth.py', line: 5, body: 'SQL injection risk.', severity: 'error', category: 'security' },
+          { path: 'src/auth.py', line: 8, body: 'Known false positive.', severity: 'info', category: 'quality', noise_state: 'SILENCED' },
+        ],
+        summary: 'Mixed findings.',
+      }],
+    }
+    const createReview = vi.fn().mockResolvedValue({})
+    await postReview(makeOctokit(createReview) as any, 'acme', 'api', 1, result)
+    const call = createReview.mock.calls[0][0]
+    expect(call.comments).toHaveLength(1)
+    expect(call.comments[0].line).toBe(5)
+  })
+
+  it('excludes UNDER_OBSERVATION comments from the GitHub post', async () => {
+    const result: ReviewResult = {
+      ...MOCK_RESULT,
+      file_reviews: [{
+        path: 'src/auth.py',
+        comments: [
+          { path: 'src/auth.py', line: 5, body: 'SQL injection risk.', severity: 'error', category: 'security' },
+          {
+            path: 'src/auth.py', line: 9, body: 'Maybe flaky.', severity: 'warning', category: 'quality',
+            noise_state: 'UNDER_OBSERVATION', escalate_on: 'additional_events', threshold: 3,
+          },
+        ],
+        summary: 'Mixed findings.',
+      }],
+    }
+    const createReview = vi.fn().mockResolvedValue({})
+    await postReview(makeOctokit(createReview) as any, 'acme', 'api', 1, result)
+    const call = createReview.mock.calls[0][0]
+    expect(call.comments).toHaveLength(1)
+    expect(call.comments[0].line).toBe(5)
+  })
+
+  it('still posts a comment with noise_state explicitly OPEN', async () => {
+    const result: ReviewResult = {
+      ...MOCK_RESULT,
+      file_reviews: [{
+        path: 'src/auth.py',
+        comments: [
+          { path: 'src/auth.py', line: 5, body: 'SQL injection risk.', severity: 'error', category: 'security', noise_state: 'OPEN' },
+        ],
+        summary: 'One finding.',
+      }],
+    }
+    const createReview = vi.fn().mockResolvedValue({})
+    await postReview(makeOctokit(createReview) as any, 'acme', 'api', 1, result)
+    expect(createReview.mock.calls[0][0].comments).toHaveLength(1)
+  })
 })
