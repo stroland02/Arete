@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import Link from "next/link";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useInView } from "framer-motion";
 import { IconChevronDown, IconCopy, IconGitBranch, IconGitPullRequest, IconHourglassHigh, IconPlus, IconLoader2, IconCheck } from "@tabler/icons-react";
+import { KumaLogo } from "@/components/ui/kuma-logo";
 
 /**
  * Services "Triage Inbox" workspace. Production signals from CONNECTED
- * telemetry (Sentry, Vercel, Stripe, CI, PostHog) plus Areté's own review
+ * telemetry (Sentry, Vercel, Stripe, CI, PostHog) plus Kuma's own review
  * findings are compiled and deduped PER SERVICE and shown here, each with the
  * telemetry evidence and the specialist agent's proposed code fix; the human
  * approves.
@@ -37,7 +38,7 @@ export interface DiffRow {
 export interface Issue {
   id: string;
   serviceId: string;
-  source: string; // Sentry | Stripe | CI | Vercel | PostHog | Areté
+  source: string; // Sentry | Stripe | CI | Vercel | PostHog | Kuma
   severity: Severity;
   status: string;
   agent: string;
@@ -126,19 +127,19 @@ export const SAMPLE_ISSUES: Issue[] = [
     ],
   },
   {
-    id: "a1", serviceId: "auth-gateway", source: "Areté", severity: "high",
+    id: "a1", serviceId: "auth-gateway", source: "Kuma", severity: "high",
     status: "Fix proposed", agent: "Security",
     title: "Refresh token written to localStorage",
     occurrences: "312 events", lastSeen: "22m ago", where: "src/auth/session.ts:42",
     summary: "Tokens in localStorage are exposed to any script — an XSS bug would leak long-lived sessions.",
-    evidence: { file: "Areté review · Security · PR #418", rows: [["storage", "localStorage"], ["token_ttl", "30 days"], ["risk", "XSS → session theft"]] },
+    evidence: { file: "Kuma review · Security · PR #418", rows: [["storage", "localStorage"], ["token_ttl", "30 days"], ["risk", "XSS → session theft"]] },
     fix: { file: "src/auth/session.ts", rows: [
       { kind: "remove", text: "localStorage.setItem('refresh', token)" },
       { kind: "add", text: "cookies().set('refresh', token, {" },
       { kind: "add", text: "  httpOnly: true, secure: true })" },
     ] },
     timeline: [
-      { tone: "high", text: "Flagged on PR #418", when: "Areté · 22m ago" },
+      { tone: "high", text: "Flagged on PR #418", when: "Kuma · 22m ago" },
       { tone: "accent", text: "Security agent analyzing", when: "20m ago" },
       { tone: "good", text: "Fix proposed", when: "16m ago" },
     ],
@@ -244,6 +245,13 @@ export interface ServicesWorkspaceProps {
  * to show the populated UI inside a card.
  */
 export function ServicesWorkspace({ services = [], issues = [], variant = "embedded" }: ServicesWorkspaceProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isInView = useInView(containerRef, { margin: "-100px 0px -100px 0px" });
+
+  // Guard against hydration: defer observer logic until after first client render
+  const [hasMounted, setHasMounted] = useState(false);
+  useEffect(() => { setHasMounted(true); }, []);
+
   const [serviceId, setServiceId] = useState<string | null>(services[0]?.id ?? null);
   const [issueId, setIssueId] = useState<string | null>(
     issues.find((i) => i.serviceId === services[0]?.id)?.id ?? null
@@ -251,6 +259,24 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
 
   const [isReplaying, setIsReplaying] = useState(false);
   const [replayStep, setReplayStep] = useState(0);
+
+  // When scrolled into view, start playing the initially selected issue.
+  // Also re-triggers when scrolling away and back (resets first).
+  const prevInView = useRef(false);
+  useEffect(() => {
+    if (!hasMounted || variant !== "framed" || !issueId) return;
+
+    if (isInView && !prevInView.current) {
+      // Just entered viewport — kick off the replay
+      setReplayStep(0);
+      setIsReplaying(true);
+    } else if (!isInView && prevInView.current) {
+      // Just left viewport — reset so it replays on next scroll
+      setIsReplaying(false);
+      setReplayStep(0);
+    }
+    prevInView.current = isInView;
+  }, [isInView, hasMounted, issueId, variant]);
 
   const hasServices = services.length > 0;
   const activeService = serviceId ?? services[0]?.id ?? null;
@@ -287,7 +313,7 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
       : "grid min-h-[560px] grid-cols-1 divide-y divide-border-subtle overflow-hidden lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:divide-x lg:divide-y-0";
 
   return (
-    <div className={outerClass}>
+    <div ref={containerRef} className={outerClass}>
       {/* Rail: services (each expandable to its issues) + connect catalog */}
       <section className="flex min-h-0 flex-1 flex-col" aria-label="Services">
         <header className="flex h-10 shrink-0 items-center justify-between border-b border-border-subtle px-3">
@@ -421,8 +447,14 @@ function IssueSynthesizerConsole({ issue, isReplaying, replayStep }: { issue: Is
                 >
                   <div className="flex items-start gap-2.5">
                     {status === 'running' ? (
-                      <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }} className="shrink-0 leading-4 text-accent-primary">
-                        <IconLoader2 size={13} stroke={2} />
+                      <motion.div 
+                        className="shrink-0 leading-4 text-accent-primary flex items-center justify-center"
+                        animate={{ 
+                          filter: ["drop-shadow(0 0 2px rgba(0,212,255,0.2))", "drop-shadow(0 0 8px rgba(0,212,255,0.8))", "drop-shadow(0 0 2px rgba(0,212,255,0.2))"]
+                        }}
+                        transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+                      >
+                        <KumaLogo size={13} />
                       </motion.div>
                     ) : (
                       <span className={`shrink-0 leading-4 ${TONE_TEXT[t.tone]}`} aria-hidden>{markerForTone(t.tone)}</span>
@@ -502,7 +534,7 @@ function IssuePanel({ issue, isReplaying }: { issue: Issue | null; isReplaying: 
           >
             <div className="shrink-0 border-b border-border-subtle px-3 py-2.5">
               <p className="text-[12.5px] text-content-muted">
-                {isReplaying ? "Synthesizing pull request from verified findings..." : "Select an issue to load its pull request — the formatted review Areté will post, and where you approve sending it."}
+                {isReplaying ? "Synthesizing pull request from verified findings..." : "Select an issue to load its pull request — the formatted review Kuma will post, and where you approve sending it."}
               </p>
             </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -556,7 +588,7 @@ function IssuePanel({ issue, isReplaying }: { issue: Issue | null; isReplaying: 
           {/* Repository target */}
           <div className="shrink-0 space-y-1.5 border-b border-border-subtle px-3 py-2.5">
             {/* Repo selector → Connections: the direct path to install/manage
-                the Areté GitHub App, where repos are actually connected. When no
+                the Kuma GitHub App, where repos are actually connected. When no
                 repo is connected the same link is how you add one. */}
             <Link
               href="/connections"

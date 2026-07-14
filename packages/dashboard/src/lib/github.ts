@@ -1,7 +1,7 @@
 /**
  * Determines which GitHub account/org logins a dashboard user administers,
  * using their OAuth access token (from the standard GitHub OAuth App used
- * for dashboard login — NOT the Areté GitHub App's own credentials).
+ * for dashboard login — NOT the Kuma GitHub App's own credentials).
  *
  * This is matched against `Installation.owner` (provider='github') in
  * lib/installations.ts to derive which installations' data the user may
@@ -28,7 +28,7 @@ export async function fetchAuthorizedGithubLogins(accessToken: string): Promise<
   const logins = new Set<string>([me.login]);
 
   // Orgs where the user's role is 'admin' — mirrors "admin access to the
-  // org" as a proxy for "authorized to administer the Areté installation".
+  // org" as a proxy for "authorized to administer the Kuma installation".
   const orgsRes = await fetch('https://api.github.com/user/memberships/orgs?state=active', {
     headers,
   });

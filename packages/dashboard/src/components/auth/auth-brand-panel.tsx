@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { IconCheck, IconTopologyStar3 } from "@tabler/icons-react";
+import { IconCheck } from "@tabler/icons-react";
+import { KumaLogo } from "@/components/ui/kuma-logo";
 
 // Left-hand marketing panel shared by the /login and /signup split-screen
 // layouts. Presentational only. Copy mirrors the landing hero so the brand
@@ -14,17 +15,17 @@ export function AuthBrandPanel() {
   return (
     <div className="relative hidden flex-col border-r border-border-subtle bg-surface-1 px-12 py-10 lg:flex">
       <Link href="/" className="flex w-fit items-center gap-2">
-        <span className="flex h-7 w-7 items-center justify-center rounded-lg border border-accent-primary/30 bg-accent-primary/10 text-accent-primary">
-          <IconTopologyStar3 className="h-4 w-4" stroke={1.75} />
+        <span className="flex items-center justify-center text-accent-primary drop-shadow-[0_0_8px_rgba(0,212,255,0.4)]">
+          <KumaLogo size={28} />
         </span>
         <span className="font-serif text-xl font-semibold tracking-tight text-content-primary">
-          Aret<span className="text-accent-secondary">é</span> AI
+          Kuma
         </span>
       </Link>
 
       <div className="my-auto max-w-md">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent-primary">
-          Verified AI code review
+          Connect • Create • Optimize
         </p>
         <h1 className="mt-4 font-serif text-4xl font-semibold leading-[1.1] tracking-tight text-content-primary">
           Code review that <span className="italic text-accent-primary">checks its own work</span>.
@@ -39,7 +40,7 @@ export function AuthBrandPanel() {
         </ul>
       </div>
 
-      <p className="text-xs text-content-muted">© 2026 Areté AI · First 50 PRs free</p>
+      <p className="text-xs text-content-muted">© 2026 Kuma AI · First 50 PRs free</p>
     </div>
   );
 }

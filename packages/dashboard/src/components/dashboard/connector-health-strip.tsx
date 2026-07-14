@@ -21,7 +21,7 @@ export function ConnectorHealthStrip() {
           </h2>
           <p className="text-xs text-content-muted mt-0.5">
             {connectedCount === 0
-              ? "Connect a tool and Areté reviews with real production context — not just the diff."
+              ? "Connect a tool and Kuma reviews with real production context — not just the diff."
               : `${connectedCount} connected · each one makes reviews sharper.`}
           </p>
         </div>

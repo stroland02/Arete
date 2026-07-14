@@ -11,7 +11,7 @@ export default function ConnectionsPage() {
         <div className="space-y-1.5">
           <h1 className="text-lg font-semibold text-content-primary">Connect your data</h1>
           <p className="text-sm text-content-muted">
-            Every connected source gives Areté real production context — so a review can say
+            Every connected source gives Kuma real production context — so a review can say
             &quot;this endpoint failed 6 times this week&quot; instead of judging the diff alone.
           </p>
         </div>
@@ -24,13 +24,13 @@ export default function ConnectionsPage() {
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-content-primary">Areté GitHub App</span>
+              <span className="text-sm font-medium text-content-primary">Kuma GitHub App</span>
               <span className="rounded-full border border-accent-primary/20 bg-accent-primary/5 px-1.5 py-0.5 text-[10px] font-medium text-accent-primary/80">
                 Core
               </span>
             </div>
             <p className="mt-0.5 text-xs text-content-muted">
-              Install the Areté GitHub App on your account or org so Areté can review your pull
+              Install the Kuma GitHub App on your account or org so Kuma can review your pull
               requests. This is the core connection that powers your overview dashboard.
             </p>
           </div>
@@ -79,7 +79,7 @@ export default function ConnectionsPage() {
 
       <RevealItem>
         <p className="text-xs text-content-muted text-center">
-          Not ready yet? Every connector is optional — Areté reviews from the diff alone until you connect one.
+          Not ready yet? Every connector is optional — Kuma reviews from the diff alone until you connect one.
         </p>
       </RevealItem>
     </PageReveal>

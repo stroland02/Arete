@@ -20,7 +20,7 @@ const newsreader = Newsreader({
 });
 
 export const metadata: Metadata = {
-  title: "Areté — AI code review that checks its own work",
+  title: "Kuma — AI code review that checks its own work",
   description:
     "Six specialist agents review every pull request in parallel; a Synthesizer verifies each finding against your diff and posts only what it can prove.",
 };

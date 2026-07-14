@@ -76,7 +76,7 @@ export default async function SettingsPage({
 
           {!billing ? (
             <p className="text-sm text-content-muted">
-              No installation authorized yet — install the Areté GitHub App to see billing here.
+              No installation authorized yet — install the Kuma GitHub App to see billing here.
             </p>
           ) : (
             <div className="space-y-5">
@@ -118,7 +118,7 @@ export default async function SettingsPage({
                   {billing.usageCount >= FREE_TIER_REVIEW_LIMIT
                     ? "You've used all your free reviews. "
                     : `${FREE_TIER_REVIEW_LIMIT - billing.usageCount} free reviews remaining. `}
-                  There&apos;s no self-serve upgrade yet — contact the Areté team to move to a paid plan.
+                  There&apos;s no self-serve upgrade yet — contact the Kuma team to move to a paid plan.
                 </p>
               )}
             </div>

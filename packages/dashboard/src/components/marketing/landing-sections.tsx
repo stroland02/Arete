@@ -24,12 +24,14 @@ import {
 } from "@tabler/icons-react";
 import { Card } from "@/components/ui/card";
 
+import { KumaLogo } from "@/components/ui/kuma-logo";
+
 const HOW_IT_WORKS = [
   {
     step: "01",
     title: "Connect your repo",
     description:
-      "Install the Areté GitHub App on your account or org. Every new pull request is reviewed automatically — no setup per-repo.",
+      "Install the Kuma GitHub App on your account or org. Every new pull request is reviewed automatically — no setup per-repo.",
   },
   {
     step: "02",
@@ -58,6 +60,8 @@ const AGENTS = [
   { label: "Deployment Safety", description: "Looks for migration, rollout, and config risks.", icon: IconRocket, color: "#b45309" },
   { label: "Business Logic", description: "Checks your diff against connected production signals.", icon: IconBriefcase, color: "#2f55d4" },
 ];
+
+import { FeatureBlocks } from "@/components/marketing/feature-blocks";
 
 // Authentic connector brands rendered as clean, blended SVG logos
 const CONNECTORS = [
@@ -110,16 +114,22 @@ function SectionHeading({ eyebrow, title, subtitle }: { eyebrow: string; title: 
   );
 }
 
+import { ServicesPreview } from "@/components/marketing/services-preview";
+
 export function HowItWorks() {
   return (
-    <section id="how-it-works" className="mx-auto max-w-6xl px-6 py-24">
+    <div id="how-it-works" className="mx-auto w-full max-w-none pt-24">
+      <div className="mb-20">
+        <ConnectorStrip />
+      </div>
+
       <SectionHeading
         eyebrow="How it works"
         title="From pull request to verified review"
         subtitle="Three steps, then it runs on every PR — automatically."
       />
 
-      <div className="relative mb-20 grid grid-cols-1 gap-6 md:grid-cols-3">
+      <div className="relative mb-20 grid grid-cols-1 gap-6 md:grid-cols-3 max-w-6xl mx-auto px-6">
         {/* connecting line behind the step badges (desktop) */}
         <div className="absolute inset-x-[16%] top-11 hidden h-px bg-gradient-to-r from-transparent via-border-default to-transparent md:block" />
         {HOW_IT_WORKS.map((item) => (
@@ -132,33 +142,10 @@ export function HowItWorks() {
           </div>
         ))}
       </div>
-
-      <div className="mb-4 text-center">
-        <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-content-muted">The six specialists</h3>
-      </div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {AGENTS.map((agent) => {
-          const Icon = agent.icon;
-          return (
-            <div
-              key={agent.label}
-              className="group flex items-start gap-3 rounded-xl border border-border-subtle bg-surface-1 p-4 transition-colors hover:border-border-default hover:bg-surface-2"
-            >
-              <div
-                className="shrink-0 rounded-lg border p-2"
-                style={{ color: agent.color, borderColor: `${agent.color}33`, backgroundColor: `${agent.color}14` }}
-              >
-                <Icon className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-content-primary">{agent.label}</p>
-                <p className="mt-0.5 text-xs leading-relaxed text-content-muted">{agent.description}</p>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </section>
+      
+      <FeatureBlocks />
+      <ServicesPreview />
+    </div>
   );
 }
 
@@ -296,15 +283,18 @@ export function MarketingFooter() {
   return (
     <footer className="border-t border-border-subtle">
       <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-10 sm:flex-row">
-        <span className="font-serif text-sm font-semibold text-content-primary">
-          Aret<span className="text-accent-secondary">é</span> AI
+        <span className="flex items-center gap-2 font-serif text-sm font-semibold text-content-primary">
+          <span className="flex items-center justify-center text-accent-primary drop-shadow-[0_0_6px_rgba(0,212,255,0.4)]">
+            <KumaLogo size={16} />
+          </span>
+          Kuma
         </span>
         <nav className="flex items-center gap-6 text-xs text-content-muted">
           <a href="#how-it-works" className="transition-colors hover:text-content-primary">How it works</a>
           <a href="#pricing" className="transition-colors hover:text-content-primary">Pricing</a>
           <Link href="/login" className="transition-colors hover:text-content-primary">Sign in</Link>
         </nav>
-        <p className="text-xs text-content-muted">© 2026 Areté AI. All rights reserved.</p>
+        <p className="text-xs text-content-muted">© 2026 Kuma AI. All rights reserved.</p>
       </div>
     </footer>
   );

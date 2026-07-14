@@ -12,7 +12,7 @@ export function SignupForm() {
     <div className="flex w-full max-w-sm flex-col gap-6">
       <div className="text-center">
         <h1 className="font-serif text-3xl font-semibold tracking-tight text-content-primary">
-          Create your Aret<span className="text-accent-secondary">é</span> account
+          Create your Kuma account
         </h1>
         <p className="mt-2 text-sm text-content-muted">Start free — no credit card required.</p>
       </div>
