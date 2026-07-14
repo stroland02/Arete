@@ -1,6 +1,20 @@
 # GitHub App Setup Guide
 
-This guide walks through registering the Areté GitHub App for a new environment.
+This guide walks through registering the Kuma GitHub App for a new environment.
+
+> ## ⚠️ The #1 gotcha: the Webhook URL must point at the **webhook server**, not the dashboard
+>
+> The GitHub App's **Webhook URL** must be the **webhook service** endpoint — `http://<public-host>/webhook` (the webhook server listens on **port 3000** and mounts the receiver at `/webhook`; see `packages/webhook/src/server.ts` + `index.ts`).
+>
+> It is **NOT** the Next.js **dashboard** (which runs on port **3002** and has no webhook receiver). If the Webhook URL points at the dashboard, GitHub's events (`installation`, `pull_request`, …) all 404 and are **silently dropped** — no `Installation` row is created, no reviews run, and the dashboard stays empty even though the app looks "installed."
+>
+> ### To actually run a review locally you need ALL of:
+> 1. **Postgres** (`DATABASE_URL`) and **Redis** (`REDIS_URL`, for the BullMQ review queue).
+> 2. **The webhook server:** `cd packages/webhook && pnpm dev` (needs `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, `DATABASE_URL`, `REDIS_URL`).
+> 3. **The Python agents service** (the review brain): needs a **valid `ANTHROPIC_API_KEY`** — the review pipeline calls it; without it, jobs enqueue but never produce findings.
+> 4. **A tunnel** so GitHub can reach your local webhook server — see step 5 (ngrok or smee: `npx smee-client --url https://smee.io/<channel> --target http://localhost:3000/webhook`), and set the tunnel URL as the App's Webhook URL.
+>
+> **On-connect backfill:** once the webhook reaches the server, installing the app now enqueues a review for every **existing open PR** on the repo (not just future PRs) — so the dashboard backfills from real history. See `packages/webhook/src/backfill.ts`.
 
 ## 1. Register the App
 
