@@ -109,7 +109,7 @@ export default async function ReviewDetailPage({
           </div>
           <div className="flex shrink-0 items-center gap-2.5">
             <Link
-              href={`/agents?container=${review.id}`}
+              href={`/services?container=${review.id}`}
               className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border-default bg-surface-1 px-3 py-1.5 text-xs font-medium text-content-secondary transition-colors hover:border-border-strong hover:bg-content-primary/5"
             >
               <IconSparkles size={14} stroke={1.75} aria-hidden />
