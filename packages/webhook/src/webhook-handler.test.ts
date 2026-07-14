@@ -44,7 +44,8 @@ describe('handlePullRequestEvent', () => {
         installationId: 777,
         headSha: 'abcdef',
         repositoryExternalId: 123,
-      })
+      }),
+      'fast',
     )
   })
 
