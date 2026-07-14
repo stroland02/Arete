@@ -8,7 +8,7 @@ afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('sendAgentChat', () => {
   it('POSTs the message to the Python /chat endpoint and returns the reply', async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ reply: 'Here is my analysis.' }), { status: 200 }));
+    const fetchMock = vi.fn(async (..._args: unknown[]) => new Response(JSON.stringify({ reply: 'Here is my analysis.' }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 
     const reply = await sendAgentChat({ agent: security, message: 'why is this risky?' });
