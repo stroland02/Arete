@@ -8,7 +8,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from arete_agents.models.pr import FileChange, PRContext
-from arete_agents.models.review import FileReview, ReviewComment
+from arete_agents.models.review import FileReview, NoiseDecision, ReviewComment
 
 MAX_PATCH_CHARS = 50_000
 MAX_TOOL_ROUNDS = 5
@@ -175,7 +175,8 @@ If no issues found, return empty comments array."""
         
         # Tool execution loop
         from langchain_core.messages import ToolMessage
-        
+
+        noise_decisions: list[NoiseDecision] = []
         rounds = 0
         while True:
             response = llm_with_retry.invoke(messages)
@@ -200,7 +201,12 @@ If no issues found, return empty comments array."""
             for tool_call in response.tool_calls:
                 tool_name = tool_call["name"]
                 tool_args = tool_call["args"]
-                
+
+                if tool_name in ("silence_as_noise", "place_under_observation"):
+                    decision = self._record_noise_decision(tool_name, tool_args)
+                    if decision is not None:
+                        noise_decisions.append(decision)
+
                 # Find the actual tool function from our loaded mcp_tools
                 tool_instance = next((t for t in mcp_tools if t.name == tool_name), None)
                 
@@ -219,4 +225,40 @@ If no issues found, return empty comments array."""
         # Once the loop exits, response.content holds the final JSON
         raw = response.content if isinstance(response.content, str) else ""
         comments, summary = self._parse_response(file.path, raw)
-        return FileReview(path=file.path, comments=comments, summary=summary)
+        return FileReview(
+            path=file.path,
+            comments=comments,
+            summary=summary,
+            noise_decisions=noise_decisions,
+        )
+
+    @staticmethod
+    def _record_noise_decision(tool_name: str, tool_args: dict) -> "NoiseDecision | None":
+        """Parses a silence_as_noise/place_under_observation tool call's
+        issue_id ("path:line") into a NoiseDecision. Returns None for a
+        malformed issue_id instead of raising -- a bad tool call must never
+        break the review, matching _parse_response's fail-open posture."""
+        issue_id = tool_args.get("issue_id", "")
+        path, sep, line_str = issue_id.rpartition(":")
+        if not sep:
+            return None
+        try:
+            line = int(line_str)
+        except ValueError:
+            return None
+
+        if tool_name == "silence_as_noise":
+            return NoiseDecision(
+                path=path,
+                line=line,
+                action="silence",
+                reason=tool_args.get("reason", ""),
+            )
+        return NoiseDecision(
+            path=path,
+            line=line,
+            action="observe",
+            reason=tool_args.get("reason", ""),
+            escalate_on=tool_args.get("escalate_on"),
+            threshold=tool_args.get("threshold"),
+        )
