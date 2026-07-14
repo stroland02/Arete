@@ -138,6 +138,53 @@ export async function persistReview(params: PersistReviewParams): Promise<void> 
     return
   }
 
+  const commentsToCreate = result.file_reviews.flatMap((fr) =>
+    fr.comments.map((c) => ({
+      path: fr.path,
+      line: c.line,
+      body: c.body,
+      severity: c.severity,
+      category: c.category,
+      noiseState: c.noise_state ?? 'OPEN',
+      escalateOn: c.escalate_on ?? null,
+      threshold: c.threshold ?? null,
+    }))
+  )
+
+  // Noise Classification escalation (SP6): before creating this review's own
+  // comments, check whether any newly-observed issue recurs against a PRIOR
+  // review's still-UNDER_OBSERVATION comment on this same repo. Matching key
+  // is deliberately simple -- (repository, path, category) -- no semantic
+  // similarity. This runs inline here (not in a standalone worker) because
+  // "a new review just completed" is the only real trigger point this
+  // product has for recurrence, and this repo has no deployment/cron
+  // infrastructure for a separate scheduled process.
+  for (const c of commentsToCreate) {
+    if (c.noiseState !== 'UNDER_OBSERVATION') continue
+
+    const priorObserved = await prisma.reviewComment.findFirst({
+      where: {
+        noiseState: 'UNDER_OBSERVATION',
+        path: c.path,
+        category: c.category,
+        review: { repositoryId: repository.id },
+      },
+    })
+    if (!priorObserved) continue
+
+    const newCount = priorObserved.occurrenceCount + 1
+    const crossedThreshold =
+      priorObserved.threshold !== null && newCount >= priorObserved.threshold
+
+    await prisma.reviewComment.update({
+      where: { id: priorObserved.id },
+      data: {
+        occurrenceCount: newCount,
+        noiseState: crossedThreshold ? 'ESCALATED' : 'UNDER_OBSERVATION',
+      },
+    })
+  }
+
   await prisma.review.create({
     data: {
       prNumber,
@@ -147,17 +194,7 @@ export async function persistReview(params: PersistReviewParams): Promise<void> 
       headSha,
       analysisStatus: result.analysis_status ?? 'complete',
       comments: {
-        createMany: {
-          data: result.file_reviews.flatMap((fr) =>
-            fr.comments.map((c) => ({
-              path: fr.path,
-              line: c.line,
-              body: c.body,
-              severity: c.severity,
-              category: c.category,
-            }))
-          ),
-        },
+        createMany: { data: commentsToCreate },
       },
     },
   })

@@ -50,6 +50,14 @@ export interface ReviewComment {
   body: string
   severity: 'info' | 'warning' | 'error'
   category: string
+  // Noise Classification (SP6). Snake_case: the Python agents service emits
+  // these field names unchanged over the wire, exactly like risk_level/
+  // overall_summary/pr_context elsewhere on ReviewResult -- NOT translated
+  // to camelCase here. persistence.ts's persistReview is the one place that
+  // translates to the Prisma schema's camelCase columns.
+  noise_state?: 'OPEN' | 'SILENCED' | 'UNDER_OBSERVATION' | 'ESCALATED'
+  escalate_on?: string | null
+  threshold?: number | null
 }
 
 export interface FileReview {
