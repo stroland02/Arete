@@ -31,20 +31,31 @@ describe('AgentConversation', () => {
     expect(html).toContain('Ask Security about its findings');
   });
 
-  it('shows an honest empty state when the agent has no findings', () => {
+  it('previews the agent from real catalog data (not a finding) when it has none, with a connect CTA', () => {
     const html = renderToStaticMarkup(
       <AgentConversation agent={security} findings={[]} findingCount={0} hasReviews onConfigure={noop} />,
     );
-    expect(html).toContain("hasn&#x27;t flagged anything yet");
+    // Real catalog metadata — the "preview each agent" experience, no repo needed.
+    expect(html).toContain('AuthN / AuthZ changes'); // a real inspects item
+    expect(html).toContain('Connect a repository');
     // Never invents a finding.
     expect(html).not.toContain('localStorage');
   });
 
-  it('shows an honest window note when the agent has findings on record but none in the recent window', () => {
+  it('shows an honest window note above the profile when findings exist on record but none in the recent window', () => {
     const html = renderToStaticMarkup(
       <AgentConversation agent={security} findings={[]} findingCount={3} hasReviews onConfigure={noop} />,
     );
     expect(html).toContain('3 findings on record');
-    expect(html).not.toContain("hasn&#x27;t flagged anything yet");
+    expect(html).toContain('AuthN / AuthZ changes'); // profile still shown
+    expect(html).toContain('Connect a repository');
+  });
+
+  it('shows the findings transcript (not the profile/CTA) when the agent has findings in view', () => {
+    const html = renderToStaticMarkup(
+      <AgentConversation agent={security} findings={[finding()]} findingCount={1} hasReviews onConfigure={noop} />,
+    );
+    expect(html).toContain('src/auth/session.ts:42');
+    expect(html).not.toContain('Connect a repository');
   });
 });

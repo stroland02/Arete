@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { IconSettings, IconSend } from "@tabler/icons-react";
+import Link from "next/link";
+import { IconSettings, IconSend, IconArrowRight } from "@tabler/icons-react";
 import type { Agent } from "./agent-catalog";
 import type { AgentActivityFinding } from "@/lib/queries";
 import { cn } from "@/lib/utils";
@@ -124,23 +125,45 @@ export function AgentConversation({ agent, findings, findingCount, hasReviews, o
               </li>
             ))}
           </ol>
-        ) : findingCount > 0 ? (
-          <div className="mx-auto flex h-full max-w-md flex-col items-center justify-center gap-3 px-4 text-center">
-            <p className="text-sm font-semibold text-content-primary">
-              {agent.label} · {findingCount} finding{findingCount === 1 ? "" : "s"} on record
-            </p>
-            <p className="text-xs leading-5 text-content-muted">
-              None in the most recent activity window shown here — open a recent review to see {agent.label}&apos;s
-              latest findings.
-            </p>
-          </div>
         ) : (
-          <div className="mx-auto flex h-full max-w-md flex-col items-center justify-center gap-3 px-4 text-center">
-            <p className="text-sm font-semibold text-content-primary">{agent.label} hasn&apos;t flagged anything yet</p>
-            <p className="text-xs leading-5 text-content-muted">
-              {hasReviews
-                ? `Nothing in ${agent.label}'s lane on your recent reviews — that's a real result too.`
-                : `${agent.label} runs automatically on your pull requests. Connect a repository and open a PR to see its findings here.`}
+          /* No findings in view: preview the agent from real catalog metadata
+             (description + what it inspects) rather than a bare empty message,
+             so each specialist reads as intentional and complete before any
+             repo is connected. Nothing here is fabricated. */
+          <div className="flex h-full flex-col gap-4 px-1 py-1">
+            {findingCount > 0 && (
+              <p className="rounded-lg border border-border-subtle bg-surface-2/40 px-3 py-2 text-[11px] leading-4 text-content-muted">
+                {agent.label} · {findingCount} finding{findingCount === 1 ? "" : "s"} on record — none in the most
+                recent activity window. Open a recent review to see its latest findings.
+              </p>
+            )}
+
+            <p className="text-[12.5px] leading-relaxed text-content-secondary">{agent.longDescription}</p>
+
+            <div>
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-content-muted">
+                What {agent.label} inspects
+              </p>
+              <ul className="space-y-1.5">
+                {agent.inspects.map((item) => (
+                  <li key={item} className="flex items-start gap-2 text-[12px] leading-5 text-content-secondary">
+                    <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent-primary/70" aria-hidden />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <Link
+              href="/connections"
+              className="inline-flex items-center gap-2 self-start rounded-xl border border-accent-primary/30 bg-accent-primary/20 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/30"
+            >
+              Connect a repository
+              <IconArrowRight size={15} stroke={2} />
+            </Link>
+
+            <p className="text-[11px] leading-4 text-content-muted">
+              {agent.label} runs automatically on your pull requests — findings appear here once a connected repo has an open PR.
             </p>
           </div>
         )}
