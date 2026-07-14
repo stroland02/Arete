@@ -18,7 +18,7 @@ function finding(over: Partial<AgentActivityFinding> = {}): AgentActivityFinding
 describe('AgentConversation', () => {
   it('renders the agent header, model tier, and real finding rows', () => {
     const html = renderToStaticMarkup(
-      <AgentConversation agent={security} findings={[finding()]} hasReviews onConfigure={noop} />,
+      <AgentConversation agent={security} findings={[finding()]} findingCount={1} hasReviews onConfigure={noop} />,
     );
     expect(html).toContain('Security');
     expect(html).toContain('Opus'); // security tier
@@ -33,10 +33,18 @@ describe('AgentConversation', () => {
 
   it('shows an honest empty state when the agent has no findings', () => {
     const html = renderToStaticMarkup(
-      <AgentConversation agent={security} findings={[]} hasReviews onConfigure={noop} />,
+      <AgentConversation agent={security} findings={[]} findingCount={0} hasReviews onConfigure={noop} />,
     );
     expect(html).toContain("hasn&#x27;t flagged anything yet");
     // Never invents a finding.
     expect(html).not.toContain('localStorage');
+  });
+
+  it('shows an honest window note when the agent has findings on record but none in the recent window', () => {
+    const html = renderToStaticMarkup(
+      <AgentConversation agent={security} findings={[]} findingCount={3} hasReviews onConfigure={noop} />,
+    );
+    expect(html).toContain('3 findings on record');
+    expect(html).not.toContain("hasn&#x27;t flagged anything yet");
   });
 });

@@ -58,6 +58,7 @@ export function AgentsWorkspace({
         <AgentConversation
           agent={selectedAgent}
           findings={selectedAgentFindings}
+          findingCount={findingCountById[selectedAgent.id] ?? 0}
           hasReviews={hasReviews}
           onConfigure={setConfigAgentId}
         />

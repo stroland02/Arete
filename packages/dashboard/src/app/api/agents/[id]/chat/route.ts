@@ -37,7 +37,8 @@ export async function POST(
   try {
     const reply = await sendAgentChat({ agent, message });
     return NextResponse.json({ reply });
-  } catch {
+  } catch (err) {
+    console.error("[agents/chat] upstream chat failed", err);
     return NextResponse.json(
       { error: "The agents service is unavailable. Live chat activates when it is running." },
       { status: 503 },

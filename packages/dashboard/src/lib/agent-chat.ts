@@ -36,7 +36,6 @@ export async function sendAgentChat({ agent, message }: { agent: Agent; message:
       throw new Error(`agent chat upstream failed (status ${res.status})`);
     }
     const data = await res.json();
-    if (typeof data === "string") return data;
     if (data && typeof data.reply === "string") return data.reply;
     return "";
   } finally {

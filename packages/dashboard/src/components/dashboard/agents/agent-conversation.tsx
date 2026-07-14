@@ -22,6 +22,7 @@ interface ChatTurn {
 export interface AgentConversationProps {
   agent: Agent;
   findings: AgentActivityFinding[];
+  findingCount: number;
   hasReviews: boolean;
   onConfigure: (agentId: string) => void;
 }
@@ -34,7 +35,7 @@ export interface AgentConversationProps {
  * service is unreachable the composer surfaces a truthful notice instead of a
  * canned reply.
  */
-export function AgentConversation({ agent, findings, hasReviews, onConfigure }: AgentConversationProps) {
+export function AgentConversation({ agent, findings, findingCount, hasReviews, onConfigure }: AgentConversationProps) {
   const [message, setMessage] = useState("");
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [sending, setSending] = useState(false);
@@ -69,7 +70,7 @@ export function AgentConversation({ agent, findings, hasReviews, onConfigure }: 
   }
 
   const status = hasReviews
-    ? `Analyzed · ${findings.length} finding${findings.length === 1 ? "" : "s"}`
+    ? `Analyzed · ${findingCount} finding${findingCount === 1 ? "" : "s"}`
     : "Idle";
 
   return (
@@ -123,6 +124,16 @@ export function AgentConversation({ agent, findings, hasReviews, onConfigure }: 
               </li>
             ))}
           </ol>
+        ) : findingCount > 0 ? (
+          <div className="mx-auto flex h-full max-w-md flex-col items-center justify-center gap-3 px-4 text-center">
+            <p className="text-sm font-semibold text-content-primary">
+              {agent.label} · {findingCount} finding{findingCount === 1 ? "" : "s"} on record
+            </p>
+            <p className="text-xs leading-5 text-content-muted">
+              None in the most recent activity window shown here — open a recent review to see {agent.label}&apos;s
+              latest findings.
+            </p>
+          </div>
         ) : (
           <div className="mx-auto flex h-full max-w-md flex-col items-center justify-center gap-3 px-4 text-center">
             <p className="text-sm font-semibold text-content-primary">{agent.label} hasn&apos;t flagged anything yet</p>
