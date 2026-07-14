@@ -9,6 +9,8 @@ const EXTENSION_MAP: Record<string, string> = {
   '.cs': 'csharp', '.cpp': 'cpp', '.c': 'c', '.sql': 'sql', '.sh': 'shell',
 }
 
+const MAX_REPO_CONVENTIONS_CHARS = 20_000
+
 function detectLanguage(filename: string): string {
   const ext = filename.includes('.') ? '.' + filename.split('.').pop()! : ''
   return EXTENSION_MAP[ext] ?? 'other'
@@ -53,6 +55,30 @@ export async function fetchAreteYaml(octokit: Octokit, owner: string, repo: stri
   return { customRules: [], telemetryConnectors: [] };
 }
 
+export async function fetchAgentsDoc(octokit: Octokit, owner: string, repo: string, ref: string): Promise<string | null> {
+  const tryFetch = async (path: string): Promise<string | null> => {
+    try {
+      const res = await (octokit as any).rest.repos.getContent({ owner, repo, path, ref });
+      if (res.data.type === 'file' && res.data.content) {
+        return Buffer.from(res.data.content, res.data.encoding || 'base64').toString('utf8');
+      }
+    } catch (err: any) {
+      if (err.status !== 404) {
+        console.error(`Error fetching ${path}:`, err);
+      }
+    }
+    return null;
+  };
+
+  const agentsResult = await tryFetch('AGENTS.md');
+  if (agentsResult !== null) return agentsResult;
+
+  const conventionsResult = await tryFetch('CONVENTIONS.md');
+  if (conventionsResult !== null) return conventionsResult;
+
+  return null;
+}
+
 // GitHub returns changed files in pages of up to 100. PRs touching more than
 // 100 files (common with generated files, lockfiles, or large refactors)
 // would otherwise be silently truncated to the first page.
@@ -95,8 +121,16 @@ export async function fetchPRContext(
       language: detectLanguage(f.filename),
     }))
 
-  // Fetch .arete.yml from the base branch, never the PR head: otherwise a PR could edit .arete.yml to weaken the rules used to review itself.
-  const areteYaml = await fetchAreteYaml(octokit, owner, repo, pr.base.sha);
+  // Fetch .arete.yml and the repo's own AGENTS.md/CONVENTIONS.md from the
+  // base branch, never the PR head: otherwise a PR could edit either file
+  // to weaken the rules/conventions used to review itself.
+  const [areteYaml, repoConventionsRaw] = await Promise.all([
+    fetchAreteYaml(octokit, owner, repo, pr.base.sha),
+    fetchAgentsDoc(octokit, owner, repo, pr.base.sha),
+  ]);
+  const repoConventions = repoConventionsRaw !== null
+    ? repoConventionsRaw.slice(0, MAX_REPO_CONVENTIONS_CHARS)
+    : undefined;
 
   return {
     repo: `${owner}/${repo}`,
@@ -106,5 +140,6 @@ export async function fetchPRContext(
     files: fileChanges,
     customRules: areteYaml.customRules,
     telemetryConnectors: areteYaml.telemetryConnectors,
+    repoConventions,
   }
 }
