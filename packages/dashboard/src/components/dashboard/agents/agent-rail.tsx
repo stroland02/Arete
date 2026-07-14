@@ -2,6 +2,7 @@
 
 import { AGENTS, type Agent } from "./agent-catalog";
 import { cn } from "@/lib/utils";
+import { IconSettings } from "@tabler/icons-react";
 
 const TIER_LABEL = { opus: "Opus", sonnet: "Sonnet" } as const;
 const TIER_CLASS = {
@@ -62,60 +63,67 @@ export function AgentRail({
                   aria-hidden
                 />
               )}
-              <button
-                type="button"
-                onClick={() => {
-                  onSelect(agent.id);
-                  onConfigure(agent.id);
-                }}
-                aria-current={selected ? "true" : undefined}
-                aria-label={`Open the ${agent.label} agent`}
+              <div
                 className={cn(
-                  "flex w-full items-start gap-2.5 py-2.5 pl-3 pr-3 text-left transition-colors",
-                  selected
-                    ? "bg-accent-primary/[0.06]"
-                    : "hover:bg-content-primary/[0.04]"
+                  "group flex items-stretch transition-colors",
+                  selected ? "bg-accent-primary/[0.06]" : "hover:bg-content-primary/[0.04]"
                 )}
               >
-                <span
-                  className={cn(
-                    "mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full",
-                    hasReviews ? "bg-accent-success" : "bg-content-muted/40"
-                  )}
-                  aria-hidden
-                />
-                <span
-                  className={cn(
-                    "mt-0.5 shrink-0",
-                    selected ? "text-accent-primary" : "text-content-muted"
-                  )}
+                <button
+                  type="button"
+                  onClick={() => onSelect(agent.id)}
+                  aria-current={selected ? "true" : undefined}
+                  aria-label={`View the ${agent.label} agent`}
+                  className="flex min-w-0 flex-1 items-start gap-2.5 py-2.5 pl-3 pr-1 text-left"
                 >
-                  <Icon size={15} stroke={1.75} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1.5">
-                    <span
-                      className={cn(
-                        "min-w-0 flex-1 truncate text-[13px] font-medium",
-                        selected ? "text-content-primary" : "text-content-secondary"
-                      )}
-                    >
-                      {agent.label}
+                  <span
+                    className={cn(
+                      "mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full",
+                      hasReviews ? "bg-accent-success" : "bg-content-muted/40"
+                    )}
+                    aria-hidden
+                  />
+                  <span
+                    className={cn(
+                      "mt-0.5 shrink-0",
+                      selected ? "text-accent-primary" : "text-content-muted"
+                    )}
+                  >
+                    <Icon size={15} stroke={1.75} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        className={cn(
+                          "min-w-0 flex-1 truncate text-[13px] font-medium",
+                          selected ? "text-content-primary" : "text-content-secondary"
+                        )}
+                      >
+                        {agent.label}
+                      </span>
+                      <span
+                        className={cn(
+                          "shrink-0 rounded-full border px-1.5 py-px text-[9px] font-medium",
+                          TIER_CLASS[agent.tier]
+                        )}
+                      >
+                        {TIER_LABEL[agent.tier]}
+                      </span>
                     </span>
-                    <span
-                      className={cn(
-                        "shrink-0 rounded-full border px-1.5 py-px text-[9px] font-medium",
-                        TIER_CLASS[agent.tier]
-                      )}
-                    >
-                      {TIER_LABEL[agent.tier]}
+                    <span className="mt-0.5 block truncate font-mono text-[11px] text-content-muted">
+                      {status}
                     </span>
                   </span>
-                  <span className="mt-0.5 block truncate font-mono text-[11px] text-content-muted">
-                    {status}
-                  </span>
-                </span>
-              </button>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onConfigure(agent.id)}
+                  aria-label={`Configure the ${agent.label} agent`}
+                  className="flex shrink-0 items-center px-2 text-content-muted opacity-0 transition-opacity hover:text-content-secondary focus:opacity-100 group-hover:opacity-100"
+                >
+                  <IconSettings size={14} stroke={1.75} />
+                </button>
+              </div>
             </li>
           );
         })}
