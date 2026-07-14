@@ -239,6 +239,12 @@ export interface ServicesWorkspaceProps {
   variant?: "embedded" | "framed";
   /** Whether a repository is connected — switches empty copy from "connect" to "awaiting". */
   connected?: boolean;
+  /**
+   * Container to stream in the center Synthesizer (a review id). Deep-linked
+   * via /services?container=<reviewId> (e.g. from a review page). Null → the
+   * Synthesizer shows its onboarding state.
+   */
+  containerId?: string | null;
 }
 
 /**
@@ -247,7 +253,7 @@ export interface ServicesWorkspaceProps {
  * fabricated rows. The marketing preview passes SAMPLE_* + variant="framed"
  * to show the populated UI inside a card.
  */
-export function ServicesWorkspace({ services = [], issues = [], variant = "embedded", connected = false }: ServicesWorkspaceProps) {
+export function ServicesWorkspace({ services = [], issues = [], variant = "embedded", connected = false, containerId = null }: ServicesWorkspaceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const isInView = useInView(containerRef, { margin: "-100px 0px -100px 0px" });
 
@@ -411,9 +417,9 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
           illustrative sample data). */}
       <section className="flex min-h-0 flex-1 flex-col" aria-label="Synthesizer">
         {variant === "embedded" ? (
-          // containerId stays null until the Issue↔Container connector ships;
-          // then map the selected issue to its container id here to stream live.
-          <SynthesizerConsole containerId={null} connected={connected} />
+          // Streams the deep-linked review (container id = review id) via the
+          // existing /api/containers/[id]/stream SSE; null → onboarding state.
+          <SynthesizerConsole containerId={containerId} connected={connected} />
         ) : (
           <IssueSynthesizerConsole issue={selected} isReplaying={isReplaying} replayStep={replayStep} />
         )}
