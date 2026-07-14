@@ -1,8 +1,21 @@
 from typing import Literal
 
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel, Field, computed_field
 
 from arete_agents.models.pr import PRContext
+
+
+class NoiseDecision(BaseModel):
+    """A silence_as_noise/place_under_observation tool call recorded during
+    review_file()'s tool loop (see agents/base.py). issue_id is parsed into
+    path/line before this model is built. escalate_on/threshold are only
+    meaningful for action="observe" -- silence carries no threshold."""
+    path: str
+    line: int
+    action: Literal["silence", "observe"]
+    reason: str
+    escalate_on: str | None = None
+    threshold: int | None = None
 
 
 class ReviewComment(BaseModel):
@@ -11,12 +24,24 @@ class ReviewComment(BaseModel):
     body: str
     severity: Literal["info", "warning", "error"]
     category: str
+    # Noise Classification (SP6). Defaults keep every existing constructor
+    # call across the test suite working unchanged. Stamped deterministically
+    # by ReviewOrchestrator._apply_noise_decisions AFTER synthesis -- never
+    # set directly from the LLM's own JSON output.
+    noise_state: Literal["OPEN", "SILENCED", "UNDER_OBSERVATION", "ESCALATED"] = "OPEN"
+    escalate_on: str | None = None
+    threshold: int | None = None
 
 
 class FileReview(BaseModel):
     path: str
     comments: list[ReviewComment]
     summary: str
+    # Tool calls recorded during this file's review_file() tool loop (see
+    # agents/base.py). Consumed by orchestrator.py's GraphState reducer and
+    # discarded after _synthesize_reviews applies them -- never serialized
+    # onward as part of the public ReviewResult.
+    noise_decisions: list[NoiseDecision] = Field(default_factory=list)
 
 
 class ReviewResult(BaseModel):

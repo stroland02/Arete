@@ -215,3 +215,48 @@ def test_pr_context_repo_conventions_defaults_to_none():
 
     pr = PRContext(repo="acme/api", pr_number=1, title="t", description="d", files=[])
     assert pr.repo_conventions is None
+
+
+def test_review_comment_noise_fields_default_to_open():
+    comment = ReviewComment(
+        path="a.py", line=1, body="x", severity="info", category="quality",
+    )
+    assert comment.noise_state == "OPEN"
+    assert comment.escalate_on is None
+    assert comment.threshold is None
+
+
+def test_review_comment_accepts_noise_fields():
+    comment = ReviewComment(
+        path="a.py", line=1, body="x", severity="info", category="quality",
+        noise_state="UNDER_OBSERVATION", escalate_on="additional_events", threshold=3,
+    )
+    assert comment.noise_state == "UNDER_OBSERVATION"
+    assert comment.escalate_on == "additional_events"
+    assert comment.threshold == 3
+
+
+def test_file_review_noise_decisions_defaults_to_empty_list():
+    fr = FileReview(path="a.py", comments=[], summary="clean")
+    assert fr.noise_decisions == []
+
+
+def test_noise_decision_model_holds_silence_action():
+    from arete_agents.models.review import NoiseDecision
+
+    decision = NoiseDecision(path="a.py", line=5, action="silence", reason="false positive")
+    assert decision.action == "silence"
+    assert decision.escalate_on is None
+    assert decision.threshold is None
+
+
+def test_noise_decision_model_holds_observe_action():
+    from arete_agents.models.review import NoiseDecision
+
+    decision = NoiseDecision(
+        path="a.py", line=5, action="observe", reason="maybe flaky",
+        escalate_on="additional_events", threshold=3,
+    )
+    assert decision.action == "observe"
+    assert decision.escalate_on == "additional_events"
+    assert decision.threshold == 3
