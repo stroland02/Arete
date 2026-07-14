@@ -132,11 +132,13 @@ function makePrismaMock() {
   const repositoryUpsert = vi.fn().mockResolvedValue({ id: 'repo-uuid-1' })
   const reviewFindUnique = vi.fn().mockResolvedValue(null)
   const reviewCreate = vi.fn().mockResolvedValue({ id: 'review-uuid-1' })
+  const agentMemoryFindMany = vi.fn().mockResolvedValue([])
 
   class PrismaClient {
     installation = { findUnique: installationFindUnique, upsert: installationUpsert, update: installationUpdate }
     repository = { findUnique: repositoryFindUnique, upsert: repositoryUpsert }
     review = { findUnique: reviewFindUnique, create: reviewCreate }
+    agentMemory = { findMany: agentMemoryFindMany }
   }
   return {
     PrismaClient,
@@ -147,6 +149,7 @@ function makePrismaMock() {
     repositoryUpsert,
     reviewFindUnique,
     reviewCreate,
+    agentMemoryFindMany,
   }
 }
 
@@ -620,5 +623,27 @@ describe('pipeline integration: webhook -> queue -> worker -> review -> post', (
     expect(sentContext.telemetry).toEqual([
       { provider: 'github_actions', source_ref: 'acme/api', summary_text: 'ok', metrics: {}, links: [], fetched_at: '2026-07-10T00:00:00Z' },
     ])
+  })
+
+  it('fetches project memories and includes them in the PRContext sent to the Python pipeline', async () => {
+    const runReviewPipelineMock = vi.fn().mockResolvedValue({
+      pr_context: {}, file_reviews: [], overall_summary: 'ok', risk_level: 'low', total_comments: 0,
+    })
+    vi.doMock('./review-bridge.js', () => ({ runReviewPipeline: runReviewPipelineMock }))
+
+    await buildApp(mocks)
+    mocks.prisma.repositoryFindUnique.mockResolvedValue({ id: 'repo-uuid-1' })
+    mocks.prisma.agentMemoryFindMany.mockResolvedValue([
+      { body: 'Use tabs, not spaces.' },
+    ])
+
+    const { processReviewJob } = await import('./worker.js')
+    await processReviewJob({
+      provider: 'github', kind: 'pull_request', owner: 'acme', repo: 'api',
+      repositoryExternalId: 1, fullName: 'acme/api', installationId: 42, prNumber: 1, headSha: 'abc',
+    })
+
+    const sentContext = runReviewPipelineMock.mock.calls[0][0]
+    expect(sentContext.projectMemories).toEqual(['Use tabs, not spaces.'])
   })
 })

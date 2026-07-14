@@ -2,6 +2,8 @@ import type { ScmProvider } from '@arete/db'
 import { prisma } from './db.js'
 import type { ReviewResult, TelemetrySnapshot } from './types.js'
 
+const MAX_PROJECT_MEMORIES = 20
+
 export interface ReviewExistsParams {
   provider: ScmProvider
   /** GitHub repository id, or GitLab project id. Unique per provider only. */
@@ -222,4 +224,30 @@ export async function persistTelemetrySnapshots(params: PersistTelemetrySnapshot
       })
     )
   )
+}
+
+/**
+ * Fetches up to MAX_PROJECT_MEMORIES active AgentMemory bodies for a repo,
+ * most recently created first. Returns [] if no Repository row exists yet
+ * for this (provider, externalId) pair — a repo with no prior review can't
+ * have any AgentMemory rows (the FK requires a repositoryId) — or if the
+ * repo simply has no active memories saved. Never throws for either case;
+ * callers attach the result directly to PRContext.projectMemories, which
+ * agents/base.py already treats as optional.
+ */
+export async function fetchProjectMemories(
+  provider: ScmProvider,
+  repositoryExternalId: number
+): Promise<string[]> {
+  const repository = await prisma.repository.findUnique({
+    where: { provider_externalId: { provider, externalId: repositoryExternalId } },
+  })
+  if (!repository) return []
+
+  const memories = await prisma.agentMemory.findMany({
+    where: { repositoryId: repository.id, status: 'active' },
+    orderBy: { createdAt: 'desc' },
+    take: MAX_PROJECT_MEMORIES,
+  })
+  return memories.map((m: { body: string }) => m.body)
 }

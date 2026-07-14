@@ -38,6 +38,7 @@ export interface PRContext {
   telemetry?: TelemetrySnapshot[]
   telemetryConnectors?: TelemetryConnectorConfig[]
   repoConventions?: string
+  projectMemories?: string[]
   cloneUrl?: string
   installationToken?: string
   installationId?: number
