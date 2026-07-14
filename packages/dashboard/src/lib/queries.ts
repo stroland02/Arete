@@ -603,11 +603,26 @@ export async function getAgentActivity(
 ): Promise<AgentActivityFinding[]> {
   if (installationIds.length === 0) return [];
 
+  // Select only the columns we need (not `include`, which fetches every
+  // scalar column). This both avoids over-fetching and is resilient to schema
+  // drift — e.g. a database that predates ReviewComment.noiseState/escalateOn/
+  // threshold still satisfies this query because those columns aren't selected.
   const rows = await db.reviewComment.findMany({
     where: { review: { repository: { installationId: { in: installationIds } } } },
     orderBy: { createdAt: 'desc' },
     take: limit,
-    include: { review: { include: { repository: true } } },
+    select: {
+      reviewId: true,
+      path: true,
+      line: true,
+      body: true,
+      severity: true,
+      category: true,
+      createdAt: true,
+      review: {
+        select: { prNumber: true, repository: { select: { fullName: true } } },
+      },
+    },
   });
 
   return rows.map((c) => ({
