@@ -51,6 +51,7 @@ export default async function ReviewHistoryPage({
 
   const { installation, risk, page: pageParam } = await searchParams;
   const installationIds = resolveSelectedInstallationIds(session.installations ?? [], installation);
+  const connected = installationIds.length > 0;
 
   const activeTab: RiskTab = RISK_TABS.includes(risk as RiskTab) ? (risk as RiskTab) : "all";
   const page = Math.max(1, Number.parseInt(pageParam ?? "1", 10) || 1);
@@ -113,8 +114,12 @@ export default async function ReviewHistoryPage({
           <Card>
             <EmptyState
               icon={<IconGitPullRequest className="w-6 h-6" />}
-              title="No reviews yet"
-              description="Reviews will appear here as pull requests are analyzed."
+              title={connected ? "Connected — no reviews yet" : "No reviews yet"}
+              description={
+                connected
+                  ? "Your repository is connected. Open a pull request and its review appears here."
+                  : "Connect a repository — reviews appear here as pull requests are analyzed."
+              }
             />
           </Card>
         ) : (
