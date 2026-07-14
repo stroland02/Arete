@@ -74,7 +74,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const email = typeof creds?.email === 'string' ? creds.email : '';
         const password = typeof creds?.password === 'string' ? creds.password : '';
         if (!email || !password) return null;
-        return { id: "dummy-user-id", email };
+        // Real per-user identity: validate against the User row and return its
+        // actual id — never a shared placeholder (would collapse all users into
+        // one identity → cross-tenant reads).
+        const user = await verifyCredentials(db, email, password);
+        if (!user) return null;
+        return { id: user.id, email: user.email, name: user.name, image: user.image };
       },
     }),
   ],
@@ -84,7 +89,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (account?.provider === 'google') {
         const email = profile?.email ?? user?.email;
         if (!email) return false;
-        user.id = "dummy-user-id";
+        // Real per-user identity: upsert the Google account → a real User row
+        // and use its actual id, so each Google user is a distinct tenant.
+        const dbUser = await upsertGoogleUser(db, {
+          email,
+          name: user?.name ?? null,
+          image: user?.image ?? null,
+          providerAccountId: account.providerAccountId,
+        });
+        user.id = dbUser.id;
       }
       return true;
     },

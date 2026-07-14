@@ -153,3 +153,44 @@ describe('authSessionCallback', () => {
     expect(session.installations).toEqual([]);
   });
 });
+
+describe('authJwtCallback — per-user tenancy (no shared-identity leak)', () => {
+  const INST_GLOBEX: AuthorizedInstallation = { id: 'inst-globex', provider: 'github', owner: 'globex', externalId: 2 };
+
+  it("resolves installations by the token's OWN userId — user A never inherits user B's", async () => {
+    // db keyed by userId: each user has their own linked github account. This is
+    // the invariant the dummy-user-id leak violated (all users → one identity).
+    findFirst.mockImplementation(async (args: unknown) => {
+      const userId = (args as { where: { userId: string } }).where.userId;
+      if (userId === 'user-A') return { githubAccessTokenEncrypted: 'enc-A' };
+      if (userId === 'user-B') return { githubAccessTokenEncrypted: 'enc-B' };
+      return null;
+    });
+    decrypt.mockImplementation((enc: string) => (enc === 'enc-A' ? 'tok-A' : 'tok-B'));
+    fetchLogins.mockImplementation(async (t: string) => (t === 'tok-A' ? ['acme'] : ['globex']));
+    lookup.mockImplementation(async (_db, logins: string[]) =>
+      logins.includes('acme') ? [INST_ACME] : [INST_GLOBEX],
+    );
+
+    const a = await authJwtCallback({ token: tok({ sub: 'user-A' }) });
+    const b = await authJwtCallback({ token: tok({ sub: 'user-B' }) });
+
+    expect(a.installations).toEqual([INST_ACME]);
+    expect(b.installations).toEqual([INST_GLOBEX]);
+    // The leak invariant: neither session inherits the other's installations.
+    expect(a.installations).not.toContainEqual(INST_GLOBEX);
+    expect(b.installations).not.toContainEqual(INST_ACME);
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: 'user-A', provider: 'github' } }),
+    );
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: 'user-B', provider: 'github' } }),
+    );
+  });
+
+  it('an unknown/unlinked userId resolves to [] (no fallback to another user)', async () => {
+    findFirst.mockResolvedValue(null);
+    const stranger = await authJwtCallback({ token: tok({ sub: 'user-Z' }) });
+    expect(stranger.installations).toEqual([]);
+  });
+});
