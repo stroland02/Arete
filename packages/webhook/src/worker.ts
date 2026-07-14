@@ -14,7 +14,7 @@ import { fetchGitLabMRContext } from './gitlab-fetcher.js'
 import { runReviewPipeline } from './review-bridge.js'
 import { postReview } from './comment-poster.js'
 import { postGitLabReview, type DiffRefs } from './gitlab-comment-poster.js'
-import { persistReview, persistTelemetrySnapshots } from './persistence.js'
+import { persistReview, persistTelemetrySnapshots, fetchProjectMemories } from './persistence.js'
 import { ARETE_CHECK_RUN_NAME } from './constants.js'
 import {
   REVIEW_QUEUE_NAME,
@@ -66,6 +66,7 @@ async function processGitHubPullRequest(octokit: Octokit, installationToken: str
     repo,
     prContext.telemetryConnectors ?? []
   )
+  prContext.projectMemories = await fetchProjectMemories('github', repositoryExternalId)
 
   Object.assign(prContext, buildCloneContext(fullName, installationId, installationToken))
 
@@ -148,6 +149,7 @@ async function processGitHubCheckRun(octokit: Octokit, installationToken: string
 
   const prContext = await fetchPRContext(octokit, owner, repo, prNumber)
   prContext.ciLogs = ciLogs
+  prContext.projectMemories = await fetchProjectMemories('github', repositoryExternalId)
   Object.assign(prContext, buildCloneContext(fullName, installationId, installationToken))
 
   const checkRun = await (octokit as any).rest.checks.create({

@@ -133,6 +133,9 @@ function createFakePrisma() {
         return row
       },
     },
+    agentMemory: {
+      findMany: async () => [],
+    },
   }
 
   return { prisma, installations, repositories, reviews }
