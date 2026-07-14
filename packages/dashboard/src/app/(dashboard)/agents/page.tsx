@@ -36,6 +36,8 @@ export default async function AgentsPage({
   const hasReviews = viewModel.hasAccess && totalPrs > 0;
   const latest = latestReviews[0];
 
+  // Real per-agent findings for the center conversation pane; empty (honest
+  // idle) when there's no access. Same tenant scoping as every other query.
   const activity = viewModel.hasAccess
     ? await getAgentActivity(db, installationIds)
     : [];
@@ -47,6 +49,7 @@ export default async function AgentsPage({
       )}
       totalFindings={commentsByCategory.reduce((sum, c) => sum + c.count, 0)}
       hasReviews={hasReviews}
+      activity={activity}
       connected={viewModel.hasAccess}
       containerId={container ?? null}
       latestReview={
