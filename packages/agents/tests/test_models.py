@@ -171,6 +171,21 @@ def test_pr_context_clone_fields_default_to_none():
     assert pr.installation_id is None
 
 
+def test_review_result_verdict_fields_default_for_backward_compat():
+    """Additive fields: existing-style constructors that don't pass verdict
+    args keep working and get the advisory defaults."""
+    result = ReviewResult(
+        pr_context=PRContext(
+            repo="r/r", pr_number=1, title="t", description="d", files=[]
+        ),
+        file_reviews=[],
+        overall_summary="none",
+        risk_level="low",
+    )
+    assert result.verdict == "pass"
+    assert result.verdict_reason == ""
+
+
 def test_review_result_grounding_counters_default_to_zero():
     from arete_agents.models.pr import PRContext
     from arete_agents.models.review import ReviewResult
