@@ -31,11 +31,13 @@ import type { SynthPhase } from "./synthesizer/synth-phase";
 export interface SynthesizerConsoleProps {
   /** Focused container to stream (deep-linked from a Services issue). Null → empty. */
   containerId?: string | null;
+  /** Whether a repository is connected — switches the empty state from "connect" to "awaiting review". */
+  connected?: boolean;
 }
 
-export function SynthesizerConsole({ containerId = null }: SynthesizerConsoleProps) {
+export function SynthesizerConsole({ containerId = null, connected = false }: SynthesizerConsoleProps) {
   if (!containerId) {
-    return <ConsoleEmpty />;
+    return <ConsoleEmpty connected={connected} />;
   }
   // key resets the stream hook's reducer when the focused container changes.
   return <ConsoleStream key={containerId} containerId={containerId} />;
@@ -113,7 +115,7 @@ function ConsoleStream({ containerId }: { containerId: string }) {
   );
 }
 
-function ConsoleEmpty() {
+function ConsoleEmpty({ connected }: { connected: boolean }) {
   return (
     <section className="flex min-h-0 flex-1 flex-col" aria-label="Synthesizer console">
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border-subtle px-3">
@@ -133,17 +135,26 @@ function ConsoleEmpty() {
             backed by real evidence. Only the proven findings reach your pull request — you see signal, not noise.
           </p>
           <p className="text-xs leading-5 text-content-muted">
-            Connect a repository and open a pull request — the review streams here live as it runs.
+            {connected
+              ? "Your repository is connected — open a pull request and the review streams here live as it runs."
+              : "Connect a repository and open a pull request — the review streams here live as it runs."}
           </p>
         </div>
 
-        <Link
-          href="/connections"
-          className="inline-flex items-center gap-2 rounded-xl border border-accent-primary/30 bg-accent-primary/15 px-4 py-2 text-sm font-medium text-accent-primary transition-colors hover:bg-accent-primary/25"
-        >
-          Connect a repository
-          <IconArrowRight size={15} stroke={2} />
-        </Link>
+        {connected ? (
+          <span className="inline-flex items-center gap-2 rounded-xl border border-accent-success/30 bg-accent-success/10 px-4 py-2 text-sm font-medium text-accent-success">
+            <span className="h-1.5 w-1.5 rounded-full bg-accent-success" aria-hidden />
+            Connected · awaiting your first pull request
+          </span>
+        ) : (
+          <Link
+            href="/connections"
+            className="inline-flex items-center gap-2 rounded-xl border border-accent-primary/30 bg-accent-primary/15 px-4 py-2 text-sm font-medium text-accent-primary transition-colors hover:bg-accent-primary/25"
+          >
+            Connect a repository
+            <IconArrowRight size={15} stroke={2} />
+          </Link>
+        )}
       </div>
     </section>
   );
