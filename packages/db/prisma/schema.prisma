@@ -187,6 +187,10 @@ model Account {
   userId            String
   provider          String
   providerAccountId String
+  /// AES-256-GCM `iv:authTag:ciphertext` hex string (same format as
+  /// TelemetryConnection.credentials — see lib/telemetry-credentials.ts).
+  /// Only ever set for provider: 'github' rows; null for 'google'.
+  githubAccessTokenEncrypted String?
   user              User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])

@@ -198,3 +198,20 @@ def test_review_result_grounding_counters_default_to_zero():
     )
     assert result.citation_dropped_count == 0
     assert result.security_evidence_dropped_count == 0
+
+
+def test_pr_context_accepts_repo_conventions_field():
+    from arete_agents.models.pr import FileChange, PRContext
+
+    pr = PRContext.model_validate({
+        "repo": "acme/api", "pr_number": 1, "title": "t", "description": "d",
+        "files": [], "repoConventions": "# Conventions\nUse tabs.",
+    })
+    assert pr.repo_conventions == "# Conventions\nUse tabs."
+
+
+def test_pr_context_repo_conventions_defaults_to_none():
+    from arete_agents.models.pr import PRContext
+
+    pr = PRContext(repo="acme/api", pr_number=1, title="t", description="d", files=[])
+    assert pr.repo_conventions is None

@@ -37,6 +37,7 @@ export interface PRContext {
   ciLogs?: string
   telemetry?: TelemetrySnapshot[]
   telemetryConnectors?: TelemetryConnectorConfig[]
+  repoConventions?: string
   cloneUrl?: string
   installationToken?: string
   installationId?: number
