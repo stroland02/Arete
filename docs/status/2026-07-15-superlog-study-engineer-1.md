@@ -43,16 +43,23 @@ document a phased roadmap. Guardrails honored: no touches to `context_map/`, `se
   net-guard SSRF guard (IP-pinned, redirects blocked); tenant-scoped; HITL preserved (did NOT
   adopt `automerge: immediately`).
 
-## blockers / explicitly NOT done (no fabrication)
+## wiring complete (PM decision C) — feature is REACHABLE and tested
 
-Sandbox has **no Postgres/Redis/Docker** — so the DB half of the DoD can't be closed here:
-1. **Apply the migration** (`prisma migrate deploy`) — needs a live DB (also your gate).
-2. **`PrismaWebhookStore`** — the in-memory store proves the `WebhookStore` contract; the Prisma
-   adapter is a thin same-interface impl, unverified in-sandbox.
-3. **Wire router into `server.ts`** + a **BullMQ worker** to fire scheduled retries at `nextAttempt`.
-4. **Wire `dispatchEvent`** into real emission points (review-persist, `approval-handler`).
+- **`PrismaWebhookStore`** — production store over a minimal Prisma slice; fake-Prisma tests.
+- **Router mounted** in `server.ts` at `/api/webhooks`; `server.test` proves reachable (400 not 404).
+- **Retry worker** — `processDueDeliveries` tested (selects due, re-delivers, advances backoff);
+  `startRetryWorker` is a Postgres-polling loop.
+- **Emission** — `persistReview` fires `review.created` via `emitReviewCreated` (tested), non-fatal.
+- **Full suite 277/277**; no new tsc errors (22 pre-existing baseline unchanged).
 
-**Runbook to close (DB env):**
+## DEFERRED — live-infra smoke tests only (carry verbatim to PR body)
+
+- Migration is committed but NOT applied (needs Postgres) — apply is a deployed-env step.
+- Durable delivery row persisting in real Postgres — proven via mocked store here; real-DB
+  observation is a post-merge human smoke test.
+- Retry worker firing on a real schedule (Postgres-polling loop) — logic tested here; live run deferred.
+
+**Runbook (deployed/DB env):**
 ```
 docker compose -f infra/docker-compose.yml up -d
 pnpm --filter @arete/db exec prisma migrate deploy   # applies 20260715120000_add_webhook_endpoints
@@ -64,11 +71,12 @@ pnpm --filter @arete/webhook exec tsx scripts/webhook-e2e-drive.ts   # re-verify
 
 | DoD item | Status |
 |---|---|
-| register an endpoint (HTTP) | ✅ real, tested |
-| real event → signed delivery | ✅ real, shown |
-| delivery row recorded with status | ⚠️ recorded in-memory + shown; **Postgres durability pending a DB env** |
-| failure path retries | ✅ real, shown |
-| full matrix green | ✅ 268/268 |
+| full matrix green (webhook) | ✅ 277/277 |
+| routes mounted in `server.ts` | ✅ tested (reachable, 400 not 404) |
+| an emission point calls dispatch | ✅ `persistReview` → `emitReviewCreated` (tested) |
+| `PrismaWebhookStore` satisfies the store contract | ✅ fake-Prisma tests |
+| register → signed delivery → retry | ✅ real, shown (drive script) |
+| real-Postgres row + real-schedule run | ⏸ deferred smoke test (above) — the only thing left unproven |
 
 ## recommended next
 
