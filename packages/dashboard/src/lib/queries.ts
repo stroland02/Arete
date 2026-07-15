@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@arete/db';
 import type { AuthorizedInstallation } from './installations';
+import type { FindingLike } from './sensors';
 import { clickhouse } from './clickhouse';
 
 /**
@@ -622,6 +623,29 @@ export async function getAgentActivity(
     body: c.body,
     severity: c.severity,
   }));
+}
+
+/**
+ * All currently-OPEN review findings for the caller's authorized installations,
+ * projected to just what the Sensorium *pain* sensor needs (path + severity +
+ * category). Scoped through the same `review.repository.installationId IN
+ * installationIds` choke point as every other query here, so a finding from an
+ * installation outside `installationIds` can never appear. Empty ids => `[]`.
+ * Capped at 2000 rows — the map is a live overview, not an exhaustive audit.
+ */
+export async function getFindingsByPath(
+  db: PrismaClient,
+  installationIds: string[],
+): Promise<FindingLike[]> {
+  if (installationIds.length === 0) return [];
+  return db.reviewComment.findMany({
+    where: {
+      review: { repository: { installationId: { in: installationIds } } },
+      noiseState: 'OPEN',
+    },
+    select: { path: true, line: true, severity: true, category: true, body: true },
+    take: 2000,
+  });
 }
 
 export interface AgentEventData {
