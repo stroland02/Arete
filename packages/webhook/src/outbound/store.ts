@@ -44,6 +44,13 @@ export interface RecordDeliveryInput {
   payload: unknown
 }
 
+/** A pending delivery whose retry is due, joined with the endpoint needed to
+ *  re-send it (url + secret). Returned by the retry worker's selection query. */
+export interface DueDelivery {
+  delivery: StoredDelivery
+  endpoint: StoredEndpoint
+}
+
 export interface WebhookStore {
   createEndpoint(input: CreateEndpointInput): Promise<StoredEndpoint>
   /** All endpoints of an installation (enabled or not) — for the management API. */
@@ -52,6 +59,8 @@ export interface WebhookStore {
   setEnabled(id: string, enabled: boolean): Promise<void>
   recordDelivery(input: RecordDeliveryInput): Promise<StoredDelivery>
   settleDelivery(id: string, outcome: DeliveryOutcome): Promise<StoredDelivery>
+  /** Pending deliveries whose nextAttempt is due (<= now), with their endpoint. */
+  dueDeliveries(now: Date): Promise<DueDelivery[]>
 }
 
 /** A cryptographically-random signing secret. base64url of 24 bytes ≈ 192 bits. */
@@ -131,5 +140,16 @@ export class InMemoryWebhookStore implements WebhookStore {
     const row = this.deliveries.get(id)
     if (!row) throw new Error(`delivery ${id} not found`)
     return applyOutcome(row, outcome)
+  }
+
+  async dueDeliveries(now: Date): Promise<DueDelivery[]> {
+    const out: DueDelivery[] = []
+    for (const delivery of this.deliveries.values()) {
+      if (delivery.status !== 'pending' || delivery.nextAttempt === null) continue
+      if (delivery.nextAttempt > now) continue
+      const endpoint = this.endpoints.get(delivery.endpointId)
+      if (endpoint) out.push({ delivery, endpoint })
+    }
+    return out
   }
 }

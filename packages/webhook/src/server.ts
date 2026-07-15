@@ -5,6 +5,9 @@ import { handleStripeWebhook } from './stripe-handler.js'
 import { handleGitLabWebhook } from './gitlab-handler.js'
 import { buildOAuthAuthorizeUrl } from './oauth/build-authorize-url.js'
 import { handleOAuthCallback } from './oauth/oauth-callback-handler.js'
+import { prisma } from './db.js'
+import { PrismaWebhookStore, type WebhookPrismaClient } from './outbound/prisma-store.js'
+import { createWebhookRouter } from './outbound/routes.js'
 
 // @octokit/app and @octokit/webhooks are pure ESM (import-only "exports" maps);
 // this package compiles to CJS, so they must be loaded via dynamic import(),
@@ -155,6 +158,12 @@ export async function createServer(): Promise<express.Application> {
     }
   })
   
+  // Outbound webhook management API (tenant-scoped by installationId). Backed by
+  // the Prisma store; the router validates the destination URL against the SSRF
+  // guard and returns the signing secret exactly once at create.
+  const webhookStore = new PrismaWebhookStore(prisma as unknown as WebhookPrismaClient)
+  server.use('/api/webhooks', createWebhookRouter(webhookStore))
+
   // Mount at root and let createNodeMiddleware own the path matching —
   // Express strips the mount prefix from req.url, so mounting at '/webhook'
   // would make the middleware see '/' and never match its configured path.
