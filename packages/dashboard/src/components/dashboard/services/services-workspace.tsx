@@ -613,10 +613,10 @@ function IssuePanel({ issue, isReplaying }: { issue: Issue | null; isReplaying: 
           transition={{ duration: 0.3 }}
           className="flex min-h-0 flex-1 flex-col"
         >
-          {/* The big-picture Synthesizer projection (SynthesizerSummary) mounts
-              here once a real IssueContainer backs the selected issue — it is
-              deliberately NOT wired to sample data, so the product surface never
-              shows a fabricated review (connector step unifies Issue↔Container). */}
+          {/* The big-picture Synthesizer projection mounts here once a real
+              IssueContainer backs the selected issue — it is deliberately NOT
+              wired to sample data, so the product surface never shows a
+              fabricated review (connector step unifies Issue↔Container). */}
 
           {/* Repository target */}
           <div className="shrink-0 space-y-1.5 border-b border-border-subtle px-3 py-2.5">
