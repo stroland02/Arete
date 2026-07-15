@@ -36,6 +36,7 @@ model Installation {
   repositories         Repository[]
   telemetryConnections TelemetryConnection[]
   telemetrySnapshots   TelemetrySnapshotRecord[]
+  webhookEndpoints     WebhookEndpoint[]
 
   @@unique([provider, externalId])
 }
@@ -200,4 +201,53 @@ model Account {
   user              User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+}
+
+/// A customer-registered outbound webhook destination, scoped to an
+/// Installation (tenant). Areté POSTs signed `review.*` events here. The
+/// `secret` is a `whsec_`-prefixed random string shown once at creation and
+/// used to HMAC-sign every delivery (see packages/webhook/src/outbound/
+/// signature.ts) — it is never returned by list/get endpoints and never logged.
+model WebhookEndpoint {
+  id             String            @id @default(uuid())
+  installationId String
+  /// Destination URL. Must be http(s) and is validated against the SSRF guard
+  /// (packages/net-guard) at create time and again before every delivery.
+  url            String
+  /// `whsec_`-prefixed HMAC secret. Write-once semantics at the API layer.
+  secret         String
+  /// Subscribed events, a subset of ["review.created", "review.updated"].
+  events         String[]
+  enabled        Boolean           @default(true)
+  createdAt      DateTime          @default(now())
+  installation   Installation      @relation(fields: [installationId], references: [id])
+  deliveries     WebhookDelivery[]
+
+  @@index([installationId])
+}
+
+/// One delivery attempt-set for a single event to a single endpoint. `id` is
+/// the value sent in the `Arete-Delivery` header and is stable across retries,
+/// so the receiver can use it as an idempotency key. `attempts`/`nextAttempt`
+/// drive the retry curve in packages/webhook/src/outbound/backoff.ts.
+model WebhookDelivery {
+  id          String          @id @default(uuid())
+  endpointId  String
+  event       String
+  payload     Json
+  /// "pending" | "delivered" | "failed"
+  status      String          @default("pending")
+  attempts    Int             @default(0)
+  /// HTTP status of the last attempt (null if the request never got a response).
+  lastCode    Int?
+  /// Short error string of the last failed attempt (never contains the secret).
+  lastError   String?
+  /// When the next retry is due; null once delivered or permanently failed.
+  nextAttempt DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  endpoint    WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@index([endpointId, status])
+  @@index([status, nextAttempt])
 }

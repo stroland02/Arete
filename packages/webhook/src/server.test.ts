@@ -34,6 +34,13 @@ describe('server middleware mount', () => {
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ status: 'ok' })
   })
+
+  it('GET /api/webhooks/endpoints is mounted — 400 without installationId, not 404', async () => {
+    // 400 (validation) proves the outbound-webhook router is reachable; a 404
+    // would mean it was never mounted. DB-free: validation precedes any store call.
+    const res = await request(app).get('/api/webhooks/endpoints')
+    expect(res.status).toBe(400)
+  })
 })
 
 describe('POST /api/approvals/:id/execute route wiring', () => {

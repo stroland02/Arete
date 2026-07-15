@@ -68,6 +68,7 @@ The finishing agent must:
 | `feat/dashboard-real-metrics` | `dashboard` | Real computed metrics, per-agent breakdown | Merged (superseded/rebuilt by auth + @arete/db extraction) |
 | `feat/dashboard-ui-port` | `dashboard` | Port the finished design system (tokens, primitives, motion, agent-orchestration graph) onto main's current auth-scoped dashboard (app/(dashboard)/*, getDashboardViewModel, @arete/db). Presentation layer + one new additive query function (getTrendSeries). NOTE: adds a worktree-root `.npmrc` (virtual-store-dir-max-length=60) + `next.config.ts` turbopack.root pin for Windows nested-worktree builds — requires a fresh `pnpm install` after pulling. | **Merged to main at `986987b` (2026-07-12)** — see pre-merge notes below |
 | `main` | `docs` | ADE setup, coordination | Done |
+| `stroland02/Engineer-1` | `webhook` + `db` (cross-package, declared) | **Outbound webhooks** (SuperLog Study clear win #1): new `WebhookEndpoint`/`WebhookDelivery` models in `@arete/db`; signing + delivery + payload rendering in `packages/webhook/src/outbound/`. Reuses `@arete/net-guard` (SSRF) + oauth-state HMAC convention. **Schema change to `packages/db/prisma/schema.prisma` — coordination rule 4; one agent at a time.** Not touching `context_map/`, `server.py`, `packages/dashboard`, or the frozen marketing page. | In progress (TDD) |
 
 ## ✅ Resolved: `feat/dashboard-ui-redesign` is superseded — do not merge
 
