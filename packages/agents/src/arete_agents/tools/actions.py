@@ -66,10 +66,20 @@ class RequestInfrastructureApprovalInput(BaseModel):
 def request_infrastructure_approval(command: str, reason: str) -> str:
     """
     Request human approval to execute a potentially dangerous infrastructure command.
-    The run pauses until a human clicks 'Approve' or 'Reject'. If approved, the platform executes the command and returns the stdout.
+    The run pauses until a human clicks 'Approve' or 'Reject'. If approved, the platform
+    applies the command asynchronously (via the approval-exec pipeline) and resumes the run.
     """
-    # Simulate suspension of state, sending notification to UI
-    return f"Paused run. Sent approval request for command: `{command}`. Reason: {reason}. Waiting for human response..."
+    # Truthful suspension signal. The command is NOT run here — a human must
+    # approve first, after which POST /approvals/apply applies it and resumes
+    # the run (see arete_agents.remediation). Function-local import keeps the
+    # review-loop's tool import cheap.
+    from arete_agents.remediation import build_approval_request
+
+    req = build_approval_request(command, reason)
+    return (
+        f"Suspended: awaiting human approval to run `{req.command}`. "
+        f"Reason: {req.reason}. Execution occurs only after approval."
+    )
 
 def get_native_action_tools():
     return [propose_pr, ask_human, add_project_memory, silence_as_noise, place_under_observation, request_infrastructure_approval]
