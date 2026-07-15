@@ -138,8 +138,23 @@ Design: `docs/superpowers/specs/2026-07-15-kuma-team-workflow-and-wave1-design.m
 | Engineer | Branch | Task | Owns (declare before cross-lane edits) | Status |
 |---|---|---|---|---|
 | Engineer 1 | `stroland02/Engineer-1` | **SuperLog Study** → adopt/adapt/skip proposal (`docs/research/superlog-integration-analysis.md`) → implement clear low-risk wins | package TBD per win — **must avoid** `context_map/`, `server.py`, `packages/dashboard` (Eng2) | Dispatched |
-| Engineer 2 | `stroland02/Engineer-2` | **Sensorium v1** — execute `docs/superpowers/plans/2026-07-15-sensorium-v1.md` | `packages/dashboard` + additive `context_map/graph_export.py`, `server.py` (1 route), `packages/topology/code-provider.ts` | Dispatched |
+| Engineer 2 | `stroland02/Engineer-2` | **Sensorium v1** — execute `docs/superpowers/plans/2026-07-15-sensorium-v1.md` | `packages/dashboard` + additive `context_map/graph_export.py`, `server.py` (1 route), `packages/topology/code-provider.ts` | In progress |
 | Engineer 3 | `stroland02/Engineer-3` | **Deferred** — blocked-by Engineer 1 (specced from SuperLog CLI/onboarding findings) | — | Idle |
+
+### Engineer 2 file claims (Sensorium v1, declared 2026-07-15)
+
+Landing Tasks 1–3 early so the additive agents-side surface is claimed while Engineer 1 is
+still in SuperLog research. **Engineer 1 must avoid `packages/agents/.../context_map/` and
+`packages/agents/.../server.py`.** Files I own this wave:
+
+- **agents (additive only):** `packages/agents/src/arete_agents/context_map/graph_export.py` (new),
+  `packages/agents/tests/test_graph_export.py` (new), `packages/agents/tests/fixtures/cbm_get_architecture.json` (new),
+  `packages/agents/src/arete_agents/server.py` (one new `GET /context-map/graph/{id}` route — additive).
+- **topology (additive):** `packages/topology/src/code-provider.ts` (+ `.test.ts`), and additive `'code'` members
+  on the `EdgeSource`/`NodeProvider` unions in `topology.ts` (+ their exhaustive `Record`s in `providers.ts`/`services.ts`).
+- **infra:** `docker-compose.prod.yml` (named volume for context-map index persistence).
+- **dashboard (primary lane):** `packages/dashboard/src/lib/{context-map-client,sensors,sensorium}.ts`,
+  `queries.ts` (additive `getFindingsByPath`), `components/dashboard/sensorium-map.tsx`, `app/(dashboard)/overview/page.tsx`.
 
 **Frozen:** the pre-login marketing/advertise landing page. Authenticated product/service
 UIs are open to improve. No net-new visual design system this wave; make services
