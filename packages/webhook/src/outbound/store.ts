@@ -46,6 +46,8 @@ export interface RecordDeliveryInput {
 
 export interface WebhookStore {
   createEndpoint(input: CreateEndpointInput): Promise<StoredEndpoint>
+  /** All endpoints of an installation (enabled or not) — for the management API. */
+  listEndpoints(installationId: string): Promise<StoredEndpoint[]>
   endpointsFor(installationId: string, event: string): Promise<StoredEndpoint[]>
   setEnabled(id: string, enabled: boolean): Promise<void>
   recordDelivery(input: RecordDeliveryInput): Promise<StoredDelivery>
@@ -92,6 +94,10 @@ export class InMemoryWebhookStore implements WebhookStore {
     }
     this.endpoints.set(endpoint.id, endpoint)
     return endpoint
+  }
+
+  async listEndpoints(installationId: string): Promise<StoredEndpoint[]> {
+    return [...this.endpoints.values()].filter((e) => e.installationId === installationId)
   }
 
   async endpointsFor(installationId: string, event: string): Promise<StoredEndpoint[]> {
