@@ -116,14 +116,43 @@ export async function createServer(): Promise<express.Application> {
   server.post('/gitlab-webhook', express.json(), handleGitLabWebhook)
   
   // Infrastructure Approvals Endpoint
-  // Receives clicks from the dashboard when a human approves an LLM's infrastructure command.
+  // Receives clicks from the dashboard when a human approves an LLM's
+  // infrastructure command. Durably transitions the ApprovalPrompt to EXECUTED
+  // and hands the command off to the `approval-exec` queue for the actual
+  // apply/resume work (see approval-handler.ts). Idempotent on replay.
   server.post('/api/approvals/:id/execute', express.json(), async (req, res) => {
-    const { id } = req.params;
-    // 1. Fetch ApprovalPrompt from DB
-    // 2. Spawn secure docker sandbox to execute the saved command
-    // 3. Resume the waiting LangGraph session with the stdout results
-    console.log(`[approvals] Executing infrastructure command for approval ${id}...`)
-    res.json({ status: 'executing' })
+    const { id } = req.params
+    try {
+      const { executeApproval } = await import('./approval-handler.js')
+      const result = await executeApproval(id)
+      switch (result.outcome) {
+        case 'not_found':
+          res.status(404).json({ error: 'approval_not_found', id })
+          return
+        case 'rejected':
+          res.status(409).json({ error: 'approval_rejected', id, status: result.status })
+          return
+        case 'already_executed':
+          // Idempotent replay — report the recorded state, not a fresh run.
+          res.status(200).json({
+            status: 'executed',
+            approvalId: result.approvalId,
+            executedAt: result.executedAt,
+            idempotent: true,
+          })
+          return
+        case 'executed':
+          res.status(202).json({
+            status: 'executed',
+            approvalId: result.approvalId,
+            executedAt: result.executedAt,
+          })
+          return
+      }
+    } catch (err) {
+      console.error(`[approvals] Failed to execute approval ${id}:`, err)
+      res.status(500).json({ error: 'internal_error', id })
+    }
   })
   
   // Mount at root and let createNodeMiddleware own the path matching —

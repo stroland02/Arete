@@ -50,17 +50,32 @@ export async function handleStripeWebhook(req: Request, res: Response) {
         }
         break;
       }
+      case 'customer.subscription.created':
       case 'customer.subscription.updated':
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription;
-        
+
+        // Resolve the purchased tier from the subscription's price so billing.ts
+        // can enforce the tier's monthly review limit. The subscription object
+        // on these events carries its line items inline (no extra API call).
+        // If the price isn't a configured tier (or no price env is set), leave
+        // planTier untouched rather than overwriting it with a wrong value.
+        const priceId = subscription.items?.data?.[0]?.price?.id;
+        const tier = priceId ? getStripeConfig().priceToTier[priceId] : undefined;
+
+        const data: { subscriptionStatus: string; planTier?: string } = {
+          subscriptionStatus: subscription.status,
+        };
+        if (tier) data.planTier = tier;
+
         await prisma.installation.updateMany({
           where: { stripeSubscriptionId: subscription.id },
-          data: {
-            subscriptionStatus: subscription.status,
-          },
+          data,
         });
-        console.log(`Updated subscription status for ${subscription.id} to ${subscription.status}.`);
+        console.log(
+          `Updated subscription ${subscription.id} to status ${subscription.status}` +
+          (tier ? ` (tier: ${tier}).` : '.')
+        );
         break;
       }
       default:

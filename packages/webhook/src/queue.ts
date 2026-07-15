@@ -17,6 +17,13 @@ export const REVIEW_QUEUE_NAME = 'review-pr'
 export const REVIEW_QUEUE_HEAVY_NAME = 'review-pr-heavy'
 export const REVIEW_QUEUE_CONCURRENCY = 5
 
+// Separate queue for executing a human-approved infrastructure command
+// (POST /api/approvals/:id/execute). It is deliberately NOT the review queue:
+// applying an approved fix / resuming the paused agent run is a different unit
+// of work from reviewing a PR, and isolating it means a backlog of reviews can
+// never delay an operator-approved remediation (and vice-versa).
+export const APPROVAL_QUEUE_NAME = 'approval-exec'
+
 export interface GitHubPullRequestJobData {
   provider: 'github'
   kind: 'pull_request'
@@ -58,6 +65,16 @@ export type ReviewJobData =
   | GitHubCheckRunJobData
   | GitLabMergeRequestJobData
 
+/** Payload for an approval-execution job: everything a downstream worker needs
+ *  to apply the approved command and resume the paused agent run, without
+ *  re-reading the DB. `reviewId` ties the command back to the review whose
+ *  agent requested it (ApprovalPrompt.reviewId). */
+export interface ApprovalExecutionJobData {
+  approvalId: string
+  reviewId: string
+  command: string
+}
+
 function redisUrl(): string {
   return process.env.REDIS_URL ?? 'redis://localhost:6379'
 }
@@ -73,6 +90,14 @@ function getConnection(): IORedis {
 
 let queueFast: Queue<ReviewJobData> | null = null
 let queueHeavy: Queue<ReviewJobData> | null = null
+let queueApproval: Queue<ApprovalExecutionJobData> | null = null
+
+export function getApprovalQueue(): Queue<ApprovalExecutionJobData> {
+  if (!queueApproval) {
+    queueApproval = new Queue<ApprovalExecutionJobData>(APPROVAL_QUEUE_NAME, { connection: getConnection() })
+  }
+  return queueApproval
+}
 
 export function getReviewQueue(lane: 'fast' | 'heavy' = 'fast'): Queue<ReviewJobData> {
   if (lane === 'fast') {
@@ -96,12 +121,21 @@ export async function enqueueReviewJob(data: ReviewJobData, lane: 'fast' | 'heav
   return getReviewQueue(lane).add(qName, data, DEFAULT_JOB_OPTIONS)
 }
 
+/** Enqueues execution of a human-approved infrastructure command. Uses the
+ *  same durable BullMQ retry/backoff policy as review jobs so an approved
+ *  remediation survives a worker restart rather than being lost. */
+export async function enqueueApprovalExecution(data: ApprovalExecutionJobData) {
+  return getApprovalQueue().add(APPROVAL_QUEUE_NAME, data, DEFAULT_JOB_OPTIONS)
+}
+
 /** For graceful shutdown and test cleanup. */
 export async function closeReviewQueue(): Promise<void> {
   await queueFast?.close()
   await queueHeavy?.close()
+  await queueApproval?.close()
   await connection?.quit()
   queueFast = null
   queueHeavy = null
+  queueApproval = null
   connection = null
 }

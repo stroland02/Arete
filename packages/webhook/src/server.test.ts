@@ -35,3 +35,57 @@ describe('server middleware mount', () => {
     expect(res.body).toEqual({ status: 'ok' })
   })
 })
+
+describe('POST /api/approvals/:id/execute route wiring', () => {
+  beforeEach(() => { vi.resetModules() })
+
+  async function buildWith(executeApproval: (id: string) => Promise<any>): Promise<Application> {
+    vi.doMock('@arete/db', () => ({ PrismaClient: vi.fn() }))
+    vi.doMock('./approval-handler.js', () => ({ executeApproval }))
+    const { createServer } = await import('./server.js')
+    return createServer()
+  }
+
+  it('returns 202 and the executed state when the approval is newly executed', async () => {
+    const executedAt = new Date('2026-07-14T00:00:00Z')
+    const execute = vi.fn().mockResolvedValue({ outcome: 'executed', approvalId: 'a1', executedAt })
+    const app = await buildWith(execute)
+
+    const res = await request(app).post('/api/approvals/a1/execute').send({})
+
+    expect(execute).toHaveBeenCalledWith('a1')
+    expect(res.status).toBe(202)
+    expect(res.body).toMatchObject({ status: 'executed', approvalId: 'a1' })
+  })
+
+  it('returns 404 when the approval does not exist', async () => {
+    const execute = vi.fn().mockResolvedValue({ outcome: 'not_found' })
+    const app = await buildWith(execute)
+
+    const res = await request(app).post('/api/approvals/nope/execute').send({})
+
+    expect(res.status).toBe(404)
+    expect(res.body).toMatchObject({ error: 'approval_not_found' })
+  })
+
+  it('returns 200 idempotent on replay of an already-executed approval', async () => {
+    const executedAt = new Date('2026-07-14T00:00:00Z')
+    const execute = vi.fn().mockResolvedValue({ outcome: 'already_executed', approvalId: 'a1', executedAt })
+    const app = await buildWith(execute)
+
+    const res = await request(app).post('/api/approvals/a1/execute').send({})
+
+    expect(res.status).toBe(200)
+    expect(res.body).toMatchObject({ status: 'executed', idempotent: true })
+  })
+
+  it('returns 409 when the approval was rejected', async () => {
+    const execute = vi.fn().mockResolvedValue({ outcome: 'rejected', status: 'REJECTED' })
+    const app = await buildWith(execute)
+
+    const res = await request(app).post('/api/approvals/a1/execute').send({})
+
+    expect(res.status).toBe(409)
+    expect(res.body).toMatchObject({ error: 'approval_rejected' })
+  })
+})

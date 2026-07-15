@@ -119,14 +119,19 @@ model ReviewComment {
 }
 
 model ApprovalPrompt {
-  id        String   @id @default(uuid())
-  reviewId  String
-  command   String   // The AWS CLI or bash command to execute
-  reason    String   // Explanation presented to the human
-  status    String   @default("PENDING") // PENDING, APPROVED, REJECTED
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  review    Review   @relation(fields: [reviewId], references: [id])
+  id         String    @id @default(uuid())
+  reviewId   String
+  command    String    // The AWS CLI or bash command to execute
+  reason     String    // Explanation presented to the human
+  status     String    @default("PENDING") // PENDING, APPROVED, REJECTED, EXECUTED
+  /// Set the moment the human-approved command is durably accepted for
+  /// execution (POST /api/approvals/:id/execute). Distinct from updatedAt
+  /// (which changes on any write): a non-null executedAt is the authoritative
+  /// "this approval has been actioned" marker and the endpoint's idempotency key.
+  executedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  review     Review    @relation(fields: [reviewId], references: [id])
 }
 
 model AgentMemory {
