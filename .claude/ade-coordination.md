@@ -123,3 +123,25 @@ Known / not-yet-done before merge:
 - **Lint is red, but was already red on `main`** for the identical reason: the fake-Prisma test helpers use `as any` (a hand-written Prisma fake can't implement the full generated client type), which trips `@typescript-eslint/no-explicit-any`. eslint config is identical to main's with no test-file override. This branch adds +3 instances of that same pre-existing, pervasive pattern (getTrendSeries's test + its repository.findMany fake). Not introduced by this port; "fixing" only the 3 new ones would make them inconsistent with the 8 identical neighbors. Decide at merge whether to address the whole pattern separately (a test-file eslint override or properly-typed fake) — out of scope for a UI port.
 - **Authenticated render NOT exercised via live OAuth.** The dashboard page is `force-dynamic` + gated by GitHub OAuth (`auth()`), and no OAuth app / `.env.example` is configured in this environment, so a real logged-in render was not driven. What IS proven: the full page tree compiles against the real data shapes, the unauthenticated→/login redirect works (test), and the login page + auth UI reskin compile and are in the route manifest. A human should do one real signed-in smoke test before merge.
 - Given the security-sensitive surface (auth-scoped multi-tenant queries), a human review of the authenticated render is warranted before this touches `main`, despite the nominal auto-merge policy.
+
+---
+
+## Wave-1 (2026-07-15) — PM ⇄ Engineer fleet
+
+**Auto-merge-on-green is RETIRED.** Integration protocol now: PM builds a fresh
+`integration` branch off `main`, merges engineer branches, runs the FULL test matrix
+**and drives the real flow**, opens ONE PR `integration → main`; the **human merges**.
+Comms are **star-topology** (engineers ⇄ PM only, never peer-to-peer) with the uniform
+status contract `scope-confirmed → progress → blockers → done+verification`.
+Design: `docs/superpowers/specs/2026-07-15-kuma-team-workflow-and-wave1-design.md`.
+
+| Engineer | Branch | Task | Owns (declare before cross-lane edits) | Status |
+|---|---|---|---|---|
+| Engineer 1 | `stroland02/Engineer-1` | **SuperLog Study** → adopt/adapt/skip proposal (`docs/research/superlog-integration-analysis.md`) → implement clear low-risk wins | package TBD per win — **must avoid** `context_map/`, `server.py`, `packages/dashboard` (Eng2) | Dispatched |
+| Engineer 2 | `stroland02/Engineer-2` | **Sensorium v1** — execute `docs/superpowers/plans/2026-07-15-sensorium-v1.md` | `packages/dashboard` + additive `context_map/graph_export.py`, `server.py` (1 route), `packages/topology/code-provider.ts` | Dispatched |
+| Engineer 3 | `stroland02/Engineer-3` | **Deferred** — blocked-by Engineer 1 (specced from SuperLog CLI/onboarding findings) | — | Idle |
+
+**Frozen:** the pre-login marketing/advertise landing page. Authenticated product/service
+UIs are open to improve. No net-new visual design system this wave; make services
+production-ready. Sensorium builds ON the shipped context-mapping foundation
+(`docs/superpowers/plans/2026-07-13-context-mapping-foundation.md`) — do not rebuild it.
