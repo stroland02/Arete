@@ -78,6 +78,13 @@ services:
       REDIS_URL: redis://redis:6379
     ports:
       - "8000:8000"
+    volumes:
+      # Persist the per-installation clone cache + codebase-memory-mcp on-disk
+      # index (both live under /app/.data, per the Dockerfile) so the code
+      # graph survives restarts and stays queryable by /context-map/graph
+      # outside a live review. The foundation deliberately used no volume; the
+      # Sensorium graph endpoint needs the index to outlast the review.
+      - agents_context_map:/app/.data
     depends_on:
       postgres:
         condition: service_healthy
@@ -147,3 +154,4 @@ volumes:
   postgres_prod_data:
   redis_prod_data:
   clickhouse_prod_data:
+  agents_context_map:
