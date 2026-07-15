@@ -138,7 +138,7 @@ Design: `docs/superpowers/specs/2026-07-15-kuma-team-workflow-and-wave1-design.m
 | Engineer | Branch | Task | Owns (declare before cross-lane edits) | Status |
 |---|---|---|---|---|
 | Engineer 1 | `stroland02/Engineer-1` | **SuperLog Study** → adopt/adapt/skip proposal (`docs/research/superlog-integration-analysis.md`) → implement clear low-risk wins | package TBD per win — **must avoid** `context_map/`, `server.py`, `packages/dashboard` (Eng2) | Dispatched |
-| Engineer 2 | `stroland02/Engineer-2` | **Sensorium v1** — execute `docs/superpowers/plans/2026-07-15-sensorium-v1.md` | `packages/dashboard` + additive `context_map/graph_export.py`, `server.py` (1 route), `packages/topology/code-provider.ts` | In progress |
+| Engineer 2 | `stroland02/Engineer-2` | **Sensorium v1** — execute `docs/superpowers/plans/2026-07-15-sensorium-v1.md` | `packages/dashboard` + additive `context_map/graph_export.py`, `server.py` (1 route), `packages/topology/code-provider.ts` | **Ready for integration** — 7/7 tasks, full matrix green, real flow driven (see gate note below) |
 | Engineer 3 | `stroland02/Engineer-3` | **Deferred** — blocked-by Engineer 1 (specced from SuperLog CLI/onboarding findings) | — | Idle |
 
 ### Engineer 2 file claims (Sensorium v1, declared 2026-07-15)
@@ -155,6 +155,33 @@ still in SuperLog research. **Engineer 1 must avoid `packages/agents/.../context
 - **infra:** `docker-compose.prod.yml` (named volume for context-map index persistence).
 - **dashboard (primary lane):** `packages/dashboard/src/lib/{context-map-client,sensors,sensorium}.ts`,
   `queries.ts` (additive `getFindingsByPath`), `components/dashboard/sensorium-map.tsx`, `app/(dashboard)/overview/page.tsx`.
+
+#### Engineer 2 gate note (Sensorium v1) — for the PM integrating
+
+**Full matrix green:** webhook 233, agents 282, topology 23, dashboard build ✓ + test 168.
+
+**Real flow driven (what the sandbox allowed):**
+- Indexed this repo (agents subtree) with the **real** `codebase-memory-mcp` binary and captured the real
+  `get_architecture` payload → the committed fixture. `build_graph_export` normalizes it into **82 real
+  nodes / 56 real edges**.
+- **Live HTTP:** ran the agents FastAPI server and hit `GET /context-map/graph/999` → honest
+  `{available:false, reason:"No MCP session for server 'context-map-999'."}` — the exact unavailable branch
+  `/overview` renders.
+- **Full render pipeline on real data:** real GraphExport → `codeGraphProvider` → `joinSensors` → `SensoriumMap`
+  (renderToStaticMarkup) renders the real file nodes and lands a **pain** badge (count 2, max severity error)
+  on a real file by path-join.
+
+**Two honest deviations from the plan (discovered by capturing the real payload, as the plan told me to):**
+1. `get_architecture` (binary v0.8.1) returns an **architecture summary**, NOT a raw node/edge dump, and its
+   `edge_types` include **no TESTS edge** and no dead-code flag. So `graph_export.py` builds a real
+   File/Folder/Package/Function map from `file_tree` + `packages` + `boundaries` + `entry_points`, and the
+   **vitality (untested) / necrosis (dead)** sensors are honestly **absent in v1** (joining the already-deferred
+   heat/churn sensor) rather than fabricated. pain/activity/pulse are unaffected.
+2. The **live stdio MCP session cannot complete `initialize`** in this sandbox — the binary writes `level=…`
+   logs to **stdout**, corrupting the JSON-RPC stream (CLI `cli <tool>` mode works; the session doesn't). This
+   is the **foundation's** connection path (indexer/session), which this wave must not rebuild. Consequence:
+   the live-session → HTTP *available* path and the OAuth-gated `/overview` signed-in render were **not** driven
+   here; they need a deployed env (or a binary build that logs to stderr). Flagged for the PM's integration drive.
 
 **Frozen:** the pre-login marketing/advertise landing page. Authenticated product/service
 UIs are open to improve. No net-new visual design system this wave; make services
