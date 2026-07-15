@@ -137,9 +137,20 @@ Design: `docs/superpowers/specs/2026-07-15-kuma-team-workflow-and-wave1-design.m
 
 | Engineer | Branch | Task | Owns (declare before cross-lane edits) | Status |
 |---|---|---|---|---|
-| Engineer 1 | `stroland02/Engineer-1` | **SuperLog Study** → adopt/adapt/skip proposal (`docs/research/superlog-integration-analysis.md`) → implement clear low-risk wins | package TBD per win — **must avoid** `context_map/`, `server.py`, `packages/dashboard` (Eng2) | Dispatched |
-| Engineer 2 | `stroland02/Engineer-2` | **Sensorium v1** — execute `docs/superpowers/plans/2026-07-15-sensorium-v1.md` | `packages/dashboard` + additive `context_map/graph_export.py`, `server.py` (1 route), `packages/topology/code-provider.ts` | Dispatched |
-| Engineer 3 | `stroland02/Engineer-3` | **Deferred** — blocked-by Engineer 1 (specced from SuperLog CLI/onboarding findings) | — | Idle |
+| Engineer 1 | `stroland02/Engineer-1` | **P1.1 outbound webhooks** (built; wiring PrismaWebhookStore + `server.ts` mount + retry worker + emission points). **Next: P1.3 TS consumer** of `approval-exec` (builds to the contract below). | `packages/webhook` + **sole `@arete/db` schema writer** this wave | In progress |
+| Engineer 2 | `stroland02/Engineer-2` | **Sensorium v1** — execute `docs/superpowers/plans/2026-07-15-sensorium-v1.md` | `packages/dashboard` + additive `context_map/graph_export.py`, `server.py` (1 route), `packages/topology/code-provider.ts` | **Done — frozen, queued for integration** |
+| Engineer 3 | `stroland02/Engineer-3` | **P1.3 Python apply/resume** — replace simulated stubs (`tools/actions.py`, `auto_resolver.py`) with real "apply command / resume paused LangGraph run" + expose `POST /approvals/apply`. Consumer-side of the `approval-exec` loop. | `packages/agents` (Python) + **one additive route in `server.py`** — shared-additive with Eng2's frozen graph route; both are distinct functions, resolve at the integration gate | Dispatched |
+
+### P1.3 `approval-exec` contract (PM-owned — Eng1 TS worker ⇄ Eng3 Python both build to this)
+
+The queue + enqueue side already ship (`queue.ts` `ApprovalExecutionJobData = { approvalId, reviewId, command }`; `approval-handler.ts executeApproval()`). P1.3 is the **consumer**:
+
+- **Eng3 (agents):** `POST /approvals/apply` on the FastAPI service (mirrors the `/review` bridge).
+  - body: `{ approvalId: str, reviewId: str, command: str }` (== `ApprovalExecutionJobData`)
+  - returns: `{ status: "applied" | "failed", detail: str, resumedRunId?: str }`
+  - **idempotent per `approvalId`** — a redelivered job must not double-apply.
+- **Eng1 (webhook):** BullMQ worker consumes `approval-exec` → calls `/approvals/apply` via a `review-bridge.ts`-style fn → completes on `applied`; a thrown/`failed` lets BullMQ backoff retry (existing `DEFAULT_JOB_OPTIONS`).
+- **HITL moat preserved:** apply runs ONLY off an `EXECUTED` `ApprovalPrompt`; never bypass the approval gate; never adopt `automerge: immediately`.
 
 **Frozen:** the pre-login marketing/advertise landing page. Authenticated product/service
 UIs are open to improve. No net-new visual design system this wave; make services
