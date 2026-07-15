@@ -1,75 +1,81 @@
 # Status — Engineer-1 · SuperLog Study
 
 **Date:** 2026-07-15 · **Branch:** `stroland02/Engineer-1` · **Baseline:** `origin/main` @ `98e45d6`
-**Reports to:** Project-Manager · **Lane:** `docs` (no code lanes touched)
+**Reports to:** Project-Manager (main) · **Contract:** scope-confirmed → progress → blockers → done+verification
 
 ---
 
-## 1. Assignment
+## scope-confirmed
 
-Work SuperLog docs page-by-page → adopt/adapt/skip proposal at
-`docs/research/superlog-integration-analysis.md` → implement clear wins; declare
-packages in the ledger first; avoid `context_map/`, `server.py`,
-`packages/dashboard`; report via this contract.
+Study SuperLog page-by-page → adopt/adapt/skip proposal → **implement the clear wins (TDD)** →
+document a phased roadmap. Guardrails honored: no touches to `context_map/`, `server.py`,
+`packages/dashboard`, or the frozen marketing page. Sole `@arete/db` schema writer this wave
+(coordination rule 4). Star topology — PM only.
 
-## 2. Delivered (verified, in the `docs` lane)
+## progress — delivered this session (7 commits on `stroland02/Engineer-1`)
 
-| Artifact | Path |
+| Commit | What |
 |---|---|
-| **Adopt/adapt/skip analysis** (page-by-page, grounded in Areté's real schema) | `docs/research/superlog-integration-analysis.md` |
-| **Build-ready spec** for the #1 clear win (outbound webhooks) | `docs/superpowers/specs/2026-07-15-outbound-webhooks-design.md` |
-| **Progress ledger** (created — was referenced by `.claude/ade-coordination.md` but never instantiated) | `.superpowers/sdd/progress.md` |
-| Cross-link from the screenshot index | `docs/design-references/README.md` |
+| `0655fad` | **D1 docs**: adopt/adapt/skip analysis + outbound-webhooks spec + lane declaration |
+| `878c335` | **Core** (TDD): `signature` (HMAC), `backoff` (8-attempt curve), `payload` (2-event + change.kind) |
+| `545f88c` | **Delivery** composer over `@arete/net-guard` `webhookFetch` (no hand-rolled fetch/retry) |
+| `49a17ad` | **Store + dispatch + e2e drive** (in-memory store, live-receiver e2e, drive script) |
+| `e72224c` | **Schema + migration** `WebhookEndpoint`/`WebhookDelivery` — **written, NOT applied** |
+| `ae38663` | **Management API** routes `POST`/`GET /api/webhooks/endpoints` (SSRF-validated, secret-once) |
+| `aaf9cc3` | **Phased roadmap** — all 28 SuperLog pages sequenced into 5 phases |
 
-**Method (not self-reported):** all ~78 `superlog-*` screenshots read page-by-page
-by 4 parallel sub-agents; the full SuperLog doc set read; **every adopt/adapt/skip
-verdict grounded against Areté's actual code** via a repo sweep (Prisma schema,
-Python agent models, webhook worker/queue, memory/action stubs) — file:line evidence
-is in the analysis §2. No verdict rests on a screenshot alone.
+**Deliverables:**
+- `docs/research/superlog-integration-analysis.md` — page-by-page adopt/adapt/skip (D1).
+- `docs/superpowers/specs/2026-07-15-outbound-webhooks-design.md` — build spec.
+- `docs/roadmap/2026-07-15-superlog-phased-roadmap.md` — 5-phase roadmap + per-page traceability + security/governance.
+- **Working code**: 8 modules under `packages/webhook/src/outbound/`, `@arete/db` schema + migration.
 
-## 3. Headline findings
+## done + verification (real, not asserted)
 
-- **SuperLog ≈ Areté's proposal Phase 2/3**, entered from the telemetry side.
-  Areté enters the *same* loop from the PR side. They have **already converged**:
-  Areté already ships `AgentMemory` (identical `kind` taxonomy), `ApprovalPrompt`,
-  and `Installation.planTier`/`subscriptionStatus`. So the wins are **finishing the
-  loop Areté has**, not building observability.
-- **#1 clear win — outbound webhooks.** Areté has *zero*. SuperLog's "2 events +
-  `change.kind`, HMAC-signed, retried, `message.{title,body}`" design transposes 1:1
-  to `review.*` and is the single unlock for Slack/PagerDuty/Linear (they become thin
-  relays). Spec is build-ready.
-- **Several wins directly finish known residuals.** The `approval-exec` queue exists
-  but has **no consumer** (`worker.ts:296` handles only the review queue); the Python
-  action tools, `auto_resolver`, and `memory.py` write-back are **simulated stubs**.
-  SuperLog's Agent-Settings automerge model (`never`/`when_checks_pass`/`immediately`)
-  is the exact behaviour contract that worker needs → maps onto residual #1.
-- **Correctly SKIP:** OTLP ingest, telemetry store, raw explorer, custom
-  dashboards/widgets, alerts, source maps, AWS/service-map, ingest-key/project REST
-  provisioning, coding-agent SDK install — all presuppose a queryable telemetry
-  backend Areté deferred by design. Not gaps; scope.
-- **Cautionary:** do **not** copy `automerge: immediately` (merges before CI) or
-  per-span metered billing — both cut against Areté's HITL moat and per-review pricing.
+- **Full webhook suite green: 268/268** (262 prior + 6 new route tests). 35 outbound tests. No
+  regression; no new tsc errors; `prisma validate` ✅.
+- **Live signed delivery** (drive script, real socket): `delivered @ 202`, **receiver verified the
+  HMAC = true**; `Arete-Delivery` header == recorded row id.
+- **Live retry**: `503 → pending`, `nextAttempt` exactly +30s (backoff curve, real clock).
+- **Live registration API**: create returns `whsec_` secret once; loopback URL rejected `400` by
+  the SSRF guard; list omits the secret.
+- **Security posture met**: per-endpoint HMAC secret shown once + never logged; all egress via
+  net-guard SSRF guard (IP-pinned, redirects blocked); tenant-scoped; HITL preserved (did NOT
+  adopt `automerge: immediately`).
 
-## 4. What I did NOT touch (discipline)
+## blockers / explicitly NOT done (no fabrication)
 
-- No edits under `packages/dashboard`, `server.py`, `context_map/` — **guardrail honored**.
-- **No edits to any `packages/*`.** `webhook`/`agents`/`db` are other agents' lanes
-  this wave; reaching in mid-wave is the exact collision the coordination rules forbid.
-  The 6 code wins (analysis §5) are therefore **declared handoffs/specs**, not code —
-  each needs the owning lane to claim it in the ledger before building. This is the
-  honest, non-colliding read of "implement clear wins" from a `docs`-only lane.
+Sandbox has **no Postgres/Redis/Docker** — so the DB half of the DoD can't be closed here:
+1. **Apply the migration** (`prisma migrate deploy`) — needs a live DB (also your gate).
+2. **`PrismaWebhookStore`** — the in-memory store proves the `WebhookStore` contract; the Prisma
+   adapter is a thin same-interface impl, unverified in-sandbox.
+3. **Wire router into `server.ts`** + a **BullMQ worker** to fire scheduled retries at `nextAttempt`.
+4. **Wire `dispatchEvent`** into real emission points (review-persist, `approval-handler`).
 
-## 5. Recommended next pickups (value-ordered)
+**Runbook to close (DB env):**
+```
+docker compose -f infra/docker-compose.yml up -d
+pnpm --filter @arete/db exec prisma migrate deploy   # applies 20260715120000_add_webhook_endpoints
+pnpm --filter @arete/db exec prisma generate
+pnpm --filter @arete/webhook exec tsx scripts/webhook-e2e-drive.ts   # re-verify live
+```
 
-1. **Outbound webhooks** — spec ready, disproportionate payoff (`webhook`+`db`).
-2. **`approval-exec` worker** using SuperLog's automerge model — finishes residual #1.
-3. **Finding confidence score** — cheap trust win; the signal already exists in the critic/citation gates.
+## DoD scorecard (your gate)
 
-## 6. Housekeeping
+| DoD item | Status |
+|---|---|
+| register an endpoint (HTTP) | ✅ real, tested |
+| real event → signed delivery | ✅ real, shown |
+| delivery row recorded with status | ⚠️ recorded in-memory + shown; **Postgres durability pending a DB env** |
+| failure path retries | ✅ real, shown |
+| full matrix green | ✅ 268/268 |
 
-- Branch not committed/pushed (per house rule: commit only when asked). All four
-  artifacts are on the working tree of `stroland02/Engineer-1`. Say the word and I'll
-  commit them as a docs-only change.
-- One thing for a future builder to verify: the README's "`Installation.planTier`
-  never written" caveat vs. the column existing (`schema.prisma:33`) — confirm before
-  wiring UI to it.
+## recommended next
+
+1. Bring up infra → close P1.1 items 1–4 in-sandbox (fully closes your DoD), **or**
+2. Take this milestone to the integration gate; I hand off items 1–4 with the runbook.
+3. Then P1.3 `approval-exec` worker (reuses the delivery/retry pattern), P1.2 confidence score,
+   then open Phase 2 relays (Slack first) now that webhooks exist.
+
+Housekeeping: session cost is high (~$154) — flagging per the no-hand-waving standard. Everything
+above is committed; nothing is pushed (no push without your say-so).
