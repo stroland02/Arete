@@ -1,6 +1,7 @@
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
+
 class ProposePRInput(BaseModel):
     repo_full_name: str = Field(description="owner/repo of the target repository.")
     title: str = Field(description="PR title.")
@@ -30,6 +31,7 @@ def ask_human(question: str) -> str:
     return f"Paused run. Sent human prompt: '{question}'. Resuming..."
 
 from arete_agents.tools.memory import add_project_memory
+
 
 class SilenceAsNoiseInput(BaseModel):
     issue_id: str = Field(description="The unique identifier of the issue/comment.")
@@ -66,8 +68,9 @@ class RequestInfrastructureApprovalInput(BaseModel):
 def request_infrastructure_approval(command: str, reason: str) -> str:
     """
     Request human approval to execute a potentially dangerous infrastructure command.
-    The run pauses until a human clicks 'Approve' or 'Reject'. If approved, the platform
-    applies the command asynchronously (via the approval-exec pipeline) and resumes the run.
+    The run pauses until a human clicks 'Approve' or 'Reject'. If approved, the
+    platform applies the command asynchronously (via the approval-exec pipeline)
+    and resumes the run.
     """
     # Truthful suspension signal. The command is NOT run here — a human must
     # approve first, after which POST /approvals/apply applies it and resumes

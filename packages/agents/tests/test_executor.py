@@ -1,8 +1,8 @@
 import pytest
 
 from arete_agents.tools.executor import (
-    CommandOutcome,
     CommandExecutionError,
+    CommandOutcome,
     MockCommandExecutor,
     SubprocessCommandExecutor,
     get_command_executor,

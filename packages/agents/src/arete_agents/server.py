@@ -1,8 +1,8 @@
 import logging
 from typing import Any, Dict
 
-from fastapi import FastAPI
-from fastapi.responses import PlainTextResponse
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 
 from arete_agents.agents.chat import ChatAgent
 from arete_agents.config import get_settings
@@ -10,15 +10,17 @@ from arete_agents.context_map.ui import ContextMapUIError, get_or_start_ui
 from arete_agents.llm.base import get_llms_by_role, role_tiers
 from arete_agents.models.pr import PRContext
 from arete_agents.orchestrator import ReviewOrchestrator
+from arete_agents.remediation import RemediationGraph
+from arete_agents.tools.executor import CommandExecutionError, get_command_executor
 
 app = FastAPI()
 
 # OpenTelemetry Auto-Instrumentation
 from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME
 
 # Set up the tracer provider with service name
 resource = Resource(attributes={SERVICE_NAME: "arete-agents"})
@@ -51,11 +53,45 @@ except Exception:
 _llms = get_llms_by_role(_settings)
 _orchestrator = ReviewOrchestrator(llm=_llms, tiers=role_tiers(_settings))
 _chat_agent = ChatAgent(llm=_llms["chat"])
+# Applies operator-approved infra commands and resumes the run. Singleton so
+# its checkpointer persists across requests within the process — that shared
+# state is what makes POST /approvals/apply idempotent for a redelivered job.
+# Executor defaults to the mock; deploy sets ARETE_COMMAND_EXECUTOR=subprocess.
+_remediation = RemediationGraph(get_command_executor())
 
 
 @app.post("/review")
 def review(pr: PRContext):
     return _orchestrator.run(pr)
+
+
+class ApplyApprovalRequest(BaseModel):
+    approvalId: str
+    reviewId: str
+    command: str
+
+
+@app.post("/approvals/apply")
+def apply_approval(req: ApplyApprovalRequest):
+    """Apply an operator-approved infrastructure command and resume the run.
+    Driven by the approval-exec worker after a human approved the ApprovalPrompt.
+    Idempotent per approvalId — a redelivered job never double-applies."""
+    try:
+        result = _remediation.apply_and_resume(
+            req.approvalId, req.reviewId, req.command
+        )
+    except CommandExecutionError as exc:
+        # The command could not be launched — nothing was applied. Surface a 503
+        # so the approval-exec queue redelivers; the retry is safe because
+        # apply_and_resume is idempotent and never double-applies.
+        raise HTTPException(
+            status_code=503, detail=f"transient execution failure: {exc}"
+        )
+    return {
+        "status": "applied" if result.applied else "failed",
+        "detail": result.detail,
+        "resumedRunId": req.approvalId,
+    }
 
 
 @app.post("/chat")
