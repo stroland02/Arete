@@ -48,8 +48,8 @@ const HOW_IT_WORKS = [
 ];
 
 // Mirrors the real agent set in packages/agents/src/arete_agents/agents/*.py
-// (agent_name values) — same 6 agents shown in the authenticated dashboard's
-// AgentOrchestrationGraph and the hero graph, not a marketing-only invented
+// (agent_name values) — same 6 agents shown in the authenticated dashboard
+// and the hero graph, not a marketing-only invented
 // list. Colors match the hero graph's per-agent hues (chosen to read on the
 // light Marble & Ink ground).
 const AGENTS = [
