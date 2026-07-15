@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { layoutTopology } from "@arete/topology";
-import type { Topology, TopologyNode } from "@arete/topology";
+import type { Topology, TopologyNode, TopologyEdge } from "@arete/topology";
 import { 
   IconRobot, 
   IconFileDiff, 
@@ -42,35 +42,36 @@ export function AgentRunExplorer({ findings }: AgentRunExplorerProps) {
   // Derive a topology from the findings list
   const topology = useMemo<Topology>(() => {
     const nodes: TopologyNode[] = [
-      { id: "root_diff", kind: "data", label: "Pull Request Diff", provider: "system" }
+      { id: "root_diff", kind: "data", label: "Pull Request Diff", provider: "manual" }
     ];
-    const edges: { from: string; to: string }[] = [];
-    
+    const edges: TopologyEdge[] = [];
+
     // Create unique agent nodes based on the categories present
     const agentsPresent = new Set<string>();
     findings.forEach(f => agentsPresent.add(f.category));
-    
+
     agentsPresent.forEach(cat => {
       const agentId = `agent_${cat}`;
-      nodes.push({ 
-        id: agentId, 
-        kind: "compute", 
-        label: `${cat.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} Agent`, 
-        provider: cat 
+      nodes.push({
+        id: agentId,
+        kind: "compute",
+        label: `${cat.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} Agent`,
+        provider: "telemetry",
+        meta: { category: cat },
       });
-      edges.push({ from: "root_diff", to: agentId });
+      edges.push({ id: `root_diff->${agentId}`, from: "root_diff", to: agentId, source: "manual" });
     });
-    
+
     // Add findings nodes and connect them to their agents
     findings.forEach(f => {
       nodes.push({
         id: f.id,
         kind: "service",
         label: `${f.path}:${f.line}`,
-        provider: "finding",
-        meta: { finding: f }
+        provider: "telemetry",
+        meta: { finding: f, category: f.category }
       });
-      edges.push({ from: `agent_${f.category}`, to: f.id });
+      edges.push({ id: `agent_${f.category}->${f.id}`, from: `agent_${f.category}`, to: f.id, source: "manual" });
     });
 
     return { nodes, edges, groups: [] };
@@ -147,8 +148,10 @@ export function AgentRunExplorer({ findings }: AgentRunExplorerProps) {
 
           const w = 248;
           const h = n.kind === "service" ? 156 : 96;
-          const Icon = CATEGORY_ICONS[n.provider] || IconRobot;
+          const category = (n.meta?.category as string | undefined) ?? "";
+          const Icon = CATEGORY_ICONS[category] || IconRobot;
           const isFinding = n.kind === "service";
+          const finding = n.meta?.finding as AgentRunExplorerProps["findings"][number] | undefined;
           
           return (
             <foreignObject 
@@ -175,10 +178,10 @@ export function AgentRunExplorer({ findings }: AgentRunExplorerProps) {
                       <span className="text-xs font-mono text-slate-300 truncate font-semibold">{n.label}</span>
                     </div>
                     <p className="text-[11px] text-slate-400 line-clamp-3 leading-relaxed">
-                      {n.meta?.finding.body}
+                      {finding?.body}
                     </p>
                     <div className="mt-auto pt-3 flex items-center justify-between border-t border-slate-800">
-                      <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">{n.meta?.finding.severity}</span>
+                      <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">{finding?.severity}</span>
                     </div>
                   </>
                 ) : n.kind === "data" ? (
