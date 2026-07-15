@@ -3,6 +3,7 @@ import {
   getConnectedTelemetryProviders,
   getDashboardViewModel,
   getDashboardsViewModel,
+  getFindingsByPath,
   getMasterGridSnapshots,
   getTrendSeries,
   resolveSelectedInstallationIds,
@@ -33,6 +34,12 @@ interface FakeComment {
   reviewId: string;
   severity: string;
   category: string;
+  // Optional so existing tests (which only set the four fields above) still
+  // typecheck; getFindingsByPath reads these.
+  path?: string;
+  line?: number;
+  body?: string;
+  noiseState?: string;
 }
 interface FakeTelemetryConnection {
   id: string;
@@ -144,6 +151,24 @@ function createFakeDb(
         return [...counts.entries()]
           .map(([k, count]) => ({ [field]: k, _count: { [field]: count } }))
           .sort((a: any, b: any) => b._count[field] - a._count[field]);
+      },
+      findMany: async ({ where, select, take }: any) => {
+        void select;
+        return comments
+          .filter((c) => {
+            const review = reviewById.get(c.reviewId)!;
+            if (!reviewMatchesRepoScope(review, where.review.repository)) return false;
+            if (where.noiseState && c.noiseState !== where.noiseState) return false;
+            return true;
+          })
+          .slice(0, take)
+          .map((c) => ({
+            path: c.path,
+            line: c.line,
+            severity: c.severity,
+            category: c.category,
+            body: c.body,
+          }));
       },
     },
     telemetryConnection: {
@@ -436,6 +461,46 @@ describe('getMasterGridSnapshots', () => {
     };
 
     const result = await getMasterGridSnapshots(db as any, []);
+
+    expect(result).toEqual([]);
+    expect(queried).toBe(false);
+  });
+});
+
+describe('getFindingsByPath: installation scoping (Sensorium pain sensor)', () => {
+  it('returns only the authorized installation\'s findings, with their paths', async () => {
+    const now = new Date();
+    const repos: FakeRepo[] = [
+      { id: 'repo-a', installationId: 'inst-a', fullName: 'acme/api', createdAt: now },
+      { id: 'repo-b', installationId: 'inst-b', fullName: 'globex/web', createdAt: now },
+    ];
+    const reviews: FakeReview[] = [
+      { id: 'review-a1', repositoryId: 'repo-a', prNumber: 1, riskLevel: 'low', createdAt: now },
+      { id: 'review-b1', repositoryId: 'repo-b', prNumber: 1, riskLevel: 'high', createdAt: now },
+    ];
+    const comments: FakeComment[] = [
+      { id: 'c-a1', reviewId: 'review-a1', severity: 'error', category: 'security', path: 'src/a.ts', line: 3, body: 'x', noiseState: 'OPEN' },
+      { id: 'c-a2', reviewId: 'review-a1', severity: 'warning', category: 'quality', path: 'src/a.ts', line: 9, body: 'y', noiseState: 'SILENCED' },
+      { id: 'c-b1', reviewId: 'review-b1', severity: 'error', category: 'security', path: 'src/secret.ts', line: 1, body: 'z', noiseState: 'OPEN' },
+    ];
+    const db = createFakeDb(repos, reviews, comments);
+
+    // Session authorized for installation A ONLY.
+    const findings = await getFindingsByPath(db as any, ['inst-a']);
+
+    const paths = findings.map((f) => f.path);
+    expect(paths).toContain('src/a.ts'); // A's OPEN finding
+    expect(paths).not.toContain('src/secret.ts'); // NEVER B's finding
+    // only OPEN findings; the SILENCED one is excluded
+    expect(findings.every((f) => f.path === 'src/a.ts')).toBe(true);
+    expect(findings.length).toBe(1);
+  });
+
+  it('never queries the db and returns [] for zero authorized installations', async () => {
+    let queried = false;
+    const db = { reviewComment: { findMany: async () => { queried = true; return []; } } };
+
+    const result = await getFindingsByPath(db as any, []);
 
     expect(result).toEqual([]);
     expect(queried).toBe(false);

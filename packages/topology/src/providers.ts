@@ -194,6 +194,7 @@ const NODE_PRECEDENCE: Record<NodeProvider, number> = {
   infra: 3,
   telemetry: 2,
   merged: 1,
+  code: 0, // structural code-graph provenance — weakest when merged with live data
 };
 // Edge precedence: a manual edge is intentional; telemetry is observed fact;
 // infra is inferred; suggested is an AI guess.
@@ -202,6 +203,7 @@ const EDGE_PRECEDENCE: Record<EdgeSource, number> = {
   telemetry: 3,
   infra: 2,
   suggested: 1,
+  code: 0, // structural code-graph edge — weakest when merged with observed edges
 };
 
 function mergeNode(a: TopologyNode, b: TopologyNode): TopologyNode {

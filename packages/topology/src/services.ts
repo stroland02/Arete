@@ -66,7 +66,7 @@ const memberOrder = (a: ServiceMember, b: ServiceMember): number => {
   return ra !== rb ? ra - rb : a.label.localeCompare(b.label);
 };
 
-const EDGE_RANK: Record<EdgeSource, number> = { manual: 4, telemetry: 3, infra: 2, suggested: 1 };
+const EDGE_RANK: Record<EdgeSource, number> = { manual: 4, telemetry: 3, infra: 2, suggested: 1, code: 0 };
 
 type Groups = TopologyGroup[];
 const groupById = (groups: Groups) => new Map(groups.map((g) => [g.id, g]));

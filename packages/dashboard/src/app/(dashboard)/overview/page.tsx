@@ -9,9 +9,11 @@ import {
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getDashboardViewModel, resolveSelectedInstallationIds } from "@/lib/queries";
+import { getSensoriumViewModel } from "@/lib/sensorium";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 import { ActivityList } from "@/components/dashboard/activity-list";
 import { AgentsAtWorkStrip } from "@/components/dashboard/agents-at-work-strip";
+import { SensoriumMap } from "@/components/dashboard/sensorium-map";
 
 // This page reads the session and queries Prisma scoped to it on every
 // request — it must never be statically prerendered (that would either fail
@@ -36,6 +38,7 @@ export default async function DashboardOverview({
   );
 
   const viewModel = await getDashboardViewModel(db, installationIds);
+  const sensorium = await getSensoriumViewModel(db, installationIds);
 
   const connected = viewModel.hasAccess;
   const { totalPrs, criticalBugs, recentReviews, latestReviews, commentsByCategory } = viewModel.hasAccess
@@ -73,6 +76,22 @@ export default async function DashboardOverview({
             Here&apos;s what Kuma is doing for your code.
           </p>
         </RevealItem>
+
+        {/* Sensorium — a live map of your codebase (real nodes from the code
+            graph, with pain/activity sensor overlays). Honest empty state until
+            a review has indexed the repo; never a fabricated graph. */}
+        {sensorium.hasAccess && (
+          <RevealItem className="space-y-3">
+            <SectionLabel>Code map</SectionLabel>
+            {sensorium.available ? (
+              <SensoriumMap topology={sensorium.topology!} sensors={sensorium.sensors!} />
+            ) : (
+              <StatePanel>
+                {sensorium.reason ?? "Your code map builds after your first review."}
+              </StatePanel>
+            )}
+          </RevealItem>
+        )}
 
         {/* Setup card (SuperLog-style onboarding) — only while not fully set up */}
         {!setupComplete && (

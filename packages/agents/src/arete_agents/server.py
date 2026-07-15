@@ -6,6 +6,7 @@ from fastapi.responses import PlainTextResponse
 
 from arete_agents.agents.chat import ChatAgent
 from arete_agents.config import get_settings
+from arete_agents.context_map.graph_export import GraphExportError, build_graph_export
 from arete_agents.context_map.ui import ContextMapUIError, get_or_start_ui
 from arete_agents.llm.base import get_llms_by_role, role_tiers
 from arete_agents.models.pr import PRContext
@@ -70,3 +71,15 @@ def context_map_ui_url(installation_id: int):
         return {"available": True, "url": url}
     except ContextMapUIError as exc:
         return {"available": False, "url": None, "reason": str(exc)}
+
+
+@app.get("/context-map/graph/{installation_id}")
+def context_map_graph(installation_id: int):
+    """Return the normalized code-graph JSON (GraphExport) for an installation's
+    indexed repo, for the dashboard's Sensorium map. Mirrors the /context-map/
+    ui-url envelope: honest {available: False} when nothing is indexed yet,
+    never a fabricated graph."""
+    try:
+        return {"available": True, "graph": build_graph_export(installation_id)}
+    except GraphExportError as exc:
+        return {"available": False, "graph": None, "reason": str(exc)}

@@ -138,8 +138,8 @@ Design: `docs/superpowers/specs/2026-07-15-kuma-team-workflow-and-wave1-design.m
 
 | Engineer | Branch | Task | Owns (declare before cross-lane edits) | Status |
 |---|---|---|---|---|
-| Engineer 1 | `stroland02/Engineer-1` | **P1.1 outbound webhooks** (built; wiring PrismaWebhookStore + `server.ts` mount + retry worker + emission points). **Next: P1.3 TS consumer** of `approval-exec` (builds to the contract below). | `packages/webhook` + **sole `@arete/db` schema writer** this wave | In progress |
-| Engineer 2 | `stroland02/Engineer-2` (frozen) → `feat/orchestration-study` (new, off main) | **Sensorium v1** done. **Next: Orchestration & Agent-Expertise Study** — research (startups/methodologies/OSS) → adopt/adapt/skip proposal → design → build v1 of `packages/orchestration` | `packages/orchestration` (NEW package, Eng2-exclusive) + `docs`. **Python-Synthesizer wiring deferred** (that's Eng3's `packages/agents` lane) | **Sensorium: frozen at tip, queued.** Study: Dispatched |
+| Engineer 1 | `stroland02/Engineer-1` | **P1.1 outbound webhooks** (built; wiring PrismaWebhookStore + `server.ts` mount + retry worker + emission points). **Next: P1.3 TS consumer** of `approval-exec` (builds to the contract below). | `packages/webhook` + **sole `@arete/db` schema writer** this wave | **P1.1 merged to `integration` (2026-07-15).** Next: P1.3 on `feat/approval-exec-worker` |
+| Engineer 2 | `stroland02/Engineer-2` (frozen) → `feat/orchestration-study` (new, off main) | **Sensorium v1** done. **Next: Orchestration & Agent-Expertise Study** — research (startups/methodologies/OSS) → adopt/adapt/skip proposal → design → build v1 of `packages/orchestration` | `packages/orchestration` (NEW package, Eng2-exclusive) + `docs`. **Python-Synthesizer wiring deferred** (that's Eng3's `packages/agents` lane) | **Sensorium merged to `integration` (2026-07-15).** Study: Dispatched |
 | Engineer 3 | `stroland02/Engineer-3` | **P1.3 Python apply/resume** — replace simulated stubs (`tools/actions.py`, `auto_resolver.py`) with real "apply command / resume paused LangGraph run" + expose `POST /approvals/apply`. Consumer-side of the `approval-exec` loop. | `packages/agents` (Python) + **one additive route in `server.py`** — shared-additive with Eng2's frozen graph route; both are distinct functions, resolve at the integration gate | Dispatched |
 
 ### P1.3 `approval-exec` contract (PM-owned — Eng1 TS worker ⇄ Eng3 Python both build to this)
@@ -152,6 +152,48 @@ The queue + enqueue side already ship (`queue.ts` `ApprovalExecutionJobData = { 
   - **idempotent per `approvalId`** — a redelivered job must not double-apply.
 - **Eng1 (webhook):** BullMQ worker consumes `approval-exec` → calls `/approvals/apply` via a `review-bridge.ts`-style fn → completes on `applied`; a thrown/`failed` lets BullMQ backoff retry (existing `DEFAULT_JOB_OPTIONS`).
 - **HITL moat preserved:** apply runs ONLY off an `EXECUTED` `ApprovalPrompt`; never bypass the approval gate; never adopt `automerge: immediately`.
+
+### Engineer 2 file claims (Sensorium v1, declared 2026-07-15)
+
+Landing Tasks 1–3 early so the additive agents-side surface is claimed while Engineer 1 is
+still in SuperLog research. **Engineer 1 must avoid `packages/agents/.../context_map/` and
+`packages/agents/.../server.py`.** Files I own this wave:
+
+- **agents (additive only):** `packages/agents/src/arete_agents/context_map/graph_export.py` (new),
+  `packages/agents/tests/test_graph_export.py` (new), `packages/agents/tests/fixtures/cbm_get_architecture.json` (new),
+  `packages/agents/src/arete_agents/server.py` (one new `GET /context-map/graph/{id}` route — additive).
+- **topology (additive):** `packages/topology/src/code-provider.ts` (+ `.test.ts`), and additive `'code'` members
+  on the `EdgeSource`/`NodeProvider` unions in `topology.ts` (+ their exhaustive `Record`s in `providers.ts`/`services.ts`).
+- **infra:** `docker-compose.prod.yml` (named volume for context-map index persistence).
+- **dashboard (primary lane):** `packages/dashboard/src/lib/{context-map-client,sensors,sensorium}.ts`,
+  `queries.ts` (additive `getFindingsByPath`), `components/dashboard/sensorium-map.tsx`, `app/(dashboard)/overview/page.tsx`.
+
+#### Engineer 2 gate note (Sensorium v1) — for the PM integrating
+
+**Full matrix green:** webhook 233, agents 282, topology 23, dashboard build ✓ + test 168.
+
+**Real flow driven (what the sandbox allowed):**
+- Indexed this repo (agents subtree) with the **real** `codebase-memory-mcp` binary and captured the real
+  `get_architecture` payload → the committed fixture. `build_graph_export` normalizes it into **82 real
+  nodes / 56 real edges**.
+- **Live HTTP:** ran the agents FastAPI server and hit `GET /context-map/graph/999` → honest
+  `{available:false, reason:"No MCP session for server 'context-map-999'."}` — the exact unavailable branch
+  `/overview` renders.
+- **Full render pipeline on real data:** real GraphExport → `codeGraphProvider` → `joinSensors` → `SensoriumMap`
+  (renderToStaticMarkup) renders the real file nodes and lands a **pain** badge (count 2, max severity error)
+  on a real file by path-join.
+
+**Two honest deviations from the plan (discovered by capturing the real payload, as the plan told me to):**
+1. `get_architecture` (binary v0.8.1) returns an **architecture summary**, NOT a raw node/edge dump, and its
+   `edge_types` include **no TESTS edge** and no dead-code flag. So `graph_export.py` builds a real
+   File/Folder/Package/Function map from `file_tree` + `packages` + `boundaries` + `entry_points`, and the
+   **vitality (untested) / necrosis (dead)** sensors are honestly **absent in v1** (joining the already-deferred
+   heat/churn sensor) rather than fabricated. pain/activity/pulse are unaffected.
+2. The **live stdio MCP session cannot complete `initialize`** in this sandbox — the binary writes `level=…`
+   logs to **stdout**, corrupting the JSON-RPC stream (CLI `cli <tool>` mode works; the session doesn't). This
+   is the **foundation's** connection path (indexer/session), which this wave must not rebuild. Consequence:
+   the live-session → HTTP *available* path and the OAuth-gated `/overview` signed-in render were **not** driven
+   here; they need a deployed env (or a binary build that logs to stderr). Flagged for the PM's integration drive.
 
 **Frozen:** the pre-login marketing/advertise landing page. Authenticated product/service
 UIs are open to improve. No net-new visual design system this wave; make services
