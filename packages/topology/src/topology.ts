@@ -28,7 +28,9 @@ export type NodeStatus = "healthy" | "degraded" | "down" | "unknown";
 
 // Provenance of a node: which provider asserted it. Drives subtle styling and
 // lets merge() reconcile the same logical thing seen by two providers.
-export type NodeProvider = "infra" | "telemetry" | "manual" | "merged";
+// "code" = asserted by the code-graph provider (codeGraphProvider), i.e. a node
+// derived from the codebase-memory-mcp architecture graph (Sensorium).
+export type NodeProvider = "infra" | "telemetry" | "manual" | "merged" | "code";
 
 // The signal-badge model carried over from the original storyboard. Kept here
 // so nodes can surface cost/security/performance counts uniformly.
@@ -67,7 +69,9 @@ export type EdgeKind =
 // Where an edge came from. This is the most important field for trust: the UI
 // styles telemetry edges as solid (observed fact), infra edges as hairline
 // (inferred from config), and suggested edges as dashed + AI-marked (review).
-export type EdgeSource = "telemetry" | "infra" | "manual" | "suggested";
+// "code" = a structural edge from the code graph (CALLS/CONTAINS/DEFINES etc.),
+// asserted by codeGraphProvider. Rendered like other structural provenance.
+export type EdgeSource = "telemetry" | "infra" | "manual" | "suggested" | "code";
 
 export type TopologyEdge = {
   id: string;

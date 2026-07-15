@@ -9,3 +9,4 @@ export * from "./providers.js";
 export * from "./services.js";
 export * from "./enrich.js";
 export * from "./layout.js";
+export * from "./code-provider.js";
