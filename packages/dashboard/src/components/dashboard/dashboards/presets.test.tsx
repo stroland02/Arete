@@ -50,9 +50,15 @@ describe('FindingsPreset', () => {
 });
 
 describe('TelemetryPreset', () => {
-  it('renders skeleton cards when skeleton=true', () => {
+  it('renders the connect-a-service catalog when skeleton=true (no fabricated metrics)', () => {
     const html = renderToStaticMarkup(<TelemetryPreset model={emptyModel} days={30} skeleton />);
     expect(html).not.toContain('as of last review');
+    // real catalog connectors + actionable CTA
+    expect(html).toContain('PostHog');
+    expect(html).toContain('Connect PostHog');
+    // a planned connector is shown as not-yet-connectable, never a live control
+    expect(html).toContain('Planned');
+    expect(html).toContain('Not yet available');
   });
   it('renders one panel per connected provider when skeleton=false', () => {
     const html = renderToStaticMarkup(
