@@ -186,6 +186,19 @@ export async function createServer(): Promise<express.Application> {
   const { createStagingSendHandler } = await import('./staging/send-handler.js')
   server.post('/staging/send', express.json(), createStagingSendHandler(stagingSendDeps))
 
+  // NOTE: the model-connection *management* API (/api/model-connections — GET list,
+  // PUT upsert, DELETE, POST .../test) is deliberately NOT mounted here for the same
+  // reason as the outbound-webhook management API below: it is tenant-scoped CRUD that
+  // returns/mutates a customer's config, and the webhook service has no session, so an
+  // unauthenticated route trusting a client-supplied installationId would let any caller
+  // read or delete any tenant's connections — the exact vuln that pulled /api/webhooks/
+  // endpoints. The Test ping additionally makes an outbound call to a client-supplied
+  // baseUrl (SSRF-shaped) — net-guard hardens it, but it must not be an open proxy.
+  // The tenant-scoped core lives in ./model-connections/ (store.ts: saveModelConnection/
+  // list/get/delete, all installationId-scoped, key-free views; test-connection.ts:
+  // testModelConnection). The authenticated surface belongs behind the dashboard's
+  // Auth.js session, which supplies a session-derived installationId (fast-follow).
+  //
   // NOTE: the outbound-webhook *management* API (POST/GET /api/webhooks/endpoints)
   // is deliberately NOT mounted here. It trusted a client-supplied installationId
   // with no authentication — an anonymous caller could register a webhook for, or
