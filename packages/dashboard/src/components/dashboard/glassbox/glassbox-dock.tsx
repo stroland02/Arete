@@ -59,12 +59,27 @@ export function GlassBoxDock({ url = GLASSBOX_URL }: { url?: string }) {
   if (!url) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 w-[22rem] max-w-[calc(100vw-2rem)]">
+    // The fixed wrapper spans a large corner region but is mostly empty. Left
+    // interactive, its transparent extents (and the tall overflow list) sit on
+    // top of page controls like the /agents composer Send button and silently
+    // swallow clicks. `pointer-events-none` makes the whole fixed layer
+    // click-through; only the visible panel below re-enables `pointer-events-auto`.
+    // So elementFromPoint over any empty extent returns the page control beneath,
+    // not the dock. (QA bug 1, 2026-07-15.)
+    <div
+      data-testid="glassbox-dock"
+      className="pointer-events-none fixed bottom-4 right-4 z-50 w-[22rem] max-w-[calc(100vw-2rem)]"
+    >
+      {/* Panel stays click-through (inherits pointer-events-none) so it never
+          swallows clicks on page controls it visually overlaps; only the header
+          toggle re-enables pointer events — it's a small target at the top of
+          the dock, clear of bottom-anchored page controls. The feed items below
+          are non-interactive, so nothing is lost by leaving them click-through. */}
       <div className="overflow-hidden rounded-2xl border border-border-default bg-surface-1/95 shadow-xl backdrop-blur">
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="flex w-full items-center justify-between gap-2 border-b border-border-subtle px-4 py-2.5 text-left"
+          className="pointer-events-auto flex w-full items-center justify-between gap-2 border-b border-border-subtle px-4 py-2.5 text-left"
         >
           <span className="flex items-center gap-2">
             <span

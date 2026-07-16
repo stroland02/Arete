@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import type { Session } from "next-auth";
 import { auth } from "../lib/auth";
 import { MarketingNav } from "@/components/marketing/marketing-nav";
 import { LandingHero } from "@/components/marketing/landing-hero";
@@ -15,7 +16,17 @@ import {
 // callback deliberately leaves "/" public so anonymous visitors can land
 // here at all.
 export default async function LandingPage() {
-  const session = await auth();
+  // A stale/rotated session cookie makes auth() throw JWTSessionError ("no
+  // matching decryption secret") and triple-log on every request. The landing
+  // page renders logged-out fine, so swallow the decode failure and treat the
+  // visitor as anonymous. redirect() stays OUTSIDE the try — it throws
+  // NEXT_REDIRECT internally, which must not be caught. (QA bug 2, 2026-07-15.)
+  let session: Session | null = null;
+  try {
+    session = await auth();
+  } catch {
+    session = null;
+  }
   if (session?.user) {
     redirect("/overview");
   }

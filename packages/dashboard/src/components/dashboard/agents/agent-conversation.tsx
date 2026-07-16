@@ -192,6 +192,8 @@ export function AgentConversation({ agent, findings, findingCount, hasReviews, o
         >
           <input
             type="text"
+            id="agent-chat-message"
+            name="message"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             disabled={sending}
