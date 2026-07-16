@@ -5,6 +5,8 @@ import { handleStripeWebhook } from './stripe-handler.js'
 import { handleGitLabWebhook } from './gitlab-handler.js'
 import { buildOAuthAuthorizeUrl } from './oauth/build-authorize-url.js'
 import { handleOAuthCallback } from './oauth/oauth-callback-handler.js'
+import type { StagingSendDeps } from './staging/send.js'
+import type { StagingOctokit } from './staging/stage-pr.js'
 
 // @octokit/app and @octokit/webhooks are pure ESM (import-only "exports" maps);
 // this package compiles to CJS, so they must be loaded via dynamic import(),
@@ -155,6 +157,35 @@ export async function createServer(): Promise<express.Application> {
     }
   })
   
+  // PR-staging send seam (internal). The dashboard's "Post PR" action calls this
+  // with two internal uuids; we resolve the tenant to an installation Octokit,
+  // load the approved container slice, and run the gate-enforced, idempotent
+  // stagePullRequest core. NEVER auto-sends — the core refuses unless the
+  // container carries gates.solutionApprovedAt (server-side gate). Deps import
+  // lazily so registration never pulls in @arete/db (keeps this path db-free
+  // until a request actually needs a tenant lookup).
+  const stagingSendDeps: StagingSendDeps = {
+    async resolveExternalId(installationId) {
+      const { prisma } = await import('./db.js')
+      const inst = await prisma.installation.findUnique({
+        where: { id: installationId },
+        select: { externalId: true },
+      })
+      return inst?.externalId ?? null
+    },
+    async getOctokit(externalId) {
+      const { getInstallationOctokit } = await import('./github-auth.js')
+      const octokit = await getInstallationOctokit(app, externalId)
+      return octokit as unknown as StagingOctokit
+    },
+    async loadContainer(containerId, installationId) {
+      const { loadApprovedContainer } = await import('./staging/load-container.js')
+      return loadApprovedContainer(containerId, installationId)
+    },
+  }
+  const { createStagingSendHandler } = await import('./staging/send-handler.js')
+  server.post('/staging/send', express.json(), createStagingSendHandler(stagingSendDeps))
+
   // NOTE: the outbound-webhook *management* API (POST/GET /api/webhooks/endpoints)
   // is deliberately NOT mounted here. It trusted a client-supplied installationId
   // with no authentication — an anonymous caller could register a webhook for, or
