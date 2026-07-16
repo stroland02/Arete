@@ -16,14 +16,30 @@ and the research: [`docs/research/orchestration-landscape-analysis.md`](../../do
 | `status.ts` | The status contract as a state machine: `scope-confirmed → progress ⇄ blockers → done` (done requires verification) |
 | `ledger.ts` | Task ledger + **proactive lane-conflict detection** (our differentiator — detected before work, not at merge) |
 | `gate.ts` | Integration gate: `pending → verifying → verified/blocked → merged`; only a **human** approval merges ("no agent message is consent") |
-| `messages.ts` | Star-topology message envelope + `route()` enforcing the star invariant (workers ↔ hub only) |
+| `messages.ts` | Star-topology message envelope + `route()` enforcing the star invariant (workers ↔ hub only); kinds include `handoff` / `qa-result` and an optional `specialty` tag |
 | `driver.ts` | `OrchestrationDriver` seam + `InMemoryDriver` reference implementation |
 
-## Deferred (documented seam, NOT built this round)
+## Phase A — work-floor extensions (the PM-distributor + QA loop)
 
-`ClaudeAgentSdkDriver` and `PythonSynthesizerDriver` implement the same `OrchestrationDriver`
-interface later — the model doesn't change, only the transport. Also deferred: message transport,
-persistence, real git/CI gate execution, stall-detection/replan, and the worker-expertise eval loop.
+Additive model for [`docs/superpowers/specs/2026-07-15-kuma-work-floor-orchestration-design.md`](../../docs/superpowers/specs/2026-07-15-kuma-work-floor-orchestration-design.md) — the product's
+"a problem enters → PM-agent analyzes and dispatches → specialists → QA validates → Synthesizer → PR".
+
+| Module | Models |
+|---|---|
+| `specialty.ts` | The specialist roster (`reproduction` / `root-cause` / `fix-author` / `test-author` / `security` / `reviewer` / `qa`) — worker disciplines, not new roles |
+| `dispatch.ts` | `DispatchPlan` (the PM-agent's analysis + typed assignments) + `planToTasks()` → feeds the existing ledger's lane-conflict detection + `claimable()` |
+| `qa.ts` | The QA validation loop: `advanceQaLoop()` (pass → synthesize; fail → re-dispatch with the exact error; bounded by `maxPasses`, default 3, then escalate to the human gate — never loops) |
+| `transcript.ts` | Pure `Envelope → transcript-event` projection onto the dashboard's existing `SynthStep` vocabulary, so inter-agent messages ride the **existing** SSE stream (no second stream) |
+
+## Deferred (documented seams, NOT built this round)
+
+- **Phase B (agents lane):** the Python **`LangGraphDriver`** + new specialist agents conform to the
+  **frozen TS contract above** (PM ruling Q1: orchestration runs as a LangGraph graph in the agents
+  service; this package is canonical). `ClaudeAgentSdkDriver` similarly implements `OrchestrationDriver`.
+- **Phase C (dashboard lane):** surfacing the transcript on the agents-chat page via the existing
+  SSE stream — coordinate with the Glass Box cockpit so it is one stream.
+- Also deferred: message persistence, real git/CI gate execution, stall-detection/replan, the
+  worker-expertise eval loop, and the QA validation harness wiring (PM ruling Q2).
 
 ## Develop
 

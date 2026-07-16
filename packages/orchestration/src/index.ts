@@ -10,3 +10,7 @@ export * from "./ledger.js";
 export * from "./gate.js";
 export * from "./messages.js";
 export * from "./driver.js";
+export * from "./specialty.js";
+export * from "./dispatch.js";
+export * from "./qa.js";
+export * from "./transcript.js";

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { route, HUB_ROLES, type Envelope } from "./messages.js";
+import { SPECIALTIES } from "./specialty.js";
 
 function env(over: Partial<Envelope>): Envelope {
   return {
@@ -39,4 +40,19 @@ test("worker -> worker is rejected (star invariant)", () => {
 
 test("hub roles are orchestrator and integrator", () => {
   assert.deepEqual([...HUB_ROLES].sort(), ["integrator", "orchestrator"]);
+});
+
+test("handoff and qa-result are routable message kinds carrying a specialty", () => {
+  const handoff = env({ kind: "handoff", specialty: "fix-author", body: "author the fix" });
+  assert.ok(SPECIALTIES.includes(handoff.specialty!));
+  assert.deepEqual(route(handoff), { ok: true });
+
+  const qa = env({
+    from: { role: "worker", id: "qa" },
+    to: { role: "orchestrator", id: "pm" },
+    kind: "qa-result",
+    specialty: "qa",
+    body: "pass",
+  });
+  assert.deepEqual(route(qa), { ok: true });
 });

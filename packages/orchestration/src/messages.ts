@@ -8,13 +8,21 @@
 import type { Role } from "./roles.js";
 import type { StatusPhase } from "./status.js";
 import type { Lane } from "./ledger.js";
+import type { Specialty } from "./specialty.js";
 
 export interface Party {
   role: Role;
   id: string;
 }
 
-export type MessageKind = "dispatch" | "status" | "blocker" | "gate-request" | "gate-result";
+export type MessageKind =
+  | "dispatch"
+  | "status"
+  | "blocker"
+  | "gate-request"
+  | "gate-result"
+  | "handoff"
+  | "qa-result";
 
 export interface Envelope {
   id: string;
@@ -24,6 +32,8 @@ export interface Envelope {
   kind: MessageKind;
   phase?: StatusPhase;
   laneClaims?: Lane;
+  /** the sender's discipline, when it is a specialist worker (design §3.1) */
+  specialty?: Specialty;
   cost?: { tokens: number };
   body: string;
 }
