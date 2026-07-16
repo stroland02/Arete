@@ -6,6 +6,7 @@ import { SynthesizerConsole } from "../agents/synthesizer-console";
 import { motion, AnimatePresence, useInView } from "framer-motion";
 import { IconArrowRight, IconChevronDown, IconCopy, IconGitBranch, IconGitPullRequest, IconHourglassHigh, IconPlus, IconLoader2, IconCheck } from "@tabler/icons-react";
 import { KumaLogo } from "@/components/ui/kuma-logo";
+import type { ServiceReviewGroup, ServiceReviewRow } from "@/lib/queries";
 
 /**
  * Services "Triage Inbox" workspace. Production signals from CONNECTED
@@ -245,6 +246,37 @@ export interface ServicesWorkspaceProps {
    * Synthesizer shows its onboarding state.
    */
   containerId?: string | null;
+  /**
+   * The connected repo's REAL reviews, grouped by repository (the authenticated
+   * /services inbox). When provided, the rail lists these real PRs and
+   * selecting one streams its real Synthesizer transcript in the center; the
+   * sample `services`/`issues` above drive the marketing preview ONLY. Its
+   * mere presence (even []) switches the workspace into real mode.
+   */
+  reviewGroups?: ServiceReviewGroup[];
+}
+
+// Real review riskLevel → rail dot / pill styling (risk tiers, not the sample
+// Severity union). "low"/"unknown" collapse to the calm/success tone.
+const RISK_DOT: Record<string, string> = {
+  critical: "bg-accent-danger",
+  high: "bg-accent-warning",
+  medium: "bg-accent-info",
+};
+function riskDot(risk: string): string {
+  return RISK_DOT[risk.toLowerCase()] ?? "bg-accent-success";
+}
+const RISK_PILL: Record<string, string> = {
+  critical: "text-accent-danger border-accent-danger/30 bg-accent-danger/10",
+  high: "text-accent-warning border-accent-warning/30 bg-accent-warning/10",
+  medium: "text-accent-info border-accent-info/30 bg-accent-info/10",
+};
+function riskPill(risk: string): string {
+  return RISK_PILL[risk.toLowerCase()] ?? "text-accent-success border-accent-success/30 bg-accent-success/10";
+}
+function shortWhen(iso: string): string {
+  // Date-only, locale-formatted; the transcript carries the precise moment.
+  return new Date(iso).toLocaleDateString();
 }
 
 /**
@@ -253,13 +285,22 @@ export interface ServicesWorkspaceProps {
  * fabricated rows. The marketing preview passes SAMPLE_* + variant="framed"
  * to show the populated UI inside a card.
  */
-export function ServicesWorkspace({ services = [], issues = [], variant = "embedded", connected = false, containerId = null }: ServicesWorkspaceProps) {
+export function ServicesWorkspace({ services = [], issues = [], variant = "embedded", connected = false, containerId = null, reviewGroups }: ServicesWorkspaceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const isInView = useInView(containerRef, { margin: "-100px 0px -100px 0px" });
 
   // Guard against hydration: defer observer logic until after first client render
   const [hasMounted, setHasMounted] = useState(false);
   useEffect(() => { setHasMounted(true); }, []);
+
+  // Real mode: the authenticated /services page passes reviewGroups (even []),
+  // switching the rail + center + right panel to real reviews. The marketing
+  // preview passes no reviewGroups and keeps the scripted sample path below.
+  const realMode = reviewGroups !== undefined;
+  const [activeContainerId, setActiveContainerId] = useState<string | null>(containerId);
+  const [openRepo, setOpenRepo] = useState<string | null>(reviewGroups?.[0]?.repositoryFullName ?? null);
+  const selectedReview: ServiceReviewRow | null =
+    reviewGroups?.flatMap((g) => g.reviews).find((r) => r.id === activeContainerId) ?? null;
 
   const [serviceId, setServiceId] = useState<string | null>(services[0]?.id ?? null);
   const [issueId, setIssueId] = useState<string | null>(
@@ -327,10 +368,95 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
       <section className="flex min-h-0 flex-1 flex-col" aria-label="Services">
         <header className="flex h-10 shrink-0 items-center justify-between border-b border-border-subtle px-3">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Services</h2>
-          <span className="font-mono text-[10px] tabular-nums text-content-muted">{services.length}</span>
+          <span className="font-mono text-[10px] tabular-nums text-content-muted">
+            {realMode ? (reviewGroups?.length ?? 0) : services.length}
+          </span>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {hasServices && (
+          {/* Real mode: the connected repo's reviews, grouped by repository.
+              Selecting a PR sets the active container id, which the center
+              Synthesizer streams from /api/containers/[id]/stream. */}
+          {realMode &&
+            ((reviewGroups?.length ?? 0) > 0 ? (
+              <ul className="border-b border-border-subtle py-1">
+                {reviewGroups!.map((g) => {
+                  const expanded = g.repositoryFullName === openRepo;
+                  return (
+                    <li key={g.repositoryFullName} className="relative">
+                      {expanded && (
+                        <span className="absolute inset-y-1 left-0 z-10 w-0.5 rounded-r bg-accent-primary" aria-hidden />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOpenRepo((cur) => (cur === g.repositoryFullName ? null : g.repositoryFullName))
+                        }
+                        aria-expanded={expanded}
+                        className={`flex w-full items-center gap-2 py-2.5 pl-3 pr-3 text-left transition-colors ${
+                          expanded ? "bg-accent-primary/[0.06]" : "hover:bg-content-primary/[0.04]"
+                        }`}
+                      >
+                        <IconChevronDown
+                          size={12}
+                          stroke={2}
+                          className={`shrink-0 text-content-muted transition-transform ${expanded ? "" : "-rotate-90"}`}
+                          aria-hidden
+                        />
+                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${riskDot(g.worstRisk)}`} />
+                        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-content-primary">
+                          {g.repositoryFullName}
+                        </span>
+                        <span className="shrink-0 font-mono text-[10px] tabular-nums text-content-muted">
+                          {g.reviews.length}
+                        </span>
+                      </button>
+                      {expanded && (
+                        <ul className="pb-1">
+                          {g.reviews.map((r) => {
+                            const on = r.id === activeContainerId;
+                            return (
+                              <li key={r.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveContainerId(r.id)}
+                                  aria-current={on ? "true" : undefined}
+                                  className={`flex w-full items-center gap-2 py-1.5 pl-9 pr-3 text-left transition-colors ${
+                                    on
+                                      ? "bg-accent-primary/[0.1] text-content-primary"
+                                      : "text-content-secondary hover:bg-content-primary/[0.04]"
+                                  }`}
+                                >
+                                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${riskDot(r.riskLevel)}`} />
+                                  <span className="min-w-0 flex-1 truncate font-mono text-[11.5px]">
+                                    PR #{r.prNumber}
+                                  </span>
+                                  <span
+                                    className="shrink-0 font-mono text-[10px] tabular-nums text-content-muted"
+                                    title={`${r.findingCount} verified finding${r.findingCount === 1 ? "" : "s"}`}
+                                  >
+                                    {r.findingCount}
+                                  </span>
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <div className="px-3 py-8 text-center">
+                <p className="text-[12px] text-content-secondary">No reviews yet.</p>
+                <p className="mt-1 text-[11px] leading-5 text-content-muted">
+                  {connected
+                    ? "Open a pull request on your connected repository — its review appears here."
+                    : "Connect a repository to start reviewing pull requests."}
+                </p>
+              </div>
+            ))}
+          {!realMode && hasServices && (
             <ul className="border-b border-border-subtle py-1">
               {services.map((s) => {
                 const expanded = s.id === activeService;
@@ -400,11 +526,13 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
               className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-2 text-[12px] font-medium text-content-secondary transition-colors hover:border-border-strong hover:bg-content-primary/5"
             >
               <IconPlus size={14} stroke={2} aria-hidden />
-              {hasServices
-                ? "Connect more services"
-                : connected
-                  ? "Connect a telemetry source"
-                  : "Connect your services"}
+              {realMode
+                ? "Connect a repository"
+                : hasServices
+                  ? "Connect more services"
+                  : connected
+                    ? "Connect a telemetry source"
+                    : "Connect your services"}
             </Link>
           </div>
         </div>
@@ -417,17 +545,24 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
           illustrative sample data). */}
       <section className="flex min-h-0 flex-1 flex-col" aria-label="Synthesizer">
         {variant === "embedded" ? (
-          // Streams the deep-linked review (container id = review id) via the
+          // Streams the selected review (container id = review id) via the
           // existing /api/containers/[id]/stream SSE; null → onboarding state.
-          <SynthesizerConsole containerId={containerId} connected={connected} />
+          // Real mode drives it from the rail selection; otherwise the
+          // deep-linked ?container= id.
+          <SynthesizerConsole containerId={realMode ? activeContainerId : containerId} connected={connected} />
         ) : (
           <IssueSynthesizerConsole issue={selected} isReplaying={isReplaying} replayStep={replayStep} />
         )}
       </section>
 
-      {/* Right: the issue's own detail */}
+      {/* Right: the selected item's detail — real review facts in real mode,
+          the scripted sample issue in the marketing preview. */}
       <section className="flex min-h-0 flex-1 flex-col" aria-label="Issue panel">
-        <IssuePanel issue={selected} isReplaying={isReplaying} />
+        {realMode ? (
+          <ReviewPanel review={selectedReview} />
+        ) : (
+          <IssuePanel issue={selected} isReplaying={isReplaying} />
+        )}
       </section>
     </div>
   );
@@ -535,6 +670,76 @@ function IssueSynthesizerConsole({ issue, isReplaying, replayStep }: { issue: Is
           preview shell · live chat coming soon{issue ? ` · focused on ${issue.serviceId}` : ""}
         </p>
       </footer>
+    </>
+  );
+}
+
+/**
+ * Right pane in REAL mode: the selected review's real facts (PR number, risk,
+ * verified-finding count) — grounded entirely in the stored review, never
+ * fabricated. The one-click Fix→approve→send workflow is honestly teased as
+ * coming next (Slice B/C) rather than faked with a sample diff.
+ */
+function ReviewPanel({ review }: { review: ServiceReviewRow | null }) {
+  return (
+    <>
+      <header className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Pull request</h2>
+        {review && (
+          <span
+            className={`rounded-full border px-1.5 py-px text-[9.5px] font-bold uppercase tracking-wide ${riskPill(review.riskLevel)}`}
+          >
+            {review.riskLevel}
+          </span>
+        )}
+      </header>
+
+      {!review ? (
+        <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center">
+          <p className="text-[12.5px] leading-5 text-content-muted">
+            Select a pull request on the left to see its review — the verified findings, and where
+            you&apos;ll approve posting the fix.
+          </p>
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="shrink-0 space-y-1 border-b border-border-subtle px-3 py-2.5">
+            <p className="font-mono text-[12.5px] text-content-primary">PR #{review.prNumber}</p>
+            <p className="font-mono text-[10.5px] text-content-muted">reviewed {shortWhen(review.createdAt)}</p>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <PanelSection title="Verified findings">
+              <p className="px-1 text-[11px] leading-5 text-content-muted">
+                <span className="font-mono text-content-secondary">{review.findingCount}</span> verified
+                finding{review.findingCount === 1 ? "" : "s"} — each streams into the Synthesizer on the
+                left as the <span className="font-mono">path:line</span> comment it posts to the PR.
+              </p>
+            </PanelSection>
+            <PanelSection title="Proposed fix">
+              <p className="px-1 text-[11px] leading-5 text-content-muted">
+                Next: the PM dispatches specialists to propose the actual patch, you approve it, and Kuma
+                stages and opens the pull request — all from here. Today Kuma posts its verified findings
+                to your PR for you to act on.
+              </p>
+            </PanelSection>
+          </div>
+
+          <footer className="shrink-0 space-y-2 border-t border-border-subtle px-3 py-3">
+            <button
+              type="button"
+              disabled
+              title="The Fix workflow lands in the next release"
+              className="inline-flex w-full cursor-not-allowed items-center justify-center gap-1.5 rounded-lg bg-accent-primary px-3 py-1.5 text-[12px] font-semibold text-white opacity-50"
+            >
+              <IconGitPullRequest size={14} stroke={2} /> Fix &amp; open PR
+            </button>
+            <p className="text-[10px] leading-4 text-content-muted/80">
+              The Fix workflow — PM dispatch → agent solutions → your approval → send — is coming next.
+            </p>
+          </footer>
+        </div>
+      )}
     </>
   );
 }
