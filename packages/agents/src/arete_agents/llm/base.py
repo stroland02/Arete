@@ -61,16 +61,30 @@ def role_tiers(settings: Settings) -> dict[str, str]:
 
 
 def get_llms_by_role(settings: Settings) -> dict[str, BaseChatModel]:
-    """Build one Anthropic client per role, at that role's configured tier.
+    """Build one LLM client per role, at that role's configured tier.
 
-    Anthropic-only by construction (does not consult llm_provider). Clients
-    are shared across roles that resolve to the same tier, so at most two
-    ChatAnthropic instances are created regardless of role count.
+    Honors ``settings.llm_provider``: builds Gemini clients when
+    ``llm_provider == "gemini"`` (using GEMINI_API_KEY), otherwise Anthropic
+    (using ANTHROPIC_API_KEY). The fixed critic roles are included, so a
+    review — including its critic stage — runs entirely on the selected
+    provider with no key from the other provider required. Clients are shared
+    across roles that resolve to the same tier, so at most two client
+    instances are created regardless of role count.
     """
-    from arete_agents.llm.anthropic import build_anthropic_llm
-
     tiers = role_tiers(settings)
+
+    if settings.llm_provider == "gemini":
+        from arete_agents.llm.gemini import build_gemini_llm
+
+        def build(tier: str) -> BaseChatModel:
+            return build_gemini_llm(settings.gemini_api_key, tier)
+    else:
+        from arete_agents.llm.anthropic import build_anthropic_llm
+
+        def build(tier: str) -> BaseChatModel:
+            return build_anthropic_llm(settings.anthropic_api_key, tier)
+
     clients_by_tier: dict[str, BaseChatModel] = {}
     for tier in set(tiers.values()):
-        clients_by_tier[tier] = build_anthropic_llm(settings.anthropic_api_key, tier)
+        clients_by_tier[tier] = build(tier)
     return {role: clients_by_tier[tier] for role, tier in tiers.items()}

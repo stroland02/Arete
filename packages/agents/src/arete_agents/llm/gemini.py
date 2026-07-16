@@ -1,11 +1,24 @@
+from typing import Literal
+
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from arete_agents.llm.base import DEFAULT_LLM_TIMEOUT_SECONDS
 
+# Model tier -> Gemini model ID. Mirrors the Anthropic tiering so the per-role
+# *_tier config stays meaningful when LLM_PROVIDER=gemini: the "opus"
+# (nuanced-judgment) tier maps to the stronger Pro model, "sonnet" to the
+# faster/cheaper Flash model.
+_TIER_MODEL_IDS: dict[str, str] = {
+    "opus": "gemini-2.5-pro",
+    "sonnet": "gemini-2.5-flash",
+}
 
-def build_gemini_llm(api_key: str) -> ChatGoogleGenerativeAI:
+
+def build_gemini_llm(
+    api_key: str, tier: Literal["opus", "sonnet"] = "opus"
+) -> ChatGoogleGenerativeAI:
     return ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
+        model=_TIER_MODEL_IDS[tier],
         google_api_key=api_key,
         temperature=0.1,
         max_tokens=8192,
