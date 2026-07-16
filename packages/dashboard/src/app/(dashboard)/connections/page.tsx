@@ -2,6 +2,7 @@ import Link from "next/link";
 import { IconBrandGithub, IconChevronRight } from "@tabler/icons-react";
 import { CONNECTORS } from "@/lib/connector-catalog";
 import { ConnectorIcon } from "@/components/connections/connector-icon";
+import { AiModelsSection } from "@/components/connections/ai-models-section";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 
 export default function ConnectionsPage() {
@@ -42,6 +43,10 @@ export default function ConnectionsPage() {
             Install on GitHub
           </a>
         </div>
+      </RevealItem>
+
+      <RevealItem>
+        <AiModelsSection />
       </RevealItem>
 
       <RevealItem>
