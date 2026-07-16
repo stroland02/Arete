@@ -2,10 +2,15 @@ import logging
 from typing import Any, Dict
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from arete_agents.agents.chat import ChatAgent
-from arete_agents.config import get_settings
+from arete_agents.config import Settings, get_settings
+from arete_agents.llm.ollama import (
+    DEFAULT_OLLAMA_BASE_URL,
+    DEFAULT_OLLAMA_MODEL,
+    ollama_unavailable_reason,
+)
 from arete_agents.context_map.ui import ContextMapUIError, get_or_start_ui
 from arete_agents.llm.base import (
     get_llms_by_role,
@@ -46,11 +51,22 @@ trace.set_tracer_provider(provider)
 # take down the process.
 try:
     _settings = get_settings()
+except ValidationError:
+    # No usable primary provider key (e.g. ANTHROPIC_API_KEY unset). Rather than
+    # crash, fall back to local Ollama as the safety net so the service still
+    # runs. If Ollama isn't reachable/pulled, /review returns an honest 503
+    # ("ollama pull <model>") — never a fabricated or falsely-clean review.
+    logging.warning(
+        "No usable primary LLM provider key configured; falling back to local "
+        "Ollama (%s @ %s) as the safety net. Connect your own model per /review "
+        "request, or set a provider API key, to use a cloud model.",
+        DEFAULT_OLLAMA_MODEL,
+        DEFAULT_OLLAMA_BASE_URL,
+    )
+    _settings = Settings(llm_provider="ollama")
 except Exception:
     logging.critical(
-        "Areté agents server failed to start: invalid or missing configuration. "
-        "Set ANTHROPIC_API_KEY in the environment or .env file (the pipeline "
-        "uses Anthropic Claude models per role).",
+        "Areté agents server failed to start: invalid or missing configuration.",
         exc_info=True,
     )
     raise
@@ -71,6 +87,16 @@ def review(pr: PRContext):
     # orchestrator on the user's own model — instead of the server's global
     # Settings-derived singleton. Callers that omit pr.llm keep the default.
     if pr.llm is not None:
+        if pr.llm.provider == "ollama":
+            reason = ollama_unavailable_reason(
+                pr.llm.base_url or DEFAULT_OLLAMA_BASE_URL,
+                pr.llm.model or DEFAULT_OLLAMA_MODEL,
+                _settings.deployment_tier,
+            )
+            if reason:
+                # Honest empty state: refuse rather than emit a review-shaped
+                # (falsely "clean") result when no model actually ran.
+                raise HTTPException(status_code=503, detail=reason)
         try:
             llms = get_llms_by_role_from_config(
                 provider=pr.llm.provider,
@@ -82,6 +108,16 @@ def review(pr: PRContext):
             # Unknown provider is a client error, not a server fault.
             raise HTTPException(status_code=400, detail=str(exc))
         return ReviewOrchestrator(llm=llms).run(pr)
+
+    # Default path — this may be the Ollama safety fallback (no primary key).
+    if _settings.llm_provider == "ollama":
+        reason = ollama_unavailable_reason(
+            _settings.ollama_base_url,
+            _settings.ollama_model,
+            _settings.deployment_tier,
+        )
+        if reason:
+            raise HTTPException(status_code=503, detail=reason)
     return _orchestrator.run(pr)
 
 

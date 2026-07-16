@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     ollama_model: str = "qwen2.5-coder"
     ollama_base_url: str = "http://localhost:11434"
 
+    # Deployment tier. "local" can reach a localhost Ollama; "saas" (hosted)
+    # cannot, so an Ollama-backed review pointed at localhost is refused with an
+    # honest message rather than a fabricated/empty result.
+    deployment_tier: Literal["local", "saas"] = "local"
+
     database_url: str = "postgresql://arete:arete@localhost:5432/arete"
     redis_url: str = "redis://localhost:6379"
 

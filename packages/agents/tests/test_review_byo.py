@@ -41,7 +41,9 @@ def test_review_builds_from_per_request_config():
         server, "get_llms_by_role_from_config", side_effect=fake_from_config
     ), patch.object(server, "ReviewOrchestrator", return_value=fake_orch) as OrchCls, patch.object(
         server._orchestrator, "run"
-    ) as global_run:
+    ) as global_run, patch.object(
+        server, "ollama_unavailable_reason", return_value=None
+    ):
         client = TestClient(server.app)
         resp = client.post(
             "/review",
