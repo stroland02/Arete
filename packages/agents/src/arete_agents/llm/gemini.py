@@ -15,10 +15,15 @@ _TIER_MODEL_IDS: dict[str, str] = {
 
 
 def build_gemini_llm(
-    api_key: str, tier: Literal["opus", "sonnet"] = "opus"
+    api_key: str,
+    tier: Literal["opus", "sonnet"] = "opus",
+    model: str | None = None,
 ) -> ChatGoogleGenerativeAI:
+    """Build a Gemini client. ``model`` overrides the tier->model mapping when
+    given (used by the per-request BYO path, where the caller names an exact
+    model); otherwise the model is chosen from ``tier``."""
     return ChatGoogleGenerativeAI(
-        model=_TIER_MODEL_IDS[tier],
+        model=model or _TIER_MODEL_IDS[tier],
         google_api_key=api_key,
         temperature=0.1,
         max_tokens=8192,

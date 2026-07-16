@@ -12,13 +12,21 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Anthropic is the standard provider for all AI-driven decisions. The
-    # gemini path remains dormant (selectable via LLM_PROVIDER=gemini) but is
-    # not used by the production pipeline, which builds Anthropic clients
-    # per role via get_llms_by_role().
-    llm_provider: Literal["gemini", "anthropic"] = "anthropic"
+    # Provider for all AI-driven decisions. Each is built per role via
+    # get_llms_by_role(): "anthropic"/"gemini" tier their roles across
+    # opus/sonnet models; "ollama" is a single local model shared by every
+    # role (no tiering). A per-request BYO config can override this per /review
+    # call (see get_llms_by_role_from_config).
+    llm_provider: Literal["gemini", "anthropic", "ollama"] = "anthropic"
     gemini_api_key: str = ""
     anthropic_api_key: str = ""
+
+    # Ollama (local, no API key). Used when llm_provider="ollama". The default
+    # model is code-specialised and must be pulled locally
+    # ("ollama pull qwen2.5-coder"); an un-pulled model / unreachable server
+    # yields an honest empty review, never fabricated findings.
+    ollama_model: str = "qwen2.5-coder"
+    ollama_base_url: str = "http://localhost:11434"
 
     database_url: str = "postgresql://arete:arete@localhost:5432/arete"
     redis_url: str = "redis://localhost:6379"
