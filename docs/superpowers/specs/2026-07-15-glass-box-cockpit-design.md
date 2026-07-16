@@ -360,6 +360,140 @@ provenance banner correct. Kill Redis and verify the honest-offline state.
 
 ---
 
+## 9. Implementation notes & deviations (Phase 1 as built, 2026-07-15)
+
+Phase 1 was built additively on `feat/glass-box-cockpit` (rebased onto `integration` so
+Sensorium + the webhook models are present). Deviations from §3, each a deliberate, more
+lane-safe choice, logged here as the repo's discipline requires:
+
+1. **SSE is served by a dev-only sidecar, not a Next.js `/api/glassbox/stream` route.**
+   Reading Redis/BullMQ and shelling to `git` from inside the Next dashboard would add a
+   runtime dependency (`ioredis`) + `pnpm-lock` churn for a dev-only cockpit — and those libs
+   aren't hoisted to the dashboard under strict pnpm. Instead **all** infra-touching code lives
+   in `scripts/dev/glassbox-watch.mjs` (Node builtins + optional dynamic `bullmq` import), which
+   serves SSE at `http://localhost:4517/glassbox/stream` (CORS-open to `:3000`). The dashboard
+   change is now *purely presentational* — a hook + a dock component — with **zero new deps, no
+   server route, no Redis import**. This maximizes the "additive + isolated, don't destabilize
+   the dashboard" guardrail. The event envelope (`GlassBoxEvent`) still lives in the dashboard so
+   `narrate()` stays unit-tested there.
+2. **Git watcher polls `git rev-parse` (1.5s) instead of chokidar on `.git`.** Zero new
+   dependency, and more robust on Windows than watching `.git/refs`/`packed-refs` renames. It
+   catches commits, checkouts, and fetched updates. chokidar remains the documented alternative.
+3. **The SSE spine is an in-memory ring buffer in the sidecar, not a Redis stream (yet).** For
+   local single-user dogfooding the sidecar is the single producer + server, so a ring buffer
+   (with `Last-Event-ID` replay) is sufficient and simpler. The BullMQ bridge still *reads*
+   Redis streams (that's how BullMQ events work); it just doesn't re-persist Glass Box events to
+   Redis. Promoting to a durable Redis stream is deferred to the multi-process/hosted phase.
+4. **Inert-by-default in production.** `GlassBoxDock` renders `null` unless
+   `NEXT_PUBLIC_GLASSBOX_URL` is set (only local `.env.local` sets it), so prod never mounts the
+   feed. The BullMQ bridge is off unless `REDIS_URL`/`GLASSBOX_REDIS_URL` is present.
+5. **Local DB is synced with `prisma db push`, not `migrate deploy`.** The `integration` tree
+   has a migration-history defect (no create-migration for `ApprovalPrompt`/`AgentMemory`; only
+   an `ALTER`). `db push` syncs the DB to `schema.prisma` and touches no committed files —
+   staying out of the `@arete/db` owner's lane, who will author the missing create-migrations.
+
+**Files added (all additive, dashboard-lane + dev-scripts):**
+- `packages/dashboard/src/lib/glassbox/{types.ts, narrate.ts, narrate.test.ts}` (pure core, 7 tests)
+- `packages/dashboard/src/components/dashboard/glassbox/{use-glassbox-stream.ts, glassbox-dock.tsx}`
+- one additive mount in `packages/dashboard/src/app/(dashboard)/layout.tsx`
+- `scripts/dev/{glassbox-watch.mjs, dev-all.mjs}`, `packages/dashboard/scripts/seed-dev-user.mjs`
+- root `package.json` dev scripts; `docs/runbooks/2026-07-15-local-dev-loop.md`
+
+**Verified:** dashboard `build` compiles clean (18 routes); `test` 175 passed (168 baseline + 7
+new); sidecar serves the real `system.hello` provenance frame over SSE; localhost sign-in →
+`/overview` = 200 driven end-to-end.
+
+---
+
+## 10. Live Preview service (design-only — later phase, present for approval)
+
+**Goal.** A one-click **"Live Preview"** entry on the Services surface: the user picks it,
+fills a small config form (repo path, which packages to run, ports), and Areté **bootstraps +
+runs the local stack and auto-opens a localhost tab** — so while fixing a PR they watch the fix
+reflected in their own running UI/UX and verify it. This is literally the productized form of
+the `dev-all.mjs` bootstrap built in Phase 1 — **reuse it, don't rebuild it**.
+
+### 10.1 The honest constraint (stated up front, no black box)
+
+A hosted web dashboard **cannot** spawn Docker/pnpm or open a localhost server on the user's
+machine by itself — browsers sandbox that away, and rightly so. Any design that pretends
+otherwise is dishonest. So Live Preview is **two tiers**, and the UI always tells the user which
+tier is active and what is running where.
+
+### 10.2 Tier 1 — LOCAL/DEV companion (the MVP, achievable now, for our own dogfooding)
+
+- The "companion" is the **`dev-all.mjs` bootstrap** already built, wrapped as a tiny local
+  responder. In pure local dev the dashboard and companion are the same machine, so the
+  dashboard's Live Preview card can deep-link to / trigger `pnpm dev:all` (or the user runs it)
+  and then **auto-opens `http://localhost:3000`**.
+- **Run flow (fully automatic — the user's ask, no manual steps):**
+  1. **Ensure Docker** — if `docker info` fails, **auto-start Docker Desktop**. On Windows:
+     launch `"C:\Program Files\Docker\Docker\Docker Desktop.exe"` (detached), then poll
+     `docker info`/`docker ps` until ready (implemented in `dev-all.mjs ensureDocker()`).
+  2. `infra:up` → wait for Postgres healthy.
+  3. Sync schema (`prisma db push`, until the migrate defect is fixed → then `migrate deploy`).
+  4. Start the dashboard dev server + Glass Box sidecar (prefixed logs).
+  5. **Auto-open** `http://localhost:3000`.
+- The Glass Box live monitor (Phase 1) then keeps that tab in sync as fixes land.
+
+### 10.3 Tier 2 — SHIPPED SaaS (later)
+
+Same UX, but the hosted dashboard talks to a **downloadable local companion** (an Areté CLI /
+menubar daemon) over a **loopback-only** port. Trust/security model (must be designed before
+building):
+- Companion binds **`127.0.0.1` only** — never `0.0.0.0`; never reachable off-box.
+- Browser↔companion is **authenticated** (a per-install token the user pastes once, or an
+  OS-keychain-backed pairing), so a random web page can't drive it.
+- The companion runs a **fixed, declarative recipe** (bootstrap steps above), **never arbitrary
+  commands from the server** — the server sends a *service id + typed config*, not a shell
+  string. This is the same "fixed recipe, typed config" discipline as the telemetry connectors.
+- The UI shows exactly what will run before it runs (glass-box).
+
+### 10.4 Modeled as a real "service" (consistent with the existing catalog)
+
+Match `packages/dashboard/src/lib/connector-catalog.ts` (`ConnectorDef`: `id, name, category,
+tagline, authKind, authSummary, trustNote, requirement, status`). Live Preview is a
+`LivePreviewServiceDef` in the same spirit, plus the run-specific bits a connector doesn't need:
+
+```ts
+interface LivePreviewServiceDef {
+  id: "live-preview";
+  name: "Live Preview";
+  category: "Local dev loop";
+  tagline: "Boot the stack locally and watch your fix land in the running app.";
+  tier: "local-companion" | "saas-companion";       // which transport is active
+  config: {                                          // "whatever requirements it needs"
+    repoPath: string;
+    packages: Array<"dashboard" | "webhook" | "agents">;  // which to run
+    ports: { dashboard: number; webhook?: number; agents?: number };
+    autoStartDocker: boolean;
+  };
+  status: "available" | "planned";
+}
+```
+
+Actions on the card, mirroring a connector's connect/status: **Run** (kick the bootstrap),
+**Status** (Docker up? infra healthy? servers ready? — surfaced from the same health polls
+`dev-all.mjs` already does), and **Open** (focus/auto-open the localhost tab). The Glass Box
+provenance banner (§5) shows which checkout/sha the preview is actually serving.
+
+### 10.5 Open questions (for approval)
+
+- **Companion transport for Tier 2** — local CLI daemon vs menubar app vs a `npx arete preview`
+  responder; how the browser discovers its loopback port.
+- **Which packages the preview runs by default** — dashboard-only is the safe default (webhook
+  refuses to boot without `GITHUB_APP_ID`; agents needs a Python env). Config lets the user opt
+  webhook/agents in.
+- **Security review of Tier 2** before any build — the loopback-auth + fixed-recipe model above
+  is the proposal, not yet vetted.
+- **Where the service lives** — a new isolated `packages/companion` (or `scripts/`) for the
+  runner; the card + config form are dashboard-lane. No edits to `packages/webhook`/`agents`.
+
+**Phasing:** Phase 1 (this branch) stays as delivered. Live Preview is **Phase 3+**, built ON
+the `dev-all.mjs` bootstrap. Design-only here — present for approval before building.
+
+---
+
 ## 8. Sources
 
 - [WebSocket.org — WebSocket vs SSE comparison](https://websocket.org/comparisons/sse/)
