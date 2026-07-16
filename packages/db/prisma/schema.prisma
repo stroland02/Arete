@@ -37,6 +37,7 @@ model Installation {
   telemetryConnections TelemetryConnection[]
   telemetrySnapshots   TelemetrySnapshotRecord[]
   webhookEndpoints     WebhookEndpoint[]
+  modelConnections     ModelConnection[]
 
   @@unique([provider, externalId])
 }
@@ -59,6 +60,34 @@ model TelemetryConnection {
   /// store { apiKey/secretKey/token: "..." }; oauth rows store
   /// { accessToken, refreshToken, expiresAt, tokenType }.
   authMethod     String       @default("api_key")
+  createdAt      DateTime     @default(now())
+  installation   Installation @relation(fields: [installationId], references: [id])
+
+  @@unique([installationId, provider])
+}
+
+/// A customer's Bring-Your-Own AI model connection, scoped to an Installation
+/// (tenant). Resolved at review time so live reviews run on the customer's own
+/// model/key instead of a shared default. One row per (installation, provider).
+model ModelConnection {
+  id             String       @id @default(uuid())
+  installationId String
+  /// AI model provider name, e.g. "openai", "anthropic", "ollama". A plain
+  /// string (not an enum) — the set of supported model providers grows
+  /// independently of source-control providers.
+  provider       String
+  /// The API key, encrypted with the same AES-256-GCM scheme as
+  /// TelemetryConnection.credentials (see packages/webhook telemetry/
+  /// credentials.ts, TELEMETRY_ENCRYPTION_KEY). Nullable: a local/self-hosted
+  /// connection (e.g. an Ollama endpoint) authenticates by baseUrl alone and
+  /// carries no key. Never returned by the API and never logged.
+  apiKeyEncrypted String?
+  /// Model identifier passed through to the provider, e.g. "gpt-4o" or
+  /// "claude-opus-4".
+  model          String
+  /// Optional custom base URL for self-hosted / proxied / Azure-style
+  /// deployments. When null the provider's default endpoint is used.
+  baseUrl        String?
   createdAt      DateTime     @default(now())
   installation   Installation @relation(fields: [installationId], references: [id])
 
