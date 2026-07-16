@@ -1,4 +1,4 @@
-import { Worker } from 'bullmq'
+import { UnrecoverableError, Worker } from 'bullmq'
 import { Redis as IORedis } from 'ioredis'
 import { getServiceConfig } from './config.js'
 import { APPROVAL_QUEUE_NAME, type ApprovalExecutionJobData } from './queue.js'
@@ -72,13 +72,19 @@ export interface ProcessApprovalDeps {
   apply?: (data: ApprovalExecutionJobData) => Promise<ApprovalApplyResult>
 }
 
-/** Process one approval-exec job. Resolves on "applied"; throws on "failed" (or a
- *  transport error) so DEFAULT_JOB_OPTIONS backoff retries. Idempotent upstream. */
+/** Process one approval-exec job. Three outcomes, per the Eng3 contract:
+ *   - 200 {status:"applied"} → resolve (terminal success).
+ *   - 200 {status:"failed"}  → the command ran and deterministically failed;
+ *     throw UnrecoverableError so BullMQ does NOT retry (retrying is wasteful —
+ *     Eng3 is idempotent and the outcome won't change). Logged as terminal.
+ *   - non-2xx / timeout / network → applyApproval throws a regular Error, which
+ *     propagates here unchanged → BullMQ backoff retries. */
 export async function processApprovalJob(
   data: ApprovalExecutionJobData,
   deps: ProcessApprovalDeps = {},
 ): Promise<void> {
   const apply = deps.apply ?? applyApproval
+  // A regular Error thrown here (transport/non-2xx/timeout) is retryable.
   const result = await apply(data)
   if (result.status === 'applied') {
     console.log(
@@ -87,8 +93,12 @@ export async function processApprovalJob(
     )
     return
   }
-  // "failed": throw so BullMQ retries per the queue's backoff policy.
-  throw new Error(`approval ${data.approvalId} apply failed: ${result.detail}`)
+  // Terminal failure: the apply ran and failed deterministically. Log it and
+  // throw UnrecoverableError so BullMQ marks the job failed WITHOUT retrying.
+  console.error(
+    `[approval-worker] Approval ${data.approvalId} failed terminally (no retry): ${result.detail}`,
+  )
+  throw new UnrecoverableError(`approval ${data.approvalId} apply failed: ${result.detail}`)
 }
 
 /** Start the BullMQ worker on the approval-exec queue. Mirrors startReviewWorker;

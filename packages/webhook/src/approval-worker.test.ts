@@ -1,3 +1,4 @@
+import { UnrecoverableError } from 'bullmq'
 import { describe, expect, test, vi } from 'vitest'
 import { applyApproval, processApprovalJob } from './approval-worker.js'
 
@@ -40,15 +41,24 @@ describe('processApprovalJob', () => {
     expect(apply).toHaveBeenCalledWith(JOB)
   })
 
-  test('throws when apply returns "failed" so DEFAULT_JOB_OPTIONS backoff retries', async () => {
+  test('throws UnrecoverableError (terminal, no retry) when apply returns "failed"', async () => {
+    // 200 {status:"failed"} means the command ran and deterministically failed —
+    // retrying is wasteful, so BullMQ must NOT retry. UnrecoverableError signals that.
     const apply = vi.fn(async () => ({ status: 'failed' as const, detail: 'terraform plan error' }))
-    await expect(processApprovalJob(JOB, { apply })).rejects.toThrow(/terraform plan error/)
+    const err = await processApprovalJob(JOB, { apply }).catch((e) => e)
+    expect(err).toBeInstanceOf(UnrecoverableError)
+    expect(String(err)).toMatch(/terraform plan error/)
   })
 
-  test('propagates a transport throw (also retryable)', async () => {
+  test('a transport/non-2xx throw is a REGULAR retryable Error, not UnrecoverableError', async () => {
+    // non-2xx / timeout / network (surfaced by applyApproval throwing a plain Error)
+    // must stay retryable → a regular Error so DEFAULT_JOB_OPTIONS backoff kicks in.
     const apply = vi.fn(async () => {
       throw new Error('ECONNREFUSED')
     })
-    await expect(processApprovalJob(JOB, { apply })).rejects.toThrow(/ECONNREFUSED/)
+    const err = await processApprovalJob(JOB, { apply }).catch((e) => e)
+    expect(err).toBeInstanceOf(Error)
+    expect(err).not.toBeInstanceOf(UnrecoverableError)
+    expect(String(err)).toMatch(/ECONNREFUSED/)
   })
 })
