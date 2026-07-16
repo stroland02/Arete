@@ -39,9 +39,12 @@ Grouped into workstreams. Each names the spec it builds on where one exists.
 ### A. Turn the core review loop ON (seeded → real)
 The whole product hinges on a real PR producing a real review. Today that path exists
 (`webhook → enqueue → worker → agents /review → post comments`) but has never run live here.
-- Provision a real `GEMINI_API_KEY`; boot the agents service (now keyless-safe) with it.
-- Drive one real PR on `beancount-sandbox` end-to-end; confirm findings post to the PR and
-  surface on `/agents` + `/overview` from live data, not the seed.
+- **The model comes from workstream I (AI Models connect), NOT a raw `.env` key.** Live reviews
+  are lit up by connecting a model in the Connections UI — the user's own Ollama (free, the
+  default) or a BYO cloud key, per-tenant + encrypted. The `.env` Gemini key is dropped as a
+  path; A now **depends on I** (see §I). Kuma-runs-on-Kuma: we dogfood our own feature.
+- Drive one real PR on `beancount-sandbox` end-to-end through the connected model; confirm
+  findings post to the PR and surface on `/agents` + `/overview` from live data, not the seed.
 - Remove/guard the seed path so live and seeded data never mix in a tenant.
 
 ### B. The Fix workflow — the one-of-a-kind differentiator  *(spec: `2026-07-13-issue-container-and-pr-pipeline.md`, `2026-07-13-synthesizer-component-and-critic.md`)*
@@ -139,8 +142,11 @@ declared. Each engineer returns the uniform status contract
 
 ## 4. Sequencing & integration gates
 
-1. **Now:** Eng1 security gate + Eng3 real-reviews-on (A) in parallel — unblocks a truthful base.
-2. **Then:** P1.3 pair (Eng1 worker ⇄ Eng3 apply/resume) integrated together.
+1. **Now:** Eng1 security gate, and **workstream I (AI Models connect) as the critical path** —
+   Eng1 `ModelConnection` + review-job resolve, Eng3 per-request model in `/review`, Eng2 the
+   AI Models Connections UI. This is what turns real reviews on (A depends on I), so it leads.
+2. **Then:** real-reviews-on (A) driven through a connected model (Ollama free, or BYO key);
+   P1.3 pair (Eng1 worker ⇄ Eng3 apply/resume) integrated together.
 3. **Then:** the Fix workflow (B) as a coordinated trio — Eng3 fix-gen → Eng2 driver+UI+approval →
    Eng1 stage+send — behind the HITL gate.
 4. **Parallel throughout:** Eng2 telemetry cards (D); Eng3 context-map completeness (F).
