@@ -7,7 +7,11 @@ from pydantic import BaseModel
 from arete_agents.agents.chat import ChatAgent
 from arete_agents.config import get_settings
 from arete_agents.context_map.ui import ContextMapUIError, get_or_start_ui
-from arete_agents.llm.base import get_llms_by_role, role_tiers
+from arete_agents.llm.base import (
+    get_llms_by_role,
+    get_llms_by_role_from_config,
+    role_tiers,
+)
 from arete_agents.models.pr import PRContext
 from arete_agents.orchestrator import ReviewOrchestrator
 from arete_agents.remediation import RemediationGraph
@@ -62,6 +66,22 @@ _remediation = RemediationGraph(get_command_executor())
 
 @app.post("/review")
 def review(pr: PRContext):
+    # Per-request BYO model: when the caller supplies pr.llm, build the review's
+    # LLM clients from THAT config (get_llms_by_role_from_config) — a fresh
+    # orchestrator on the user's own model — instead of the server's global
+    # Settings-derived singleton. Callers that omit pr.llm keep the default.
+    if pr.llm is not None:
+        try:
+            llms = get_llms_by_role_from_config(
+                provider=pr.llm.provider,
+                model=pr.llm.model,
+                api_key=pr.llm.api_key,
+                base_url=pr.llm.base_url,
+            )
+        except ValueError as exc:
+            # Unknown provider is a client error, not a server fault.
+            raise HTTPException(status_code=400, detail=str(exc))
+        return ReviewOrchestrator(llm=llms).run(pr)
     return _orchestrator.run(pr)
 
 
