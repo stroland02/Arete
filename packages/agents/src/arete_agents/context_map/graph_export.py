@@ -28,24 +28,16 @@ and fabricating them would violate the anti-fabrication rule. They are honestly
 absent in v1 (like the deferred heat/churn sensor), NOT zeroed to look real.
 """
 
-import json
 from datetime import datetime, timezone
 from typing import Any
 
-from arete_agents.mcp import client as mcp_client
-
-_SERVER = "context-map-{}"
-_PROJECT = "install-{}"
+from arete_agents.context_map.cli import CliError, project_for_installation, run_cli
 
 
 class GraphExportError(Exception):
-    """Raised when no index/session exists for this installation, or the tool
-    payload can't be parsed. The endpoint (server.py) turns this into an honest
+    """Raised when no indexed repo exists for this installation, or the tool
+    payload can't be read. The endpoint (server.py) turns this into an honest
     ``{available: false}`` response, never a fabricated graph."""
-
-
-def _parse(result: Any) -> dict:
-    return json.loads(result.content[0].text)
 
 
 def _dirname(path: str) -> str:
@@ -63,13 +55,14 @@ def build_graph_export(installation_id: int) -> dict:
     already-connected ``context-map-{id}`` session. Raises GraphExportError if
     no session/index exists or the payload can't be parsed.
     """
-    server = _SERVER.format(installation_id)
-    project = _PROJECT.format(installation_id)
-    try:
-        arch = _parse(
-            mcp_client.call_tool_sync(server, "get_architecture", {"project": project})
+    project = project_for_installation(installation_id)
+    if not project:
+        raise GraphExportError(
+            f"No indexed repository for installation {installation_id}"
         )
-    except Exception as exc:  # no session / not indexed / parse failure
+    try:
+        arch = run_cli("get_architecture", {"project": project})
+    except CliError as exc:  # binary missing / query failed / unparseable
         raise GraphExportError(
             f"No queryable graph for installation {installation_id}: {exc}"
         ) from exc
