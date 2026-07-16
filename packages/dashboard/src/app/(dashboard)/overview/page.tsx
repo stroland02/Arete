@@ -93,68 +93,110 @@ export default async function DashboardOverview({
           </RevealItem>
         )}
 
-        {/* Setup card (SuperLog-style onboarding) — only while not fully set up */}
-        {!setupComplete && (
-          <RevealItem>
-            <section className="rounded-2xl border border-border-default bg-surface-1 p-6">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-content-primary">
-                  Finish setting up Kuma
-                </h2>
-                <span className="font-mono text-xs text-content-muted">
-                  {doneCount} of {steps.length}
-                </span>
-              </div>
+        {/* Onboarding → next-action card. It never disappears: once a repo is
+            connected and reviews are flowing, it evolves from the setup
+            checklist into the "act on what Kuma found" step of the workflow,
+            so the user always has a clear next move. */}
+        <RevealItem>
+          <section className="rounded-2xl border border-border-default bg-surface-1 p-6">
+            {setupComplete ? (
+              /* Setup done — point at acting on findings (the next step in how
+                 Kuma actually resolves what it found). */
+              <>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-semibold text-content-primary">
+                    You&apos;re set up — here&apos;s what&apos;s next
+                  </h2>
+                  <span className="inline-flex items-center gap-1 rounded-full border border-accent-success/25 bg-accent-success/10 px-2 py-0.5 text-[10px] font-medium text-accent-success">
+                    <IconCircleCheck className="h-3 w-3" stroke={2.25} />
+                    Setup complete
+                  </span>
+                </div>
 
-              {/* progress bar */}
-              <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
-                <div
-                  className="h-full rounded-full bg-accent-primary transition-all"
-                  style={{ width: `${(doneCount / steps.length) * 100}%` }}
-                />
-              </div>
-
-              {/* current-step highlight */}
-              {nextStep && (
                 <div className="mt-5 flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface-0/50 p-5 sm:flex-row sm:items-center">
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-content-primary">{nextStep.label}</p>
+                    <p className="text-sm font-medium text-content-primary">
+                      {criticalBugs > 0
+                        ? `Act on ${criticalBugs} critical finding${criticalBugs === 1 ? "" : "s"} Kuma caught`
+                        : "Review Kuma's findings and approve fixes"}
+                    </p>
                     <p className="mt-0.5 text-xs leading-5 text-content-muted">
-                      {nextStep.label === "Connect a repository"
-                        ? "Install the Kuma GitHub App on the repo you want reviewed. Every pull request is then reviewed automatically."
-                        : "Open a pull request on a connected repository — the six specialists review it and post verified findings back to the PR."}
+                      Each finding comes with a proposed fix and the evidence behind it. Open the
+                      Services workspace to review it, approve the change, and let Kuma open the
+                      pull request.
                     </p>
                   </div>
-                  {nextStep.label === "Connect a repository" && (
-                    <Link
-                      href="/connections"
-                      className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-accent-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/90"
-                    >
-                      Connect a repository
-                      <IconArrowRight className="h-4 w-4" />
-                    </Link>
-                  )}
+                  <Link
+                    href="/services"
+                    className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-accent-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/90"
+                  >
+                    Review findings
+                    <IconArrowRight className="h-4 w-4" />
+                  </Link>
                 </div>
-              )}
+              </>
+            ) : (
+              /* Still setting up — the SuperLog-style checklist. */
+              <>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-semibold text-content-primary">
+                    Finish setting up Kuma
+                  </h2>
+                  <span className="font-mono text-xs text-content-muted">
+                    {doneCount} of {steps.length}
+                  </span>
+                </div>
 
-              {/* checklist */}
-              <ul className="mt-5 space-y-2.5">
-                {steps.map((step) => (
-                  <li key={step.label} className="flex items-center gap-2.5 text-sm">
-                    {step.done ? (
-                      <IconCircleCheck className="h-4 w-4 shrink-0 text-accent-success" stroke={2} />
-                    ) : (
-                      <IconCircleDashed className="h-4 w-4 shrink-0 text-content-muted/60" stroke={2} />
+                {/* progress bar */}
+                <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
+                  <div
+                    className="h-full rounded-full bg-accent-primary transition-all"
+                    style={{ width: `${(doneCount / steps.length) * 100}%` }}
+                  />
+                </div>
+
+                {/* current-step highlight */}
+                {nextStep && (
+                  <div className="mt-5 flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface-0/50 p-5 sm:flex-row sm:items-center">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-content-primary">{nextStep.label}</p>
+                      <p className="mt-0.5 text-xs leading-5 text-content-muted">
+                        {nextStep.label === "Connect a repository"
+                          ? "Install the Kuma GitHub App on the repo you want reviewed. Every pull request is then reviewed automatically."
+                          : "Open a pull request on a connected repository — the six specialists review it and post verified findings back to the PR."}
+                      </p>
+                    </div>
+                    {nextStep.label === "Connect a repository" && (
+                      <Link
+                        href="/connections"
+                        className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-accent-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/90"
+                      >
+                        Connect a repository
+                        <IconArrowRight className="h-4 w-4" />
+                      </Link>
                     )}
-                    <span className={step.done ? "text-content-secondary" : "text-content-muted"}>
-                      {step.label}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          </RevealItem>
-        )}
+                  </div>
+                )}
+
+                {/* checklist */}
+                <ul className="mt-5 space-y-2.5">
+                  {steps.map((step) => (
+                    <li key={step.label} className="flex items-center gap-2.5 text-sm">
+                      {step.done ? (
+                        <IconCircleCheck className="h-4 w-4 shrink-0 text-accent-success" stroke={2} />
+                      ) : (
+                        <IconCircleDashed className="h-4 w-4 shrink-0 text-content-muted/60" stroke={2} />
+                      )}
+                      <span className={step.done ? "text-content-secondary" : "text-content-muted"}>
+                        {step.label}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </section>
+        </RevealItem>
 
         {/* Metric tiles */}
         <RevealItem>

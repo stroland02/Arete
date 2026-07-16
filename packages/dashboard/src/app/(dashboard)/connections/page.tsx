@@ -1,10 +1,29 @@
+import { redirect } from "next/navigation";
 import Link from "next/link";
-import { IconBrandGithub, IconChevronRight } from "@tabler/icons-react";
+import { IconBrandGithub, IconChevronRight, IconCircleCheck } from "@tabler/icons-react";
+import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
+import { getConnectedRepositories, resolveSelectedInstallationIds } from "@/lib/queries";
 import { CONNECTORS } from "@/lib/connector-catalog";
 import { ConnectorIcon } from "@/components/connections/connector-icon";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 
-export default function ConnectionsPage() {
+// Reads the session and the caller's real installation/repository state on
+// every request — must never be statically prerendered (same reasoning as
+// /overview: a session-scoped page baked at build time would be wrong or leak
+// one tenant's data to everyone).
+export const dynamic = "force-dynamic";
+
+const GITHUB_APP_SLUG = process.env.GITHUB_APP_SLUG ?? "kumaservices";
+
+export default async function ConnectionsPage() {
+  const session = await auth();
+  if (!session?.user) redirect("/login");
+
+  const installationIds = resolveSelectedInstallationIds(session.installations ?? [], undefined);
+  const connected = installationIds.length > 0;
+  const repos = connected ? await getConnectedRepositories(db, installationIds) : [];
+
   return (
     <PageReveal className="mx-auto max-w-5xl space-y-6">
       <RevealItem>
@@ -19,27 +38,76 @@ export default function ConnectionsPage() {
 
       <RevealItem>
         <div className="glass-panel flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-accent-primary/20 bg-accent-primary/10 text-accent-primary">
+          <span
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${
+              connected
+                ? "border-accent-success/25 bg-accent-success/10 text-accent-success"
+                : "border-accent-primary/20 bg-accent-primary/10 text-accent-primary"
+            }`}
+          >
             <IconBrandGithub className="h-5 w-5" />
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-content-primary">Kuma GitHub App</span>
-              <span className="rounded-full border border-accent-primary/20 bg-accent-primary/5 px-1.5 py-0.5 text-[10px] font-medium text-accent-primary/80">
-                Core
-              </span>
+              {connected ? (
+                <span className="inline-flex items-center gap-1 rounded-full border border-accent-success/25 bg-accent-success/10 px-1.5 py-0.5 text-[10px] font-medium text-accent-success">
+                  <IconCircleCheck className="h-3 w-3" stroke={2.25} />
+                  Connected
+                </span>
+              ) : (
+                <span className="rounded-full border border-accent-primary/20 bg-accent-primary/5 px-1.5 py-0.5 text-[10px] font-medium text-accent-primary/80">
+                  Core
+                </span>
+              )}
             </div>
-            <p className="mt-0.5 text-xs text-content-muted">
-              Install the Kuma GitHub App on your account or org so Kuma can review your pull
-              requests. This is the core connection that powers your overview dashboard.
-            </p>
+            {connected ? (
+              <p className="mt-0.5 text-xs text-content-muted">
+                {repos.length > 0 ? (
+                  <>
+                    Reviewing{" "}
+                    <span className="font-medium text-content-secondary">
+                      {repos.length === 1
+                        ? repos[0]
+                        : `${repos[0]} +${repos.length - 1} more`}
+                    </span>
+                    . Every pull request on {repos.length === 1 ? "it" : "these"} is reviewed automatically.
+                  </>
+                ) : (
+                  <>Installed — Kuma is indexing your repositories. Open a pull request and its review appears on your overview.</>
+                )}
+              </p>
+            ) : (
+              <p className="mt-0.5 text-xs text-content-muted">
+                Install the Kuma GitHub App on your account or org so Kuma can review your pull
+                requests. This is the core connection that powers your overview dashboard.
+              </p>
+            )}
+
+            {/* The concrete repositories Kuma is connected to. */}
+            {repos.length > 1 && (
+              <ul className="mt-2 flex flex-wrap gap-1.5">
+                {repos.map((fullName) => (
+                  <li
+                    key={fullName}
+                    className="rounded-md border border-border-subtle bg-surface-2 px-2 py-0.5 font-mono text-[11px] text-content-secondary"
+                  >
+                    {fullName}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
           <a
-            href={`https://github.com/apps/${process.env.GITHUB_APP_SLUG ?? 'kumaservices'}/installations/new`}
-            className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-accent-primary/30 bg-accent-primary/20 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/30"
+            href={`https://github.com/apps/${GITHUB_APP_SLUG}/installations/new`}
+            className={`inline-flex shrink-0 items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-colors ${
+              connected
+                ? "border-border-default bg-surface-2 text-content-secondary hover:bg-content-primary/5"
+                : "border-accent-primary/30 bg-accent-primary/20 text-white hover:bg-accent-primary/30"
+            }`}
           >
             <IconBrandGithub className="h-4 w-4" />
-            Install on GitHub
+            {connected ? "Manage on GitHub" : "Install on GitHub"}
           </a>
         </div>
       </RevealItem>

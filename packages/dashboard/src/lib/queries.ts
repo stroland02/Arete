@@ -190,6 +190,30 @@ export async function getConnectedTelemetryProviders(
   return connections.map((c) => c.provider);
 }
 
+/**
+ * The repositories Kuma is actually installed on for the caller's authorized
+ * installations — the concrete "connected to what" the Connections page shows
+ * next to the GitHub App. Tenant-scoped by installationId exactly like every
+ * other query here, so a repo outside the caller's installations can never
+ * appear. Returns full names ("owner/repo") sorted for a stable list.
+ */
+export async function getConnectedRepositories(
+  db: PrismaClient,
+  installationIds: string[]
+): Promise<string[]> {
+  if (installationIds.length === 0) {
+    return [];
+  }
+
+  const repos = await db.repository.findMany({
+    where: { installationId: { in: installationIds } },
+    select: { fullName: true },
+    orderBy: { fullName: "asc" },
+  });
+
+  return repos.map((r) => r.fullName);
+}
+
 export interface TrendSeries {
   reviewDates: Date[];
   repoDates: Date[];
