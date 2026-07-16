@@ -1,0 +1,23 @@
+<!doctype html>
+<!-- Beancount web (TEST DATA — fake customer app for exercising Kuma). -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Beancount — Expenses</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+      h1 { font-size: 1.25rem; }
+      input { padding: 0.4rem; width: 60%; }
+      ul { list-style: none; padding: 0; }
+      li { display: flex; justify-content: space-between; padding: 0.35rem 0; border-bottom: 1px solid #eee; }
+      .amount { font-variant-numeric: tabular-nums; color: #333; }
+    </style>
+  </head>
+  <body>
+    <h1>Beancount — Expenses</h1>
+    <p><input id="q" type="search" placeholder="Search expenses…" /></p>
+    <ul id="list"></ul>
+    <script src="./app.js"></script>
+  </body>
+</html>
