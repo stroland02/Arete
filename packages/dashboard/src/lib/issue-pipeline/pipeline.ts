@@ -147,6 +147,31 @@ export function transition(container: IssueContainer, to: ContainerState, now: (
 }
 
 /**
+ * The solution gate (spec §1, §4.7): the FIRST of two human gates. A container may
+ * be approved only from `ready` — the driver leaves it there and never crosses
+ * this line itself. This is the HITL moat: `solution_approved` is reached only by
+ * a deliberate human action against this check, never auto-advanced. Enforced
+ * server-side (the approve route calls this), not just disabled in the UI.
+ */
+export function canApprove(container: IssueContainer): boolean {
+  return container.state === "ready";
+}
+
+/**
+ * Cross the solution gate: `ready -> solution_approved`, stamping who approved and
+ * when. Rejects any container not in `ready` (canApprove) — the transition and the
+ * gate stamp move together, so an approved container always carries its provenance.
+ */
+export function approveSolution(container: IssueContainer, approver: string, now: () => string = isoNow): IssueContainer {
+  if (!canApprove(container)) {
+    throw new Error(`cannot approve solution from state ${container.state}`);
+  }
+  const at = now();
+  const approved = transition(container, "solution_approved", () => at);
+  return { ...approved, gates: { ...approved.gates, solutionApprovedAt: at, solutionApprovedBy: approver } };
+}
+
+/**
  * The send gate (spec §1, §4.8): a PR may only be posted from a container that
  * has cleared the Agents-page solution gate. Enforced server-side, not just UI.
  */
