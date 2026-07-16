@@ -13,6 +13,9 @@ importers:
       '@arete/db':
         specifier: workspace:*
         version: link:../db
+      '@arete/orchestration':
+        specifier: workspace:*
+        version: link:../orchestration
       '@arete/topology':
         specifier: workspace:*
         version: link:../topology
