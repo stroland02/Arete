@@ -51,12 +51,20 @@ function agentLabel(category: string): string {
 export async function getSensoriumViewModel(
   db: PrismaClient,
   installationIds: string[],
+  graphExternalId: number | undefined,
   deps: { fetchGraph?: typeof fetchCodeGraph } = {},
 ): Promise<SensoriumViewModel> {
   if (installationIds.length === 0) return { hasAccess: false };
   const fetchGraph = deps.fetchGraph ?? fetchCodeGraph;
 
-  const graph = await fetchGraph(Number(installationIds[0]));
+  // The code graph is keyed by the GitHub *external* installation id (an
+  // integer) — that's what the agents service indexes under and serves at
+  // /context-map/graph/{id} (see graph_export.py / indexer.py). The DB
+  // `installationIds` above are uuids used for the findings/activity queries;
+  // passing Number(uuid) here would be NaN and never match, so the graph id is
+  // supplied separately by the caller.
+  const graph =
+    graphExternalId === undefined ? null : await fetchGraph(graphExternalId);
   const pulse = await getAgentEventsPerMinute(installationIds).catch(
     () => [] as AgentEventData[],
   );

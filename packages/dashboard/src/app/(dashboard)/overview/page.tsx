@@ -38,7 +38,12 @@ export default async function DashboardOverview({
   );
 
   const viewModel = await getDashboardViewModel(db, installationIds);
-  const sensorium = await getSensoriumViewModel(db, installationIds);
+  // The Sensorium code graph is keyed by the GitHub external installation id,
+  // not the DB uuid — resolve the primary selected installation's externalId.
+  const graphExternalId = (session.installations ?? []).find(
+    (i) => i.id === installationIds[0]
+  )?.externalId;
+  const sensorium = await getSensoriumViewModel(db, installationIds, graphExternalId);
 
   const connected = viewModel.hasAccess;
   const { totalPrs, criticalBugs, recentReviews, latestReviews, commentsByCategory } = viewModel.hasAccess
