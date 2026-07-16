@@ -121,8 +121,9 @@ describe('runStagingSend', () => {
 
     const result = await runStagingSend(deps, { containerId: 'missing', installationId: 'inst_uuid_1' })
 
-    expect(result.outcome).toBe('failed')
-    if (result.outcome === 'failed') expect(result.detail).toMatch(/container/i)
+    // No container for this tenant is not_found (404), distinct from an upstream
+    // failure (502) and from an existing-but-unapproved container (409).
+    expect(result.outcome).toBe('not_found')
     expect(gh.create).not.toHaveBeenCalled()
   })
 

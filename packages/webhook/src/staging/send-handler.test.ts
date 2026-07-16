@@ -7,8 +7,8 @@ import type { StagingSendDeps, StagingSendResult } from './send.js'
 // The Express adapter for POST /staging/send. It validates the { containerId,
 // installationId } body, delegates to runStagingSend, and maps the flat outcome
 // to an HTTP status the dashboard action can rely on:
-//   opened | already_open -> 200,  not_approved -> 409,  failed -> 502,
-//   malformed body        -> 400.
+//   opened | already_open -> 200,  not_approved -> 409,  not_found -> 404,
+//   failed -> 502,  malformed body -> 400.
 // The runner is injected so this exercises only the HTTP concern (validation +
 // status mapping) — the orchestration itself is covered in send.test.ts.
 
@@ -63,6 +63,14 @@ describe('POST /staging/send handler', () => {
 
     expect(res.status).toBe(409)
     expect(res.body).toEqual({ outcome: 'not_approved' })
+  })
+
+  it('returns 404 on not_found (no such container for this tenant — a client addressing error)', async () => {
+    const run = vi.fn().mockResolvedValue({ outcome: 'not_found' })
+    const res = await request(appWith(run)).post('/staging/send').send({ containerId: 'missing', installationId: 'i' })
+
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual({ outcome: 'not_found' })
   })
 
   it('returns 502 with the detail on failed (upstream/resolution error)', async () => {

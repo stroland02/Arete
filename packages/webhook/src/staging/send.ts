@@ -33,12 +33,14 @@ export interface StagingSendDeps {
   loadContainer(containerId: string, installationId: string): Promise<ApprovedContainer | null>
 }
 
-/** Flat outcome the dashboard action switches on. `not_approved` is the gate
- *  refusing to send; `failed` is any resolution/upstream error (never thrown). */
+/** Flat outcome the dashboard action switches on. `not_found` is no container for
+ *  this tenant (404); `not_approved` is the gate refusing to send (409); `failed`
+ *  is any resolution/upstream error (never thrown). */
 export type StagingSendResult =
   | { outcome: 'opened'; prNumber: number; prUrl: string }
   | { outcome: 'already_open'; prNumber: number; prUrl: string }
   | { outcome: 'not_approved' }
+  | { outcome: 'not_found' }
   | { outcome: 'failed'; detail: string }
 
 export async function runStagingSend(
@@ -57,7 +59,10 @@ export async function runStagingSend(
     // 2. Load the approved container slice, scoped to the tenant.
     const container = await deps.loadContainer(containerId, installationId)
     if (container === null) {
-      return { outcome: 'failed', detail: `container not found: ${containerId}` }
+      // No container for this tenant — a distinct signal from an upstream failure
+      // (mapped to 404, not 502), and from a container that exists but isn't yet
+      // approved (not_approved → 409).
+      return { outcome: 'not_found' }
     }
 
     // 3. Defense in depth behind loadContainer's own scoping: never send a

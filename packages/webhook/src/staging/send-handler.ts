@@ -23,6 +23,10 @@ function statusFor(result: StagingSendResult): number {
       return 200
     case 'not_approved':
       return 409
+    case 'not_found':
+      // No such container for this tenant — a client addressing error, not an
+      // upstream fault. 404, distinct from not_approved's 409 and failed's 502.
+      return 404
     case 'failed':
       return 502
   }
