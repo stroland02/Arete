@@ -62,4 +62,38 @@ describe('runReviewPipeline', () => {
     await expect(promise).rejects.toThrow('timed out')
     vi.useRealTimers()
   })
+
+  it('forwards the deployment BYO model config as `llm` when configured', async () => {
+    process.env.MODEL_PROVIDER = 'ollama'
+    process.env.MODEL_NAME = 'qwen2.5-coder'
+    process.env.MODEL_BASE_URL = 'http://localhost:11434'
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, json: vi.fn().mockResolvedValue(MOCK_RESULT),
+    })
+    global.fetch = fetchMock as any
+    try {
+      const { runReviewPipeline } = await import('./review-bridge.js')
+      await runReviewPipeline({ repo: 'x/y', pr_number: 1, title: 'T', description: '', files: [] })
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+      expect(body.llm).toEqual({
+        provider: 'ollama', model: 'qwen2.5-coder', baseUrl: 'http://localhost:11434',
+      })
+    } finally {
+      delete process.env.MODEL_PROVIDER
+      delete process.env.MODEL_NAME
+      delete process.env.MODEL_BASE_URL
+    }
+  })
+
+  it('omits `llm` when no model provider is configured', async () => {
+    delete process.env.MODEL_PROVIDER
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, json: vi.fn().mockResolvedValue(MOCK_RESULT),
+    })
+    global.fetch = fetchMock as any
+    const { runReviewPipeline } = await import('./review-bridge.js')
+    await runReviewPipeline({ repo: 'x/y', pr_number: 1, title: 'T', description: '', files: [] })
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(body.llm).toBeUndefined()
+  })
 })

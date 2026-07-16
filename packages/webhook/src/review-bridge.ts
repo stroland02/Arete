@@ -1,5 +1,5 @@
 import type { PRContext, ReviewResult } from './types.js'
-import { getServiceConfig } from './config.js'
+import { getServiceConfig, getModelConfig } from './config.js'
 
 export async function runReviewPipeline(prContext: PRContext): Promise<ReviewResult> {
   const controller = new AbortController()
@@ -7,9 +7,14 @@ export async function runReviewPipeline(prContext: PRContext): Promise<ReviewRes
 
   try {
     const baseUrl = getServiceConfig().pythonServiceUrl
+    // Forward the deployment-level BYO model config (when configured) as the
+    // agents /review `llm` block — unless the context already carries one.
+    // Omitted -> the agents service uses its own default / Ollama fallback.
+    const modelConfig = getModelConfig()
+    const body = prContext.llm || !modelConfig ? prContext : { ...prContext, llm: modelConfig }
     const res = await fetch(`${baseUrl}/review`, {
       method: 'POST',
-      body: JSON.stringify(prContext),
+      body: JSON.stringify(body),
       headers: { 'Content-Type': 'application/json' },
       signal: controller.signal
     })
