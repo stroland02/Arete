@@ -5,9 +5,6 @@ import { handleStripeWebhook } from './stripe-handler.js'
 import { handleGitLabWebhook } from './gitlab-handler.js'
 import { buildOAuthAuthorizeUrl } from './oauth/build-authorize-url.js'
 import { handleOAuthCallback } from './oauth/oauth-callback-handler.js'
-import { prisma } from './db.js'
-import { PrismaWebhookStore, type WebhookPrismaClient } from './outbound/prisma-store.js'
-import { createWebhookRouter } from './outbound/routes.js'
 
 // @octokit/app and @octokit/webhooks are pure ESM (import-only "exports" maps);
 // this package compiles to CJS, so they must be loaded via dynamic import(),
@@ -158,11 +155,13 @@ export async function createServer(): Promise<express.Application> {
     }
   })
   
-  // Outbound webhook management API (tenant-scoped by installationId). Backed by
-  // the Prisma store; the router validates the destination URL against the SSRF
-  // guard and returns the signing secret exactly once at create.
-  const webhookStore = new PrismaWebhookStore(prisma as unknown as WebhookPrismaClient)
-  server.use('/api/webhooks', createWebhookRouter(webhookStore))
+  // NOTE: the outbound-webhook *management* API (POST/GET /api/webhooks/endpoints)
+  // is deliberately NOT mounted here. It trusted a client-supplied installationId
+  // with no authentication — an anonymous caller could register a webhook for, or
+  // list the endpoints of, any tenant and receive that tenant's whsec_ secret.
+  // Authenticated, tenant-scoped management belongs behind the dashboard's
+  // Auth.js session (fast-follow). Endpoints are created internally / seeded via
+  // PrismaWebhookStore; the delivery engine (persistence.ts) is unaffected.
 
   // Mount at root and let createNodeMiddleware own the path matching —
   // Express strips the mount prefix from req.url, so mounting at '/webhook'

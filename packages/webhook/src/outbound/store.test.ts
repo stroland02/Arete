@@ -54,6 +54,34 @@ describe('InMemoryWebhookStore', () => {
     expect(matches.map((e) => e.url)).toEqual(['https://a'])
   })
 
+  // Adversarial cross-tenant isolation: with the HTTP management API removed,
+  // the store is the surface through which internal/seeded endpoints are created.
+  // A query scoped to tenant B must NEVER surface tenant A's endpoint — not via
+  // listEndpoints, not via endpointsFor — and must never expose A's secret.
+  test('a tenant B query never reads tenant A endpoints or A\'s secret', async () => {
+    const store = new InMemoryWebhookStore()
+    const tenantA = await store.createEndpoint({
+      installationId: 'tenant-A',
+      url: 'https://a.example/hook',
+      events: ['review.created'],
+    })
+
+    // Tenant B enumerates: sees nothing of A's.
+    expect(await store.listEndpoints('tenant-B')).toEqual([])
+    expect(await store.endpointsFor('tenant-B', 'review.created')).toEqual([])
+
+    // And A's secret never appears in anything B can observe.
+    const bView = JSON.stringify([
+      await store.listEndpoints('tenant-B'),
+      await store.endpointsFor('tenant-B', 'review.created'),
+    ])
+    expect(bView).not.toContain(tenantA.secret)
+    expect(bView).not.toContain('whsec_')
+
+    // Sanity: tenant A still reads its own endpoint (scoping isolates, not erases).
+    expect((await store.listEndpoints('tenant-A')).map((e) => e.id)).toEqual([tenantA.id])
+  })
+
   test('recordDelivery creates a pending row; settleDelivery applies the outcome', async () => {
     const store = new InMemoryWebhookStore()
     const ep = await store.createEndpoint({ installationId: 'inst_1', url: 'https://a', events: ['review.created'] })
