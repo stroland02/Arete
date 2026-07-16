@@ -57,7 +57,18 @@ state machine, projection, and SSE all exist; what's missing is the **live drive
   streaming `SynthStep`s live (not just the terminal projection of a stored review).
 - **Approval gate (UI):** the human approves `ready → solution_approved` on Services/Agents.
 - **PR staging + send (webhook):** compose a real branch/patch and open the PR via the GitHub
-  App; `solution_approved → posted`. **HITL moat preserved** — never auto-send.
+  App; `solution_approved → posted`. **HITL moat preserved** — never auto-send. The
+  `POST /staging/send` seam ships (Eng1, `a13a2b9`); its `loadApprovedContainer` is inert
+  pending the store below.
+- **Container persistence (foundational — Eng1 owns; deferred spec §6.1, now in scope):** no
+  persisted approved-container exists yet (the dashboard's is a read-only review *projection*;
+  the driver's is transient). Add a persistent **`IssueContainer` model to `@arete/db`**
+  (`installationId`, `state`, `gates` incl. `solutionApprovedAt`, `target`, `findings`) alongside
+  `ModelConnection` — Eng1 is sole schema writer. `loadApprovedContainer` becomes a scoped,
+  gate-enforced Prisma read (`id AND installationId=<caller> AND gates.solutionApprovedAt NOT
+  NULL`). **Write side is a contract others fulfill against the same table:** the dashboard/driver
+  create the container (user clicks "Fix"), the driver advances state, Eng2's approval UI sets
+  `solutionApprovedAt`. Land early — the whole Fix workflow sits on it.
 
 ### C. Orchestration integration — PM⇄specialist message-passing  *(Eng2 `feat/orchestration-study`, `packages/orchestration`)*
 `packages/orchestration` exists only on Eng2's unmerged branch. Merge it, then wire it as the
