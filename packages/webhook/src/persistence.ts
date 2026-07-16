@@ -1,5 +1,7 @@
 import type { ScmProvider } from '@arete/db'
 import { prisma } from './db.js'
+import { emitReviewCreated } from './outbound/emit.js'
+import { PrismaWebhookStore, type WebhookPrismaClient } from './outbound/prisma-store.js'
 import type { ReviewResult, TelemetrySnapshot } from './types.js'
 
 const MAX_PROJECT_MEMORIES = 20
@@ -191,7 +193,7 @@ export async function persistReview(params: PersistReviewParams): Promise<void> 
     })
   }
 
-  await prisma.review.create({
+  const review = await prisma.review.create({
     data: {
       prNumber,
       repositoryId: repository.id,
@@ -209,6 +211,27 @@ export async function persistReview(params: PersistReviewParams): Promise<void> 
     where: { id: installation.id },
     data: { usageCount: { increment: 1 } },
   })
+
+  // Fire the outbound review.created webhook to any endpoints the installation
+  // has registered. Deliberately non-fatal and last: the review is already
+  // persisted and posted to the SCM, so a webhook delivery problem (or the
+  // absence of the webhook tables before the migration is applied) must never
+  // fail persistence. Same contract as the rest of this function.
+  try {
+    const store = new PrismaWebhookStore(prisma as unknown as WebhookPrismaClient)
+    await emitReviewCreated(store, {
+      installationId: installation.id,
+      reviewId: review.id,
+      prNumber,
+      repositoryFullName: fullName,
+      riskLevel: result.risk_level,
+    })
+  } catch (err) {
+    console.error(
+      `[persistence] outbound review.created webhook emit failed for ${fullName}#${prNumber} (non-fatal):`,
+      err
+    )
+  }
 }
 
 export interface PersistTelemetrySnapshotsParams {

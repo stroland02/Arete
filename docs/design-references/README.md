@@ -12,6 +12,12 @@ Companion specs: `docs/superpowers/specs/2026-07-10-telemetry-connectors-design.
 (auth/tenancy), `docs/proposal/TYME-platform-proposal.md` (full product
 vision — "Master Grid").
 
+**Data-model / adopt-adapt-skip companion:** this file annotates the *screenshots*.
+For an adopt/adapt/skip decision over SuperLog's *documented data models and
+behaviours* (webhooks, agent-run/confidence schema, agent memory, issue filters,
+automerge policy — grounded in Areté's real Prisma schema), see
+`docs/research/superlog-integration-analysis.md` (2026-07-15).
+
 ---
 
 ## ⚠️ Status as of 2026-07-12 — read this first

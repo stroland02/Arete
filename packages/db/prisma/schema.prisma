@@ -36,6 +36,9 @@ model Installation {
   repositories         Repository[]
   telemetryConnections TelemetryConnection[]
   telemetrySnapshots   TelemetrySnapshotRecord[]
+  webhookEndpoints     WebhookEndpoint[]
+  modelConnections     ModelConnection[]
+  issueContainers      IssueContainer[]
 
   @@unique([provider, externalId])
 }
@@ -62,6 +65,64 @@ model TelemetryConnection {
   installation   Installation @relation(fields: [installationId], references: [id])
 
   @@unique([installationId, provider])
+}
+
+/// A customer's Bring-Your-Own AI model connection, scoped to an Installation
+/// (tenant). Resolved at review time so live reviews run on the customer's own
+/// model/key instead of a shared default. One row per (installation, provider).
+model ModelConnection {
+  id             String       @id @default(uuid())
+  installationId String
+  /// AI model provider name, e.g. "openai", "anthropic", "ollama". A plain
+  /// string (not an enum) — the set of supported model providers grows
+  /// independently of source-control providers.
+  provider       String
+  /// The API key, encrypted with the same AES-256-GCM scheme as
+  /// TelemetryConnection.credentials (see packages/webhook telemetry/
+  /// credentials.ts, TELEMETRY_ENCRYPTION_KEY). Nullable: a local/self-hosted
+  /// connection (e.g. an Ollama endpoint) authenticates by baseUrl alone and
+  /// carries no key. Never returned by the API and never logged.
+  apiKeyEncrypted String?
+  /// Model identifier passed through to the provider, e.g. "gpt-4o" or
+  /// "claude-opus-4".
+  model          String
+  /// Optional custom base URL for self-hosted / proxied / Azure-style
+  /// deployments. When null the provider's default endpoint is used.
+  baseUrl        String?
+  createdAt      DateTime     @default(now())
+  installation   Installation @relation(fields: [installationId], references: [id])
+
+  @@unique([installationId, provider])
+}
+
+/// A persistent Issue Container: the server-side unit the Fix workflow advances
+/// through its lifecycle (open -> solution proposed -> approved -> staged). It is
+/// tenant-scoped and gate-enforced — POST /staging/send only opens a PR once
+/// gates.solutionApprovedAt is set. The dashboard/driver populate it (create /
+/// advance / approve); the webhook lane reads it (loadApprovedContainer), always
+/// scoped by installationId. Eng1 owns the definition.
+model IssueContainer {
+  id             String       @id @default(uuid())
+  installationId String
+  /// Lifecycle state, e.g. "open" | "solution_proposed" | "approved" | "staged".
+  state          String       @default("open")
+  /// Server-side gates. Shape: { "solutionApprovedAt": ISO8601 | null }. The
+  /// technical sign-off that unlocks PR staging.
+  gates          Json
+  /// PR target repository. Shape: { "owner": "...", "repo": "..." }.
+  target         Json
+  /// PR metadata. Shape: { "base": "main", "title": "...", "body": "..." }.
+  pr             Json
+  /// The staged patch files (StagedPatchFile[]) the PR renders — the diff.
+  patch          Json
+  /// The review findings this container was opened from (informational source
+  /// of the proposed fix). Shape: provider-specific finding objects.
+  findings       Json
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  installation   Installation @relation(fields: [installationId], references: [id])
+
+  @@index([installationId])
 }
 
 model Repository {
@@ -200,4 +261,53 @@ model Account {
   user              User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+}
+
+/// A customer-registered outbound webhook destination, scoped to an
+/// Installation (tenant). Areté POSTs signed `review.*` events here. The
+/// `secret` is a `whsec_`-prefixed random string shown once at creation and
+/// used to HMAC-sign every delivery (see packages/webhook/src/outbound/
+/// signature.ts) — it is never returned by list/get endpoints and never logged.
+model WebhookEndpoint {
+  id             String            @id @default(uuid())
+  installationId String
+  /// Destination URL. Must be http(s) and is validated against the SSRF guard
+  /// (packages/net-guard) at create time and again before every delivery.
+  url            String
+  /// `whsec_`-prefixed HMAC secret. Write-once semantics at the API layer.
+  secret         String
+  /// Subscribed events, a subset of ["review.created", "review.updated"].
+  events         String[]
+  enabled        Boolean           @default(true)
+  createdAt      DateTime          @default(now())
+  installation   Installation      @relation(fields: [installationId], references: [id])
+  deliveries     WebhookDelivery[]
+
+  @@index([installationId])
+}
+
+/// One delivery attempt-set for a single event to a single endpoint. `id` is
+/// the value sent in the `Arete-Delivery` header and is stable across retries,
+/// so the receiver can use it as an idempotency key. `attempts`/`nextAttempt`
+/// drive the retry curve in packages/webhook/src/outbound/backoff.ts.
+model WebhookDelivery {
+  id          String          @id @default(uuid())
+  endpointId  String
+  event       String
+  payload     Json
+  /// "pending" | "delivered" | "failed"
+  status      String          @default("pending")
+  attempts    Int             @default(0)
+  /// HTTP status of the last attempt (null if the request never got a response).
+  lastCode    Int?
+  /// Short error string of the last failed attempt (never contains the secret).
+  lastError   String?
+  /// When the next retry is due; null once delivered or permanently failed.
+  nextAttempt DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  endpoint    WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@index([endpointId, status])
+  @@index([status, nextAttempt])
 }

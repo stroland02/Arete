@@ -17,6 +17,12 @@ function makePrismaMock() {
   const reviewCommentFindFirst = vi.fn()
   const reviewCommentUpdate = vi.fn()
   const agentMemoryFindMany = vi.fn()
+  // persistReview now fires an outbound review.created webhook via
+  // PrismaWebhookStore, which reads webhookEndpoint and writes webhookDelivery.
+  // Model both on the fake so the emit no-ops cleanly (no endpoints → no
+  // delivery) instead of throwing on an undefined delegate.
+  const webhookEndpointFindMany = vi.fn().mockResolvedValue([])
+  const webhookDeliveryCreate = vi.fn()
 
   class PrismaClient {
     installation = {
@@ -29,6 +35,8 @@ function makePrismaMock() {
     review = { findUnique: reviewFindUnique, create: reviewCreate }
     reviewComment = { findFirst: reviewCommentFindFirst, update: reviewCommentUpdate }
     agentMemory = { findMany: agentMemoryFindMany }
+    webhookEndpoint = { findMany: webhookEndpointFindMany }
+    webhookDelivery = { create: webhookDeliveryCreate }
   }
 
   return {
@@ -44,6 +52,8 @@ function makePrismaMock() {
     reviewCommentFindFirst,
     reviewCommentUpdate,
     agentMemoryFindMany,
+    webhookEndpointFindMany,
+    webhookDeliveryCreate,
   }
 }
 
