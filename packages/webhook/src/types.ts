@@ -42,6 +42,15 @@ export interface PRContext {
   cloneUrl?: string
   installationToken?: string
   installationId?: number
+  /// The tenant's resolved Bring-Your-Own model connection for this review
+  /// (see resolve-model-connection.ts). apiKey is decrypted; null for keyless
+  /// (Ollama companion) connections. Attached at the /review choke point.
+  modelConnection?: {
+    provider: string
+    model: string
+    apiKey: string | null
+    baseUrl: string | null
+  }
 }
 
 export interface ReviewComment {
