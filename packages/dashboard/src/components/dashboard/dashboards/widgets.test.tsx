@@ -47,11 +47,26 @@ describe('TimeseriesWidget', () => {
 });
 
 describe('TelemetryMetricWidget', () => {
-  it('always captions the snapshot with its fetched time (never implies live)', () => {
+  const snap = { provider: 'sentry', sourceRef: 'acme/api', summaryText: 'ok', metrics: { error_rate: 2 }, links: [], fetchedAt: new Date('2026-07-10T00:00:00Z') };
+
+  it('captions a CONNECTED provider as live and shows no connect CTA', () => {
     const html = renderToStaticMarkup(
-      <TelemetryMetricWidget snapshot={{ provider: 'sentry', sourceRef: 'acme/api', summaryText: 'ok', metrics: { error_rate: 2 }, links: [], fetchedAt: new Date('2026-07-10T00:00:00Z') }} />
+      <TelemetryMetricWidget snapshot={snap} connectedProviders={['sentry']} />
     );
     expect(html.toLowerCase()).toContain('as of last review');
     expect(html).toContain('error_rate');
+    expect(html).not.toContain('Connect this service');
+    expect(html).not.toContain('Detected · not connected');
+  });
+
+  it('badges a DETECTED-but-not-connected provider and offers a connect CTA, not a live caption', () => {
+    const html = renderToStaticMarkup(
+      <TelemetryMetricWidget snapshot={snap} connectedProviders={[]} />
+    );
+    expect(html).toContain('Detected · not connected');
+    expect(html).toContain('Connect this service');
+    expect(html).toContain('/connections');
+    expect(html).toContain('error_rate'); // real detected metric still shown
+    expect(html.toLowerCase()).not.toContain('as of last review'); // never implies live
   });
 });
