@@ -1,0 +1,55 @@
+import type { App } from '@octokit/app'
+import { getInstallationToken } from './github-auth.js'
+import { getServiceConfig } from './config.js'
+import type { BackfillRepo } from './backfill.js'
+
+/**
+ * Kick off a code-map (Sensorium) build for each repo the moment the Kuma app
+ * is installed on it — so the dashboard's code map is built ON CONNECT instead
+ * of only after the repo's first PR review. Mirrors backfillInstallationPRs:
+ * called from the `installation` / `installation_repositories` webhook
+ * handlers, best-effort at every level, and it must never throw into (or block)
+ * the install flow.
+ *
+ * The agents service does the actual clone+index in a background task and
+ * returns immediately, so this stays fast. A per-repo installation token is
+ * minted here and passed through; it is short-lived and only used server-side.
+ */
+export async function triggerContextMapIndex(
+  app: App,
+  installationId: number,
+  repos: BackfillRepo[],
+): Promise<void> {
+  if (repos.length === 0) return
+
+  let token: string
+  try {
+    token = await getInstallationToken(app, installationId)
+  } catch (err) {
+    console.error(
+      `[context-map] Could not mint installation token for ${installationId} — skipping index-on-connect:`,
+      err,
+    )
+    return
+  }
+
+  const baseUrl = getServiceConfig().pythonServiceUrl
+
+  for (const repo of repos) {
+    try {
+      await fetch(`${baseUrl}/context-map/index`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          installation_id: installationId,
+          repo_slug: repo.full_name,
+          clone_url: `https://github.com/${repo.full_name}.git`,
+          installation_token: token,
+        }),
+      })
+      console.log(`[context-map] Requested code-map index for ${repo.full_name} on connect`)
+    } catch (err) {
+      console.error(`[context-map] Failed to request index for ${repo.full_name}:`, err)
+    }
+  }
+}

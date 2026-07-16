@@ -65,7 +65,8 @@ export async function getSensoriumViewModel(
     return {
       hasAccess: true,
       available: false,
-      reason: 'Your code map builds after your first review.',
+      reason:
+        'Kuma is building your code map from your connected repository — it appears here as soon as indexing finishes.',
       pulse,
     };
   }

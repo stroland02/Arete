@@ -87,7 +87,7 @@ export default async function DashboardOverview({
               <SensoriumMap topology={sensorium.topology!} sensors={sensorium.sensors!} />
             ) : (
               <StatePanel>
-                {sensorium.reason ?? "Your code map builds after your first review."}
+                {sensorium.reason ?? "Kuma is building your code map from your connected repository."}
               </StatePanel>
             )}
           </RevealItem>
