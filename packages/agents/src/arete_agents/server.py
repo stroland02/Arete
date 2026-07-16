@@ -37,36 +37,58 @@ processor = BatchSpanProcessor(otlp_exporter)
 provider.add_span_processor(processor)
 trace.set_tracer_provider(provider)
 
-# Module-level singletons — LangGraph graph compilation is expensive;
-# one orchestrator and one chat agent serve all requests. Fail-fast on
-# missing/invalid config is intentional (better to crash at startup than
-# serve requests with a broken LLM client) — but the raw pydantic
-# ValidationError is not actionable on its own, so we log a clear pointer
-# to the required env vars before letting the exception propagate and
-# take down the process.
-try:
-    _settings = get_settings()
-except Exception:
-    logging.critical(
-        "Areté agents server failed to start: invalid or missing configuration. "
-        "Set ANTHROPIC_API_KEY in the environment or .env file (the pipeline "
-        "uses Anthropic Claude models per role).",
-        exc_info=True,
-    )
-    raise
-_llms = get_llms_by_role(_settings)
-_orchestrator = ReviewOrchestrator(llm=_llms, tiers=role_tiers(_settings))
-_chat_agent = ChatAgent(llm=_llms["chat"])
+# LLM-backed singletons are built LAZILY, on the first /review or /chat call.
+# LangGraph graph compilation is expensive (one orchestrator + one chat agent
+# serve all requests) and — critically — requires a configured LLM provider key.
+# The code-map endpoints (/context-map/*) are pure code-graph operations that
+# need NO LLM, so the server MUST boot and serve them even when no key is set.
+# We therefore defer the key requirement to the endpoints that actually need it,
+# instead of crashing the whole process at import (which also took the code map
+# down with it).
+_orchestrator: ReviewOrchestrator | None = None
+_chat_agent: ChatAgent | None = None
+
+
+def _require_llm_config():
+    try:
+        return get_settings()
+    except Exception:
+        logging.critical(
+            "Areté agents: LLM configuration is invalid or missing. Set a valid "
+            "GEMINI_API_KEY (with LLM_PROVIDER=gemini) or ANTHROPIC_API_KEY (with "
+            "LLM_PROVIDER=anthropic). The code-map endpoints (/context-map/*) work "
+            "without it; /review and /chat require it.",
+            exc_info=True,
+        )
+        raise
+
+
+def _get_orchestrator() -> ReviewOrchestrator:
+    global _orchestrator
+    if _orchestrator is None:
+        settings = _require_llm_config()
+        _orchestrator = ReviewOrchestrator(
+            llm=get_llms_by_role(settings), tiers=role_tiers(settings)
+        )
+    return _orchestrator
+
+
+def _get_chat_agent() -> ChatAgent:
+    global _chat_agent
+    if _chat_agent is None:
+        settings = _require_llm_config()
+        _chat_agent = ChatAgent(llm=get_llms_by_role(settings)["chat"])
+    return _chat_agent
 
 
 @app.post("/review")
 def review(pr: PRContext):
-    return _orchestrator.run(pr)
+    return _get_orchestrator().run(pr)
 
 
 @app.post("/chat")
 def chat(context: Dict[str, Any]):
-    return _chat_agent.reply(context)
+    return _get_chat_agent().reply(context)
 
 
 @app.get("/context-map/ui-url/{installation_id}")
