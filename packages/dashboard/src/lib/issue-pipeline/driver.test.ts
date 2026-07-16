@@ -133,6 +133,25 @@ describe("driveContainer", () => {
     expect(r.steps.some((s) => s.kind === "posted")).toBe(false);
   });
 
+  it("flags a kept finding below the low-confidence threshold as needs-attention", () => {
+    const lowConf = { ...finding("f1", 42), confidence: 0.5 };
+    const r = driveContainer(
+      baseInput({ reports: [{ agentId: "security", label: "Security", candidates: [lowConf] }] }),
+    );
+    const keep = r.steps.find((s) => s.kind === "keep")!;
+    expect(keep.needsAttention).toBe(true);
+    expect(keep.text).toContain("human look");
+  });
+
+  it("does NOT flag a kept finding at or above the threshold", () => {
+    const highConf = { ...finding("f1", 42), confidence: 0.9 };
+    const r = driveContainer(
+      baseInput({ reports: [{ agentId: "security", label: "Security", candidates: [highConf] }] }),
+    );
+    const keep = r.steps.find((s) => s.kind === "keep")!;
+    expect(keep.needsAttention).toBeUndefined();
+  });
+
   it("rejects a container that is not in the detecting state", () => {
     const c = { ...detecting(), state: "ready" as const };
     expect(() => driveContainer(baseInput({ container: c }))).toThrow(/detecting/);

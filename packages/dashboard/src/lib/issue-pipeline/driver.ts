@@ -33,6 +33,7 @@ import type { DispatchPlan, QaResult } from "@arete/orchestration";
 import { advanceQaLoop, planToTasks, DEFAULT_MAX_PASSES } from "@arete/orchestration";
 import type { Diff, Finding, IssueContainer, SynthStep } from "./types";
 import { composePr, transition, verifyAll } from "./pipeline";
+import { DEFAULT_LOW_CONFIDENCE } from "./critic";
 
 function isoNow(): string {
   return new Date().toISOString();
@@ -58,6 +59,13 @@ export interface DriveInput {
   qaResults?: QaResult[];
   /** Bounds the QA retry loop (design §2.5). Defaults to DEFAULT_MAX_PASSES. */
   maxPasses?: number;
+  /**
+   * A kept finding whose confidence is below this is flagged "wants a human
+   * look" (the ⚑ variant). Defaults to DEFAULT_LOW_CONFIDENCE. In the live
+   * harness the Critic assigns confidence; here it rides on the candidate. The
+   * full gate+Critic pass (verifyHybrid) is a documented seam, not wired here.
+   */
+  lowConfidence?: number;
   /** Base + branch for the composed PR. */
   compose: { base: string; branch: string };
   now?: () => string;
@@ -115,9 +123,23 @@ export function driveContainer(input: DriveInput): DriveResult {
   }
 
   // 3. Synthesizer verifies every candidate against the diff (-> verifying).
+  //    A kept finding below the low-confidence threshold is flagged "wants a
+  //    human look" — the ⚑ variant the ledger surfaces for a human glance.
   container = transition(container, "verifying", now);
   const v = verifyAll(candidates, input.diff, now);
-  steps.push(...v.transcript);
+  const lowConfidence = input.lowConfidence ?? DEFAULT_LOW_CONFIDENCE;
+  const flagged = new Set(
+    v.findings
+      .filter((f) => f.verdict === "kept" && f.confidence !== undefined && f.confidence < lowConfidence)
+      .map((f) => f.id),
+  );
+  for (const s of v.transcript) {
+    if (s.kind === "keep" && s.findingId && flagged.has(s.findingId)) {
+      steps.push({ ...s, text: "Kept — wants a human look", needsAttention: true });
+    } else {
+      steps.push(s);
+    }
+  }
 
   // 4. QA/UI-validation loop (design §2.5): pass -> synthesize; fail -> PM
   //    re-dispatch bounded by maxPasses; exhaustion -> escalate to the human gate.
