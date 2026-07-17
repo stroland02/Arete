@@ -410,7 +410,7 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
                         aria-expanded={expanded}
                         className={`flex w-full items-center gap-2 py-2.5 pl-3 pr-3 text-left transition-colors ${
                           expanded ? "bg-accent-primary/[0.06]" : "hover:bg-content-primary/[0.04]"
-                        }`}
+                        } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-primary/40`}
                       >
                         <IconChevronDown
                           size={12}
@@ -440,7 +440,7 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
                                     on
                                       ? "bg-accent-primary/[0.1] text-content-primary"
                                       : "text-content-secondary hover:bg-content-primary/[0.04]"
-                                  }`}
+                                  } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-primary/40`}
                                 >
                                   <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${riskDot(r.riskLevel)}`} />
                                   <span className="min-w-0 flex-1 truncate font-mono text-[11.5px]">
@@ -488,7 +488,7 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
                       aria-expanded={expanded}
                       className={`flex w-full items-center gap-2 py-2.5 pl-3 pr-3 text-left transition-colors ${
                         expanded ? "bg-accent-primary/[0.06]" : "hover:bg-content-primary/[0.04]"
-                      }`}
+                      } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-primary/40`}
                     >
                       <IconChevronDown
                         size={12}
@@ -519,7 +519,7 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
                                   aria-current={on ? "true" : undefined}
                                   className={`flex w-full items-center gap-2 py-1.5 pl-9 pr-3 text-left transition-colors ${
                                     on ? "bg-accent-primary/[0.1] text-content-primary" : "text-content-secondary hover:bg-content-primary/[0.04]"
-                                  }`}
+                                  } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-primary/40`}
                                 >
                                   <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${SEV_DOT[iss.severity]}`} />
                                   <span className="min-w-0 flex-1 truncate text-[11.5px]">{iss.title}</span>
