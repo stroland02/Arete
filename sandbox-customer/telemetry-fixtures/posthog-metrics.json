@@ -1,0 +1,23 @@
+{
+  "_comment": "TEST DATA — synthetic PostHog-style product metrics for the Beancount sandbox customer. No real PostHog call is ever made. Loaded by sandbox-customer/seed/seed-sandbox.mjs into a TelemetrySnapshotRecord (provider='posthog').",
+  "provider": "posthog",
+  "sourceRef": "production-app",
+  "fetchedAt": "2026-07-14T18:30:00.000Z",
+  "summaryText": "Weekly active users up 4%; a funnel drop on the expense-search step correlates with the reported search errors.",
+  "metrics": {
+    "weeklyActiveUsers": 1284,
+    "wauChangePct": 4.0,
+    "searchFunnelCompletionPct": 61.2,
+    "avgSessionMinutes": 7.8
+  },
+  "events": [
+    { "name": "expense_created", "count7d": 3120 },
+    { "name": "report_viewed", "count7d": 940 },
+    { "name": "expense_search", "count7d": 512 },
+    { "name": "search_error_shown", "count7d": 48 }
+  ],
+  "links": {
+    "dashboard": "https://posthog.example.test/project/beancount",
+    "insights": "https://posthog.example.test/project/beancount/insights"
+  }
+}

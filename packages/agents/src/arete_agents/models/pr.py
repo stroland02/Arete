@@ -23,6 +23,19 @@ class FileChange(BaseModel):
         return _EXTENSION_MAP.get(suffix, "other")
 
 
+class LLMConfig(BaseModel):
+    """Per-request BYO model config (see POST /review). When present, the
+    review builds its LLM clients from THIS config instead of the server's
+    global Settings — this is how a user connects their own model. Accepts the
+    TS/JS webhook camelCase (apiKey/baseUrl) and Python snake_case alike."""
+    model_config = ConfigDict(populate_by_name=True, protected_namespaces=())
+
+    provider: str
+    model: str | None = None
+    api_key: str | None = Field(None, alias="apiKey")
+    base_url: str | None = Field(None, alias="baseUrl")
+
+
 class PRContext(BaseModel):
     # Accept both the TS/JS webhook convention (ciLogs, customRules) and the
     # Python/CLI convention (ci_logs, custom_rules). Without populate_by_name,
@@ -50,3 +63,8 @@ class PRContext(BaseModel):
     installation_token: str | None = Field(None, alias="installationToken")
     installation_id: int | None = Field(None, alias="installationId")
     repo_conventions: str | None = Field(None, alias="repoConventions")
+    # Optional per-request BYO model config. When present, this review builds
+    # its LLM clients from it (get_llms_by_role_from_config) instead of the
+    # server's global Settings. Omitted by webhook/CLI callers that rely on the
+    # server default provider.
+    llm: LLMConfig | None = None

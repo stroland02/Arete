@@ -44,7 +44,8 @@ export interface PRContext {
   installationId?: number
   /// The tenant's resolved Bring-Your-Own model connection for this review
   /// (see resolve-model-connection.ts). apiKey is decrypted; null for keyless
-  /// (Ollama companion) connections. Attached at the /review choke point.
+  /// (Ollama companion) connections. Attached at the /review choke point and
+  /// sent to the agents service as the `llm` block (its LLMConfig shape).
   modelConnection?: {
     provider: string
     model: string

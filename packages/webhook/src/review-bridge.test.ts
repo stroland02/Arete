@@ -62,7 +62,10 @@ describe('runReviewPipeline', () => {
 
     expect(resolveModel).toHaveBeenCalledWith(987654)
     const body = JSON.parse((fetchMock.mock.calls[0][1] as any).body as string)
-    expect(body.modelConnection).toEqual({ provider: 'openai', model: 'gpt-4o', apiKey: 'sk-DECRYPTED', baseUrl: null })
+    // The agents /review parses the BYO block as `llm` (LLMConfig), so the
+    // resolved connection must cross the wire under that name.
+    expect(body.llm).toEqual({ provider: 'openai', model: 'gpt-4o', apiKey: 'sk-DECRYPTED', baseUrl: null })
+    expect(body.modelConnection).toBeUndefined()
   })
 
   it('does not resolve a model connection when no installationId is present (thin-bridge unit path)', async () => {
@@ -75,6 +78,7 @@ describe('runReviewPipeline', () => {
 
     expect(resolveModel).not.toHaveBeenCalled()
     const body = JSON.parse((fetchMock.mock.calls[0][1] as any).body as string)
+    expect(body.llm).toBeUndefined()
     expect(body.modelConnection).toBeUndefined()
   })
 
@@ -97,4 +101,5 @@ describe('runReviewPipeline', () => {
     await expect(promise).rejects.toThrow('timed out')
     vi.useRealTimers()
   })
+
 })

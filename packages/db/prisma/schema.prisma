@@ -33,6 +33,13 @@ model Installation {
   planTier             String       @default("trialing")
   usageCount           Int          @default(0)
   createdAt            DateTime     @default(now())
+  /// Per-tenant BYO model config ("connect your model"), or null to use the
+  /// service default / Ollama safety fallback. Non-secret fields
+  /// (provider, model, baseUrl) are plaintext; the API key is stored as
+  /// `apiKeyEncrypted` (AES-256-GCM, same scheme as TelemetryConnection
+  /// credentials — see telemetry-credentials.ts), never in plaintext.
+  /// Shape: { provider, model?, baseUrl?, apiKeyEncrypted? }.
+  modelConfig          Json?
   repositories         Repository[]
   telemetryConnections TelemetryConnection[]
   telemetrySnapshots   TelemetrySnapshotRecord[]
