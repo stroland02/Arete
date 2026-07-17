@@ -75,4 +75,38 @@ def test_from_config_rejects_unknown_provider():
     import pytest
 
     with pytest.raises(ValueError, match="Unknown LLM provider"):
-        get_llms_by_role_from_config(provider="openai", model="gpt", api_key="k", base_url=None)
+        get_llms_by_role_from_config(provider="cohere", model="c", api_key="k", base_url=None)
+
+
+def test_from_config_openai_uses_passed_key_and_model():
+    llms = get_llms_by_role_from_config(
+        provider="openai", model="gpt-4o", api_key="sk-openai", base_url=None
+    )
+    client = llms["security"]
+    assert "openai" in type(client).__module__.lower()
+    assert "gpt-4o" in str(getattr(client, "model_name", "") or getattr(client, "model", ""))
+    assert len({id(c) for c in llms.values()}) == 1  # one client, every role
+
+
+def test_from_config_openrouter_uses_openai_client_with_default_base_url():
+    # OpenRouter rides the OpenAI-compatible client, pointed at its endpoint.
+    llms = get_llms_by_role_from_config(
+        provider="openrouter",
+        model="anthropic/claude-3.5-sonnet",
+        api_key="sk-or",
+        base_url=None,
+    )
+    client = llms["security"]
+    assert "openai" in type(client).__module__.lower()
+    base = str(getattr(client, "openai_api_base", "") or getattr(client, "base_url", ""))
+    assert "openrouter.ai" in base
+
+
+def test_from_config_openrouter_respects_explicit_base_url():
+    # An explicit base_url (Azure / self-hosted / proxy) overrides the default.
+    llms = get_llms_by_role_from_config(
+        provider="openrouter", model="x", api_key="k", base_url="https://custom.example/v1"
+    )
+    client = llms["security"]
+    base = str(getattr(client, "openai_api_base", "") or getattr(client, "base_url", ""))
+    assert "custom.example" in base

@@ -98,6 +98,15 @@ def build_llm(
         from arete_agents.llm.anthropic import build_anthropic_llm
 
         return build_anthropic_llm(api_key or "", tier, model=model)
+    if provider in ("openai", "openrouter"):
+        from arete_agents.llm.openai import OPENROUTER_BASE_URL, build_openai_llm
+
+        # OpenRouter is OpenAI-compatible — same client, its own base URL by
+        # default (an explicit base_url still wins, e.g. Azure/self-hosted).
+        resolved_base = base_url or (
+            OPENROUTER_BASE_URL if provider == "openrouter" else None
+        )
+        return build_openai_llm(model=model, api_key=api_key, base_url=resolved_base)
     raise ValueError(f"Unknown LLM provider: {provider!r}")
 
 
