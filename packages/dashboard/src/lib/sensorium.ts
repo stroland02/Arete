@@ -1,7 +1,7 @@
 import { codeGraphProvider, type Topology } from '@arete/topology';
 import type { PrismaClient } from '@arete/db';
 import { fetchCodeGraph } from './context-map-client';
-import { joinSensors, type NodeSensors } from './sensors';
+import { joinSensors, type NodeSensors, type FindingLike } from './sensors';
 import {
   getFindingsByPath,
   getAgentActivity,
@@ -17,6 +17,8 @@ export type SensoriumViewModel =
       reason?: string;
       topology?: Topology;
       sensors?: Record<string, NodeSensors>;
+      /** The findings joinSensors consumed — surfaced so the map sidebar can show per-finding rows. */
+      findings?: FindingLike[];
       pulse: AgentEventData[];
     };
 
@@ -89,5 +91,5 @@ export async function getSensoriumViewModel(
     activity: activity.map((a) => ({ path: a.path, agentName: agentLabel(a.category) })),
   });
 
-  return { hasAccess: true, available: true, topology, sensors, pulse };
+  return { hasAccess: true, available: true, topology, sensors, findings, pulse };
 }
