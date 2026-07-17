@@ -9,6 +9,8 @@ import { motion, AnimatePresence, useInView } from "framer-motion";
 import { IconArrowRight, IconChevronDown, IconCopy, IconGitBranch, IconGitPullRequest, IconHourglassHigh, IconPlus, IconLoader2, IconCheck } from "@tabler/icons-react";
 import { KumaLogo } from "@/components/ui/kuma-logo";
 import type { ServiceReviewGroup, ServiceReviewRow } from "@/lib/queries";
+import { TriageBar } from "./triage-bar";
+import { deriveTriage, type TriageStatus } from "./triage";
 
 /**
  * Services "Triage Inbox" workspace. Production signals from CONNECTED
@@ -364,8 +366,19 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
       ? "-m-8 grid min-h-[540px] grid-cols-1 divide-y divide-border-subtle border-t border-border-subtle bg-surface-1/20 overflow-hidden lg:grid lg:h-[calc(100vh-4.5rem)] lg:min-h-0 lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:divide-x lg:divide-y-0"
       : "grid min-h-[560px] grid-cols-1 divide-y divide-border-subtle overflow-hidden lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:divide-x lg:divide-y-0";
 
+  // Sample Issue.status → TriageStatus (marketing preview only).
+  const sampleStatus = (s: string): TriageStatus =>
+    s === "Fix proposed" ? "awaiting" : s === "Agent fixing" || s === "Triaging" ? "in_flight" : "clear";
+  const triageCounts = realMode
+    // Real reviews carry no lifecycle field yet → each open review is in-flight;
+    // awaiting/blocked stay 0 until container state reaches this surface.
+    ? deriveTriage((reviewGroups ?? []).flatMap((g) => g.reviews).map(() => ({ status: "in_flight" as TriageStatus })))
+    : deriveTriage(issues.map((i) => ({ status: sampleStatus(i.status) })));
+
   return (
-    <div ref={containerRef} className={outerClass}>
+    <div ref={containerRef} className="flex min-h-0 flex-col">
+      <TriageBar counts={triageCounts} />
+      <div className={outerClass}>
       {/* Rail: services (each expandable to its issues) + connect catalog */}
       <section className="flex min-h-0 flex-1 flex-col" aria-label="Services">
         <header className="flex h-10 shrink-0 items-center justify-between border-b border-border-subtle px-3">
@@ -571,6 +584,7 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
           <IssuePanel issue={selected} isReplaying={isReplaying} containerId={realMode ? activeContainerId : null} />
         )}
       </section>
+      </div>
     </div>
   );
 }
