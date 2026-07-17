@@ -59,6 +59,19 @@ const BLOCKED_V4: ReadonlyArray<readonly [string, number]> = [
   ["240.0.0.0", 4], // reserved (covers 255.255.255.255)
 ];
 
+// Private ranges a caller may opt back IN to via allowLoopback — for the local
+// self-hosted companion (Ollama) which is loopback/LAN by nature. Deliberately
+// EXCLUDES 169.254.0.0/16 (link-local + cloud metadata 169.254.169.254) and all
+// the exotic/test/reserved ranges: allowLoopback relaxes "is this local" only,
+// never the cloud-metadata protection.
+const LOOPBACK_PRIVATE_V4: ReadonlyArray<readonly [string, number]> = [
+  ["10.0.0.0", 8], // RFC1918
+  ["100.64.0.0", 10], // CGNAT
+  ["127.0.0.0", 8], // loopback
+  ["172.16.0.0", 12], // RFC1918
+  ["192.168.0.0", 16], // RFC1918
+];
+
 function inCidr4(ip: number, network: string, bits: number): boolean {
   const base = ipv4ToInt(network);
   if (base === null) return false;
@@ -66,9 +79,15 @@ function inCidr4(ip: number, network: string, bits: number): boolean {
   return (ip & mask) >>> 0 === (base & mask) >>> 0;
 }
 
-export function isBlockedIpv4(ip: string): boolean {
+export function isBlockedIpv4(ip: string, allowLoopback = false): boolean {
   const n = ipv4ToInt(ip);
   if (n === null) return true; // unparseable → fail closed
+  // When loopback is explicitly allowed, opt the local/LAN private ranges back
+  // in — but 169.254.169.254 (cloud metadata) is NOT in that set, so it still
+  // falls through to the deny check below.
+  if (allowLoopback && LOOPBACK_PRIVATE_V4.some(([net, bits]) => inCidr4(n, net, bits))) {
+    return false;
+  }
   return BLOCKED_V4.some(([net, bits]) => inCidr4(n, net, bits));
 }
 
@@ -133,24 +152,28 @@ function groupsToEmbeddedV4(g: number[]): string {
   return `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
 }
 
-export function isBlockedIpv6(ip: string): boolean {
+export function isBlockedIpv6(ip: string, allowLoopback = false): boolean {
   const g = parseIpv6(ip);
   if (!g) return true; // unparseable → fail closed
 
-  // IPv4-mapped ::ffff:a.b.c.d — validate the embedded v4.
+  // IPv4-mapped ::ffff:a.b.c.d — validate the embedded v4 (same loopback policy).
   if (g[0] === 0 && g[1] === 0 && g[2] === 0 && g[3] === 0 && g[4] === 0 && g[5] === 0xffff) {
-    return isBlockedIpv4(groupsToEmbeddedV4(g));
+    return isBlockedIpv4(groupsToEmbeddedV4(g), allowLoopback);
   }
   // NAT64 64:ff9b::/96 — validate the embedded v4.
   if (g[0] === 0x0064 && g[1] === 0xff9b && g[2] === 0 && g[3] === 0 && g[4] === 0 && g[5] === 0) {
-    return isBlockedIpv4(groupsToEmbeddedV4(g));
+    return isBlockedIpv4(groupsToEmbeddedV4(g), allowLoopback);
   }
-  // :: (unspecified) and ::1 (loopback)
-  if (g.slice(0, 7).every((x) => x === 0) && (g[7] === 0 || g[7] === 1)) return true;
+  // :: (unspecified) is always blocked; ::1 (loopback) allowed only when opted in.
+  if (g.slice(0, 7).every((x) => x === 0)) {
+    if (g[7] === 1 && allowLoopback) return false; // ::1 loopback, explicitly allowed
+    if (g[7] === 0 || g[7] === 1) return true;
+  }
 
   const first = g[0] ?? 0;
-  if ((first & 0xfe00) === 0xfc00) return true; // fc00::/7 ULA
-  if ((first & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
+  // ULA + link-local are local-network ranges — allowed only when opted in.
+  if ((first & 0xfe00) === 0xfc00) return allowLoopback ? false : true; // fc00::/7 ULA
+  if ((first & 0xffc0) === 0xfe80) return allowLoopback ? false : true; // fe80::/10 link-local
   if ((first & 0xff00) === 0xff00) return true; // ff00::/8 multicast
 
   // Special-purpose prefixes that fall inside global-unicast 2000::/3 but are
@@ -169,10 +192,10 @@ export function isBlockedIpv6(ip: string): boolean {
 
 // --- public API ---------------------------------------------------------
 
-export function isBlockedAddress(ip: string): boolean {
+export function isBlockedAddress(ip: string, allowLoopback = false): boolean {
   const fam = isIP(ip);
-  if (fam === 4) return isBlockedIpv4(ip);
-  if (fam === 6) return isBlockedIpv6(ip);
+  if (fam === 4) return isBlockedIpv4(ip, allowLoopback);
+  if (fam === 6) return isBlockedIpv6(ip, allowLoopback);
   return true; // not a bare IP → fail closed
 }
 
@@ -203,7 +226,11 @@ function lookupAll(
 // host and reject if any resolved address is non-public. Throws
 // WebhookDestinationError on any violation. Used for fail-fast validation when a
 // webhook is created/updated; the delivery dispatcher re-validates and pins.
-export async function assertPublicWebhookUrl(raw: string, signal?: AbortSignal): Promise<void> {
+export async function assertPublicWebhookUrl(
+  raw: string,
+  signal?: AbortSignal,
+  allowLoopback = false,
+): Promise<void> {
   let u: URL;
   try {
     u = new URL(raw);
@@ -220,7 +247,7 @@ export async function assertPublicWebhookUrl(raw: string, signal?: AbortSignal):
 
   const host = u.hostname.replace(/^\[/, "").replace(/\]$/, "");
   if (isIP(host)) {
-    if (isBlockedAddress(host)) {
+    if (isBlockedAddress(host, allowLoopback)) {
       throw new WebhookDestinationError("destination address is not allowed");
     }
     return;
@@ -235,20 +262,27 @@ export async function assertPublicWebhookUrl(raw: string, signal?: AbortSignal):
     throw new WebhookDestinationError("could not resolve destination host");
   }
   for (const a of addresses) {
-    if (isBlockedAddress(a.address)) {
+    if (isBlockedAddress(a.address, allowLoopback)) {
       throw new WebhookDestinationError("destination resolves to a disallowed address");
     }
   }
 }
 
-let dispatcher: Agent | null = null;
+// Two cached dispatchers: the default (full SSRF deny) and a loopback-allowing
+// one for the local self-hosted companion. Keyed separately so a per-request
+// allowLoopback can never leak into a default-guarded delivery.
+const dispatchers: { normal: Agent | null; loopback: Agent | null } = {
+  normal: null,
+  loopback: null,
+};
 
 // undici Agent whose connect step resolves the host, rejects if ANY resolved
 // address is non-public, then pins the connection to a validated address (so a
 // rebinding second answer can't slip through between validation and connect).
-function guardedDispatcher(): Agent {
-  if (dispatcher) return dispatcher;
-  dispatcher = new Agent({
+function guardedDispatcher(allowLoopback: boolean): Agent {
+  const cached = allowLoopback ? dispatchers.loopback : dispatchers.normal;
+  if (cached) return cached;
+  const agent = new Agent({
     connect: {
       // biome-ignore lint/suspicious/noExplicitAny: matches Node's overloaded lookup signature
       lookup(hostname: string, options: any, callback: any) {
@@ -260,7 +294,7 @@ function guardedDispatcher(): Agent {
           if (err) return callback(err, undefined, undefined);
           const list = addresses as unknown as { address: string; family: number }[];
           for (const a of list) {
-            if (isBlockedAddress(a.address)) {
+            if (isBlockedAddress(a.address, allowLoopback)) {
               return callback(new WebhookDestinationError("destination address is not allowed"));
             }
           }
@@ -274,7 +308,9 @@ function guardedDispatcher(): Agent {
       },
     },
   });
-  return dispatcher;
+  if (allowLoopback) dispatchers.loopback = agent;
+  else dispatchers.normal = agent;
+  return agent;
 }
 
 export type WebhookFetchInit = {
@@ -282,6 +318,11 @@ export type WebhookFetchInit = {
   headers?: Record<string, string>;
   body?: string;
   signal?: AbortSignal;
+  // Opt-in: permit loopback/LAN (RFC1918) destinations for the local
+  // self-hosted companion (Ollama). Cloud metadata (169.254.169.254) stays
+  // blocked even when set. Off by default — webhook delivery and API-key
+  // provider probes keep full SSRF protection.
+  allowLoopback?: boolean;
 };
 
 // Deliver a webhook request through the SSRF-guarded, IP-pinned dispatcher.
@@ -291,14 +332,15 @@ export type WebhookFetchInit = {
 // are never followed — a 3xx is returned as-is (and treated as a non-2xx
 // failure by the caller) so a redirect can't bounce us to an internal host.
 export async function webhookFetch(url: string, init: WebhookFetchInit): Promise<Response> {
-  await assertPublicWebhookUrl(url, init.signal);
+  const allowLoopback = init.allowLoopback === true;
+  await assertPublicWebhookUrl(url, init.signal, allowLoopback);
   const res = await undiciFetch(url, {
     method: init.method,
     headers: init.headers,
     body: init.body,
     signal: init.signal,
     redirect: "manual",
-    dispatcher: guardedDispatcher() as Dispatcher,
+    dispatcher: guardedDispatcher(allowLoopback) as Dispatcher,
   });
   return res as unknown as Response;
 }
