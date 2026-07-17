@@ -12,6 +12,7 @@ import { fetchPRContext } from './pr-fetcher.js'
 import { fetchTelemetryContext } from './telemetry/fetch-telemetry-context.js'
 import { fetchGitLabMRContext } from './gitlab-fetcher.js'
 import { runReviewPipeline } from './review-bridge.js'
+import { startApprovalWorker } from './approval-worker.js'
 import { postReview } from './comment-poster.js'
 import { postGitLabReview, type DiffRefs } from './gitlab-comment-poster.js'
 import { persistReview, persistTelemetrySnapshots, fetchProjectMemories } from './persistence.js'
@@ -322,4 +323,8 @@ export function startReviewWorker(): Worker<ReviewJobData> {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   console.log(`Areté review worker starting (concurrency: ${REVIEW_QUEUE_CONCURRENCY})...`)
   startReviewWorker()
+  // Also consume the approval-exec queue (human-approved infra commands →
+  // agents /approvals/apply). Same process, separate queue/isolation.
+  console.log('Areté approval-exec worker starting...')
+  startApprovalWorker()
 }
