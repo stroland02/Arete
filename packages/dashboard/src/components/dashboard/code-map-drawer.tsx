@@ -118,7 +118,9 @@ export function CodeMapDrawer({ model, onClose, onJump }: CodeMapDrawerProps) {
                     className="flex w-full items-center gap-2 rounded-lg border border-transparent px-2 py-1.5 text-left transition-colors hover:border-border-default hover:bg-content-primary/[0.03]"
                   >
                     <span className="truncate font-mono text-[12px] text-content-secondary">{c.label}</span>
-                    {c.findingCount > 0 && <span className="ml-auto font-mono text-[10px] text-accent-warning">{c.findingCount}</span>}
+                    {c.findingCount > 0 && (
+                      <span className={`ml-auto font-mono text-[10px] ${SEV_TEXT[c.maxSeverity ?? ''] ?? 'text-content-muted'}`}>{c.findingCount}</span>
+                    )}
                   </button>
                 ) : (
                   <div className="flex items-center gap-2 px-2 py-1.5">

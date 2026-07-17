@@ -67,7 +67,7 @@ describe('buildSidebarModel — folder selection', () => {
   });
   it('contents lists member files with per-file finding counts', () => {
     expect(m.contents).toEqual([
-      { id: 'fA', label: 'a.ts', kind: 'File', findingCount: 2 },
+      { id: 'fA', label: 'a.ts', kind: 'File', findingCount: 2, maxSeverity: 'error' },
       { id: 'fB', label: 'b.ts', kind: 'File', findingCount: 0 },
     ]);
   });

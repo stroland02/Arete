@@ -19,7 +19,7 @@ export interface SidebarModel {
   title: string;
   subtitle?: string;
   health: { count: number; maxSeverity?: 'error' | 'warning' | 'info'; rows: FindingLike[] };
-  contents: Array<{ id: string; label: string; kind: string; findingCount: number }>;
+  contents: Array<{ id: string; label: string; kind: string; findingCount: number; maxSeverity?: 'error' | 'warning' | 'info' }>;
   dependencies: { imports: DepRow[]; importedBy: DepRow[] };
   activity: string[];
 }
@@ -114,12 +114,18 @@ export function buildSidebarModel(
     health: toHealth(rows),
     contents: [...members]
       .sort((a, b) => a.label.localeCompare(b.label))
-      .map((m) => ({
-        id: m.id,
-        label: m.label,
-        kind: 'File',
-        findingCount: perFileCount(m.meta?.path as string | undefined),
-      })),
+      .map((m) => {
+        const path = m.meta?.path as string | undefined;
+        const fileFindings = path ? findings.filter((f) => f.path === path) : [];
+        const max = maxSeverity(fileFindings);
+        return {
+          id: m.id,
+          label: m.label,
+          kind: 'File',
+          findingCount: perFileCount(path),
+          ...(max ? { maxSeverity: max } : {}),
+        };
+      }),
     dependencies: {
       imports: toDepRows([...imports].sort(), topology),
       importedBy: toDepRows([...importedBy].sort(), topology),
