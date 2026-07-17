@@ -37,11 +37,15 @@ def test_review_builds_from_per_request_config():
     fake_orch = MagicMock()
     fake_orch.run.return_value = {"ok": True}
 
+    # The global orchestrator is a LAZY singleton (None until first default-path
+    # /review) — patch its accessor, not the module attribute.
+    global_orch = MagicMock()
+
     with patch.object(
         server, "get_llms_by_role_from_config", side_effect=fake_from_config
     ), patch.object(server, "ReviewOrchestrator", return_value=fake_orch) as OrchCls, patch.object(
-        server._orchestrator, "run"
-    ) as global_run, patch.object(
+        server, "_get_orchestrator", return_value=global_orch
+    ), patch.object(
         server, "ollama_unavailable_reason", return_value=None
     ):
         client = TestClient(server.app)
@@ -65,19 +69,25 @@ def test_review_builds_from_per_request_config():
         "base_url": "http://host:11434",
     }
     OrchCls.assert_called_once()  # a fresh orchestrator on the user's model
-    global_run.assert_not_called()  # NOT the global singleton
+    global_orch.run.assert_not_called()  # NOT the global singleton
 
 
 def test_review_falls_back_to_global_without_config():
     import arete_agents.server as server
 
+    global_orch = MagicMock()
+    global_orch.run.return_value = {"ok": "global"}
+
     with patch.object(
-        server._orchestrator, "run", return_value={"ok": "global"}
-    ) as global_run, patch.object(
+        server, "_get_orchestrator", return_value=global_orch
+    ), patch.object(
         server, "get_llms_by_role_from_config"
-    ) as from_config:
+    ) as from_config, patch.object(
+        server, "ollama_unavailable_reason", return_value=None
+    ):
         client = TestClient(server.app)
         resp = client.post("/review", json=_min_pr())
+    global_run = global_orch.run
 
     assert resp.status_code == 200
     global_run.assert_called_once()
