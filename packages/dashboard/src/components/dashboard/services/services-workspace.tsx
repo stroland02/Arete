@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import Link from "next/link";
 import { SynthesizerConsole } from "../agents/synthesizer-console";
+import { StatusBoardLive } from "./status-board";
 import { motion, AnimatePresence, useInView } from "framer-motion";
 import { IconArrowRight, IconChevronDown, IconCopy, IconGitBranch, IconGitPullRequest, IconHourglassHigh, IconPlus, IconLoader2, IconCheck } from "@tabler/icons-react";
 import { KumaLogo } from "@/components/ui/kuma-logo";
@@ -419,7 +420,12 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
         {variant === "embedded" ? (
           // Streams the deep-linked review (container id = review id) via the
           // existing /api/containers/[id]/stream SSE; null → onboarding state.
-          <SynthesizerConsole containerId={containerId} connected={connected} />
+          // The situational-awareness board (tiered comms §4) rides the same
+          // stream above the console; it renders nothing until specialists report.
+          <>
+            <StatusBoardLive containerId={containerId} />
+            <SynthesizerConsole containerId={containerId} connected={connected} />
+          </>
         ) : (
           <IssueSynthesizerConsole issue={selected} isReplaying={isReplaying} replayStep={replayStep} />
         )}
