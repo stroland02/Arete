@@ -212,6 +212,19 @@ export async function persistReview(params: PersistReviewParams): Promise<void> 
     data: { usageCount: { increment: 1 } },
   })
 
+  // Work-item inbox sync: substantive review findings (error/warning) become
+  // pr_finding WorkItems. Non-fatal by the same contract as everything after
+  // the review row exists — a sync failure must never fail persistence.
+  try {
+    const { syncReviewFindings } = await import('./scan/review-sync.js')
+    await syncReviewFindings(installation.id, review.id, commentsToCreate)
+  } catch (err) {
+    console.error(
+      `[persistence] work-item sync failed for ${fullName}#${prNumber} (non-fatal):`,
+      err
+    )
+  }
+
   // Fire the outbound review.created webhook to any endpoints the installation
   // has registered. Deliberately non-fatal and last: the review is already
   // persisted and posted to the SCM, so a webhook delivery problem (or the
