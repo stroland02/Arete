@@ -12,18 +12,29 @@ vi.hoisted(() => {
 vi.mock('./db', () => ({ db: { account: { findFirst: vi.fn() } } }));
 vi.mock('./github-credentials', () => ({ decryptGithubToken: vi.fn() }));
 vi.mock('./github', () => ({ fetchAuthorizedGithubLogins: vi.fn() }));
-vi.mock('./installations', () => ({ getAuthorizedInstallations: vi.fn() }));
+vi.mock('./installations', () => ({
+  getAuthorizedInstallations: vi.fn(),
+  getStoredInstallations: vi.fn(),
+  persistInstallationAccess: vi.fn(),
+}));
 
 import { db } from './db';
 import { decryptGithubToken } from './github-credentials';
 import { fetchAuthorizedGithubLogins } from './github';
-import { getAuthorizedInstallations, type AuthorizedInstallation } from './installations';
+import {
+  getAuthorizedInstallations,
+  getStoredInstallations,
+  persistInstallationAccess,
+  type AuthorizedInstallation,
+} from './installations';
 import { authJwtCallback, authSessionCallback } from './auth';
 
 const findFirst = vi.mocked(db.account.findFirst as (args: unknown) => Promise<unknown>);
 const decrypt = vi.mocked(decryptGithubToken);
 const fetchLogins = vi.mocked(fetchAuthorizedGithubLogins);
 const lookup = vi.mocked(getAuthorizedInstallations);
+const stored = vi.mocked(getStoredInstallations);
+const persist = vi.mocked(persistInstallationAccess);
 
 const INST_ACME: AuthorizedInstallation = { id: 'inst-acme', provider: 'github', owner: 'acme', externalId: 1 };
 
@@ -33,6 +44,8 @@ const tok = (over: Record<string, unknown> = {}): any => ({ sub: 'user-1', ...ov
 beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(console, 'error').mockImplementation(() => {}); // fail-closed paths log; keep output quiet
+  // Default: no durable rows yet, so the existing tests exercise the live path.
+  stored.mockResolvedValue([]);
 });
 
 describe('authJwtCallback — linked user', () => {
@@ -65,6 +78,45 @@ describe('authJwtCallback — linked user', () => {
     findFirst.mockResolvedValue(null);
     const token = await authJwtCallback({ token: tok({ sub: undefined }), user: { id: 'user-9' } });
     expect(token.sub).toBe('user-9');
+  });
+});
+
+describe('authJwtCallback — durable stored rows (connection-reset fix)', () => {
+  it('prefers the durable stored rows and never touches the GitHub API when they exist', async () => {
+    stored.mockResolvedValue([INST_ACME]);
+
+    const token = await authJwtCallback({ token: tok() });
+
+    expect(token.installations).toEqual([INST_ACME]);
+    // The whole point: no live derivation, so a GitHub outage can't drop them.
+    expect(findFirst).not.toHaveBeenCalled();
+    expect(fetchLogins).not.toHaveBeenCalled();
+    expect(lookup).not.toHaveBeenCalled();
+    expect(typeof token.installationsFetchedAt).toBe('number');
+  });
+
+  it('write-through: after a successful live derivation (no stored rows yet) it persists the mapping', async () => {
+    stored.mockResolvedValue([]); // un-backfilled user
+    findFirst.mockResolvedValue({ githubAccessTokenEncrypted: 'enc' });
+    decrypt.mockReturnValue('gh-token');
+    fetchLogins.mockResolvedValue(['acme']);
+    lookup.mockResolvedValue([INST_ACME]);
+
+    const token = await authJwtCallback({ token: tok() });
+
+    expect(token.installations).toEqual([INST_ACME]);
+    expect(persist).toHaveBeenCalledWith(db, 'user-1', [INST_ACME]);
+  });
+
+  it('does not write-through when the live derivation itself fails (never persists a bad/empty mapping over a throw)', async () => {
+    stored.mockResolvedValue([]);
+    findFirst.mockResolvedValue({ githubAccessTokenEncrypted: 'enc' });
+    decrypt.mockReturnValue('gh-token');
+    fetchLogins.mockRejectedValue(new Error('GitHub 503'));
+
+    await authJwtCallback({ token: tok({ installations: [INST_ACME] }) });
+
+    expect(persist).not.toHaveBeenCalled();
   });
 });
 
