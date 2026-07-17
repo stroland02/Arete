@@ -8,17 +8,17 @@ describe('ServicesWorkspace', () => {
     // its professional introduction, plus a Connect-a-repository CTA.
     const html = renderToStaticMarkup(<ServicesWorkspace />);
 
-    expect(html).toContain('your Synthesizer');
-    expect(html).toContain('How I think');
+    expect(html).toContain('Kuma');
+    expect(html).toContain('How a review runs');
     expect(html).toContain('Connect a repository');
     expect(html).toContain('/connections');
   });
 
-  it('introduces the Synthesizer without loading/waiting talk when a repository is connected', () => {
+  it('introduces Kuma without loading/waiting talk when a repository is connected', () => {
     const html = renderToStaticMarkup(<ServicesWorkspace connected />);
 
-    expect(html).toContain('your Synthesizer');
-    expect(html).toContain('How I think');
+    expect(html).toContain('Kuma');
+    expect(html).toContain('How a review runs');
     // No buffering language on an idle engineer, and no connect prompt when connected.
     expect(html).not.toContain('awaiting your first pull request');
     expect(html).not.toContain('Connect a repository to put me to work');
