@@ -66,10 +66,18 @@ def test_get_llms_by_role_shares_one_client_per_tier():
     assert len({id(c) for c in llms.values()}) == 2
 
 
-def test_get_llms_by_role_is_anthropic_even_if_provider_gemini():
-    # get_llms_by_role does not consult llm_provider — it is Anthropic-only.
-    llms = get_llms_by_role(_settings(llm_provider="gemini", gemini_api_key="g"))
-    assert "anthropic" in type(llms["security"]).__module__.lower()
+def test_get_llms_by_role_honors_provider():
+    # The review path must build clients for the CONFIGURED provider — this is
+    # what lets a live review run on Gemini. Anthropic remains the default.
+    anthropic_llms = get_llms_by_role(_settings())
+    assert "anthropic" in type(anthropic_llms["security"]).__module__.lower()
+
+    gemini_llms = get_llms_by_role(
+        _settings(llm_provider="gemini", gemini_api_key="g", anthropic_api_key="")
+    )
+    assert "google" in type(gemini_llms["security"]).__module__.lower()
+    # the fixed critic roles follow the provider too — no Anthropic key needed
+    assert "google" in type(gemini_llms["critic_opus"]).__module__.lower()
 
 
 def test_orchestrator_accepts_per_role_dict():

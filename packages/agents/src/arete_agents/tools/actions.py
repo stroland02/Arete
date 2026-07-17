@@ -1,6 +1,11 @@
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
+from arete_agents.grounding import valid_lines_for_patch
+
+_FIX_BRANCH_PREFIX = "arete/fix-"
+
+
 class ProposePRInput(BaseModel):
     repo_full_name: str = Field(description="owner/repo of the target repository.")
     title: str = Field(description="PR title.")
@@ -12,11 +17,39 @@ class ProposePRInput(BaseModel):
 @tool("propose_pr", args_schema=ProposePRInput)
 def propose_pr(repo_full_name: str, title: str, body: str, branch_name: str, base_branch: str, patch_content: str) -> str:
     """
-    Open a pull request with a patch you authored, for a defect with REAL user or business impact.
-    The platform applies your patch and opens the PR while you are still running, and returns the PR URL.
+    Propose a code fix for a defect with REAL user or business impact, as a unified-diff patch you authored.
+    Your patch_content MUST be a real, grounded unified diff (with @@ hunk headers) against the file(s) you
+    reviewed — a fabricated or free-text "fix" is rejected. Once validated, the platform's apply path opens
+    the PR from your patch; this tool does not open the PR itself.
     """
-    # Simulate API call to VCS provider
-    return f"Successfully proposed PR '{title}' on branch '{branch_name}' targeting '{base_branch}' in {repo_full_name}."
+    # Ground the proposal before accepting it: a fabricated or malformed diff
+    # must never be presented as a fix. We do NOT fabricate a "PR opened"
+    # result here — opening the PR is the platform's GitHub-App apply path, out
+    # of this process. This tool's job is to validate and record a real,
+    # grounded proposal.
+    if not branch_name.startswith(_FIX_BRANCH_PREFIX):
+        return (
+            f"Rejected: branch_name must start with '{_FIX_BRANCH_PREFIX}' "
+            f"(got '{branch_name}'). Nothing proposed."
+        )
+
+    valid_lines = valid_lines_for_patch(patch_content)
+    if valid_lines is None:
+        return (
+            "Rejected: patch_content is not a valid unified diff (no @@ hunk header "
+            "found). A fix must be a real grounded diff, not free text. Nothing proposed."
+        )
+    if not valid_lines:
+        return (
+            "Rejected: patch_content is a pure-deletion diff with no resulting lines — "
+            "not a groundable fix. Nothing proposed."
+        )
+
+    return (
+        f"Validated grounded fix for {repo_full_name}: branch '{branch_name}' -> "
+        f"'{base_branch}', {len(valid_lines)} changed line(s) confirmed against the diff. "
+        f"The PR is opened by the platform's GitHub-App apply path, not by this tool."
+    )
 
 class AskHumanInput(BaseModel):
     question: str = Field(description="The specific question a human must answer for you to continue.")
@@ -30,6 +63,7 @@ def ask_human(question: str) -> str:
     return f"Paused run. Sent human prompt: '{question}'. Resuming..."
 
 from arete_agents.tools.memory import add_project_memory
+
 
 class SilenceAsNoiseInput(BaseModel):
     issue_id: str = Field(description="The unique identifier of the issue/comment.")
@@ -66,10 +100,21 @@ class RequestInfrastructureApprovalInput(BaseModel):
 def request_infrastructure_approval(command: str, reason: str) -> str:
     """
     Request human approval to execute a potentially dangerous infrastructure command.
-    The run pauses until a human clicks 'Approve' or 'Reject'. If approved, the platform executes the command and returns the stdout.
+    The run pauses until a human clicks 'Approve' or 'Reject'. If approved, the
+    platform applies the command asynchronously (via the approval-exec pipeline)
+    and resumes the run.
     """
-    # Simulate suspension of state, sending notification to UI
-    return f"Paused run. Sent approval request for command: `{command}`. Reason: {reason}. Waiting for human response..."
+    # Truthful suspension signal. The command is NOT run here — a human must
+    # approve first, after which POST /approvals/apply applies it and resumes
+    # the run (see arete_agents.remediation). Function-local import keeps the
+    # review-loop's tool import cheap.
+    from arete_agents.remediation import build_approval_request
+
+    req = build_approval_request(command, reason)
+    return (
+        f"Suspended: awaiting human approval to run `{req.command}`. "
+        f"Reason: {req.reason}. Execution occurs only after approval."
+    )
 
 def get_native_action_tools():
     return [propose_pr, ask_human, add_project_memory, silence_as_noise, place_under_observation, request_infrastructure_approval]
