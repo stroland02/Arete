@@ -111,16 +111,20 @@ export class PrismaContainerStore {
   }
 
   /** Advance the stored container's state (each transition) and/or gates (on
-   *  approval). Scoped by (id, installationId): a non-matching tenant updates
-   *  zero rows and returns false — never a cross-tenant write. */
+   *  approval), plus the composed `pr` once the driver reaches `ready` (the PR
+   *  metadata the webhook stages from). Scoped by (id, installationId): a
+   *  non-matching tenant updates zero rows and returns false — never a
+   *  cross-tenant write. */
   async save(
     id: string,
     installationId: string,
-    patch: { state: ContainerState; gates: ContainerGates },
+    patch: { state: ContainerState; gates: ContainerGates; pr?: { base: string; title: string; body: string } },
   ): Promise<boolean> {
+    const data: Record<string, unknown> = { state: patch.state, gates: patch.gates };
+    if (patch.pr) data.pr = patch.pr;
     const { count } = await this.db.issueContainer.updateMany({
       where: { id, installationId },
-      data: { state: patch.state, gates: patch.gates },
+      data,
     });
     return count > 0;
   }

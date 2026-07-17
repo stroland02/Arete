@@ -129,6 +129,18 @@ describe("PrismaContainerStore.save", () => {
     expect((await store.load("c1", "inst-acme"))?.state).toBe("detecting"); // untouched
   });
 
+  it("persists the composed pr {base,title,body} when the driver reaches ready", async () => {
+    const db = fakeDb();
+    const store = new PrismaContainerStore(db);
+    await store.create(input()); // created at detecting, empty pr
+    await store.save("c1", "inst-acme", {
+      state: "ready",
+      gates: { solutionApprovedAt: null, solutionApprovedBy: null, postedAt: null, postedBy: null },
+      pr: { base: "main", title: "Kuma fix", body: "why" },
+    });
+    expect((await store.load("c1", "inst-acme"))?.pr).toEqual({ base: "main", title: "Kuma fix", body: "why" });
+  });
+
   it("persists the solution-approval gate (what loadApprovedContainer reads for the send)", async () => {
     const db = fakeDb();
     const store = new PrismaContainerStore(db);
