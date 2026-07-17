@@ -528,7 +528,9 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
             >
               <IconPlus size={14} stroke={2} aria-hidden />
               {realMode
-                ? "Connect a repository"
+                ? connected
+                  ? "Manage repositories"
+                  : "Connect a repository"
                 : hasServices
                   ? "Connect more services"
                   : connected
