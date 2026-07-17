@@ -556,6 +556,11 @@ export type DashboardsViewModel =
        *  provider is NOT here was detected (seen in a review) but is not a live
        *  connection — the grid surfaces a Connect CTA for it, never "live". */
       connectedProviders: string[];
+      /** Full names of the tenant's connected repositories — the staging state
+       *  the dashboard shows even before any review runs (Account-State Contract). */
+      repos: string[];
+      /** Whether an AI model connection exists for the tenant. */
+      modelConnected: boolean;
     };
 
 // Stable display order for severity bars (most→least severe).
@@ -595,6 +600,7 @@ export async function getDashboardsViewModel(
     latestReviews,
     telemetryRows,
     connectedProviders,
+    modelConnectionCount,
   ] = await Promise.all([
     db.review.count({ where: reviewScope }),
     db.reviewComment.count({ where: { severity: 'error', review: reviewScope } }),
@@ -629,6 +635,7 @@ export async function getDashboardsViewModel(
     db.review.findMany({ where: reviewScope, take: 5, orderBy: { createdAt: 'desc' }, include: { repository: true } }),
     db.telemetrySnapshotRecord.findMany({ where: { installationId: { in: installationIds } }, orderBy: { fetchedAt: 'desc' } }),
     getConnectedTelemetryProviders(db, installationIds),
+    db.modelConnection.count({ where: { installationId: { in: installationIds } } }),
   ]);
 
   const repoName = new Map(repos.map((r) => [r.id, r.fullName]));
@@ -673,6 +680,8 @@ export async function getDashboardsViewModel(
       fetchedAt: r.fetchedAt,
     })),
     connectedProviders,
+    repos: repos.map((r) => r.fullName),
+    modelConnected: modelConnectionCount > 0,
   };
 }
 

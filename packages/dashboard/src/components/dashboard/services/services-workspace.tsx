@@ -5,7 +5,7 @@ import Link from "next/link";
 import { SynthesizerConsole } from "../agents/synthesizer-console";
 import { StatusBoardLive } from "./status-board";
 import { motion, AnimatePresence, useInView } from "framer-motion";
-import { IconArrowRight, IconChevronDown, IconCopy, IconGitBranch, IconGitPullRequest, IconHourglassHigh, IconPlus, IconLoader2, IconCheck } from "@tabler/icons-react";
+import { IconArrowRight, IconBrandGithub, IconChevronDown, IconCopy, IconGitBranch, IconGitPullRequest, IconHourglassHigh, IconPlus, IconLoader2, IconCheck } from "@tabler/icons-react";
 import { KumaLogo } from "@/components/ui/kuma-logo";
 import type { ServiceReviewGroup, ServiceReviewRow } from "@/lib/queries";
 
@@ -248,6 +248,12 @@ export interface ServicesWorkspaceProps {
    */
   containerId?: string | null;
   /**
+   * The tenant's connected repositories (full names). Listed in the rail even
+   * before any review runs — a connected repo is a populated state (the Git
+   * service), never an empty one. Account-State Contract three-state rule.
+   */
+  repositories?: string[];
+  /**
    * The connected repo's REAL reviews, grouped by repository (the authenticated
    * /services inbox). When provided, the rail lists these real PRs and
    * selecting one streams its real Synthesizer transcript in the center; the
@@ -286,7 +292,7 @@ function shortWhen(iso: string): string {
  * fabricated rows. The marketing preview passes SAMPLE_* + variant="framed"
  * to show the populated UI inside a card.
  */
-export function ServicesWorkspace({ services = [], issues = [], variant = "embedded", connected = false, containerId = null, reviewGroups }: ServicesWorkspaceProps) {
+export function ServicesWorkspace({ services = [], issues = [], variant = "embedded", connected = false, containerId = null, reviewGroups, repositories = [] }: ServicesWorkspaceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const isInView = useInView(containerRef, { margin: "-100px 0px -100px 0px" });
 
@@ -298,6 +304,11 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
   // switching the rail + center + right panel to real reviews. The marketing
   // preview passes no reviewGroups and keeps the scripted sample path below.
   const realMode = reviewGroups !== undefined;
+  // Connected repos with no reviews yet — still listed in the rail as the Git
+  // service ("awaiting first PR"), so a connected account never reads as empty.
+  const idleRepos = realMode
+    ? repositories.filter((r) => !(reviewGroups ?? []).some((g) => g.repositoryFullName === r))
+    : [];
   const [activeContainerId, setActiveContainerId] = useState<string | null>(containerId);
   const [openRepo, setOpenRepo] = useState<string | null>(reviewGroups?.[0]?.repositoryFullName ?? null);
   const selectedReview: ServiceReviewRow | null =
@@ -370,13 +381,35 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
         <header className="flex h-10 shrink-0 items-center justify-between border-b border-border-subtle px-3">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Services</h2>
           <span className="font-mono text-[10px] tabular-nums text-content-muted">
-            {realMode ? (reviewGroups?.length ?? 0) : services.length}
+            {realMode ? (reviewGroups?.length ?? 0) + idleRepos.length : services.length}
           </span>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto">
           {/* Real mode: the connected repo's reviews, grouped by repository.
               Selecting a PR sets the active container id, which the center
               Synthesizer streams from /api/containers/[id]/stream. */}
+          {/* Connected repos with no reviews yet: the Git service rows. Always
+              visible when a repo is connected — awaiting activity, not absent. */}
+          {realMode && idleRepos.length > 0 && (
+            <ul className="border-b border-border-subtle py-1">
+              {idleRepos.map((fullName) => (
+                <li key={fullName}>
+                  <div className="flex w-full items-center gap-2 py-2.5 pl-3 pr-3">
+                    <IconBrandGithub size={13} stroke={1.75} className="shrink-0 text-content-muted" aria-hidden />
+                    <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-content-primary">
+                      {fullName}
+                    </span>
+                    <span className="shrink-0 rounded-full border border-accent-success/25 bg-accent-success/10 px-1.5 py-0.5 text-[10px] font-medium text-accent-success">
+                      Connected
+                    </span>
+                  </div>
+                  <p className="pb-2 pl-8 pr-3 text-[11px] leading-4 text-content-muted">
+                    Awaiting its first pull request — reviews will appear here.
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
           {realMode &&
             ((reviewGroups?.length ?? 0) > 0 ? (
               <ul className="border-b border-border-subtle py-1">
@@ -447,7 +480,7 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
                   );
                 })}
               </ul>
-            ) : (
+            ) : idleRepos.length === 0 ? (
               <div className="px-3 py-8 text-center">
                 <p className="text-[12px] text-content-secondary">No reviews yet.</p>
                 <p className="mt-1 text-[11px] leading-5 text-content-muted">
@@ -456,7 +489,7 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
                     : "Connect a repository to start reviewing pull requests."}
                 </p>
               </div>
-            ))}
+            ) : null)}
           {!realMode && hasServices && (
             <ul className="border-b border-border-subtle py-1">
               {services.map((s) => {
@@ -529,7 +562,7 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
               <IconPlus size={14} stroke={2} aria-hidden />
               {realMode
                 ? connected
-                  ? "Manage repositories"
+                  ? "Add connections"
                   : "Connect a repository"
                 : hasServices
                   ? "Connect more services"

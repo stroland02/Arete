@@ -9,6 +9,7 @@ type Model = Parameters<typeof ReviewActivityPreset>[0]['model'];
 const emptyModel: Model = {
   hasAccess: true, totalPrs: 0, criticalBugs: 0, recentReviews: 0, weeklyDelta: 0,
   reviewDates: [], byCategory: [], bySeverity: [], byRisk: [], byRepo: [], latestReviews: [], telemetry: [], connectedProviders: [],
+  repos: [], modelConnected: false,
 };
 
 const fullModel: Model = {

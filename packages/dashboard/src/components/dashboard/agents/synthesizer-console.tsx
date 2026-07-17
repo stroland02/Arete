@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useReducedMotion } from "framer-motion";
-import { IconArrowRight, IconHourglassHigh } from "@tabler/icons-react";
+import { IconArrowRight } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import { isSampleContainerId } from "@/lib/issue-pipeline/sample-containers";
 import { useSynthStream } from "./synthesizer/use-synth-stream";
@@ -107,7 +107,7 @@ function ConsoleStream({ containerId }: { containerId: string }) {
           </p>
         ) : (
           <p className="font-mono text-[10px] text-content-muted/80">
-            {live ? "verifying findings against the diff…" : "waiting for the review to run"}
+            {live ? "verifying findings against the diff…" : "standing by — the review streams here the moment it starts"}
           </p>
         )}
       </footer>
@@ -115,46 +115,78 @@ function ConsoleStream({ containerId }: { containerId: string }) {
   );
 }
 
+/** The visible-thinking pipeline the Synthesizer walks a review through — the
+    glass-box workflow, introduced up front so the user knows exactly what they
+    will watch happen. */
+const THINKING_STEPS: { title: string; detail: string }[] = [
+  { title: "Dispatch", detail: "I brief six specialist engineers — security, performance, quality, tests, deployment, business logic — on your change." },
+  { title: "Specialists report", detail: "Each returns findings with real confidence scores. You see every report as it arrives." },
+  { title: "Verify", detail: "I challenge each finding against your actual diff — keep ✓, drop ✕, or flag ⚑ for your judgment." },
+  { title: "Compose", detail: "I write up only the proven findings and, when there's a fix worth making, stage it as a pull request." },
+  { title: "Your call", detail: "Nothing ships without you. You approve, then I send the PR." },
+];
+
 function ConsoleEmpty({ connected }: { connected: boolean }) {
   return (
     <section className="flex min-h-0 flex-1 flex-col" aria-label="Synthesizer console">
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border-subtle px-3">
-        <span className="h-1.5 w-1.5 rounded-full bg-content-muted/40" aria-hidden />
+        <span className="h-1.5 w-1.5 rounded-full bg-accent-primary" aria-hidden />
         <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Synthesizer</h2>
       </header>
 
-      <div className="mx-auto flex h-full max-w-md flex-col items-center justify-center gap-5 px-4 text-center">
-        <div className="rounded-2xl border border-border-default bg-content-primary/5 p-3 text-accent-primary">
-          <IconHourglassHigh size={24} stroke={1.5} />
-        </div>
+      {/* Professional introduction — the Synthesizer presents itself as the AI
+          software engineer it is, and shows its thinking process up front.
+          No loading/waiting talk: an idle engineer is introduced, not buffering. */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
+        <div className="mx-auto flex max-w-lg flex-col gap-4">
+          <div className="flex items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-accent-primary/30 bg-accent-primary/10 font-semibold text-accent-primary">
+              S
+            </span>
+            <div className="rounded-2xl rounded-tl-md border border-border-subtle bg-surface-1 px-4 py-3">
+              <p className="text-[13px] leading-relaxed text-content-primary">
+                I&apos;m your Synthesizer — the engineer who runs every review on this account. I coordinate six
+                specialists, verify their findings against your actual code, and propose fixes for your approval.
+                My reasoning is never a black box: when I work, you watch every step of it, live, right here.
+              </p>
+            </div>
+          </div>
 
-        <div className="space-y-1.5">
-          <p className="text-sm font-semibold text-content-primary">The Synthesizer coordinates every review</p>
-          <p className="text-xs leading-5 text-content-muted">
-            It gathers findings from all six specialists, then verifies each one against your diff and drops anything not
-            backed by real evidence. Only the proven findings reach your pull request — you see signal, not noise.
-          </p>
-          <p className="text-xs leading-5 text-content-muted">
-            {connected
-              ? "Your repository is connected — open a pull request and the review streams here live as it runs."
-              : "Connect a repository and open a pull request — the review streams here live as it runs."}
-          </p>
-        </div>
+          <div className="ml-12 rounded-2xl border border-border-subtle bg-surface-1 px-4 py-3">
+            <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-wider text-content-muted">
+              How I think — visible, every time
+            </p>
+            <ol className="space-y-2.5">
+              {THINKING_STEPS.map((s, i) => (
+                <li key={s.title} className="flex items-start gap-2.5">
+                  <span className="mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent-primary/10 font-mono text-[10px] font-semibold text-accent-primary">
+                    {i + 1}
+                  </span>
+                  <p className="text-[12px] leading-5 text-content-secondary">
+                    <span className="font-semibold text-content-primary">{s.title}.</span> {s.detail}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          </div>
 
-        {connected ? (
-          <span className="inline-flex items-center gap-2 rounded-xl border border-accent-success/30 bg-accent-success/10 px-4 py-2 text-sm font-medium text-accent-success">
-            <span className="h-1.5 w-1.5 rounded-full bg-accent-success" aria-hidden />
-            Connected · awaiting your first pull request
-          </span>
-        ) : (
-          <Link
-            href="/connections"
-            className="inline-flex items-center gap-2 rounded-xl border border-accent-primary/30 bg-accent-primary/15 px-4 py-2 text-sm font-medium text-accent-primary transition-colors hover:bg-accent-primary/25"
-          >
-            Connect a repository
-            <IconArrowRight size={15} stroke={2} />
-          </Link>
-        )}
+          <div className="ml-12">
+            {connected ? (
+              <p className="text-[12px] leading-5 text-content-muted">
+                Select a pull request on the left — or open a new one on your connected repository — and my
+                review streams here as I work.
+              </p>
+            ) : (
+              <Link
+                href="/connections"
+                className="inline-flex items-center gap-2 rounded-xl border border-accent-primary/30 bg-accent-primary/15 px-4 py-2 text-sm font-medium text-accent-primary transition-colors hover:bg-accent-primary/25"
+              >
+                Connect a repository to put me to work
+                <IconArrowRight size={15} stroke={2} />
+              </Link>
+            )}
+          </div>
+        </div>
       </div>
     </section>
   );

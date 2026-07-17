@@ -26,6 +26,8 @@ const EMPTY_MODEL: Model = {
   latestReviews: [],
   telemetry: [],
   connectedProviders: [],
+  repos: [],
+  modelConnected: false,
 };
 
 const PRESETS = [
@@ -55,6 +57,50 @@ export function DashboardsWorkspace({ model }: { model: DashboardsViewModel }) {
 
   return (
     <div className="space-y-6">
+      {/* Connected sources — the staging state. A connected account always shows
+          what it's wired to (repos, model, telemetry), even before any review
+          runs: connected-but-idle is populated, never blank. */}
+      {connected && (
+        <div className="flex flex-wrap items-center gap-2">
+          {data.repos.map((fullName) => (
+            <span
+              key={fullName}
+              className="inline-flex items-center gap-1.5 rounded-full border border-accent-success/25 bg-accent-success/10 px-2.5 py-1 font-mono text-[11px] text-content-secondary"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-accent-success" aria-hidden />
+              {fullName}
+            </span>
+          ))}
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] ${
+              data.modelConnected
+                ? "border-accent-success/25 bg-accent-success/10 text-content-secondary"
+                : "border-border-default bg-surface-1 text-content-muted"
+            }`}
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${data.modelConnected ? "bg-accent-success" : "bg-content-muted/40"}`}
+              aria-hidden
+            />
+            {data.modelConnected ? "AI model connected" : "No AI model yet"}
+          </span>
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] ${
+              data.connectedProviders.length > 0
+                ? "border-accent-success/25 bg-accent-success/10 text-content-secondary"
+                : "border-border-default bg-surface-1 text-content-muted"
+            }`}
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${data.connectedProviders.length > 0 ? "bg-accent-success" : "bg-content-muted/40"}`}
+              aria-hidden
+            />
+            {data.connectedProviders.length > 0
+              ? `Telemetry: ${data.connectedProviders.join(", ")}`
+              : "No telemetry sources yet"}
+          </span>
+        </div>
+      )}
       {banner && <DashboardStatusBanner variant={banner} />}
 
       <div className="flex flex-wrap items-center justify-between gap-3">

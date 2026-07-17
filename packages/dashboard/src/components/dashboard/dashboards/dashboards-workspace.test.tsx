@@ -7,6 +7,7 @@ type Model = Parameters<typeof DashboardsWorkspace>[0]['model'];
 const base = {
   hasAccess: true as const, criticalBugs: 0, recentReviews: 0, weeklyDelta: 0,
   byCategory: [], bySeverity: [], byRisk: [], byRepo: [], telemetry: [], connectedProviders: [],
+  repos: ['acme/api'], modelConnected: false,
 };
 
 const connectedWithData: Model = {
