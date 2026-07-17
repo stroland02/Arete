@@ -96,4 +96,28 @@ describe('runReviewPipeline', () => {
     const body = JSON.parse(fetchMock.mock.calls[0][1].body)
     expect(body.llm).toBeUndefined()
   })
+
+  it('prefers per-installation DB model config over the env config', async () => {
+    vi.doMock('./model-config.js', () => ({
+      resolveInstallationModelConfig: vi.fn().mockResolvedValue({
+        provider: 'anthropic', model: 'claude-x', apiKey: 'sk-tenant',
+      }),
+    }))
+    process.env.MODEL_PROVIDER = 'ollama' // lower precedence than the DB config
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, json: vi.fn().mockResolvedValue(MOCK_RESULT),
+    })
+    global.fetch = fetchMock as any
+    try {
+      const { runReviewPipeline } = await import('./review-bridge.js')
+      await runReviewPipeline({
+        repo: 'x/y', pr_number: 1, title: 'T', description: '', files: [], installationId: 42,
+      })
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+      expect(body.llm).toEqual({ provider: 'anthropic', model: 'claude-x', apiKey: 'sk-tenant' })
+    } finally {
+      delete process.env.MODEL_PROVIDER
+      vi.doUnmock('./model-config.js')
+    }
+  })
 })
