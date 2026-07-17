@@ -35,7 +35,7 @@ export function DiffView({ file, rows }: { file: string; rows: DiffRow[] }) {
     }
   }
 
-  // Gutter line numbers advance on context/add (target-side); removes show a dot.
+  // Gutter line numbers advance on context/add (target-side); removes get a blank gutter cell.
   let lineNo = 0;
 
   return (
