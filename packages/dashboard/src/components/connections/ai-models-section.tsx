@@ -1,10 +1,6 @@
 "use client";
 
-<<<<<<< HEAD
 import { useEffect, useState } from "react";
-import { IconAlertTriangle, IconBolt, IconCheck, IconLoader2 } from "@tabler/icons-react";
-=======
-import { useState } from "react";
 import {
   IconAlertTriangle,
   IconBolt,
@@ -18,7 +14,6 @@ import {
   IconRoute,
   IconSparkles,
 } from "@tabler/icons-react";
->>>>>>> integration-preview
 import { Button } from "@/components/ui/button";
 import { MODEL_PROVIDERS, type ModelProviderDef } from "@/lib/model-catalog";
 import {
@@ -188,66 +183,6 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
         />
       </button>
 
-<<<<<<< HEAD
-      {/* connect: credential + model select */}
-      <div className="flex flex-col gap-2">
-        <label className="flex flex-col gap-1 text-[11px] font-medium text-content-secondary">
-          {provider.authLabel}
-          <input
-            type={isKey ? "password" : "text"}
-            value={secret}
-            onChange={(e) => setSecret(e.target.value)}
-            placeholder={provider.authPlaceholder}
-            spellCheck={false}
-            autoComplete="off"
-            className="rounded-lg border border-border-default bg-surface-2/40 px-2.5 py-1.5 font-mono text-[12px] text-content-primary placeholder:text-content-muted/60 focus:border-accent-primary/50 focus:outline-none"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-[11px] font-medium text-content-secondary">
-          Model
-          <select
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            className="rounded-lg border border-border-default bg-surface-2/40 px-2.5 py-1.5 font-mono text-[12px] text-content-primary focus:border-accent-primary/50 focus:outline-none"
-          >
-            {modelOptions.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-          {provider.customModelAllowed && (
-            <span className="text-[10px] text-content-muted/80">Any {provider.name} model id is accepted.</span>
-          )}
-        </label>
-      </div>
-
-      {provider.id === "ollama" && detect && (
-        <p className="text-[10px] leading-relaxed text-content-muted/80">
-          {detect.running && detect.models.length > 0
-            ? "Detected Ollama — Base URL and models auto-filled."
-            : detect.running
-              ? "Ollama is running but no models are pulled yet — run: ollama pull qwen2.5-coder"
-              : "Ollama not detected — install it, run `ollama pull qwen2.5-coder`, keep it running, then reopen this page."}
-        </p>
-      )}
-
-      <div className="mt-auto flex items-center gap-2">
-        <Button size="sm" onClick={runTest} disabled={!canTest} className="h-8 rounded-lg text-[12px]">
-          {testing ? <IconLoader2 size={13} className="motion-safe:animate-spin" aria-hidden /> : null}
-          {testing ? "Testing…" : "Test"}
-        </Button>
-        {msg && (
-          <span
-            className={`inline-flex items-center gap-1 text-[11px] ${
-              msg.tone === "ok" ? "text-accent-success" : msg.tone === "warn" ? "text-accent-warning" : "text-accent-danger"
-            }`}
-          >
-            {msg.tone === "ok" ? <IconCheck size={12} aria-hidden /> : <IconAlertTriangle size={12} aria-hidden />}
-            {msg.text}
-          </span>
-        )}
-=======
       {/* connect: credential + model select + Test. Kept in the DOM when
           collapsed (hidden) so server rendering carries the full form. */}
       <div id={panelId} hidden={!open} className="px-5 pb-4 pl-[4.75rem]">
@@ -283,7 +218,7 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
               onChange={(e) => setModel(e.target.value)}
               className="rounded-lg border border-border-default bg-surface-2/40 px-2.5 py-1.5 font-mono text-[12px] text-content-primary focus:border-accent-primary/50 focus:outline-none"
             >
-              {provider.models.map((m) => (
+              {modelOptions.map((m) => (
                 <option key={m} value={m}>
                   {m}
                 </option>
@@ -294,6 +229,15 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
             )}
           </label>
         </div>
+        {provider.id === "ollama" && detect && (
+          <p className="mt-2 text-[10px] leading-relaxed text-content-muted/80">
+            {detect.running && detect.models.length > 0
+              ? "Detected Ollama — Base URL and models auto-filled."
+              : detect.running
+                ? "Ollama is running but no models are pulled yet — run: ollama pull qwen2.5-coder"
+                : "Ollama not detected — install it, run `ollama pull qwen2.5-coder`, keep it running, then reopen this page."}
+          </p>
+        )}
         <div className="mt-3 flex items-center gap-2">
           <Button size="sm" onClick={runTest} disabled={!canTest} className="h-8 rounded-lg text-[12px]">
             {testing ? <IconLoader2 size={13} className="motion-safe:animate-spin" aria-hidden /> : null}
@@ -310,7 +254,6 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
             </span>
           )}
         </div>
->>>>>>> integration-preview
       </div>
     </div>
   );

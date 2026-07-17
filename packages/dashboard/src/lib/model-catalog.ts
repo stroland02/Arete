@@ -117,13 +117,9 @@ export const MODEL_PROVIDERS: ModelProviderDef[] = [
     customModelAllowed: true,
     freeDefault: true,
     isAnthropic: false,
-<<<<<<< HEAD
     note: "Free default — runs on your own machine, bounded by your hardware. Install Ollama, run `ollama pull qwen2.5-coder`, and keep it running; Kuma auto-detects it at 127.0.0.1:11434 (use 127.0.0.1, not localhost). Verification runs on your connected model.",
-=======
-    note: "Free default — runs on your own machine, bounded by your hardware. Verification runs on your connected model.",
     setupUrl: "https://ollama.com/download",
     setupLabel: "Download Ollama (no key needed)",
->>>>>>> integration-preview
   },
 ];
 

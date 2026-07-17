@@ -77,7 +77,6 @@ describe('testModelConnection', () => {
     if (!result.ok) expect(result.detail).toContain('blocked private address')
   })
 
-<<<<<<< HEAD
   it('probes Ollama at /api/version with no auth header and allowLoopback', async () => {
     const fetch = fakeFetch({ ok: true, status: 200, statusText: 'OK' })
     const deps: TestConnectionDeps = { fetch }
@@ -85,19 +84,10 @@ describe('testModelConnection', () => {
     const result = await testModelConnection(
       { provider: 'ollama', model: 'qwen2.5-coder', apiKey: '', baseUrl: 'http://127.0.0.1:11434' },
       deps,
-=======
-  it('probes keyless Ollama at /api/tags with no auth header (reachability = ok)', async () => {
-    const fetch = fakeFetch({ ok: true, status: 200, statusText: 'OK' })
-
-    const result = await testModelConnection(
-      { provider: 'ollama', model: 'llama3.1', apiKey: '', baseUrl: null },
-      { fetch },
->>>>>>> integration-preview
     )
 
     expect(result).toEqual({ ok: true })
     const [url, init] = fetch.mock.calls[0]
-<<<<<<< HEAD
     expect(url).toBe('http://127.0.0.1:11434/api/version')
     expect((init as any).headers).toEqual({}) // no Bearer/x-api-key for Ollama
     expect((init as any).allowLoopback).toBe(true)
@@ -127,10 +117,6 @@ describe('testModelConnection', () => {
 
     const [, init] = fetch.mock.calls[0]
     expect((init as any).allowLoopback).toBe(false)
-=======
-    expect(url).toBe('http://localhost:11434/api/tags')
-    expect((init as any).headers.Authorization).toBeUndefined()
->>>>>>> integration-preview
   })
 
   it('refuses an unknown provider that has no baseUrl to target', async () => {
