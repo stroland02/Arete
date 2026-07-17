@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, type ReactNode } from "react";
 import Link from "next/link";
 import { SynthesizerConsole } from "../agents/synthesizer-console";
 import { StatusBoardLive } from "./status-board";
+import { SendPrButton } from "./send-pr-button";
 import { motion, AnimatePresence, useInView } from "framer-motion";
 import { IconArrowRight, IconChevronDown, IconCopy, IconGitBranch, IconGitPullRequest, IconHourglassHigh, IconPlus, IconLoader2, IconCheck } from "@tabler/icons-react";
 import { KumaLogo } from "@/components/ui/kuma-logo";
@@ -567,7 +568,7 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
         {realMode ? (
           <ReviewPanel review={selectedReview} />
         ) : (
-          <IssuePanel issue={selected} isReplaying={isReplaying} />
+          <IssuePanel issue={selected} isReplaying={isReplaying} containerId={realMode ? activeContainerId : null} />
         )}
       </section>
     </div>
@@ -756,7 +757,18 @@ function ReviewPanel({ review }: { review: ServiceReviewRow | null }) {
  * comment(s) as they'll post — plus the send gate. Per the pipeline spec, the
  * repo target and Post PR / Request changes live HERE (Services), not on Agents.
  */
-function IssuePanel({ issue, isReplaying }: { issue: Issue | null; isReplaying: boolean }) {
+function IssuePanel({
+  issue,
+  isReplaying,
+  containerId = null,
+}: {
+  issue: Issue | null;
+  isReplaying: boolean;
+  /** Real persisted container backing this issue → the send gate is LIVE. Null
+   *  (sample/demo data) → the honest disabled shell; the button never fires on
+   *  fabricated data. */
+  containerId?: string | null;
+}) {
   return (
     <>
       <header className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-3">
@@ -881,9 +893,22 @@ function IssuePanel({ issue, isReplaying }: { issue: Issue | null; isReplaying: 
           </div>
 
           <footer className="shrink-0 space-y-2 border-t border-border-subtle px-3 py-3">
-            <button type="button" className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent-primary px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-accent-primary/90">
-              <IconGitPullRequest size={14} stroke={2} /> Post pull request
-            </button>
+            {/* Gate 2 of 2 (the send gate): LIVE only when a real container
+                backs this issue — it drives /api/containers/[id]/send and shows
+                the true outcome. On sample data it is an honest disabled shell,
+                never a no-op that implies it can post. */}
+            {containerId ? (
+              <SendPrButton containerId={containerId} />
+            ) : (
+              <button
+                type="button"
+                disabled
+                title="Open a reviewed issue backed by a real container to post its pull request"
+                className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent-primary px-3 py-1.5 text-[12px] font-semibold text-white opacity-50"
+              >
+                <IconGitPullRequest size={14} stroke={2} /> Post pull request
+              </button>
+            )}
             <div className="grid grid-cols-2 gap-1.5">
               <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-1.5 text-[11px] font-semibold text-content-secondary transition-colors hover:bg-content-primary/5">
                 Request changes
