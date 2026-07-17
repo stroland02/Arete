@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { DispatchPlan } from "@arete/orchestration";
+import { validateStatusReport } from "@arete/orchestration";
 import { driveContainer, type DriveInput, type SpecialistReport } from "./driver";
 import type { Diff, Finding, IssueContainer } from "./types";
 
@@ -150,6 +151,33 @@ describe("driveContainer", () => {
     );
     const keep = r.steps.find((s) => s.kind === "keep")!;
     expect(keep.needsAttention).toBeUndefined();
+  });
+
+  it("attaches a StatusReport to each specialist report step (tiered comms §2)", () => {
+    const { steps } = driveContainer(baseInput());
+    const reportSteps = steps.filter((s) => s.kind === "report");
+    expect(reportSteps.length).toBeGreaterThan(0);
+    for (const s of reportSteps) {
+      expect(s.report).toBeDefined();
+      expect(validateStatusReport(s.report).ok).toBe(true);
+    }
+  });
+
+  it("derives confidence from the weakest candidate, never invents it", () => {
+    const input = baseInput();
+    input.reports[0].candidates[0].confidence = 0.4; // below DEFAULT_LOW_CONFIDENCE
+    const { steps } = driveContainer(input);
+    const s = steps.find((x) => x.kind === "report" && x.agentId === input.reports[0].agentId)!;
+    expect(s.report!.confidence).toBe(0.4);
+    expect(s.report!.status).toBe("done"); // reported = done; low confidence is the ladder's signal
+  });
+
+  it("omits the StatusReport for an agent whose id is not a review dimension", () => {
+    const input = baseInput();
+    input.reports.push({ agentId: "ci_diagnostics", label: "CI", candidates: [] });
+    const { steps } = driveContainer(input);
+    const s = steps.find((x) => x.kind === "report" && x.agentId === "ci_diagnostics")!;
+    expect(s.report).toBeUndefined(); // anti-fabrication: never invent a dimension
   });
 
   it("rejects a container that is not in the detecting state", () => {

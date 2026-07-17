@@ -29,8 +29,8 @@
  * driver); this core owns the loop *control* and the transcript, not the harness.
  */
 
-import type { DispatchPlan, QaResult } from "@arete/orchestration";
-import { advanceQaLoop, planToTasks, DEFAULT_MAX_PASSES } from "@arete/orchestration";
+import type { DispatchPlan, QaResult, SpecialistStatus, StatusReport } from "@arete/orchestration";
+import { advanceQaLoop, planToTasks, DEFAULT_MAX_PASSES, isReviewDimension } from "@arete/orchestration";
 import type { Diff, Finding, IssueContainer, SynthStep } from "./types";
 import { composePr, transition, verifyAll } from "./pipeline";
 import { DEFAULT_LOW_CONFIDENCE } from "./critic";
@@ -44,6 +44,40 @@ export interface SpecialistReport {
   agentId: string; // provenance; == Finding.category / the packages/agents name
   label: string; // display name, e.g. "Security"
   candidates: Finding[];
+  /**
+   * Live-harness inputs (packages/agents populates these — real, never
+   * synthesized). When absent, derived honestly: status "done" (they reported),
+   * confidence = weakest candidate confidence (1 when there are no candidates to
+   * doubt), blockers empty.
+   */
+  status?: SpecialistStatus;
+  confidence?: number;
+  blockers?: string[];
+}
+
+/**
+ * Project a specialist's report into a tiered-comms StatusReport (§2). Returns
+ * undefined when the agent id is not a review dimension — anti-fabrication: we
+ * never invent a dimension for an unknown agent, we omit the structured report.
+ */
+function toStatusReport(r: SpecialistReport): StatusReport | undefined {
+  const dim = r.agentId;
+  if (!isReviewDimension(dim)) return undefined;
+  let weakest: number | undefined;
+  for (const c of r.candidates) {
+    if (c.confidence !== undefined && (weakest === undefined || c.confidence < weakest)) {
+      weakest = c.confidence;
+    }
+  }
+  const n = r.candidates.length;
+  return {
+    agent: r.agentId,
+    dimension: dim,
+    status: r.status ?? "done",
+    summary: `${r.label} reported ${n} candidate${n === 1 ? "" : "s"}`,
+    confidence: r.confidence ?? weakest ?? 1,
+    blockers: r.blockers ?? [],
+  };
 }
 
 export interface DriveInput {
@@ -113,11 +147,13 @@ export function driveContainer(input: DriveInput): DriveResult {
   const candidates: Finding[] = [];
   for (const r of input.reports) {
     const n = r.candidates.length;
+    const report = toStatusReport(r);
     steps.push({
       kind: "report",
       agentId: r.agentId,
       text: `${r.label} reported ${n} candidate${n === 1 ? "" : "s"}`,
       at: now(),
+      ...(report ? { report } : {}),
     });
     candidates.push(...r.candidates);
   }
