@@ -3,9 +3,15 @@ import { IconBrandGithub, IconChevronRight } from "@tabler/icons-react";
 import { CONNECTORS } from "@/lib/connector-catalog";
 import { ConnectorIcon } from "@/components/connections/connector-icon";
 import { AiModelsSection } from "@/components/connections/ai-models-section";
+import { AccountIdentity } from "@/components/connections/account-identity";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
+import { auth } from "@/lib/auth";
 
-export default function ConnectionsPage() {
+export default async function ConnectionsPage() {
+  const session = await auth();
+  const email = session?.user?.email ?? null;
+  const installations = session?.installations ?? [];
+
   return (
     <PageReveal className="mx-auto max-w-5xl space-y-6">
       <RevealItem>
@@ -17,6 +23,12 @@ export default function ConnectionsPage() {
           </p>
         </div>
       </RevealItem>
+
+      {email ? (
+        <RevealItem>
+          <AccountIdentity email={email} workspaces={installations} />
+        </RevealItem>
+      ) : null}
 
       <RevealItem>
         <div className="glass-panel flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
