@@ -65,5 +65,19 @@ export async function POST(req: NextRequest): Promise<Response> {
     create: { installationId: target, provider, model, baseUrl, apiKeyEncrypted },
     update: { model, baseUrl, apiKeyEncrypted },
   });
+
+  // Auto-scan on connect (work-item inbox): connecting a model may complete the
+  // repo+model pair, so poke the webhook scan trigger fire-and-forget. The
+  // trigger re-checks all gates server-side; a failure here must never fail the
+  // connect itself.
+  const webhookBase = process.env.WEBHOOK_SERVICE_URL;
+  if (webhookBase) {
+    void fetch(`${webhookBase}/scan/trigger`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ installationId: target }),
+    }).catch(() => {});
+  }
+
   return NextResponse.json(toView(row));
 }
