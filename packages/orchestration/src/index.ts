@@ -21,3 +21,4 @@ export * from "./dispatch.js";
 export * from "./qa.js";
 export * from "./transcript.js";
 export * from "./status-report.js";
+export * from "./escalation.js";
