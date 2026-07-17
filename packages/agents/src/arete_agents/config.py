@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # ("ollama pull qwen2.5-coder"); an un-pulled model / unreachable server
     # yields an honest empty review, never fabricated findings.
     ollama_model: str = "qwen2.5-coder"
-    ollama_base_url: str = "http://localhost:11434"
+    ollama_base_url: str = "http://127.0.0.1:11434"
 
     # Deployment tier. "local" can reach a localhost Ollama; "saas" (hosted)
     # cannot, so an Ollama-backed review pointed at localhost is refused with an
