@@ -3,6 +3,7 @@ import {
   createEmailUser,
   verifyCredentials,
   upsertGoogleUser,
+  classifyAccount,
   DuplicateEmailError,
 } from './users';
 
@@ -30,6 +31,7 @@ function fakeDb() {
             a.provider === where.provider_providerAccountId.provider &&
             a.providerAccountId === where.provider_providerAccountId.providerAccountId
         ) ?? null,
+      findFirst: async ({ where }: any) => accounts.find((a) => a.userId === where.userId) ?? null,
       create: async ({ data }: any) => {
         accounts.push(data);
         return data;
@@ -63,6 +65,25 @@ describe('verifyCredentials', () => {
     expect(await verifyCredentials(db, 'a@b.com', 'hunter2pw')).toMatchObject({ email: 'a@b.com' });
     expect(await verifyCredentials(db, 'a@b.com', 'wrongpass')).toBeNull();
     expect(await verifyCredentials(db, 'missing@b.com', 'hunter2pw')).toBeNull();
+  });
+});
+
+describe('classifyAccount', () => {
+  it("returns 'none' when no user has that email (→ 'no such account, create one?')", async () => {
+    const db = fakeDb();
+    expect(await classifyAccount(db, 'nobody@b.com')).toEqual({ kind: 'none' });
+  });
+
+  it("returns 'password' for an email/password account (normalizing case)", async () => {
+    const db = fakeDb();
+    await createEmailUser(db, { email: 'a@b.com', name: null, password: 'hunter2pw' });
+    expect(await classifyAccount(db, 'A@B.com')).toEqual({ kind: 'password' });
+  });
+
+  it("returns 'oauth' + provider for a Google-only account (→ 'signed up with Google')", async () => {
+    const db = fakeDb();
+    await upsertGoogleUser(db, { email: 'g@b.com', name: 'G', image: null, providerAccountId: 'gid-1' });
+    expect(await classifyAccount(db, 'g@b.com')).toEqual({ kind: 'oauth', provider: 'google' });
   });
 });
 
