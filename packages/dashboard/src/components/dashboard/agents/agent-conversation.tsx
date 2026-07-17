@@ -25,6 +25,10 @@ export interface AgentConversationProps {
   findings: AgentActivityFinding[];
   findingCount: number;
   hasReviews: boolean;
+  /** Whether a repository is connected. */
+  repoConnected?: boolean;
+  /** Whether an AI model is connected — what the agent actually needs to run. */
+  modelConnected?: boolean;
   onConfigure: (agentId: string) => void;
 }
 
@@ -36,7 +40,7 @@ export interface AgentConversationProps {
  * service is unreachable the composer surfaces a truthful notice instead of a
  * canned reply.
  */
-export function AgentConversation({ agent, findings, findingCount, hasReviews, onConfigure }: AgentConversationProps) {
+export function AgentConversation({ agent, findings, findingCount, hasReviews, repoConnected = false, modelConnected = false, onConfigure }: AgentConversationProps) {
   const [message, setMessage] = useState("");
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [sending, setSending] = useState(false);
@@ -154,17 +158,39 @@ export function AgentConversation({ agent, findings, findingCount, hasReviews, o
               </ul>
             </div>
 
-            <Link
-              href="/connections"
-              className="inline-flex items-center gap-2 self-start rounded-xl border border-accent-primary/30 bg-accent-primary/20 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/30"
-            >
-              Connect a repository
-              <IconArrowRight size={15} stroke={2} />
-            </Link>
-
-            <p className="text-[11px] leading-4 text-content-muted">
-              {agent.label} runs automatically on your pull requests — findings appear here once a connected repo has an open PR.
-            </p>
+            {!repoConnected ? (
+              <>
+                <Link
+                  href="/connections"
+                  className="inline-flex items-center gap-2 self-start rounded-xl border border-accent-primary/30 bg-accent-primary/20 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/30"
+                >
+                  Connect a repository
+                  <IconArrowRight size={15} stroke={2} />
+                </Link>
+                <p className="text-[11px] leading-4 text-content-muted">
+                  {agent.label} runs automatically on your pull requests — findings appear here once a connected repo has an open PR.
+                </p>
+              </>
+            ) : !modelConnected ? (
+              <>
+                <Link
+                  href="/connections/ai-models"
+                  className="inline-flex items-center gap-2 self-start rounded-xl border border-accent-primary/30 bg-accent-primary/20 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/30"
+                >
+                  Connect an AI model
+                  <IconArrowRight size={15} stroke={2} />
+                </Link>
+                <p className="text-[11px] leading-4 text-content-muted">
+                  Your repository is connected — {agent.label} just needs a model to run on. Connect one under
+                  AI Models (Local · Ollama is free) and it will start reviewing your pull requests.
+                </p>
+              </>
+            ) : (
+              <p className="text-[11px] leading-4 text-content-muted">
+                {agent.label} is ready and runs automatically on your pull requests — findings appear here once one
+                of your connected repositories has an open PR.
+              </p>
+            )}
           </div>
         )}
 
