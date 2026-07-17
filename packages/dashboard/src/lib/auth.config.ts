@@ -19,6 +19,7 @@ export const authConfig = {
       const { pathname } = request.nextUrl;
       const isPublic =
         pathname === '/' ||
+        pathname.startsWith('/docs') ||
         pathname.startsWith('/login') ||
         pathname.startsWith('/signup') ||
         pathname.startsWith('/api/auth') ||
