@@ -9,6 +9,7 @@ import {
   IconChevronRight,
   IconCpu,
   IconDiamond,
+  IconExternalLink,
   IconLoader2,
   IconRoute,
   IconSparkles,
@@ -157,7 +158,18 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
         <p className="text-[11px] leading-relaxed text-content-muted">{provider.note}</p>
         <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-[11px] font-medium text-content-secondary">
-            {provider.authLabel}
+            <span className="flex items-center justify-between gap-2">
+              {provider.authLabel}
+              <a
+                href={provider.setupUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 font-normal text-accent-primary hover:underline"
+              >
+                {provider.setupLabel}
+                <IconExternalLink size={11} aria-hidden />
+              </a>
+            </span>
             <input
               type={isKey ? "password" : "text"}
               value={secret}

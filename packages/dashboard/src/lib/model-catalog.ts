@@ -33,6 +33,16 @@ export interface ModelProviderDef {
   isAnthropic: boolean;
   /** The honest per-provider note shown on the card. */
   note: string;
+  /**
+   * Deep link to the exact page where the user gets what they need to connect:
+   * the create-API-key page for key providers, or the download page for Ollama.
+   * After they log in there, they land directly on the key screen — the most
+   * automatic a bring-your-own-key flow can be (providers don't expose keys
+   * programmatically). Opens in a new tab.
+   */
+  setupUrl: string;
+  /** CTA label for setupUrl (keys say "Get your API key"; Ollama "Download Ollama"). */
+  setupLabel: string;
 }
 
 export const MODEL_PROVIDERS: ModelProviderDef[] = [
@@ -48,6 +58,8 @@ export const MODEL_PROVIDERS: ModelProviderDef[] = [
     freeDefault: false,
     isAnthropic: true,
     note: "Kuma's native model — reviews and verification run on Claude directly.",
+    setupUrl: "https://console.anthropic.com/settings/keys",
+    setupLabel: "Get your Anthropic API key",
   },
   {
     id: "openai",
@@ -61,6 +73,8 @@ export const MODEL_PROVIDERS: ModelProviderDef[] = [
     freeDefault: false,
     isAnthropic: false,
     note: "Verification runs on your connected model.",
+    setupUrl: "https://platform.openai.com/api-keys",
+    setupLabel: "Get your OpenAI API key",
   },
   {
     id: "gemini",
@@ -74,6 +88,8 @@ export const MODEL_PROVIDERS: ModelProviderDef[] = [
     freeDefault: false,
     isAnthropic: false,
     note: "Verification runs on your connected model.",
+    setupUrl: "https://aistudio.google.com/app/apikey",
+    setupLabel: "Get your Gemini API key",
   },
   {
     id: "openrouter",
@@ -87,6 +103,8 @@ export const MODEL_PROVIDERS: ModelProviderDef[] = [
     freeDefault: false,
     isAnthropic: false,
     note: "Verification runs on your connected model. Any OpenRouter model id is accepted.",
+    setupUrl: "https://openrouter.ai/keys",
+    setupLabel: "Get your OpenRouter API key",
   },
   {
     id: "ollama",
@@ -100,6 +118,8 @@ export const MODEL_PROVIDERS: ModelProviderDef[] = [
     freeDefault: true,
     isAnthropic: false,
     note: "Free default — runs on your own machine, bounded by your hardware. Verification runs on your connected model.",
+    setupUrl: "https://ollama.com/download",
+    setupLabel: "Download Ollama (no key needed)",
   },
 ];
 
