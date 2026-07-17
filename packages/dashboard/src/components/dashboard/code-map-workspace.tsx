@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { IconSearch } from "@tabler/icons-react";
 import type { Topology } from "@arete/topology";
 import type { NodeSensors, FindingLike } from "@/lib/sensors";
@@ -32,7 +32,10 @@ export function CodeMapWorkspace({ topology, sensors, findings, initialSelection
   const [filter, setFilter] = useState<CodeMapFilter>("all");
   const [search, setSearch] = useState("");
 
-  const model = selection ? buildSidebarModel(topology, sensors, findings, selection) : null;
+  const model = useMemo(
+    () => (selection ? buildSidebarModel(topology, sensors, findings, selection) : null),
+    [topology, sensors, findings, selection],
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">

@@ -64,9 +64,12 @@ export function buildSidebarModel(
     const path = node.meta?.path as string | undefined;
 
     const rows = path ? findings.filter((f) => f.path === path) : [];
-    const children = topology.nodes.filter(
-      (n) => n.id !== node.id && n.kind !== 'File' && (n.meta?.path as string | undefined) === path,
-    );
+    const children =
+      path == null
+        ? []
+        : topology.nodes.filter(
+            (n) => n.id !== node.id && n.kind !== 'File' && (n.meta?.path as string | undefined) === path,
+          );
     const adj = adjacency.get(node.id) ?? { imports: [], importedBy: [] };
     const agent = sensors[node.id]?.activity?.agent;
 

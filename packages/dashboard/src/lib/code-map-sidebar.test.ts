@@ -93,4 +93,16 @@ describe('buildSidebarModel — honest empties and misses', () => {
     expect(m.contents).toEqual([]);
     expect(m.activity).toEqual([]);
   });
+  it('a File node with no path gets empty contents (never other pathless nodes)', () => {
+    const t2: Topology = {
+      nodes: [
+        { id: 'fX', kind: 'File', label: 'x.ts', provider: 'code' },
+        { id: 'stray', kind: 'Function', label: 'strayFn', provider: 'code' },
+      ],
+      edges: [],
+      groups: [],
+    };
+    const m = buildSidebarModel(t2, {}, [], { kind: 'file', id: 'fX' })!;
+    expect(m.contents).toEqual([]);
+  });
 });
