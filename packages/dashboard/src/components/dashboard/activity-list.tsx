@@ -4,6 +4,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { IconGitPullRequest } from "@tabler/icons-react";
 import { staggerContainer, fadeSlideUp } from "@/lib/motion";
+import { relativeTime } from "@/lib/relative-time";
 import { EmptyState } from "./empty-state";
 
 export interface ActivityItem {
@@ -12,18 +13,6 @@ export interface ActivityItem {
   prNumber: number;
   createdAt: string;
   riskLevel: string;
-}
-
-function timeAgo(date: Date): string {
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return date.toLocaleDateString();
 }
 
 // Semantic risk colors come from the accent-{danger,warning,success} tokens so
@@ -72,7 +61,7 @@ export function ActivityList({ reviews }: { reviews: ActivityItem[] }) {
                 </span>
               </div>
               <p className="text-xs text-content-muted mt-1">
-                <span className="font-mono tabular-nums">PR #{review.prNumber}</span> • {timeAgo(new Date(review.createdAt))}
+                <span className="font-mono tabular-nums">PR #{review.prNumber}</span> • {relativeTime(new Date(review.createdAt), new Date())}
               </p>
             </div>
           </Link>
