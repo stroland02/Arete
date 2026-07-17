@@ -93,13 +93,13 @@ export const MODEL_PROVIDERS: ModelProviderDef[] = [
     name: "Local · Ollama",
     authKind: "base-url",
     authLabel: "Base URL",
-    authPlaceholder: "http://localhost:11434",
+    authPlaceholder: "http://127.0.0.1:11434",
     tagline: "Run reviews locally on your own hardware — the free default.",
     models: ["qwen2.5-coder", "llama3.1", "deepseek-r1"],
     customModelAllowed: true,
     freeDefault: true,
     isAnthropic: false,
-    note: "Free default — runs on your own machine, bounded by your hardware. Verification runs on your connected model.",
+    note: "Free default — runs on your own machine, bounded by your hardware. Install Ollama, run `ollama pull qwen2.5-coder`, and keep it running; Kuma auto-detects it at 127.0.0.1:11434 (use 127.0.0.1, not localhost). Verification runs on your connected model.",
   },
 ];
 

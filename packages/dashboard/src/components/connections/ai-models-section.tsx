@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { IconAlertTriangle, IconBolt, IconCheck, IconLoader2 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { MODEL_PROVIDERS, type ModelProviderDef } from "@/lib/model-catalog";
@@ -67,6 +67,37 @@ function ModelProviderCard({ provider, client }: { provider: ModelProviderDef; c
   const [model, setModel] = useState(provider.models[0]);
   const [testing, setTesting] = useState(false);
   const [outcome, setOutcome] = useState<ModelTestOutcome | null>(null);
+  // Auto-detect a running local Ollama: prefill the Base URL and offer the
+  // user's actually-pulled models. null = not yet probed. Ollama card only.
+  const [detect, setDetect] = useState<{ running: boolean; models: string[] } | null>(null);
+
+  useEffect(() => {
+    if (provider.id !== "ollama") return;
+    let cancelled = false;
+    fetch("/api/ollama/detect")
+      .then((r) => r.json())
+      .then((d: { running?: boolean; baseUrl?: string | null; models?: string[] }) => {
+        if (cancelled) return;
+        const models = Array.isArray(d.models) ? d.models : [];
+        setDetect({ running: !!d.running, models });
+        if (d.running && d.baseUrl) {
+          setSecret((s) => s || (d.baseUrl as string));
+          if (models.length > 0) setModel((m) => (models.includes(m) ? m : models[0]));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setDetect({ running: false, models: [] });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [provider.id]);
+
+  // Real pulled models take precedence, then the catalog's suggestions.
+  const modelOptions =
+    detect && detect.models.length > 0
+      ? Array.from(new Set([...detect.models, ...provider.models]))
+      : provider.models;
 
   const connected = outcome?.status === "connected";
   // api-key providers need a key; Ollama can fall back to its default base URL.
@@ -129,7 +160,7 @@ function ModelProviderCard({ provider, client }: { provider: ModelProviderDef; c
             onChange={(e) => setModel(e.target.value)}
             className="rounded-lg border border-border-default bg-surface-2/40 px-2.5 py-1.5 font-mono text-[12px] text-content-primary focus:border-accent-primary/50 focus:outline-none"
           >
-            {provider.models.map((m) => (
+            {modelOptions.map((m) => (
               <option key={m} value={m}>
                 {m}
               </option>
@@ -140,6 +171,16 @@ function ModelProviderCard({ provider, client }: { provider: ModelProviderDef; c
           )}
         </label>
       </div>
+
+      {provider.id === "ollama" && detect && (
+        <p className="text-[10px] leading-relaxed text-content-muted/80">
+          {detect.running && detect.models.length > 0
+            ? "Detected Ollama — Base URL and models auto-filled."
+            : detect.running
+              ? "Ollama is running but no models are pulled yet — run: ollama pull qwen2.5-coder"
+              : "Ollama not detected — install it, run `ollama pull qwen2.5-coder`, keep it running, then reopen this page."}
+        </p>
+      )}
 
       <div className="mt-auto flex items-center gap-2">
         <Button size="sm" onClick={runTest} disabled={!canTest} className="h-8 rounded-lg text-[12px]">
