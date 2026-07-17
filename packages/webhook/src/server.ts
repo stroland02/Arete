@@ -186,6 +186,16 @@ export async function createServer(): Promise<express.Application> {
   const { createStagingSendHandler } = await import('./staging/send-handler.js')
   server.post('/staging/send', express.json(), createStagingSendHandler(stagingSendDeps))
 
+  // Internal model-connection Test probe. The dashboard's session-authenticated
+  // /api/model-connections/test route proxies here so the SSRF-guarded outbound
+  // probe (net-guard, via testModelConnection) runs in this service, not in the
+  // Next.js server. Stateless: no persistence, no tenant data — validates a
+  // candidate { provider, model, apiKey?, baseUrl? } and returns { ok, model?,
+  // detail? }. Kept separate from the (unmounted) tenant CRUD, which stays behind
+  // the dashboard's Auth.js session.
+  const { createModelConnectionTestHandler } = await import('./model-connections/test-handler.js')
+  server.post('/internal/model-connections/test', express.json(), createModelConnectionTestHandler())
+
   // NOTE: the model-connection *management* API (/api/model-connections — GET list,
   // PUT upsert, DELETE, POST .../test) is deliberately NOT mounted here for the same
   // reason as the outbound-webhook management API below: it is tenant-scoped CRUD that
