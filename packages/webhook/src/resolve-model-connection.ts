@@ -1,23 +1,28 @@
-// Review-time resolution of a tenant's Bring-Your-Own model connection.
+// Review-time resolution of a tenant's Bring-Your-Own model connection into the
+// `llm` block the agents /review consumes.
 //
 // The review job carries the GitHub App's NUMERIC installation id
 // (PRContext.installationId). ModelConnection is keyed by the INTERNAL
-// Installation uuid, so we map numeric externalId -> Installation.id first, then
-// read the tenant's active connection (newest configured) scoped by that uuid,
-// decrypt its key, and hand {provider, model, apiKey, baseUrl} to /review.
+// Installation uuid, so we map numeric externalId -> Installation.id, then read
+// the tenant's active connection (newest configured) scoped by that uuid,
+// decrypt its key, and shape it as { provider, model?, apiKey?, baseUrl? }
+// (camelCase, mirroring the agents Pydantic model; null/empty fields omitted).
 //
-// When a tenant has no connection (or the installation is unknown) we fall back
-// to the local Ollama companion — a KEYLESS connection. We deliberately never
-// source a provider API key from process.env as a default: an unconfigured
-// tenant runs on the self-hosted companion, not on someone else's shared key.
+// When a tenant has NO connection we return undefined and the caller omits the
+// `llm` block entirely — the agents service then uses its own default (Ollama
+// safety fallback). We deliberately never fabricate a key or point at a guessed
+// endpoint: an unconfigured tenant runs on the service default, never on a raw
+// env key.
 
 import { decryptCredentials } from './telemetry/credentials.js'
 
-export interface ResolvedModelConnection {
+/** The `llm` block forwarded to agents /review. Shape mirrors the agents
+ *  Pydantic model — camelCase, everything but provider optional. */
+export interface LlmConfig {
   provider: string
-  model: string
-  apiKey: string | null
-  baseUrl: string | null
+  model?: string
+  apiKey?: string
+  baseUrl?: string
 }
 
 export interface ResolveModelDeps {
@@ -37,47 +42,34 @@ export interface ResolveModelDeps {
   decrypt(ciphertext: string): { apiKey: string }
 }
 
-/** The local Ollama companion — a keyless default. baseUrl/model are non-secret
- *  config with safe fallbacks; there is deliberately no apiKey path here. */
-export function companionDefault(): ResolvedModelConnection {
-  return {
-    provider: 'ollama',
-    model: process.env.COMPANION_MODEL ?? 'llama3.1',
-    apiKey: null,
-    baseUrl: process.env.COMPANION_MODEL_URL ?? 'http://localhost:11434',
-  }
-}
-
 /**
- * Resolve the model connection a review should run on for a given GitHub App
- * installation. Returns the decrypted connection, or the Ollama companion
- * default when the tenant has none. `provider` selects the SCM side of the
- * installation id (github today; gitlab review-model resolution is a
- * fast-follow).
+ * Resolve the `llm` block a review should run on for a given GitHub App
+ * installation, or undefined when the tenant has no connection (caller omits
+ * `llm`). `provider` selects the SCM side of the installation id (github today).
  */
 export async function resolveModelConnectionForReview(
   externalInstallationId: number,
   deps: ResolveModelDeps,
   provider: 'github' | 'gitlab' = 'github',
-): Promise<ResolvedModelConnection> {
+): Promise<LlmConfig | undefined> {
   const installation = await deps.prisma.installation.findUnique({
     where: { provider_externalId: { provider, externalId: externalInstallationId } },
     select: { id: true },
   })
-  if (!installation) return companionDefault()
+  if (!installation) return undefined
 
   const connection = await deps.prisma.modelConnection.findFirst({
     where: { installationId: installation.id },
     orderBy: { createdAt: 'desc' },
   })
-  if (!connection) return companionDefault()
+  if (!connection) return undefined
 
-  const apiKey = connection.apiKeyEncrypted ? deps.decrypt(connection.apiKeyEncrypted).apiKey : null
+  const apiKey = connection.apiKeyEncrypted ? deps.decrypt(connection.apiKeyEncrypted).apiKey : undefined
   return {
     provider: connection.provider,
     model: connection.model,
-    apiKey,
-    baseUrl: connection.baseUrl,
+    ...(apiKey ? { apiKey } : {}),
+    ...(connection.baseUrl ? { baseUrl: connection.baseUrl } : {}),
   }
 }
 
@@ -85,8 +77,6 @@ export async function resolveModelConnectionForReview(
  *  from the pure resolver above so the resolver is unit-testable without a DB. */
 export function defaultResolveModelDeps(): ResolveModelDeps {
   return {
-    // Lazily require prisma so importing this module never forces a DB client
-    // at load time (mirrors server.ts' lazy db access).
     prisma: {
       installation: {
         findUnique: async (args) => {
