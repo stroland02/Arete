@@ -1,7 +1,7 @@
 'use server';
 import { signIn } from '@/lib/auth';
 import { db } from '@/lib/db';
-import { createEmailUser, DuplicateEmailError } from '@/lib/users';
+import { classifyAccount, createEmailUser, DuplicateEmailError } from '@/lib/users';
 
 export async function signup(_prev: unknown, formData: FormData) {
   const email = String(formData.get('email') ?? '').trim();
@@ -13,7 +13,14 @@ export async function signup(_prev: unknown, formData: FormData) {
     await createEmailUser(db, { email, name, password });
   } catch (err) {
     if (err instanceof DuplicateEmailError) {
-      return { error: 'An account with this email already exists.' };
+      // Never silently create a second tenant over an existing email. Tell the
+      // user the truth about the account they already have so they can sign in
+      // the right way — a Google-registered email must not read as "taken".
+      const account = await classifyAccount(db, email);
+      if (account.kind === 'oauth' && account.provider === 'google') {
+        return { error: 'This email signed up with Google. Sign in with “Continue with Google” instead.' };
+      }
+      return { error: 'An account with this email already exists — sign in instead.' };
     }
     throw err;
   }

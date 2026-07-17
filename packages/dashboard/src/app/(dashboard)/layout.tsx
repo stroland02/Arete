@@ -25,13 +25,15 @@ export default async function DashboardLayout({
   }
 
   const installations = session.installations ?? [];
-  const userName = session.user.name ?? session.user.email ?? "Signed in";
+  const userEmail = session.user.email ?? null;
+  const userName = session.user.name ?? userEmail ?? "Signed in";
 
   return (
     <>
       <DashboardShell
         installations={installations}
         userName={userName}
+        userEmail={userEmail}
         signOutSlot={<SignOutButton />}
       >
         {children}

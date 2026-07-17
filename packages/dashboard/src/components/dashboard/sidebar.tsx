@@ -29,10 +29,11 @@ interface SidebarProps {
   onToggleCollapsed: () => void;
   installations: AuthorizedInstallation[];
   userName: string;
+  userEmail: string | null;
   signOutSlot: ReactNode;
 }
 
-export function Sidebar({ collapsed, onToggleCollapsed, installations, userName, signOutSlot }: SidebarProps) {
+export function Sidebar({ collapsed, onToggleCollapsed, installations, userName, userEmail, signOutSlot }: SidebarProps) {
   const pathname = usePathname();
   const { isLoading, setIsLoading } = useGlobalLoading();
   const initial = userName.charAt(0).toUpperCase();
@@ -155,6 +156,9 @@ export function Sidebar({ collapsed, onToggleCollapsed, installations, userName,
                 className="text-sm overflow-hidden whitespace-nowrap min-w-0 flex-1"
               >
                 <p className="font-medium text-content-secondary truncate">{userName}</p>
+                {userEmail && userEmail !== userName ? (
+                  <p className="text-xs text-content-muted truncate" title={userEmail}>{userEmail}</p>
+                ) : null}
                 {signOutSlot}
               </motion.div>
             )}
