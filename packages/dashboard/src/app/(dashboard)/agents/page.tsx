@@ -42,6 +42,15 @@ export default async function AgentsPage({
     ? await getAgentActivity(db, installationIds)
     : [];
 
+  // The agents' real dependency is a connected model — the repo alone can't
+  // produce a review. Drives the honest empty-state CTA (connect a model, not
+  // a repo, once the repo is already connected).
+  const modelConnected =
+    installationIds.length > 0 &&
+    (await db.modelConnection.count({
+      where: { installationId: { in: installationIds } },
+    })) > 0;
+
   return (
     <AgentsWorkspace
       findingCountById={Object.fromEntries(
@@ -51,6 +60,7 @@ export default async function AgentsPage({
       hasReviews={hasReviews}
       activity={activity}
       connected={viewModel.hasAccess}
+      modelConnected={modelConnected}
       containerId={container ?? null}
       latestReview={
         latest

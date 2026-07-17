@@ -50,12 +50,21 @@ const PROVIDERS: Record<string, ProviderProbe> = {
     path: '/models',
     headers: (apiKey) => ({ 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }),
   },
+<<<<<<< HEAD
   // Local Ollama companion: no auth, and it exposes /api/version (NOT the
   // OpenAI-shaped /models the GENERIC probe would use). Default to IPv4
   // 127.0.0.1 — `localhost` resolves to ::1 first, which Ollama doesn't bind.
   ollama: {
     defaultBaseUrl: 'http://127.0.0.1:11434',
     path: '/api/version',
+=======
+  // Local/self-hosted Ollama is keyless — reachability of its /api/tags listing
+  // is the "does this connection work" signal. defaultBaseUrl points at the
+  // conventional local port; a custom baseUrl (still SSRF-checked) overrides it.
+  ollama: {
+    defaultBaseUrl: 'http://localhost:11434',
+    path: '/api/tags',
+>>>>>>> integration-preview
     headers: () => ({}),
   },
 }

@@ -29,6 +29,8 @@ export interface AgentsWorkspaceProps {
   containerId?: string | null;
   /** Whether a repository is connected (installations present). */
   connected?: boolean;
+  /** Whether an AI model is connected — the agents' real dependency. */
+  modelConnected?: boolean;
 }
 
 /**
@@ -44,6 +46,8 @@ export function AgentsWorkspace({
   activity = [],
   latestReview = null,
   containerId = null,
+  connected = false,
+  modelConnected = false,
 }: AgentsWorkspaceProps) {
   const [selectedAgentId, setSelectedAgentId] = useState<string>(AGENTS[0].id);
   const [configAgentId, setConfigAgentId] = useState<string | null>(null);
@@ -71,6 +75,8 @@ export function AgentsWorkspace({
           findings={selectedAgentFindings}
           findingCount={findingCountById[selectedAgent.id] ?? 0}
           hasReviews={hasReviews}
+          repoConnected={connected}
+          modelConnected={modelConnected}
           onConfigure={setConfigAgentId}
         />
         <PrPanel

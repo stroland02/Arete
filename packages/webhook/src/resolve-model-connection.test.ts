@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
   resolveModelConnectionForReview,
-  companionDefault,
   type ResolveModelDeps,
 } from './resolve-model-connection.js'
 
@@ -26,10 +25,10 @@ function fakeDeps(overrides: Partial<{
   return { deps, installationFindUnique, modelConnectionFindFirst, decrypt }
 }
 
-describe('resolveModelConnectionForReview', () => {
+describe('resolveModelConnectionForReview → the agents /review `llm` block', () => {
   it('maps the numeric installation id to the tenant, then reads the tenant’s active connection scoped by the internal uuid', async () => {
     const { deps, installationFindUnique, modelConnectionFindFirst } = fakeDeps({
-      connection: { provider: 'openai', model: 'gpt-4o', baseUrl: null, apiKeyEncrypted: 'iv:tag:cipher' },
+      connection: { provider: 'anthropic', model: 'claude-opus-4', baseUrl: null, apiKeyEncrypted: 'iv:tag:cipher' },
     })
 
     await resolveModelConnectionForReview(987654, deps)
@@ -46,53 +45,46 @@ describe('resolveModelConnectionForReview', () => {
     })
   })
 
-  it('decrypts the stored key and returns {provider, model, apiKey, baseUrl}', async () => {
+  it('decrypts the stored key and returns the llm block with apiKey + baseUrl', async () => {
     const { deps, decrypt } = fakeDeps({
-      connection: { provider: 'openai', model: 'gpt-4o', baseUrl: 'https://proxy/v1', apiKeyEncrypted: 'iv:tag:cipher' },
+      connection: { provider: 'anthropic', model: 'claude-opus-4', baseUrl: 'https://proxy/v1', apiKeyEncrypted: 'iv:tag:cipher' },
     })
 
-    const resolved = await resolveModelConnectionForReview(987654, deps)
+    const llm = await resolveModelConnectionForReview(987654, deps)
 
     expect(decrypt).toHaveBeenCalledWith('iv:tag:cipher')
-    expect(resolved).toEqual({ provider: 'openai', model: 'gpt-4o', apiKey: 'sk-DECRYPTED', baseUrl: 'https://proxy/v1' })
+    expect(llm).toEqual({ provider: 'anthropic', model: 'claude-opus-4', apiKey: 'sk-DECRYPTED', baseUrl: 'https://proxy/v1' })
   })
 
-  it('returns a keyless connection without decrypting when apiKeyEncrypted is null', async () => {
+  it('omits apiKey/baseUrl fields for a keyless connection (e.g. Ollama) rather than emitting nulls', async () => {
     const { deps, decrypt } = fakeDeps({
-      connection: { provider: 'ollama', model: 'llama3', baseUrl: 'http://ollama.internal:11434', apiKeyEncrypted: null },
+      connection: { provider: 'ollama', model: 'llama3', baseUrl: null, apiKeyEncrypted: null },
     })
 
-    const resolved = await resolveModelConnectionForReview(987654, deps)
+    const llm = await resolveModelConnectionForReview(987654, deps)
 
     expect(decrypt).not.toHaveBeenCalled()
-    expect(resolved).toEqual({ provider: 'ollama', model: 'llama3', apiKey: null, baseUrl: 'http://ollama.internal:11434' })
+    expect(llm).toEqual({ provider: 'ollama', model: 'llama3' })
+    // null fields are omitted, not serialized as null (the Pydantic model omits them)
+    expect(llm && 'apiKey' in llm).toBe(false)
+    expect(llm && 'baseUrl' in llm).toBe(false)
   })
 
-  it('falls back to the Ollama companion default when the tenant has no connection — never a raw key', async () => {
+  it('returns undefined when the tenant has no connection — caller omits llm, agents uses its own default', async () => {
     const { deps, modelConnectionFindFirst } = fakeDeps({ connection: null })
 
-    const resolved = await resolveModelConnectionForReview(987654, deps)
+    const llm = await resolveModelConnectionForReview(987654, deps)
 
     expect(modelConnectionFindFirst).toHaveBeenCalled()
-    expect(resolved).toEqual(companionDefault())
-    expect(resolved.provider).toBe('ollama')
-    expect(resolved.apiKey).toBeNull()
+    expect(llm).toBeUndefined()
   })
 
-  it('falls back to the companion default (without touching connections) when the installation is unknown', async () => {
+  it('returns undefined (without touching connections) when the installation is unknown', async () => {
     const { deps, modelConnectionFindFirst } = fakeDeps({ installation: null })
 
-    const resolved = await resolveModelConnectionForReview(111, deps)
+    const llm = await resolveModelConnectionForReview(111, deps)
 
     expect(modelConnectionFindFirst).not.toHaveBeenCalled()
-    expect(resolved).toEqual(companionDefault())
-  })
-
-  it('companion default is a keyless Ollama connection (no secret ever sourced from env)', () => {
-    const def = companionDefault()
-    expect(def.provider).toBe('ollama')
-    expect(def.apiKey).toBeNull()
-    expect(def.model).toBeTruthy()
-    expect(def.baseUrl).toBeTruthy()
+    expect(llm).toBeUndefined()
   })
 })

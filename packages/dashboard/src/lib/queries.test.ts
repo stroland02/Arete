@@ -82,6 +82,9 @@ function createFakeDb(
   };
 
   return {
+    modelConnection: {
+      count: async () => 0,
+    },
     repository: {
       count: async ({ where }: any) => {
         return repos.filter(

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useReducedMotion } from "framer-motion";
-import { IconArrowRight, IconHourglassHigh } from "@tabler/icons-react";
+import { IconArrowRight } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import { isSampleContainerId } from "@/lib/issue-pipeline/sample-containers";
 import { useSynthStream } from "./synthesizer/use-synth-stream";
@@ -59,7 +59,7 @@ function ConsoleStream({ containerId }: { containerId: string }) {
   const live = view.phase === "working";
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col" aria-label="Synthesizer console">
+    <section className="flex min-h-0 flex-1 flex-col" aria-label="Kuma console">
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border-subtle px-3">
         <span
           className={cn(
@@ -72,7 +72,7 @@ function ConsoleStream({ containerId }: { containerId: string }) {
           )}
           aria-hidden
         />
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Synthesizer</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Kuma</h2>
         <span className="rounded-full border border-border-default px-1.5 py-px text-[10px] font-medium text-content-muted">
           {PHASE_LABEL[view.phase]}
         </span>
@@ -107,7 +107,7 @@ function ConsoleStream({ containerId }: { containerId: string }) {
           </p>
         ) : (
           <p className="font-mono text-[10px] text-content-muted/80">
-            {live ? "verifying findings against the diff…" : "waiting for the review to run"}
+            {live ? "verifying findings against the diff…" : "standing by — the review streams here the moment it starts"}
           </p>
         )}
       </footer>
@@ -115,46 +115,70 @@ function ConsoleStream({ containerId }: { containerId: string }) {
   );
 }
 
+/** The visible-thinking pipeline Kuma walks a review through — the glass-box
+    workflow, laid out up front the way a Claude Code transcript reads:
+    lead line, structured status entries, a prompt line. No chat bubbles. */
+const REVIEW_STEPS: { verb: string; detail: string }[] = [
+  { verb: "Dispatch", detail: "six specialists — security, performance, quality, tests, deployment, business logic — brief on your change" },
+  { verb: "Report", detail: "findings stream in as they land, each with its real confidence score" },
+  { verb: "Verify", detail: "every finding is challenged against the actual diff — ✓ kept, ✕ dropped, ⚑ flagged for your judgment" },
+  { verb: "Compose", detail: "proven findings are written up; a fix worth making is staged as a pull request" },
+  { verb: "Approve", detail: "nothing ships without you — you hold the gate" },
+];
+
 function ConsoleEmpty({ connected }: { connected: boolean }) {
   return (
-    <section className="flex min-h-0 flex-1 flex-col" aria-label="Synthesizer console">
+    <section className="flex min-h-0 flex-1 flex-col" aria-label="Kuma console">
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border-subtle px-3">
-        <span className="h-1.5 w-1.5 rounded-full bg-content-muted/40" aria-hidden />
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Synthesizer</h2>
+        <span className="h-1.5 w-1.5 rounded-full bg-accent-primary" aria-hidden />
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Kuma</h2>
       </header>
 
-      <div className="mx-auto flex h-full max-w-md flex-col items-center justify-center gap-5 px-4 text-center">
-        <div className="rounded-2xl border border-border-default bg-content-primary/5 p-3 text-accent-primary">
-          <IconHourglassHigh size={24} stroke={1.5} />
-        </div>
-
-        <div className="space-y-1.5">
-          <p className="text-sm font-semibold text-content-primary">The Synthesizer coordinates every review</p>
-          <p className="text-xs leading-5 text-content-muted">
-            It gathers findings from all six specialists, then verifies each one against your diff and drops anything not
-            backed by real evidence. Only the proven findings reach your pull request — you see signal, not noise.
-          </p>
-          <p className="text-xs leading-5 text-content-muted">
-            {connected
-              ? "Your repository is connected — open a pull request and the review streams here live as it runs."
-              : "Connect a repository and open a pull request — the review streams here live as it runs."}
-          </p>
-        </div>
-
-        {connected ? (
-          <span className="inline-flex items-center gap-2 rounded-xl border border-accent-success/30 bg-accent-success/10 px-4 py-2 text-sm font-medium text-accent-success">
-            <span className="h-1.5 w-1.5 rounded-full bg-accent-success" aria-hidden />
-            Connected · awaiting your first pull request
+      {/* Kuma introduces itself the way a working engineer's terminal reads —
+          full pane, structured lines, no avatar, no bubbles, no waiting talk. */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 font-mono text-[12.5px] leading-6">
+        <p className="flex items-start gap-2.5">
+          <span className="shrink-0 text-accent-primary" aria-hidden>●</span>
+          <span className="font-semibold text-content-primary">
+            Kuma — your AI Software Healing Engineer
           </span>
-        ) : (
-          <Link
-            href="/connections"
-            className="inline-flex items-center gap-2 rounded-xl border border-accent-primary/30 bg-accent-primary/15 px-4 py-2 text-sm font-medium text-accent-primary transition-colors hover:bg-accent-primary/25"
-          >
-            Connect a repository
-            <IconArrowRight size={15} stroke={2} />
-          </Link>
-        )}
+        </p>
+        <p className="mt-1 max-w-3xl pl-[1.4rem] text-content-secondary">
+          I run every review on this account. Six specialists examine each change, I verify their
+          findings against the code itself, and I stage the fix. My full reasoning streams here
+          while it happens — no black box.
+        </p>
+
+        <p className="mt-6 flex items-start gap-2.5">
+          <span className="shrink-0 text-content-muted" aria-hidden>●</span>
+          <span className="font-semibold text-content-primary">How a review runs</span>
+        </p>
+        <div className="mt-1 space-y-1 pl-[1.4rem]">
+          {REVIEW_STEPS.map((s) => (
+            <p key={s.verb} className="flex gap-3">
+              <span className="w-20 shrink-0 text-content-primary">{s.verb}</span>
+              <span className="max-w-2xl text-content-muted">{s.detail}</span>
+            </p>
+          ))}
+        </div>
+
+        <div className="mt-7 border-t border-border-subtle pt-4">
+          {connected ? (
+            <p className="flex items-start gap-2.5 text-content-secondary">
+              <span className="shrink-0 text-accent-primary" aria-hidden>❯</span>
+              Select a pull request on the left — the review streams here as I work.
+            </p>
+          ) : (
+            <Link
+              href="/connections"
+              className="group inline-flex items-center gap-2.5 text-accent-primary transition-colors hover:text-accent-primary/80"
+            >
+              <span aria-hidden>❯</span>
+              Connect a repository to put me to work
+              <IconArrowRight size={14} stroke={2} className="transition-transform group-hover:translate-x-0.5" />
+            </Link>
+          )}
+        </div>
       </div>
     </section>
   );

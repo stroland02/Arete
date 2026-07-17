@@ -1,12 +1,11 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { IconBrandGithub, IconChevronRight, IconCircleCheck } from "@tabler/icons-react";
+import { IconBrandGithub, IconChevronRight, IconCircleCheck, IconSparkles } from "@tabler/icons-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getConnectedRepositories, resolveSelectedInstallationIds } from "@/lib/queries";
 import { CONNECTORS } from "@/lib/connector-catalog";
 import { ConnectorIcon } from "@/components/connections/connector-icon";
-import { AiModelsSection } from "@/components/connections/ai-models-section";
 import { AccountIdentity } from "@/components/connections/account-identity";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 
@@ -123,11 +122,31 @@ export default async function ConnectionsPage() {
       </RevealItem>
 
       <RevealItem>
-        <AiModelsSection />
-      </RevealItem>
-
-      <RevealItem>
         <div className="glass-panel divide-y divide-border-subtle overflow-hidden">
+          {/* AI Models is one catalog row like any other connection; the
+              provider list (Anthropic … Local · Ollama) lives on its page. */}
+          <Link
+            href="/connections/ai-models"
+            className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-content-primary/[0.03] group"
+          >
+            <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-content-primary/5 border border-border-default text-content-secondary shrink-0">
+              <IconSparkles className="w-5 h-5" />
+            </span>
+
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-content-primary">AI Models</span>
+                <span className="text-[10px] font-medium text-content-muted border border-border-subtle rounded-full px-1.5 py-0.5">
+                  Review engine
+                </span>
+              </div>
+              <p className="text-xs text-content-muted mt-0.5 truncate">
+                Choose the model Kuma runs reviews on — Local · Ollama is the free default, or bring your own key.
+              </p>
+            </div>
+
+            <IconChevronRight className="w-4 h-4 text-content-muted shrink-0 transition-transform group-hover:translate-x-0.5" />
+          </Link>
           {CONNECTORS.map((connector) => (
             <Link
               key={connector.id}

@@ -1,7 +1,24 @@
 "use client";
 
+<<<<<<< HEAD
 import { useEffect, useState } from "react";
 import { IconAlertTriangle, IconBolt, IconCheck, IconLoader2 } from "@tabler/icons-react";
+=======
+import { useState } from "react";
+import {
+  IconAlertTriangle,
+  IconBolt,
+  IconBrain,
+  IconCheck,
+  IconChevronRight,
+  IconCpu,
+  IconDiamond,
+  IconExternalLink,
+  IconLoader2,
+  IconRoute,
+  IconSparkles,
+} from "@tabler/icons-react";
+>>>>>>> integration-preview
 import { Button } from "@/components/ui/button";
 import { MODEL_PROVIDERS, type ModelProviderDef } from "@/lib/model-catalog";
 import {
@@ -11,22 +28,32 @@ import {
 } from "@/lib/model-connections-client";
 
 /**
- * The "AI Models" Connections section. Provider cards for the models a tenant can
- * run reviews on; each card carries the connect → model-select → Test → Connected
- * flow, mirroring the telemetry connector-card pattern.
+ * The "AI Models" Connections section. Providers render as rows in the same
+ * list style as the connector catalog below (icon · name · badge · tagline ·
+ * chevron); a row expands in place to the connect → model-select → Test →
+ * Connected flow. The collapsed form stays in the DOM (hidden) so the section
+ * is fully server-renderable.
  *
  * SEAM-FIRST: Test/connect go through ModelConnectionsClient (Eng1's
  * /api/model-connections). Until that route lands, `test` returns `not_configured`
- * and the card says so — it never fabricates a "Connected" state.
+ * and the row says so — it never fabricates a "Connected" state.
  *
  * HONESTY: Ollama is badged the free default but never "infinite"; a non-Anthropic
  * provider states that verification runs on the connected model.
  */
 const defaultClient: ModelConnectionsClient = new HttpModelConnectionsClient();
 
+const PROVIDER_ICONS: Record<string, typeof IconSparkles> = {
+  anthropic: IconSparkles,
+  openai: IconBrain,
+  gemini: IconDiamond,
+  openrouter: IconRoute,
+  ollama: IconCpu,
+};
+
 export function AiModelsSection({ client = defaultClient }: { client?: ModelConnectionsClient }) {
   return (
-    <section aria-label="AI Models" className="space-y-4">
+    <section aria-label="AI Models" className="space-y-3">
       <div className="space-y-1">
         <h2 className="text-sm font-semibold text-content-primary">AI Models</h2>
         <p className="text-xs text-content-muted">
@@ -34,9 +61,9 @@ export function AiModelsSection({ client = defaultClient }: { client?: ModelConn
           provider with your own key to run on it instead.
         </p>
       </div>
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="glass-panel divide-y divide-border-subtle overflow-hidden">
         {MODEL_PROVIDERS.map((provider) => (
-          <ModelProviderCard key={provider.id} provider={provider} client={client} />
+          <ModelProviderRow key={provider.id} provider={provider} client={client} />
         ))}
       </div>
     </section>
@@ -61,8 +88,9 @@ function outcomeMessage(provider: ModelProviderDef, outcome: ModelTestOutcome): 
   }
 }
 
-function ModelProviderCard({ provider, client }: { provider: ModelProviderDef; client: ModelConnectionsClient }) {
+function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; client: ModelConnectionsClient }) {
   const isKey = provider.authKind === "api-key";
+  const [open, setOpen] = useState(false);
   const [secret, setSecret] = useState("");
   const [model, setModel] = useState(provider.models[0]);
   const [testing, setTesting] = useState(false);
@@ -116,29 +144,51 @@ function ModelProviderCard({ provider, client }: { provider: ModelProviderDef; c
   }
 
   const msg = outcome ? outcomeMessage(provider, outcome) : null;
+  const RowIcon = PROVIDER_ICONS[provider.id] ?? IconSparkles;
+  const panelId = `model-provider-${provider.id}`;
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-border-default bg-surface-1 p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-content-primary">{provider.name}</p>
-          <p className="mt-0.5 text-[13px] leading-relaxed text-content-secondary">{provider.tagline}</p>
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={panelId}
+        className="flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-content-primary/[0.03] group"
+      >
+        <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-content-primary/5 border border-border-default text-content-secondary shrink-0">
+          <RowIcon className="w-5 h-5" />
+        </span>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-content-primary">{provider.name}</span>
+            <span className="text-[10px] font-medium text-content-muted border border-border-subtle rounded-full px-1.5 py-0.5">
+              AI model
+            </span>
+            {connected ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-accent-success/25 bg-accent-success/10 px-1.5 py-0.5 text-[10px] font-medium text-accent-success">
+                <IconCheck className="h-3 w-3" stroke={2.25} aria-hidden />
+                Connected
+              </span>
+            ) : provider.freeDefault ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-accent-primary/25 bg-accent-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-accent-primary">
+                <IconBolt className="h-3 w-3" aria-hidden />
+                Free default
+              </span>
+            ) : null}
+          </div>
+          <p className="text-xs text-content-muted mt-0.5 truncate">{provider.tagline}</p>
         </div>
-        {connected ? (
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-accent-success/30 bg-accent-success/10 px-2 py-px text-[10px] font-semibold uppercase tracking-wide text-accent-success">
-            <IconCheck size={11} aria-hidden />
-            Connected
-          </span>
-        ) : provider.freeDefault ? (
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-accent-primary/30 bg-accent-primary/10 px-2 py-px text-[10px] font-semibold uppercase tracking-wide text-accent-primary">
-            <IconBolt size={11} aria-hidden />
-            Free default
-          </span>
-        ) : null}
-      </div>
 
-      <p className="text-[11px] leading-relaxed text-content-muted">{provider.note}</p>
+        <IconChevronRight
+          className={`w-4 h-4 text-content-muted shrink-0 transition-transform ${
+            open ? "rotate-90" : "group-hover:translate-x-0.5"
+          }`}
+        />
+      </button>
 
+<<<<<<< HEAD
       {/* connect: credential + model select */}
       <div className="flex flex-col gap-2">
         <label className="flex flex-col gap-1 text-[11px] font-medium text-content-secondary">
@@ -197,6 +247,70 @@ function ModelProviderCard({ provider, client }: { provider: ModelProviderDef; c
             {msg.text}
           </span>
         )}
+=======
+      {/* connect: credential + model select + Test. Kept in the DOM when
+          collapsed (hidden) so server rendering carries the full form. */}
+      <div id={panelId} hidden={!open} className="px-5 pb-4 pl-[4.75rem]">
+        <p className="text-[11px] leading-relaxed text-content-muted">{provider.note}</p>
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <label className="flex flex-col gap-1 text-[11px] font-medium text-content-secondary">
+            <span className="flex items-center justify-between gap-2">
+              {provider.authLabel}
+              <a
+                href={provider.setupUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 font-normal text-accent-primary hover:underline"
+              >
+                {provider.setupLabel}
+                <IconExternalLink size={11} aria-hidden />
+              </a>
+            </span>
+            <input
+              type={isKey ? "password" : "text"}
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+              placeholder={provider.authPlaceholder}
+              spellCheck={false}
+              autoComplete="off"
+              className="rounded-lg border border-border-default bg-surface-2/40 px-2.5 py-1.5 font-mono text-[12px] text-content-primary placeholder:text-content-muted/60 focus:border-accent-primary/50 focus:outline-none"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[11px] font-medium text-content-secondary">
+            Model
+            <select
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              className="rounded-lg border border-border-default bg-surface-2/40 px-2.5 py-1.5 font-mono text-[12px] text-content-primary focus:border-accent-primary/50 focus:outline-none"
+            >
+              {provider.models.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+            {provider.customModelAllowed && (
+              <span className="text-[10px] text-content-muted/80">Any {provider.name} model id is accepted.</span>
+            )}
+          </label>
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <Button size="sm" onClick={runTest} disabled={!canTest} className="h-8 rounded-lg text-[12px]">
+            {testing ? <IconLoader2 size={13} className="motion-safe:animate-spin" aria-hidden /> : null}
+            {testing ? "Testing…" : "Test"}
+          </Button>
+          {msg && (
+            <span
+              className={`inline-flex items-center gap-1 text-[11px] ${
+                msg.tone === "ok" ? "text-accent-success" : msg.tone === "warn" ? "text-accent-warning" : "text-accent-danger"
+              }`}
+            >
+              {msg.tone === "ok" ? <IconCheck size={12} aria-hidden /> : <IconAlertTriangle size={12} aria-hidden />}
+              {msg.text}
+            </span>
+          )}
+        </div>
+>>>>>>> integration-preview
       </div>
     </div>
   );

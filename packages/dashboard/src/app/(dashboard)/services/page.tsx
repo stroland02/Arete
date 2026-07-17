@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { getServicesInbox, resolveSelectedInstallationIds } from "@/lib/queries";
+import { getConnectedRepositories, getServicesInbox, resolveSelectedInstallationIds } from "@/lib/queries";
 import { ServicesWorkspace } from "@/components/dashboard/services/services-workspace";
 
 // Session-scoped like every dashboard page; never statically prerendered.
@@ -26,13 +26,19 @@ export default async function ServicesPage({
   const { container } = await searchParams;
   const installationIds = resolveSelectedInstallationIds(session.installations ?? [], undefined);
   const connected = installationIds.length > 0;
-  const reviewGroups = connected ? await getServicesInbox(db, installationIds) : [];
+  const [reviewGroups, repositories] = connected
+    ? await Promise.all([
+        getServicesInbox(db, installationIds),
+        getConnectedRepositories(db, installationIds),
+      ])
+    : [[], []];
 
   return (
     <ServicesWorkspace
       connected={connected}
       containerId={container ?? null}
       reviewGroups={reviewGroups}
+      repositories={repositories}
     />
   );
 }
