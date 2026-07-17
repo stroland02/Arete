@@ -11,6 +11,7 @@ import { KumaLogo } from "@/components/ui/kuma-logo";
 import type { ServiceReviewGroup, ServiceReviewRow } from "@/lib/queries";
 import { TriageBar } from "./triage-bar";
 import { deriveTriage, type TriageStatus } from "./triage";
+import { DiffView } from "./diff-view";
 
 /**
  * Services "Triage Inbox" workspace. Production signals from CONNECTED
@@ -886,22 +887,7 @@ function IssuePanel({
                   <span className={`rounded-full border px-1.5 py-px text-[9px] font-bold uppercase tracking-wide ${SEV_PILL[issue.severity]}`}>{SEV_LABEL[issue.severity]}</span>
                   <span className="font-mono text-[10.5px] text-content-muted">{issue.where}</span>
                 </div>
-                <div className="overflow-hidden rounded-lg border border-border-default bg-surface-2">
-                  <div className="border-b border-border-subtle px-2.5 py-1.5 font-mono text-[10.5px] text-content-muted">{issue.fix.file}</div>
-                  <pre className="overflow-x-auto py-1 font-mono text-[11px] leading-relaxed">
-                    {issue.fix.rows.map((r, idx) => (
-                      <div
-                        key={idx}
-                        className={`flex gap-2 px-2 ${r.kind === "add" ? "bg-accent-success/10" : r.kind === "remove" ? "bg-accent-danger/10" : ""}`}
-                      >
-                        <span className={`select-none ${r.kind === "add" ? "text-accent-success" : r.kind === "remove" ? "text-accent-danger" : "text-content-muted/50"}`}>
-                          {r.kind === "add" ? "+" : r.kind === "remove" ? "-" : " "}
-                        </span>
-                        <span className={r.kind === "context" ? "text-content-muted" : "text-content-secondary"}>{r.text}</span>
-                      </div>
-                    ))}
-                  </pre>
-                </div>
+                <DiffView file={issue.fix.file} rows={issue.fix.rows} />
               </div>
             </PanelSection>
           </div>
