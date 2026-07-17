@@ -5,9 +5,8 @@ import { handleStripeWebhook } from './stripe-handler.js'
 import { handleGitLabWebhook } from './gitlab-handler.js'
 import { buildOAuthAuthorizeUrl } from './oauth/build-authorize-url.js'
 import { handleOAuthCallback } from './oauth/oauth-callback-handler.js'
-import { prisma } from './db.js'
-import { PrismaWebhookStore, type WebhookPrismaClient } from './outbound/prisma-store.js'
-import { createWebhookRouter } from './outbound/routes.js'
+import type { StagingSendDeps } from './staging/send.js'
+import type { StagingOctokit } from './staging/stage-pr.js'
 
 // @octokit/app and @octokit/webhooks are pure ESM (import-only "exports" maps);
 // this package compiles to CJS, so they must be loaded via dynamic import(),
@@ -174,11 +173,55 @@ export async function createServer(): Promise<express.Application> {
     }
   })
   
-  // Outbound webhook management API (tenant-scoped by installationId). Backed by
-  // the Prisma store; the router validates the destination URL against the SSRF
-  // guard and returns the signing secret exactly once at create.
-  const webhookStore = new PrismaWebhookStore(prisma as unknown as WebhookPrismaClient)
-  server.use('/api/webhooks', createWebhookRouter(webhookStore))
+  // PR-staging send seam (internal). The dashboard's "Post PR" action calls this
+  // with two internal uuids; we resolve the tenant to an installation Octokit,
+  // load the approved container slice, and run the gate-enforced, idempotent
+  // stagePullRequest core. NEVER auto-sends — the core refuses unless the
+  // container carries gates.solutionApprovedAt (server-side gate). Deps import
+  // lazily so registration never pulls in @arete/db (keeps this path db-free
+  // until a request actually needs a tenant lookup).
+  const stagingSendDeps: StagingSendDeps = {
+    async resolveExternalId(installationId) {
+      const { prisma } = await import('./db.js')
+      const inst = await prisma.installation.findUnique({
+        where: { id: installationId },
+        select: { externalId: true },
+      })
+      return inst?.externalId ?? null
+    },
+    async getOctokit(externalId) {
+      const { getInstallationOctokit } = await import('./github-auth.js')
+      const octokit = await getInstallationOctokit(app, externalId)
+      return octokit as unknown as StagingOctokit
+    },
+    async loadContainer(containerId, installationId) {
+      const { loadApprovedContainer } = await import('./staging/load-container.js')
+      return loadApprovedContainer(containerId, installationId)
+    },
+  }
+  const { createStagingSendHandler } = await import('./staging/send-handler.js')
+  server.post('/staging/send', express.json(), createStagingSendHandler(stagingSendDeps))
+
+  // NOTE: the model-connection *management* API (/api/model-connections — GET list,
+  // PUT upsert, DELETE, POST .../test) is deliberately NOT mounted here for the same
+  // reason as the outbound-webhook management API below: it is tenant-scoped CRUD that
+  // returns/mutates a customer's config, and the webhook service has no session, so an
+  // unauthenticated route trusting a client-supplied installationId would let any caller
+  // read or delete any tenant's connections — the exact vuln that pulled /api/webhooks/
+  // endpoints. The Test ping additionally makes an outbound call to a client-supplied
+  // baseUrl (SSRF-shaped) — net-guard hardens it, but it must not be an open proxy.
+  // The tenant-scoped core lives in ./model-connections/ (store.ts: saveModelConnection/
+  // list/get/delete, all installationId-scoped, key-free views; test-connection.ts:
+  // testModelConnection). The authenticated surface belongs behind the dashboard's
+  // Auth.js session, which supplies a session-derived installationId (fast-follow).
+  //
+  // NOTE: the outbound-webhook *management* API (POST/GET /api/webhooks/endpoints)
+  // is deliberately NOT mounted here. It trusted a client-supplied installationId
+  // with no authentication — an anonymous caller could register a webhook for, or
+  // list the endpoints of, any tenant and receive that tenant's whsec_ secret.
+  // Authenticated, tenant-scoped management belongs behind the dashboard's
+  // Auth.js session (fast-follow). Endpoints are created internally / seeded via
+  // PrismaWebhookStore; the delivery engine (persistence.ts) is unaffected.
 
   // Mount at root and let createNodeMiddleware own the path matching —
   // Express strips the mount prefix from req.url, so mounting at '/webhook'

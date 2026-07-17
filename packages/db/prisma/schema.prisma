@@ -37,6 +37,8 @@ model Installation {
   telemetryConnections TelemetryConnection[]
   telemetrySnapshots   TelemetrySnapshotRecord[]
   webhookEndpoints     WebhookEndpoint[]
+  modelConnections     ModelConnection[]
+  issueContainers      IssueContainer[]
 
   @@unique([provider, externalId])
 }
@@ -63,6 +65,64 @@ model TelemetryConnection {
   installation   Installation @relation(fields: [installationId], references: [id])
 
   @@unique([installationId, provider])
+}
+
+/// A customer's Bring-Your-Own AI model connection, scoped to an Installation
+/// (tenant). Resolved at review time so live reviews run on the customer's own
+/// model/key instead of a shared default. One row per (installation, provider).
+model ModelConnection {
+  id             String       @id @default(uuid())
+  installationId String
+  /// AI model provider name, e.g. "openai", "anthropic", "ollama". A plain
+  /// string (not an enum) — the set of supported model providers grows
+  /// independently of source-control providers.
+  provider       String
+  /// The API key, encrypted with the same AES-256-GCM scheme as
+  /// TelemetryConnection.credentials (see packages/webhook telemetry/
+  /// credentials.ts, TELEMETRY_ENCRYPTION_KEY). Nullable: a local/self-hosted
+  /// connection (e.g. an Ollama endpoint) authenticates by baseUrl alone and
+  /// carries no key. Never returned by the API and never logged.
+  apiKeyEncrypted String?
+  /// Model identifier passed through to the provider, e.g. "gpt-4o" or
+  /// "claude-opus-4".
+  model          String
+  /// Optional custom base URL for self-hosted / proxied / Azure-style
+  /// deployments. When null the provider's default endpoint is used.
+  baseUrl        String?
+  createdAt      DateTime     @default(now())
+  installation   Installation @relation(fields: [installationId], references: [id])
+
+  @@unique([installationId, provider])
+}
+
+/// A persistent Issue Container: the server-side unit the Fix workflow advances
+/// through its lifecycle (open -> solution proposed -> approved -> staged). It is
+/// tenant-scoped and gate-enforced — POST /staging/send only opens a PR once
+/// gates.solutionApprovedAt is set. The dashboard/driver populate it (create /
+/// advance / approve); the webhook lane reads it (loadApprovedContainer), always
+/// scoped by installationId. Eng1 owns the definition.
+model IssueContainer {
+  id             String       @id @default(uuid())
+  installationId String
+  /// Lifecycle state, e.g. "open" | "solution_proposed" | "approved" | "staged".
+  state          String       @default("open")
+  /// Server-side gates. Shape: { "solutionApprovedAt": ISO8601 | null }. The
+  /// technical sign-off that unlocks PR staging.
+  gates          Json
+  /// PR target repository. Shape: { "owner": "...", "repo": "..." }.
+  target         Json
+  /// PR metadata. Shape: { "base": "main", "title": "...", "body": "..." }.
+  pr             Json
+  /// The staged patch files (StagedPatchFile[]) the PR renders — the diff.
+  patch          Json
+  /// The review findings this container was opened from (informational source
+  /// of the proposed fix). Shape: provider-specific finding objects.
+  findings       Json
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  installation   Installation @relation(fields: [installationId], references: [id])
+
+  @@index([installationId])
 }
 
 model Repository {

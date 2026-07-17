@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
 import request from 'supertest'
 import type { Application } from 'express'
 
@@ -35,11 +35,28 @@ describe('server middleware mount', () => {
     expect(res.body).toEqual({ status: 'ok' })
   })
 
-  it('GET /api/webhooks/endpoints is mounted — 400 without installationId, not 404', async () => {
-    // 400 (validation) proves the outbound-webhook router is reachable; a 404
-    // would mean it was never mounted. DB-free: validation precedes any store call.
-    const res = await request(app).get('/api/webhooks/endpoints')
-    expect(res.status).toBe(400)
+  // SECURITY (auth-CRITICAL, cross-tenant): the outbound-webhook management API
+  // trusted a client-supplied installationId with NO authentication, so any
+  // anonymous caller could register a webhook for — or list the endpoints of —
+  // an arbitrary tenant, and the create response handed back that tenant's
+  // whsec_ signing secret. The unauthenticated route must NOT ship: it is
+  // removed from the public webhook service entirely (authenticated,
+  // tenant-scoped management is a dashboard fast-follow). These assertions are
+  // adversarial — an attacker probing another tenant must hit a 404 wall and
+  // never receive a secret.
+  it('does NOT expose GET /api/webhooks/endpoints (no unauth cross-tenant read)', async () => {
+    const res = await request(app).get('/api/webhooks/endpoints?installationId=victim-tenant')
+    expect(res.status).toBe(404)
+    expect(JSON.stringify(res.body)).not.toContain('whsec_')
+  })
+
+  it('does NOT expose POST /api/webhooks/endpoints (no unauth cross-tenant create / secret leak)', async () => {
+    const res = await request(app)
+      .post('/api/webhooks/endpoints')
+      .set('Content-Type', 'application/json')
+      .send({ installationId: 'victim-tenant', url: 'https://93.184.216.34/attacker-hook' })
+    expect(res.status).toBe(404)
+    expect(res.text).not.toContain('whsec_')
   })
 })
 
