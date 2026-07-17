@@ -45,6 +45,7 @@ model Installation {
   webhookEndpoints     WebhookEndpoint[]
   modelConnections     ModelConnection[]
   issueContainers      IssueContainer[]
+  accessGrants         InstallationAccess[]
 
   @@unique([provider, externalId])
 }
@@ -296,6 +297,26 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   accounts      Account[]
+  installationAccess InstallationAccess[]
+}
+
+/// Durable ownership link: this User is authorized for this Installation.
+/// Written at connect time (the GitHub-link callback) and write-through on a
+/// successful live derivation, so login can prefer the stored row instead of
+/// re-deriving the mapping from the GitHub API on every refresh (that live
+/// derivation is kept only as a fallback). Fixes the connection-reset incident,
+/// where a transient GitHub API failure dropped a tenant's installations.
+model InstallationAccess {
+  id             String       @id @default(uuid())
+  userId         String
+  installationId String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, installationId])
+  @@index([userId])
 }
 
 model Account {
