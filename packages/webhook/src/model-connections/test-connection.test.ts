@@ -77,6 +77,48 @@ describe('testModelConnection', () => {
     if (!result.ok) expect(result.detail).toContain('blocked private address')
   })
 
+  it('probes Ollama at /api/version with no auth header and allowLoopback', async () => {
+    const fetch = fakeFetch({ ok: true, status: 200, statusText: 'OK' })
+    const deps: TestConnectionDeps = { fetch }
+
+    const result = await testModelConnection(
+      { provider: 'ollama', model: 'qwen2.5-coder', apiKey: '', baseUrl: 'http://127.0.0.1:11434' },
+      deps,
+    )
+
+    expect(result).toEqual({ ok: true })
+    const [url, init] = fetch.mock.calls[0]
+    expect(url).toBe('http://127.0.0.1:11434/api/version')
+    expect((init as any).headers).toEqual({}) // no Bearer/x-api-key for Ollama
+    expect((init as any).allowLoopback).toBe(true)
+  })
+
+  it('normalizes a localhost Ollama baseUrl to IPv4 127.0.0.1', async () => {
+    const fetch = fakeFetch({ ok: true, status: 200, statusText: 'OK' })
+    const deps: TestConnectionDeps = { fetch }
+
+    await testModelConnection(
+      { provider: 'ollama', model: 'qwen2.5-coder', apiKey: '', baseUrl: 'http://localhost:11434' },
+      deps,
+    )
+
+    const [url] = fetch.mock.calls[0]
+    expect(url).toBe('http://127.0.0.1:11434/api/version')
+  })
+
+  it('does NOT set allowLoopback for api-key providers (full SSRF stays on)', async () => {
+    const fetch = fakeFetch({ ok: true, status: 200, statusText: 'OK' })
+    const deps: TestConnectionDeps = { fetch }
+
+    await testModelConnection(
+      { provider: 'openai', model: 'gpt-4o', apiKey: 'sk', baseUrl: null },
+      deps,
+    )
+
+    const [, init] = fetch.mock.calls[0]
+    expect((init as any).allowLoopback).toBe(false)
+  })
+
   it('refuses an unknown provider that has no baseUrl to target', async () => {
     const fetch = fakeFetch({ ok: true, status: 200, statusText: 'OK' })
 

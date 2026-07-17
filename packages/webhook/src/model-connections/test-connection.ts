@@ -26,7 +26,7 @@ interface FetchResponse {
 }
 
 export interface TestConnectionDeps {
-  fetch(url: string, init: { method: string; headers: Record<string, string>; signal?: AbortSignal }): Promise<FetchResponse>
+  fetch(url: string, init: { method: string; headers: Record<string, string>; signal?: AbortSignal; allowLoopback?: boolean }): Promise<FetchResponse>
 }
 
 export type TestResult = { ok: true } | { ok: false; detail: string }
@@ -50,6 +50,14 @@ const PROVIDERS: Record<string, ProviderProbe> = {
     path: '/models',
     headers: (apiKey) => ({ 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }),
   },
+  // Local Ollama companion: no auth, and it exposes /api/version (NOT the
+  // OpenAI-shaped /models the GENERIC probe would use). Default to IPv4
+  // 127.0.0.1 — `localhost` resolves to ::1 first, which Ollama doesn't bind.
+  ollama: {
+    defaultBaseUrl: 'http://127.0.0.1:11434',
+    path: '/api/version',
+    headers: () => ({}),
+  },
 }
 
 /** Unknown providers fall back to an OpenAI-compatible bearer probe, but only if
@@ -68,16 +76,21 @@ export async function testModelConnection(
   deps: TestConnectionDeps = defaultDeps,
 ): Promise<TestResult> {
   const probe = PROVIDERS[candidate.provider]
-  const base = candidate.baseUrl ?? probe?.defaultBaseUrl ?? null
-  if (base === null) {
+  const rawBase = candidate.baseUrl ?? probe?.defaultBaseUrl ?? null
+  if (rawBase === null) {
     return { ok: false, detail: `unknown provider "${candidate.provider}" requires a baseUrl` }
   }
+  const isOllama = candidate.provider === 'ollama'
+  // Ollama is the local self-hosted companion — loopback/LAN by nature. Allow
+  // it past the SSRF loopback deny (cloud metadata stays blocked in net-guard),
+  // and normalize `localhost` -> IPv4 127.0.0.1 (Ollama binds IPv4 only).
+  const base = isOllama ? rawBase.replace(/\/\/localhost(:|\/|$)/, '//127.0.0.1$1') : rawBase
   const path = (probe ?? GENERIC).path
   const headers = (probe ?? GENERIC).headers(candidate.apiKey)
   const url = `${base.replace(/\/+$/, '')}${path}`
 
   try {
-    const res = await deps.fetch(url, { method: 'GET', headers })
+    const res = await deps.fetch(url, { method: 'GET', headers, allowLoopback: isOllama })
     if (res.ok) return { ok: true }
     return { ok: false, detail: `${res.status} ${res.statusText}`.trim() }
   } catch (err) {

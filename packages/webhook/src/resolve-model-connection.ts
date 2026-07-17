@@ -42,9 +42,12 @@ export interface ResolveModelDeps {
 export function companionDefault(): ResolvedModelConnection {
   return {
     provider: 'ollama',
-    model: process.env.COMPANION_MODEL ?? 'llama3.1',
+    // qwen2.5-coder matches the dashboard model-catalog default so companion +
+    // UI agree. 127.0.0.1 (not localhost): Ollama binds IPv4 only, and Node
+    // resolves `localhost` to ::1 first, which refuses.
+    model: process.env.COMPANION_MODEL ?? 'qwen2.5-coder',
     apiKey: null,
-    baseUrl: process.env.COMPANION_MODEL_URL ?? 'http://localhost:11434',
+    baseUrl: process.env.COMPANION_MODEL_URL ?? 'http://127.0.0.1:11434',
   }
 }
 
