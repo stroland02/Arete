@@ -82,6 +82,18 @@ export async function createServer(): Promise<express.Application> {
     } catch (err) {
       console.error('[server] Error backfilling PRs for installation:', err)
     }
+
+    // Build the Sensorium code map right away, so the dashboard's code map is
+    // populated ON CONNECT rather than only after this repo's first PR review.
+    // Kept independent of the PR backfill above: neither should block or fail
+    // the other, and triggerContextMapIndex is itself best-effort/fail-open.
+    try {
+      const repos = (payload as any).repositories ?? []
+      const { triggerContextMapIndex } = await import('./context-map-index.js')
+      await triggerContextMapIndex(app, payload.installation.id, repos)
+    } catch (err) {
+      console.error('[server] Error triggering code-map index on install:', err)
+    }
   })
 
   // A repo added to an EXISTING installation after the fact (the customer
@@ -94,6 +106,10 @@ export async function createServer(): Promise<express.Application> {
       const octokit = await getInstallationOctokit(app, payload.installation.id)
       const { backfillInstallationPRs } = await import('./backfill.js')
       await backfillInstallationPRs(octokit as any, payload.installation.id, payload.repositories_added as any)
+      // Same as the `installation` handler: build the code map for the newly
+      // added repos on connect, not just after their first PR review.
+      const { triggerContextMapIndex } = await import('./context-map-index.js')
+      await triggerContextMapIndex(app, payload.installation.id, payload.repositories_added as any)
     } catch (err) {
       console.error('[server] Error handling installation_repositories event:', err)
     }

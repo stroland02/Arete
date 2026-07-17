@@ -6,7 +6,12 @@
     "dev:webhook": "pnpm --filter @arete/webhook dev",
     "test:webhook": "pnpm --filter @arete/webhook test",
     "infra:up": "docker compose -f infra/docker-compose.yml up -d",
-    "infra:down": "docker compose -f infra/docker-compose.yml down"
+    "infra:down": "docker compose -f infra/docker-compose.yml down",
+    "db:migrate": "pnpm --filter @arete/db exec prisma migrate deploy",
+    "dev:dashboard": "pnpm --filter @arete/dashboard dev",
+    "dev:seed": "node packages/dashboard/scripts/seed-dev-user.mjs",
+    "dev:glassbox": "node scripts/dev/glassbox-watch.mjs",
+    "dev:all": "node scripts/dev/dev-all.mjs"
   },
   "packageManager": "pnpm@9.15.9"
 }

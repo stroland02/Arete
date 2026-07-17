@@ -1,16 +1,18 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
+import { getServicesInbox, resolveSelectedInstallationIds } from "@/lib/queries";
 import { ServicesWorkspace } from "@/components/dashboard/services/services-workspace";
 
 // Session-scoped like every dashboard page; never statically prerendered.
 export const dynamic = "force-dynamic";
 
-// Services "Triage Inbox" — production signals from connected telemetry,
-// compiled per service, with the agent's proposed fix and a human-approve
-// flow. Renders with NO services/issues today (no connector ingestion wired
-// yet) — ServicesWorkspace shows its honest empty state and routes to
-// /connections. Real data will be passed in here once the backend ingestion
-// pipeline (Sentry etc.) populates the Service/Issue contract.
+// Services "Triage Inbox" — the connected repo's real reviews, grouped per
+// repository (the "service"). Each review is a selectable PR; selecting one
+// streams its real Synthesizer transcript via /api/containers/[id]/stream (the
+// container id IS the review id). No sample data and no fabricated fixes —
+// only reviews that actually ran. An account with no reviews yet gets the
+// honest empty state, which routes to /connections.
 export default async function ServicesPage({
   searchParams,
 }: {
@@ -22,6 +24,15 @@ export default async function ServicesPage({
   }
 
   const { container } = await searchParams;
-  const connected = (session.installations ?? []).length > 0;
-  return <ServicesWorkspace connected={connected} containerId={container ?? null} />;
+  const installationIds = resolveSelectedInstallationIds(session.installations ?? [], undefined);
+  const connected = installationIds.length > 0;
+  const reviewGroups = connected ? await getServicesInbox(db, installationIds) : [];
+
+  return (
+    <ServicesWorkspace
+      connected={connected}
+      containerId={container ?? null}
+      reviewGroups={reviewGroups}
+    />
+  );
 }

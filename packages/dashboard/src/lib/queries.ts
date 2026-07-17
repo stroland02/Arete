@@ -190,6 +190,30 @@ export async function getConnectedTelemetryProviders(
   return connections.map((c) => c.provider);
 }
 
+/**
+ * The repositories Kuma is actually installed on for the caller's authorized
+ * installations — the concrete "connected to what" the Connections page shows
+ * next to the GitHub App. Tenant-scoped by installationId exactly like every
+ * other query here, so a repo outside the caller's installations can never
+ * appear. Returns full names ("owner/repo") sorted for a stable list.
+ */
+export async function getConnectedRepositories(
+  db: PrismaClient,
+  installationIds: string[]
+): Promise<string[]> {
+  if (installationIds.length === 0) {
+    return [];
+  }
+
+  const repos = await db.repository.findMany({
+    where: { installationId: { in: installationIds } },
+    select: { fullName: true },
+    orderBy: { fullName: "asc" },
+  });
+
+  return repos.map((r) => r.fullName);
+}
+
 export interface TrendSeries {
   reviewDates: Date[];
   repoDates: Date[];
@@ -364,6 +388,73 @@ export async function getReviewHistory(
     total,
     riskCounts,
   };
+}
+
+export interface ServiceReviewRow {
+  /** IS the container id — deep-links to the live transcript stream. */
+  id: string;
+  prNumber: number;
+  riskLevel: string;
+  createdAt: string; // ISO — client-safe
+  findingCount: number;
+}
+
+export interface ServiceReviewGroup {
+  repositoryFullName: string;
+  /** Highest risk tier across this repo's reviews — drives the rail dot. */
+  worstRisk: string;
+  reviews: ServiceReviewRow[];
+}
+
+// Highest-first risk ranking, so a repo's worst review sets its rail dot.
+const RISK_RANK: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };
+
+/**
+ * The Services "triage inbox", grounded in REAL reviews: every review the
+ * caller's installations produced, grouped by repository (the "service"), each
+ * carrying its verified-finding count. Selecting a review streams its real
+ * Synthesizer transcript via /api/containers/[id]/stream (the id IS the review
+ * id). Tenant-scoped by `repository.installationId` like every query here, so a
+ * review outside the caller's installations can never appear. No sample data,
+ * no fabricated fixes — only reviews that actually ran.
+ */
+export async function getServicesInbox(
+  db: PrismaClient,
+  installationIds: string[]
+): Promise<ServiceReviewGroup[]> {
+  if (installationIds.length === 0) {
+    return [];
+  }
+
+  const repoScope = { installationId: { in: installationIds } } as const;
+  const reviews = await db.review.findMany({
+    where: { repository: repoScope },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+    include: { repository: { select: { fullName: true } }, _count: { select: { comments: true } } },
+  });
+
+  const groups = new Map<string, ServiceReviewGroup>();
+  for (const r of reviews) {
+    const repo = r.repository.fullName;
+    let group = groups.get(repo);
+    if (!group) {
+      group = { repositoryFullName: repo, worstRisk: "low", reviews: [] };
+      groups.set(repo, group);
+    }
+    group.reviews.push({
+      id: r.id,
+      prNumber: r.prNumber,
+      riskLevel: r.riskLevel,
+      createdAt: r.createdAt.toISOString(),
+      findingCount: r._count.comments,
+    });
+    if ((RISK_RANK[r.riskLevel.toLowerCase()] ?? 0) > (RISK_RANK[group.worstRisk] ?? 0)) {
+      group.worstRisk = r.riskLevel.toLowerCase();
+    }
+  }
+
+  return [...groups.values()];
 }
 
 /** 50 free reviews per installation before payment is required — mirrors
