@@ -39,7 +39,6 @@ model Installation {
   /// `apiKeyEncrypted` (AES-256-GCM, same scheme as TelemetryConnection
   /// credentials — see telemetry-credentials.ts), never in plaintext.
   /// Shape: { provider, model?, baseUrl?, apiKeyEncrypted? }.
-  modelConfig          Json?
   repositories         Repository[]
   telemetryConnections TelemetryConnection[]
   telemetrySnapshots   TelemetrySnapshotRecord[]
