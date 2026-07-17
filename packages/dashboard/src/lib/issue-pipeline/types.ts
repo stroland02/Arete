@@ -7,6 +7,8 @@
  * separate, single-owner step (spec §6.1) and is intentionally not done here.
  */
 
+import type { StatusReport } from "@arete/orchestration";
+
 export type Severity = "critical" | "high" | "medium";
 
 export type ContainerState =
@@ -56,6 +58,12 @@ export interface SynthStep {
   text: string;
   detail?: string;
   at: string; // ISO timestamp
+  /**
+   * Optional specialist StatusReport riding a `report` step (tiered comms §2).
+   * OPTIONAL + additive — no new SynthStep kind, so the console renderer is
+   * untouched. Absent (never fabricated) for a step with no real report.
+   */
+  report?: StatusReport;
   /**
    * Set on a `keep` step the Critic flagged low-confidence (spec
    * synthesizer-component-and-critic §2, §4): gate-passed and kept, but "wants

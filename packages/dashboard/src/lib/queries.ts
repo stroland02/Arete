@@ -552,6 +552,10 @@ export type DashboardsViewModel =
       byRepo: RepoActivity[];
       latestReviews: ReviewSummary[];
       telemetry: TelemetryGridSnapshot[];
+      /** Providers the tenant has actually connected. A telemetry snapshot whose
+       *  provider is NOT here was detected (seen in a review) but is not a live
+       *  connection — the grid surfaces a Connect CTA for it, never "live". */
+      connectedProviders: string[];
     };
 
 // Stable display order for severity bars (most→least severe).
@@ -590,6 +594,7 @@ export async function getDashboardsViewModel(
     repos,
     latestReviews,
     telemetryRows,
+    connectedProviders,
   ] = await Promise.all([
     db.review.count({ where: reviewScope }),
     db.reviewComment.count({ where: { severity: 'error', review: reviewScope } }),
@@ -623,6 +628,7 @@ export async function getDashboardsViewModel(
     db.repository.findMany({ where: repoScope, select: { id: true, fullName: true } }),
     db.review.findMany({ where: reviewScope, take: 5, orderBy: { createdAt: 'desc' }, include: { repository: true } }),
     db.telemetrySnapshotRecord.findMany({ where: { installationId: { in: installationIds } }, orderBy: { fetchedAt: 'desc' } }),
+    getConnectedTelemetryProviders(db, installationIds),
   ]);
 
   const repoName = new Map(repos.map((r) => [r.id, r.fullName]));
@@ -666,6 +672,7 @@ export async function getDashboardsViewModel(
       links: r.links as string[],
       fetchedAt: r.fetchedAt,
     })),
+    connectedProviders,
   };
 }
 

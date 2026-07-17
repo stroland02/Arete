@@ -43,6 +43,7 @@ export function AgentsWorkspace({
   hasReviews,
   activity = [],
   latestReview = null,
+  containerId = null,
 }: AgentsWorkspaceProps) {
   const [selectedAgentId, setSelectedAgentId] = useState<string>(AGENTS[0].id);
   const [configAgentId, setConfigAgentId] = useState<string | null>(null);
@@ -76,6 +77,7 @@ export function AgentsWorkspace({
           hasReviews={hasReviews}
           latestReview={latestReview}
           totalFindings={totalFindings}
+          containerId={containerId}
         />
       </div>
 

@@ -8,6 +8,8 @@ import {
   assertNoFabrication,
   canTransition,
   transition,
+  canApprove,
+  approveSolution,
   canPost,
   composePr,
   assertPrIntegrity,
@@ -142,6 +144,27 @@ describe("state machine + gates", () => {
     const moved = transition(container("ready"), "solution_approved", fixedNow);
     expect(moved.state).toBe("solution_approved");
     expect(moved.updatedAt).toBe("2026-07-13T00:00:00Z");
+  });
+
+  it("canApprove holds ONLY at ready — the human gate opens only when the fix is composed", () => {
+    expect(canApprove(container("ready"))).toBe(true);
+    for (const s of ["detecting", "fanning_out", "verifying", "composing", "solution_approved", "posted"] as ContainerState[]) {
+      expect(canApprove(container(s))).toBe(false);
+    }
+  });
+
+  it("approveSolution crosses ready -> solution_approved and stamps who/when", () => {
+    const approved = approveSolution(container("ready"), "alice", () => "2026-07-16T00:00:00Z");
+    expect(approved.state).toBe("solution_approved");
+    expect(approved.gates.solutionApprovedAt).toBe("2026-07-16T00:00:00Z");
+    expect(approved.gates.solutionApprovedBy).toBe("alice");
+    // and it now clears the SECOND gate's precondition
+    expect(canPost(approved)).toBe(true);
+  });
+
+  it("approveSolution refuses any state that is not ready (the moat cannot be jumped)", () => {
+    expect(() => approveSolution(container("verifying"), "alice")).toThrow(/cannot approve/);
+    expect(() => approveSolution(container("solution_approved"), "alice")).toThrow(/cannot approve/);
   });
 
   it("canPost requires both the approved state AND the timestamp", () => {

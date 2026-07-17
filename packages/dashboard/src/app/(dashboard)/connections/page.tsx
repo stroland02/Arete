@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { getConnectedRepositories, resolveSelectedInstallationIds } from "@/lib/queries";
 import { CONNECTORS } from "@/lib/connector-catalog";
 import { ConnectorIcon } from "@/components/connections/connector-icon";
+import { AiModelsSection } from "@/components/connections/ai-models-section";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 
 // Reads the session and the caller's real installation/repository state on
@@ -110,6 +111,10 @@ export default async function ConnectionsPage() {
             {connected ? "Manage on GitHub" : "Install on GitHub"}
           </a>
         </div>
+      </RevealItem>
+
+      <RevealItem>
+        <AiModelsSection />
       </RevealItem>
 
       <RevealItem>

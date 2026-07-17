@@ -396,7 +396,10 @@ describe('getDashboardsViewModel', () => {
       { id: 'c2', reviewId: 'v1', severity: 'warning', category: 'performance' },
       { id: 'c3', reviewId: 'v3', severity: 'error', category: 'security' },
     ];
-    const db = createFakeDb(repos, reviews, comments);
+    const db = createFakeDb(repos, reviews, comments, [
+      { id: 'tc1', installationId: 'inst-a', provider: 'sentry' },
+      { id: 'tc2', installationId: 'inst-b', provider: 'stripe' }, // out of scope — must not leak
+    ]);
 
     const result = await getDashboardsViewModel(db as any, ['inst-a']);
     if (!result.hasAccess) throw new Error('expected access');
@@ -408,6 +411,7 @@ describe('getDashboardsViewModel', () => {
     expect(result.byRisk.map((r) => r.category).sort()).toEqual(['high', 'low']);
     expect(result.reviewDates).toHaveLength(2);
     expect(result.telemetry).toEqual([]);
+    expect(result.connectedProviders).toEqual(['sentry']); // in-scope only; stripe excluded
   });
 });
 
