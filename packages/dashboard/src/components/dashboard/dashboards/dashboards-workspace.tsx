@@ -25,6 +25,7 @@ const EMPTY_MODEL: Model = {
   byRepo: [],
   latestReviews: [],
   telemetry: [],
+  connectedProviders: [],
 };
 
 const PRESETS = [

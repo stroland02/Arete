@@ -42,14 +42,15 @@ export interface PRContext {
   cloneUrl?: string
   installationToken?: string
   installationId?: number
-  // Optional BYO model config forwarded to the agents /review. When present,
-  // the review builds its LLM clients from this instead of the agents
-  // service's global default. Shape matches the agents LLMConfig.
-  llm?: {
-    provider: 'anthropic' | 'gemini' | 'ollama'
-    model?: string
-    apiKey?: string
-    baseUrl?: string
+  /// The tenant's resolved Bring-Your-Own model connection for this review
+  /// (see resolve-model-connection.ts). apiKey is decrypted; null for keyless
+  /// (Ollama companion) connections. Attached at the /review choke point and
+  /// sent to the agents service as the `llm` block (its LLMConfig shape).
+  modelConnection?: {
+    provider: string
+    model: string
+    apiKey: string | null
+    baseUrl: string | null
   }
 }
 

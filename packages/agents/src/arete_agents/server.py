@@ -11,22 +11,22 @@ from arete_agents.context_map.graph_export import GraphExportError, build_graph_
 from arete_agents.context_map.indexer import IndexerError, index_repository
 from arete_agents.context_map.repo_cache import RepoCacheError, ensure_repo_checked_out
 from arete_agents.context_map.ui import ContextMapUIError, get_or_start_ui
-from arete_agents.llm.base import (
-    get_llms_by_role,
-    get_llms_by_role_from_config,
-    role_tiers,
-)
 from arete_agents.llm.ollama import (
     DEFAULT_OLLAMA_BASE_URL,
     DEFAULT_OLLAMA_MODEL,
     ollama_unavailable_reason,
 )
+from arete_agents.llm.base import (
+    get_llms_by_role,
+    get_llms_by_role_from_config,
+    role_tiers,
+)
+
+_logger = logging.getLogger(__name__)
 from arete_agents.models.pr import PRContext
 from arete_agents.orchestrator import ReviewOrchestrator
 from arete_agents.remediation import RemediationGraph
 from arete_agents.tools.executor import CommandExecutionError, get_command_executor
-
-_logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
@@ -50,38 +50,41 @@ trace.set_tracer_provider(provider)
 
 # LLM-backed singletons are built LAZILY, on the first /review or /chat call.
 # LangGraph graph compilation is expensive (one orchestrator + one chat agent
-# serve all requests) and requires a configured LLM provider. The code-map
-# endpoints (/context-map/*) are pure code-graph operations that need NO LLM,
-# so the server MUST boot and serve them even when no key is set — we defer the
-# LLM to the endpoints that actually need it.
-#
-# When no primary provider key is configured, _resolve_settings() falls back to
-# local Ollama (the safety net) instead of crashing, so an Ollama-backed review
-# can still run. If Ollama isn't reachable/pulled, /review returns an honest 503
-# ("ollama pull <model>") — never a fabricated or falsely-clean review.
+# serve all requests) and — critically — requires a configured LLM provider key.
+# The code-map endpoints (/context-map/*) are pure code-graph operations that
+# need NO LLM, so the server MUST boot and serve them even when no key is set.
+# We therefore defer the key requirement to the endpoints that actually need it,
+# instead of crashing the whole process at import (which also took the code map
+# down with it).
 _orchestrator: ReviewOrchestrator | None = None
 _chat_agent: ChatAgent | None = None
-_settings: Settings | None = None
 
 
 def _resolve_settings() -> Settings:
-    """Settings for the LLM-backed endpoints, resolved lazily. Falls back to
-    local Ollama when no primary provider key is configured, rather than
-    crashing — the safety-net behaviour that keeps the service usable."""
-    global _settings
-    if _settings is None:
-        try:
-            _settings = get_settings()
-        except ValidationError:
-            logging.warning(
-                "No usable primary LLM provider key configured; falling back to "
-                "local Ollama (%s @ %s) as the safety net. Connect your own model "
-                "per /review request, or set a provider API key, for a cloud model.",
-                DEFAULT_OLLAMA_MODEL,
-                DEFAULT_OLLAMA_BASE_URL,
-            )
-            _settings = Settings(llm_provider="ollama")
-    return _settings
+    try:
+        return get_settings()
+    except ValidationError:
+        # No usable primary provider key (e.g. ANTHROPIC_API_KEY unset). Rather
+        # than fail, fall back to local Ollama as the safety net. If Ollama isn't
+        # reachable/pulled, /review returns an honest 503 ("ollama pull <model>")
+        # — never a fabricated or falsely-clean review.
+        logging.warning(
+            "No usable primary LLM provider key configured; falling back to local "
+            "Ollama (%s @ %s) as the safety net. Connect your own model per /review "
+            "request, or set a provider API key, to use a cloud model.",
+            DEFAULT_OLLAMA_MODEL,
+            DEFAULT_OLLAMA_BASE_URL,
+        )
+        return Settings(llm_provider="ollama")
+    except Exception:
+        logging.critical(
+            "Areté agents: LLM configuration is invalid or missing. Set a valid "
+            "GEMINI_API_KEY (with LLM_PROVIDER=gemini) or ANTHROPIC_API_KEY (with "
+            "LLM_PROVIDER=anthropic). The code-map endpoints (/context-map/*) work "
+            "without it; /review and /chat require it.",
+            exc_info=True,
+        )
+        raise
 
 
 def _get_orchestrator() -> ReviewOrchestrator:
@@ -97,7 +100,8 @@ def _get_orchestrator() -> ReviewOrchestrator:
 def _get_chat_agent() -> ChatAgent:
     global _chat_agent
     if _chat_agent is None:
-        _chat_agent = ChatAgent(llm=get_llms_by_role(_resolve_settings())["chat"])
+        settings = _resolve_settings()
+        _chat_agent = ChatAgent(llm=get_llms_by_role(settings)["chat"])
     return _chat_agent
 
 
@@ -105,6 +109,7 @@ def _get_chat_agent() -> ChatAgent:
 # its checkpointer persists across requests within the process — that shared
 # state is what makes POST /approvals/apply idempotent for a redelivered job.
 # Executor defaults to the mock; deploy sets ARETE_COMMAND_EXECUTOR=subprocess.
+# Needs no LLM, so eager construction is safe on a keyless boot.
 _remediation = RemediationGraph(get_command_executor())
 
 
@@ -113,15 +118,13 @@ def review(pr: PRContext):
     # Per-request BYO model: when the caller supplies pr.llm, build the review's
     # LLM clients from THAT config (get_llms_by_role_from_config) — a fresh
     # orchestrator on the user's own model — instead of the server's global
-    # Settings-derived singleton. Callers that omit pr.llm keep the default
-    # (which may be the Ollama safety fallback).
-    settings = _resolve_settings()
+    # Settings-derived singleton. Callers that omit pr.llm keep the default.
     if pr.llm is not None:
         if pr.llm.provider == "ollama":
             reason = ollama_unavailable_reason(
                 pr.llm.base_url or DEFAULT_OLLAMA_BASE_URL,
                 pr.llm.model or DEFAULT_OLLAMA_MODEL,
-                settings.deployment_tier,
+                _resolve_settings().deployment_tier,
             )
             if reason:
                 # Honest empty state: refuse rather than emit a review-shaped
@@ -140,6 +143,7 @@ def review(pr: PRContext):
         return ReviewOrchestrator(llm=llms).run(pr)
 
     # Default path — this may be the Ollama safety fallback (no primary key).
+    settings = _resolve_settings()
     if settings.llm_provider == "ollama":
         reason = ollama_unavailable_reason(
             settings.ollama_base_url,

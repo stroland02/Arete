@@ -6,6 +6,8 @@ import { db } from "@/lib/db";
 import { getConnectedRepositories, resolveSelectedInstallationIds } from "@/lib/queries";
 import { CONNECTORS } from "@/lib/connector-catalog";
 import { ConnectorIcon } from "@/components/connections/connector-icon";
+import { AiModelsSection } from "@/components/connections/ai-models-section";
+import { AccountIdentity } from "@/components/connections/account-identity";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 
 // Reads the session and the caller's real installation/repository state on
@@ -20,7 +22,9 @@ export default async function ConnectionsPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const installationIds = resolveSelectedInstallationIds(session.installations ?? [], undefined);
+  const email = session.user.email ?? null;
+  const installations = session.installations ?? [];
+  const installationIds = resolveSelectedInstallationIds(installations, undefined);
   const connected = installationIds.length > 0;
   const repos = connected ? await getConnectedRepositories(db, installationIds) : [];
 
@@ -35,6 +39,12 @@ export default async function ConnectionsPage() {
           </p>
         </div>
       </RevealItem>
+
+      {email ? (
+        <RevealItem>
+          <AccountIdentity email={email} workspaces={installations} />
+        </RevealItem>
+      ) : null}
 
       <RevealItem>
         <div className="glass-panel flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
@@ -110,6 +120,10 @@ export default async function ConnectionsPage() {
             {connected ? "Manage on GitHub" : "Install on GitHub"}
           </a>
         </div>
+      </RevealItem>
+
+      <RevealItem>
+        <AiModelsSection />
       </RevealItem>
 
       <RevealItem>

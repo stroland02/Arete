@@ -2,10 +2,12 @@
 
 import Link from 'next/link';
 import { useActionState } from 'react';
-import { loginWithPassword, googleSignIn } from './actions';
+import { loginWithPassword, googleSignIn, type LoginState } from './actions';
+
+const INITIAL_STATE: LoginState = { error: null };
 
 export function LoginForm() {
-  const [state, formAction, pending] = useActionState(loginWithPassword, { error: null as string | null });
+  const [state, formAction, pending] = useActionState(loginWithPassword, INITIAL_STATE);
 
   return (
     <div className="flex w-full max-w-sm flex-col gap-6">
@@ -57,9 +59,17 @@ export function LoginForm() {
           placeholder="••••••••"
         />
         {state?.error ? (
-          <p role="alert" className="text-sm text-accent-danger">
-            {state.error}
-          </p>
+          <div role="alert" className="flex flex-col gap-2">
+            <p className="text-sm text-accent-danger">{state.error}</p>
+            {state.kind === 'no_account' ? (
+              <Link
+                href={`/signup?email=${encodeURIComponent(state.email ?? '')}`}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-accent-primary bg-accent-primary/10 border border-accent-primary/30 hover:bg-accent-primary/15 transition-colors"
+              >
+                Create an account
+              </Link>
+            ) : null}
+          </div>
         ) : null}
         <button
           type="submit"

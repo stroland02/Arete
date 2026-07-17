@@ -43,6 +43,45 @@ describe('runReviewPipeline', () => {
     ).rejects.toThrow('exited with status 500')
   })
 
+  it('resolves the tenant model connection and includes it in the /review payload when an installationId is present', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue(MOCK_RESULT),
+    })
+    global.fetch = fetchMock as any
+
+    const resolveModel = vi.fn().mockResolvedValue({
+      provider: 'openai', model: 'gpt-4o', apiKey: 'sk-DECRYPTED', baseUrl: null,
+    })
+
+    const { runReviewPipeline } = await import('./review-bridge.js')
+    await runReviewPipeline(
+      { repo: 'x/y', pr_number: 1, title: 'T', description: '', files: [], installationId: 987654 },
+      { resolveModel },
+    )
+
+    expect(resolveModel).toHaveBeenCalledWith(987654)
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as any).body as string)
+    // The agents /review parses the BYO block as `llm` (LLMConfig), so the
+    // resolved connection must cross the wire under that name.
+    expect(body.llm).toEqual({ provider: 'openai', model: 'gpt-4o', apiKey: 'sk-DECRYPTED', baseUrl: null })
+    expect(body.modelConnection).toBeUndefined()
+  })
+
+  it('does not resolve a model connection when no installationId is present (thin-bridge unit path)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: vi.fn().mockResolvedValue(MOCK_RESULT) })
+    global.fetch = fetchMock as any
+    const resolveModel = vi.fn()
+
+    const { runReviewPipeline } = await import('./review-bridge.js')
+    await runReviewPipeline({ repo: 'x/y', pr_number: 1, title: 'T', description: '', files: [] }, { resolveModel })
+
+    expect(resolveModel).not.toHaveBeenCalled()
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as any).body as string)
+    expect(body.llm).toBeUndefined()
+    expect(body.modelConnection).toBeUndefined()
+  })
+
   it('rejects with timeout error when process takes too long', async () => {
     vi.useFakeTimers()
     global.fetch = vi.fn((url, options) => new Promise((resolve, reject) => {
@@ -63,61 +102,4 @@ describe('runReviewPipeline', () => {
     vi.useRealTimers()
   })
 
-  it('forwards the deployment BYO model config as `llm` when configured', async () => {
-    process.env.MODEL_PROVIDER = 'ollama'
-    process.env.MODEL_NAME = 'qwen2.5-coder'
-    process.env.MODEL_BASE_URL = 'http://localhost:11434'
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true, json: vi.fn().mockResolvedValue(MOCK_RESULT),
-    })
-    global.fetch = fetchMock as any
-    try {
-      const { runReviewPipeline } = await import('./review-bridge.js')
-      await runReviewPipeline({ repo: 'x/y', pr_number: 1, title: 'T', description: '', files: [] })
-      const body = JSON.parse(fetchMock.mock.calls[0][1].body)
-      expect(body.llm).toEqual({
-        provider: 'ollama', model: 'qwen2.5-coder', baseUrl: 'http://localhost:11434',
-      })
-    } finally {
-      delete process.env.MODEL_PROVIDER
-      delete process.env.MODEL_NAME
-      delete process.env.MODEL_BASE_URL
-    }
-  })
-
-  it('omits `llm` when no model provider is configured', async () => {
-    delete process.env.MODEL_PROVIDER
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true, json: vi.fn().mockResolvedValue(MOCK_RESULT),
-    })
-    global.fetch = fetchMock as any
-    const { runReviewPipeline } = await import('./review-bridge.js')
-    await runReviewPipeline({ repo: 'x/y', pr_number: 1, title: 'T', description: '', files: [] })
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
-    expect(body.llm).toBeUndefined()
-  })
-
-  it('prefers per-installation DB model config over the env config', async () => {
-    vi.doMock('./model-config.js', () => ({
-      resolveInstallationModelConfig: vi.fn().mockResolvedValue({
-        provider: 'anthropic', model: 'claude-x', apiKey: 'sk-tenant',
-      }),
-    }))
-    process.env.MODEL_PROVIDER = 'ollama' // lower precedence than the DB config
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true, json: vi.fn().mockResolvedValue(MOCK_RESULT),
-    })
-    global.fetch = fetchMock as any
-    try {
-      const { runReviewPipeline } = await import('./review-bridge.js')
-      await runReviewPipeline({
-        repo: 'x/y', pr_number: 1, title: 'T', description: '', files: [], installationId: 42,
-      })
-      const body = JSON.parse(fetchMock.mock.calls[0][1].body)
-      expect(body.llm).toEqual({ provider: 'anthropic', model: 'claude-x', apiKey: 'sk-tenant' })
-    } finally {
-      delete process.env.MODEL_PROVIDER
-      vi.doUnmock('./model-config.js')
-    }
-  })
 })

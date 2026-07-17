@@ -46,11 +46,27 @@ document a phased roadmap. Guardrails honored: no touches to `context_map/`, `se
 ## wiring complete (PM decision C) — feature is REACHABLE and tested
 
 - **`PrismaWebhookStore`** — production store over a minimal Prisma slice; fake-Prisma tests.
-- **Router mounted** in `server.ts` at `/api/webhooks`; `server.test` proves reachable (400 not 404).
 - **Retry worker** — `processDueDeliveries` tested (selects due, re-delivers, advances backoff);
   `startRetryWorker` is a Postgres-polling loop.
 - **Emission** — `persistReview` fires `review.created` via `emitReviewCreated` (tested), non-fatal.
-- **Full suite 277/277**; no new tsc errors (22 pre-existing baseline unchanged).
+
+## auth-CRITICAL FIX (pre-PR-#1 blocker) — unauthenticated management route removed
+
+The management API (`POST`/`GET /api/webhooks/endpoints`, commit `ae38663`) trusted a
+client-supplied `installationId` with **no authentication** → any anonymous caller could register a
+webhook for, or list the endpoints of, an arbitrary tenant, and the create response handed back that
+tenant's `whsec_` secret. Per PM DESIGN RULING ("no unauthenticated cross-tenant surface ships"), the
+**acceptable-minimum** path was taken: the route is removed from the webhook service's public surface
+(unmounted in `server.ts`; `routes.ts` + `routes.test.ts` deleted so it can't be re-mounted).
+Endpoint creation stays available internally via `PrismaWebhookStore.createEndpoint` (seeded); the
+delivery engine (`persistence.ts`) is unaffected. Authenticated, tenant-scoped management (behind the
+dashboard's Auth.js session → `getAuthorizedInstallations`) is a **fast-follow**.
+
+- **TDD, adversarial:** `server.test` now proves the route is **404** on the public server (no unauth
+  cross-tenant read/create, no `whsec_` in any response); `store.test` proves a tenant-B query never
+  surfaces tenant-A endpoints or A's secret.
+- **Full suite 273/273** (−6 deleted route tests, +2 server, +1 store); touched files tsc-clean
+  (pre-existing `telemetry/*.test.ts` tsc noise unchanged).
 
 ## DEFERRED — live-infra smoke tests only (carry verbatim to PR body)
 

@@ -14,7 +14,11 @@ export function TelemetryPreset({ model, skeleton }: { model: Model; days: numbe
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       {model.telemetry.map((snap) => (
-        <TelemetryMetricWidget key={`${snap.provider}:${snap.sourceRef}`} snapshot={snap} />
+        <TelemetryMetricWidget
+          key={`${snap.provider}:${snap.sourceRef}`}
+          snapshot={snap}
+          connectedProviders={model.connectedProviders}
+        />
       ))}
     </div>
   );

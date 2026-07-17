@@ -153,43 +153,6 @@ export function getServiceConfig(): ServiceConfig {
 }
 
 // -----------------------------------------------------------------------------
-// BYO model config (forwarded to the agents /review as `llm`)
-// -----------------------------------------------------------------------------
-
-const ModelConfigSchema = z.object({
-  // Optional — when MODEL_PROVIDER is unset, reviews use the agents service's
-  // own default/fallback (which itself falls back to local Ollama). When set,
-  // this deployment-level "connect your model" config is forwarded to
-  // /review so the review runs on the operator's chosen model/key.
-  MODEL_PROVIDER: z.enum(['anthropic', 'gemini', 'ollama']).optional(),
-  MODEL_NAME: z.string().optional(),
-  MODEL_API_KEY: z.string().optional(),
-  MODEL_BASE_URL: z.string().optional(),
-})
-
-export interface ModelConfig {
-  provider: 'anthropic' | 'gemini' | 'ollama'
-  model?: string
-  apiKey?: string
-  baseUrl?: string
-}
-
-/** Deployment-level BYO model config, or undefined when MODEL_PROVIDER is
- * unset (the common case — the agents service then uses its own default /
- * Ollama fallback). The shape matches the agents /review `llm` block
- * (camelCase apiKey/baseUrl). */
-export function getModelConfig(): ModelConfig | undefined {
-  const result = ModelConfigSchema.parse(process.env)
-  if (!result.MODEL_PROVIDER) return undefined
-  return {
-    provider: result.MODEL_PROVIDER,
-    model: result.MODEL_NAME,
-    apiKey: result.MODEL_API_KEY,
-    baseUrl: result.MODEL_BASE_URL,
-  }
-}
-
-// -----------------------------------------------------------------------------
 // Telemetry connector credential encryption
 // -----------------------------------------------------------------------------
 
