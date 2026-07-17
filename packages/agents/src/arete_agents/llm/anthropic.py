@@ -14,10 +14,15 @@ _TIER_MODEL_IDS: dict[str, str] = {
 
 
 def build_anthropic_llm(
-    api_key: str, tier: Literal["opus", "sonnet"] = "opus"
+    api_key: str,
+    tier: Literal["opus", "sonnet"] = "opus",
+    model: str | None = None,
 ) -> ChatAnthropic:
+    """Build a Claude client. ``model`` overrides the tier->model mapping when
+    given (used by the per-request BYO path, where the caller names an exact
+    model); otherwise the model is chosen from ``tier``."""
     return ChatAnthropic(
-        model=_TIER_MODEL_IDS[tier],
+        model=model or _TIER_MODEL_IDS[tier],
         api_key=api_key,
         temperature=0.1,
         max_tokens=8192,

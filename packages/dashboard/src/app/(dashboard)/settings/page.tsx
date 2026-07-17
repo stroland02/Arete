@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { getInstallationBilling, resolveSelectedInstallationIds, FREE_TIER_REVIEW_LIMIT } from "@/lib/queries";
 import { isGithubLinked } from "@/lib/github-link";
 import { connectGithub } from "./github-link-actions";
+import { saveModelConfig, clearModelConfig } from "./model-config-actions";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -73,6 +74,21 @@ export default async function SettingsPage({
   const billing = await getInstallationBilling(db, installationIds);
   const githubLinked = await isGithubLinked(db, session.user.id);
   const banner = githubBanner(connected, error);
+
+  // Per-tenant "connect your model" config for the first authorized
+  // installation (the common single-install case). Non-secret fields only are
+  // read back for display — the encrypted API key is never surfaced.
+  const modelInstallation = (session.installations ?? [])[0] ?? null;
+  const modelRow = modelInstallation
+    ? await db.installation.findUnique({
+        where: { id: modelInstallation.id },
+        select: { modelConfig: true },
+      })
+    : null;
+  const currentModel =
+    (modelRow?.modelConfig as { provider?: string; model?: string; baseUrl?: string } | null) ?? null;
+  const modelInputClass =
+    "w-full rounded-lg border border-border-subtle bg-transparent px-3 py-2 text-sm text-content-primary";
 
   const userName = session.user.name ?? session.user.email ?? "Signed in";
   const userEmail = session.user.email ?? "";
@@ -155,6 +171,101 @@ export default async function SettingsPage({
                   Connect GitHub
                 </button>
               </form>
+            </div>
+          )}
+        </Card>
+      </RevealItem>
+
+      <RevealItem>
+        <Card>
+          <CardHeader>
+            <CardTitle>Model</CardTitle>
+            {currentModel?.provider && <Badge variant="positive">Connected</Badge>}
+          </CardHeader>
+
+          {!modelInstallation ? (
+            <p className="text-sm text-content-muted">
+              Install the Areté GitHub App on an installation first — model config is per installation.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-content-muted">
+                Connect your own model for reviews on{" "}
+                <span className="font-mono">{modelInstallation.owner}</span>. Leave this unset to use
+                the service default, which falls back to a local Ollama model.
+                {currentModel?.provider && (
+                  <>
+                    {" "}
+                    Currently:{" "}
+                    <span className="font-mono">
+                      {currentModel.provider}
+                      {currentModel.model ? `/${currentModel.model}` : ""}
+                    </span>
+                    .
+                  </>
+                )}
+              </p>
+
+              <form action={saveModelConfig} className="space-y-3">
+                <input type="hidden" name="installationId" value={modelInstallation.id} />
+                <label className="block space-y-1">
+                  <span className="text-xs text-content-muted">Provider</span>
+                  <select
+                    name="provider"
+                    defaultValue={currentModel?.provider ?? "ollama"}
+                    className={modelInputClass}
+                  >
+                    <option value="ollama">Ollama (local)</option>
+                    <option value="anthropic">Anthropic</option>
+                    <option value="gemini">Gemini</option>
+                  </select>
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-xs text-content-muted">Model</span>
+                  <input
+                    name="model"
+                    defaultValue={currentModel?.model ?? ""}
+                    placeholder="qwen2.5-coder"
+                    className={modelInputClass}
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-xs text-content-muted">Base URL (optional)</span>
+                  <input
+                    name="baseUrl"
+                    defaultValue={currentModel?.baseUrl ?? ""}
+                    placeholder="http://localhost:11434"
+                    className={modelInputClass}
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-xs text-content-muted">
+                    API key — required for Anthropic/Gemini; leave blank for Ollama. Stored encrypted;
+                    re-enter to change.
+                  </span>
+                  <input
+                    name="apiKey"
+                    type="password"
+                    placeholder="••••••••"
+                    className={modelInputClass}
+                  />
+                </label>
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-2 rounded-xl bg-accent-primary px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-primary/90"
+                >
+                  Save model
+                </button>
+              </form>
+
+              {currentModel?.provider && (
+                <form action={clearModelConfig}>
+                  <input type="hidden" name="installationId" value={modelInstallation.id} />
+                  <button type="submit" className="text-xs text-content-muted underline">
+                    Use default (clear)
+                  </button>
+                </form>
+              )}
             </div>
           )}
         </Card>

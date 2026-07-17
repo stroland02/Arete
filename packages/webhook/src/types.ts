@@ -42,6 +42,15 @@ export interface PRContext {
   cloneUrl?: string
   installationToken?: string
   installationId?: number
+  // Optional BYO model config forwarded to the agents /review. When present,
+  // the review builds its LLM clients from this instead of the agents
+  // service's global default. Shape matches the agents LLMConfig.
+  llm?: {
+    provider: 'anthropic' | 'gemini' | 'ollama'
+    model?: string
+    apiKey?: string
+    baseUrl?: string
+  }
 }
 
 export interface ReviewComment {
