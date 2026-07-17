@@ -50,6 +50,14 @@ const PROVIDERS: Record<string, ProviderProbe> = {
     path: '/models',
     headers: (apiKey) => ({ 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }),
   },
+  // Local/self-hosted Ollama is keyless — reachability of its /api/tags listing
+  // is the "does this connection work" signal. defaultBaseUrl points at the
+  // conventional local port; a custom baseUrl (still SSRF-checked) overrides it.
+  ollama: {
+    defaultBaseUrl: 'http://localhost:11434',
+    path: '/api/tags',
+    headers: () => ({}),
+  },
 }
 
 /** Unknown providers fall back to an OpenAI-compatible bearer probe, but only if

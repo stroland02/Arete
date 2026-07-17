@@ -77,6 +77,20 @@ describe('testModelConnection', () => {
     if (!result.ok) expect(result.detail).toContain('blocked private address')
   })
 
+  it('probes keyless Ollama at /api/tags with no auth header (reachability = ok)', async () => {
+    const fetch = fakeFetch({ ok: true, status: 200, statusText: 'OK' })
+
+    const result = await testModelConnection(
+      { provider: 'ollama', model: 'llama3.1', apiKey: '', baseUrl: null },
+      { fetch },
+    )
+
+    expect(result).toEqual({ ok: true })
+    const [url, init] = fetch.mock.calls[0]
+    expect(url).toBe('http://localhost:11434/api/tags')
+    expect((init as any).headers.Authorization).toBeUndefined()
+  })
+
   it('refuses an unknown provider that has no baseUrl to target', async () => {
     const fetch = fakeFetch({ ok: true, status: 200, statusText: 'OK' })
 

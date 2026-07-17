@@ -42,15 +42,17 @@ export interface PRContext {
   cloneUrl?: string
   installationToken?: string
   installationId?: number
-  /// The tenant's resolved Bring-Your-Own model connection for this review
-  /// (see resolve-model-connection.ts). apiKey is decrypted; null for keyless
-  /// (Ollama companion) connections. Attached at the /review choke point and
-  /// sent to the agents service as the `llm` block (its LLMConfig shape).
-  modelConnection?: {
+  /// Optional BYO model config forwarded to the agents /review as the `llm`
+  /// block. Resolved per-tenant from ModelConnection at the /review choke point
+  /// (see resolve-model-connection.ts); apiKey is decrypted; omitted entirely
+  /// when the tenant has no connection, so the agents service uses its own
+  /// default (Ollama safety fallback) — never a raw env key. Shape mirrors the
+  /// agents Pydantic model (camelCase, everything but provider optional).
+  llm?: {
     provider: string
-    model: string
-    apiKey: string | null
-    baseUrl: string | null
+    model?: string
+    apiKey?: string
+    baseUrl?: string
   }
 }
 
