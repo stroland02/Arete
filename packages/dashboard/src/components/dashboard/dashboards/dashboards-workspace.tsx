@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import type { DashboardsViewModel } from "@/lib/queries";
 import { ReviewActivityPreset } from "./presets/review-activity";
 import { FindingsPreset } from "./presets/findings";
@@ -63,32 +64,38 @@ export function DashboardsWorkspace({ model }: { model: DashboardsViewModel }) {
       {connected && (
         <div className="flex flex-wrap items-center gap-2">
           {data.repos.map((fullName) => (
-            <span
+            <Link
               key={fullName}
-              className="inline-flex items-center gap-1.5 rounded-full border border-accent-success/25 bg-accent-success/10 px-2.5 py-1 font-mono text-[11px] text-content-secondary"
+              href="/connections"
+              title="Manage repository connections"
+              className="inline-flex items-center gap-1.5 rounded-full border border-accent-success/25 bg-accent-success/10 px-2.5 py-1 font-mono text-[11px] text-content-secondary transition-colors hover:border-accent-success/50"
             >
               <span className="h-1.5 w-1.5 rounded-full bg-accent-success" aria-hidden />
               {fullName}
-            </span>
+            </Link>
           ))}
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] ${
+          <Link
+            href="/connections/ai-models"
+            title={data.modelConnected ? "Manage AI model connections" : "Connect an AI model"}
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] transition-colors ${
               data.modelConnected
-                ? "border-accent-success/25 bg-accent-success/10 text-content-secondary"
-                : "border-border-default bg-surface-1 text-content-muted"
+                ? "border-accent-success/25 bg-accent-success/10 text-content-secondary hover:border-accent-success/50"
+                : "border-border-default bg-surface-1 text-content-muted hover:border-accent-primary/40 hover:text-content-secondary"
             }`}
           >
             <span
               className={`h-1.5 w-1.5 rounded-full ${data.modelConnected ? "bg-accent-success" : "bg-content-muted/40"}`}
               aria-hidden
             />
-            {data.modelConnected ? "AI model connected" : "No AI model yet"}
-          </span>
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] ${
+            {data.modelConnected ? "AI model connected" : "No AI model yet — connect one"}
+          </Link>
+          <Link
+            href="/connections"
+            title={data.connectedProviders.length > 0 ? "Manage telemetry connections" : "Connect a telemetry source"}
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] transition-colors ${
               data.connectedProviders.length > 0
-                ? "border-accent-success/25 bg-accent-success/10 text-content-secondary"
-                : "border-border-default bg-surface-1 text-content-muted"
+                ? "border-accent-success/25 bg-accent-success/10 text-content-secondary hover:border-accent-success/50"
+                : "border-border-default bg-surface-1 text-content-muted hover:border-accent-primary/40 hover:text-content-secondary"
             }`}
           >
             <span
@@ -97,8 +104,8 @@ export function DashboardsWorkspace({ model }: { model: DashboardsViewModel }) {
             />
             {data.connectedProviders.length > 0
               ? `Telemetry: ${data.connectedProviders.join(", ")}`
-              : "No telemetry sources yet"}
-          </span>
+              : "No telemetry sources yet — connect one"}
+          </Link>
         </div>
       )}
       {banner && <DashboardStatusBanner variant={banner} />}
