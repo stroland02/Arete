@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getDashboardViewModel, resolveSelectedInstallationIds, getAgentActivity } from "@/lib/queries";
+import { getActiveModelConnection } from "@/lib/model-connections-api";
 import { AgentsWorkspace } from "@/components/dashboard/agents/agents-workspace";
 
 // Same rationale as the overview: this page reads the session and queries
@@ -51,6 +52,10 @@ export default async function AgentsPage({
       where: { installationId: { in: installationIds } },
     })) > 0;
 
+  // The concrete model every agent runs on today (dynamic; replaces the old
+  // hardcoded Opus/Sonnet tier badges). Null when nothing is connected.
+  const activeModel = await getActiveModelConnection();
+
   return (
     <AgentsWorkspace
       findingCountById={Object.fromEntries(
@@ -61,6 +66,7 @@ export default async function AgentsPage({
       activity={activity}
       connected={viewModel.hasAccess}
       modelConnected={modelConnected}
+      activeModel={activeModel}
       containerId={container ?? null}
       latestReview={
         latest

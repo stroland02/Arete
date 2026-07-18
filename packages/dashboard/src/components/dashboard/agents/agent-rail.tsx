@@ -2,13 +2,8 @@
 
 import { AGENTS, type Agent } from "./agent-catalog";
 import { cn } from "@/lib/utils";
-import { IconSettings } from "@tabler/icons-react";
-
-const TIER_LABEL = { opus: "Opus", sonnet: "Sonnet" } as const;
-const TIER_CLASS = {
-  opus: "border-accent-primary/25 bg-accent-primary/10 text-accent-primary",
-  sonnet: "border-border-default bg-surface-2 text-content-secondary",
-} as const;
+import { IconSettings, IconCpu } from "@tabler/icons-react";
+import type { ActiveModelConnection } from "@/lib/model-connections-map";
 
 export interface AgentRailProps {
   agents?: Agent[];
@@ -18,6 +13,9 @@ export interface AgentRailProps {
   onSelect: (agentId: string) => void;
   /** Opens the AgentConfigDrawer for this agent. */
   onConfigure: (agentId: string) => void;
+  /** The connected model all agents run on — shown once in the footer, replacing
+      the old per-agent hardcoded Opus/Sonnet tier badges. */
+  activeModel?: ActiveModelConnection | null;
 }
 
 /**
@@ -35,6 +33,7 @@ export function AgentRail({
   selectedAgentId,
   onSelect,
   onConfigure,
+  activeModel = null,
 }: AgentRailProps) {
   return (
     <section className="flex min-h-0 flex-1 flex-col" aria-label="Agents rail">
@@ -102,14 +101,6 @@ export function AgentRail({
                       >
                         {agent.label}
                       </span>
-                      <span
-                        className={cn(
-                          "shrink-0 rounded-full border px-1.5 py-px text-[9px] font-medium",
-                          TIER_CLASS[agent.tier]
-                        )}
-                      >
-                        {TIER_LABEL[agent.tier]}
-                      </span>
                     </span>
                     <span className="mt-0.5 block truncate font-mono text-[11px] text-content-muted">
                       {status}
@@ -130,7 +121,21 @@ export function AgentRail({
         })}
       </ul>
 
-      <footer className="shrink-0 border-t border-border-subtle px-3 py-2">
+      <footer className="shrink-0 space-y-1.5 border-t border-border-subtle px-3 py-2">
+        {activeModel ? (
+          <p
+            title={`Every agent runs on ${activeModel.provider} · ${activeModel.model}`}
+            className="flex items-center gap-1.5 text-[10px] text-content-secondary"
+          >
+            <IconCpu size={12} className="shrink-0 text-accent-primary" aria-hidden />
+            <span className="text-content-muted">Running on</span>
+            <span className="min-w-0 flex-1 truncate font-mono text-content-secondary">{activeModel.model}</span>
+          </p>
+        ) : (
+          <p className="font-mono text-[10px] leading-4 text-content-muted/80">
+            no model connected — agents can&apos;t run yet
+          </p>
+        )}
         <p className="font-mono text-[10px] leading-4 text-content-muted/80">
           {hasReviews
             ? "counts are verified findings from your reviews"

@@ -16,12 +16,19 @@ function finding(over: Partial<AgentActivityFinding> = {}): AgentActivityFinding
 }
 
 describe('AgentConversation', () => {
-  it('renders the agent header, model tier, and real finding rows', () => {
+  it('renders the agent header, connected model, and real finding rows', () => {
     const html = renderToStaticMarkup(
-      <AgentConversation agent={security} findings={[finding()]} findingCount={1} hasReviews onConfigure={noop} />,
+      <AgentConversation
+        agent={security}
+        findings={[finding()]}
+        findingCount={1}
+        hasReviews
+        activeModel={{ provider: 'ollama', model: 'qwen2.5-coder' }}
+        onConfigure={noop}
+      />,
     );
     expect(html).toContain('Security');
-    expect(html).toContain('Opus'); // security tier
+    expect(html).toContain('qwen2.5-coder'); // dynamic connected model, not a hardcoded tier
     expect(html).toContain('src/auth/session.ts:42');
     expect(html).toContain('Refresh token written to localStorage');
     expect(html).toContain('PR #7');

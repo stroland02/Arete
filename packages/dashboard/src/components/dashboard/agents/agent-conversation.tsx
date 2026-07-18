@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { IconSettings, IconSend, IconArrowRight } from "@tabler/icons-react";
+import { IconSettings, IconSend, IconArrowRight, IconCpu } from "@tabler/icons-react";
 import type { Agent } from "./agent-catalog";
 import type { AgentActivityFinding } from "@/lib/queries";
+import type { ActiveModelConnection } from "@/lib/model-connections-map";
 import { cn } from "@/lib/utils";
-
-const TIER_LABEL = { opus: "Opus", sonnet: "Sonnet" } as const;
 
 const SEV_PILL: Record<string, string> = {
   error: "text-accent-danger border-accent-danger/30 bg-accent-danger/10",
@@ -29,6 +28,9 @@ export interface AgentConversationProps {
   repoConnected?: boolean;
   /** Whether an AI model is connected — what the agent actually needs to run. */
   modelConnected?: boolean;
+  /** The model this agent runs on. Replaces the old hardcoded Opus/Sonnet tier —
+   *  every agent runs on the tenant's connected model today, so it's shown live. */
+  activeModel?: ActiveModelConnection | null;
   onConfigure: (agentId: string) => void;
 }
 
@@ -40,11 +42,18 @@ export interface AgentConversationProps {
  * service is unreachable the composer surfaces a truthful notice instead of a
  * canned reply.
  */
-export function AgentConversation({ agent, findings, findingCount, hasReviews, repoConnected = false, modelConnected = false, onConfigure }: AgentConversationProps) {
+export function AgentConversation({ agent, findings, findingCount, hasReviews, repoConnected = false, modelConnected = false, activeModel = null, onConfigure }: AgentConversationProps) {
   const [message, setMessage] = useState("");
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [sending, setSending] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
+  // Keep the newest message in view: the scroll region should follow the
+  // conversation to the bottom as turns are appended (and while a reply is
+  // pending), so replies never get cut off below the fold.
+  const bottomRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [turns, sending]);
 
   async function handleSend(e: FormEvent) {
     e.preventDefault();
@@ -86,9 +95,15 @@ export function AgentConversation({ agent, findings, findingCount, hasReviews, r
           aria-hidden
         />
         <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">{agent.label}</h2>
-        <span className="rounded-full border border-accent-primary/25 bg-accent-primary/10 px-1.5 py-px text-[10px] font-medium text-accent-primary">
-          {TIER_LABEL[agent.tier]}
-        </span>
+        {activeModel && (
+          <span
+            title={`Running on ${activeModel.provider} · ${activeModel.model}`}
+            className="inline-flex max-w-[12rem] items-center gap-1 rounded-full border border-accent-primary/25 bg-accent-primary/10 px-1.5 py-px text-[10px] font-medium text-accent-primary"
+          >
+            <IconCpu size={11} aria-hidden />
+            <span className="truncate font-mono">{activeModel.model}</span>
+          </span>
+        )}
         <span className="ml-auto truncate font-mono text-[11px] text-content-muted">{status}</span>
         <button
           type="button"
@@ -209,6 +224,8 @@ export function AgentConversation({ agent, findings, findingCount, hasReviews, r
             ))}
           </div>
         )}
+        {/* Scroll anchor: the effect keeps this in view so new turns pin to the bottom. */}
+        <div ref={bottomRef} aria-hidden />
       </div>
 
       <footer className="shrink-0 border-t border-border-subtle px-3 py-2.5">

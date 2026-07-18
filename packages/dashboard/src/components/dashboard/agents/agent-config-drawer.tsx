@@ -2,23 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { IconCheck, IconChevronDown, IconX } from "@tabler/icons-react";
+import { IconCpu, IconX } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import type { Agent } from "./agent-catalog";
-
-// The Claude models a user can assign to an agent. Ordered most → least
-// capable. `tier` from the catalog (opus/sonnet) is the server default and
-// seeds the initial selection.
-const MODELS = [
-  { id: "opus", label: "Opus 4.8", blurb: "Most capable" },
-  { id: "sonnet", label: "Sonnet 5", blurb: "Balanced speed & depth" },
-  { id: "haiku", label: "Haiku 4.5", blurb: "Fastest, lightest" },
-  { id: "fable", label: "Fable 5", blurb: "Creative reasoning" },
-] as const;
+import type { ActiveModelConnection } from "@/lib/model-connections-map";
 
 export interface AgentConfigDrawerProps {
   agent: Agent | null;
   findingCount: number;
+  /** The connected model this agent runs on (dynamic; replaces the old hardcoded
+      Claude model list — providers are now user-selectable under AI Models). */
+  activeModel?: ActiveModelConnection | null;
   onClose: () => void;
 }
 
@@ -28,7 +22,7 @@ export interface AgentConfigDrawerProps {
  * are locally interactive but deliberately NOT persisted yet — the Save button
  * stays disabled and the note says so. No fake saves, including the model pick.
  */
-export function AgentConfigDrawer({ agent, findingCount, onClose }: AgentConfigDrawerProps) {
+export function AgentConfigDrawer({ agent, findingCount, activeModel = null, onClose }: AgentConfigDrawerProps) {
   useEffect(() => {
     if (!agent) return;
     const onKey = (event: KeyboardEvent) => {
@@ -53,7 +47,7 @@ export function AgentConfigDrawer({ agent, findingCount, onClose }: AgentConfigD
           />
           {/* Keyed by agent id so the local (unsaved) controls reset cleanly
               when a different agent is opened. */}
-          <DrawerPanel key={agent.id} agent={agent} findingCount={findingCount} onClose={onClose} />
+          <DrawerPanel key={agent.id} agent={agent} findingCount={findingCount} activeModel={activeModel} onClose={onClose} />
         </>
       )}
     </AnimatePresence>
@@ -63,25 +57,24 @@ export function AgentConfigDrawer({ agent, findingCount, onClose }: AgentConfigD
 function DrawerPanel({
   agent,
   findingCount,
+  activeModel,
   onClose,
 }: {
   agent: Agent;
   findingCount: number;
+  activeModel: ActiveModelConnection | null;
   onClose: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [enabled, setEnabled] = useState(true);
   const [severity, setSeverity] = useState("warning");
   const [guidance, setGuidance] = useState("");
-  const [model, setModel] = useState<string>(agent.tier);
-  const [modelOpen, setModelOpen] = useState(false);
 
   useEffect(() => {
     panelRef.current?.focus();
   }, []);
 
   const Icon = agent.icon;
-  const currentModel = MODELS.find((m) => m.id === model) ?? MODELS[0];
 
   return (
     <motion.aside
@@ -103,7 +96,9 @@ function DrawerPanel({
         </span>
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-base font-semibold text-content-primary">{agent.label}</h3>
-          <p className="text-xs text-content-muted">Specialist review agent · {currentModel.label}</p>
+          <p className="truncate text-xs text-content-muted">
+            Specialist review agent{activeModel ? ` · ${activeModel.model}` : ""}
+          </p>
         </div>
         <Button variant="icon" size="icon" onClick={onClose} aria-label="Close agent settings">
           <IconX size={18} stroke={1.75} />
@@ -149,62 +144,31 @@ function DrawerPanel({
           Configuration
         </h4>
 
-        {/* Model — the interactive bubble */}
+        {/* Model — the connected model this agent runs on. Read-only and dynamic:
+            the provider/model is chosen once under AI Models, and every agent
+            runs on it. Per-agent overrides are the "coming soon" below. */}
         <div className="space-y-1.5">
           <p className="text-sm font-medium text-content-primary">Model</p>
-          <p className="text-xs text-content-muted">Which Claude model runs this agent.</p>
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setModelOpen((v) => !v)}
-              aria-haspopup="listbox"
-              aria-expanded={modelOpen}
-              className="inline-flex items-center gap-2 rounded-full border border-border-default bg-surface-2 py-1.5 pl-2.5 pr-2 text-sm font-medium text-content-primary transition-colors hover:border-border-strong focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
+          <p className="text-xs text-content-muted">The connected model this agent runs on.</p>
+          {activeModel ? (
+            <a
+              href="/connections/ai-models"
+              title={`Running on ${activeModel.provider} · ${activeModel.model}`}
+              className="inline-flex items-center gap-2 rounded-full border border-border-default bg-surface-2 py-1.5 pl-2.5 pr-3 text-sm font-medium text-content-primary transition-colors hover:border-border-strong"
             >
-              <span className="h-2 w-2 rounded-full bg-accent-primary" aria-hidden />
-              {currentModel.label}
-              <IconChevronDown
-                size={15}
-                stroke={1.75}
-                className={`text-content-muted transition-transform ${modelOpen ? "rotate-180" : ""}`}
-                aria-hidden
-              />
-            </button>
-
-            {modelOpen && (
-              <ul
-                role="listbox"
-                aria-label="Select a model"
-                className="absolute left-0 top-full z-10 mt-1.5 w-64 overflow-hidden rounded-xl border border-border-default bg-surface-2 py-1 shadow-[0_12px_40px_-12px_rgba(26,27,24,0.35)]"
-              >
-                {MODELS.map((m) => {
-                  const active = m.id === model;
-                  return (
-                    <li key={m.id} role="option" aria-selected={active}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setModel(m.id);
-                          setModelOpen(false);
-                        }}
-                        className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors ${
-                          active ? "bg-accent-primary/[0.06]" : "hover:bg-content-primary/[0.04]"
-                        }`}
-                      >
-                        <span className="min-w-0">
-                          <span className="block text-sm font-medium text-content-primary">{m.label}</span>
-                          <span className="block text-xs text-content-muted">{m.blurb}</span>
-                        </span>
-                        {active && (
-                          <IconCheck size={16} stroke={2} className="shrink-0 text-accent-primary" aria-hidden />
-                        )}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
+              <IconCpu size={15} stroke={1.75} className="shrink-0 text-accent-primary" aria-hidden />
+              <span className="max-w-[16rem] truncate font-mono text-[13px]">{activeModel.model}</span>
+              <span className="text-xs font-normal text-content-muted">· {activeModel.provider}</span>
+            </a>
+          ) : (
+            <a
+              href="/connections/ai-models"
+              className="inline-flex items-center gap-2 rounded-full border border-dashed border-border-default bg-surface-2 py-1.5 pl-2.5 pr-3 text-sm font-medium text-content-muted transition-colors hover:border-border-strong"
+            >
+              <IconCpu size={15} stroke={1.75} className="shrink-0" aria-hidden />
+              Connect a model
+            </a>
+          )}
         </div>
 
         <div className="flex items-center justify-between gap-3">

@@ -7,6 +7,7 @@ import { AgentConversation } from "./agent-conversation";
 import { PrPanel } from "./pr-panel";
 import { AgentConfigDrawer } from "./agent-config-drawer";
 import type { AgentActivityFinding } from "@/lib/queries";
+import type { ActiveModelConnection } from "@/lib/model-connections-map";
 
 export interface AgentsWorkspaceProps {
   findingCountById: Record<string, number>;
@@ -31,6 +32,9 @@ export interface AgentsWorkspaceProps {
   connected?: boolean;
   /** Whether an AI model is connected — the agents' real dependency. */
   modelConnected?: boolean;
+  /** The connected model every agent runs on (dynamic; replaces the old
+      hardcoded Opus/Sonnet tier). Null when no model is connected. */
+  activeModel?: ActiveModelConnection | null;
 }
 
 /**
@@ -48,6 +52,7 @@ export function AgentsWorkspace({
   containerId = null,
   connected = false,
   modelConnected = false,
+  activeModel = null,
 }: AgentsWorkspaceProps) {
   const [selectedAgentId, setSelectedAgentId] = useState<string>(AGENTS[0].id);
   const [configAgentId, setConfigAgentId] = useState<string | null>(null);
@@ -69,6 +74,7 @@ export function AgentsWorkspace({
           selectedAgentId={selectedAgentId}
           onSelect={setSelectedAgentId}
           onConfigure={setConfigAgentId}
+          activeModel={activeModel}
         />
         <AgentConversation
           agent={selectedAgent}
@@ -77,6 +83,7 @@ export function AgentsWorkspace({
           hasReviews={hasReviews}
           repoConnected={connected}
           modelConnected={modelConnected}
+          activeModel={activeModel}
           onConfigure={setConfigAgentId}
         />
         <PrPanel
@@ -90,6 +97,7 @@ export function AgentsWorkspace({
       <AgentConfigDrawer
         agent={configAgent}
         findingCount={configAgent ? (findingCountById[configAgent.id] ?? 0) : 0}
+        activeModel={activeModel}
         onClose={() => setConfigAgentId(null)}
       />
     </>
