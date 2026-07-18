@@ -62,7 +62,7 @@ export function CodeMap({
   // run unconditionally (before the empty-state early return).
   const base = { x: 0, y: 0, w: layout.extent.w, h: layout.extent.h };
   const [view, setView] = useState(base);
-  const dragRef = useRef<{ startX: number; startY: number; vx: number; vy: number } | null>(null);
+  const dragRef = useRef<{ startX: number; startY: number; vx: number; vy: number; moved: boolean } | null>(null);
 
   if (topology.nodes.length === 0) {
     return (
@@ -149,7 +149,13 @@ export function CodeMap({
         onPointerDown={
           interactive
             ? (e) => {
-                dragRef.current = { startX: e.clientX, startY: e.clientY, vx: view.x, vy: view.y };
+                // Never start a pan from an interactive child: setPointerCapture on
+                // the SVG retargets pointerup away from the chip/region buttons, so
+                // the browser would never synthesize their click (the "clicks do
+                // nothing" bug). Chips and region headers live in foreignObjects;
+                // the background, region rects, and edges remain pan surfaces.
+                if ((e.target as Element).closest?.("foreignObject")) return;
+                dragRef.current = { startX: e.clientX, startY: e.clientY, vx: view.x, vy: view.y, moved: false };
                 (e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId);
               }
             : undefined
@@ -159,6 +165,10 @@ export function CodeMap({
             ? (e) => {
                 const d = dragRef.current;
                 if (!d) return;
+                // Drag threshold: ignore sub-4px jitter so a stationary press
+                // never mutates the viewBox (a click must stay a click).
+                if (!d.moved && Math.hypot(e.clientX - d.startX, e.clientY - d.startY) < 4) return;
+                d.moved = true;
                 const el = e.currentTarget as SVGSVGElement;
                 const scale = view.w / el.clientWidth;
                 setView((v) => ({ ...v, x: d.vx - (e.clientX - d.startX) * scale, y: d.vy - (e.clientY - d.startY) * scale }));
