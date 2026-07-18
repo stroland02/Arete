@@ -10,6 +10,8 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getDashboardViewModel, resolveSelectedInstallationIds } from "@/lib/queries";
 import { getSensoriumViewModel } from "@/lib/sensorium";
+import { getAccountState } from "@/lib/account-state";
+import { deriveOverviewSetup } from "@/lib/overview-setup";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 import { ActivityList } from "@/components/dashboard/activity-list";
 import { AgentsAtWorkStrip } from "@/components/dashboard/agents-at-work-strip";
@@ -45,7 +47,11 @@ export default async function DashboardOverview({
   )?.externalId;
   const sensorium = await getSensoriumViewModel(db, installationIds, graphExternalId);
 
-  const connected = viewModel.hasAccess;
+  // Account-State Contract: connection facts + onboarding derive from the single
+  // resolver, never ad-hoc hasAccess/totalPrs checks. Activity DATA still comes
+  // from the view-model below and is shown only when it actually exists.
+  const accountState = await getAccountState(db, installationIds);
+  const connected = accountState.repoConnected;
   const { totalPrs, criticalBugs, recentReviews, latestReviews, commentsByCategory } = viewModel.hasAccess
     ? viewModel
     : { totalPrs: 0, criticalBugs: 0, recentReviews: 0, latestReviews: [], commentsByCategory: [] };
@@ -54,20 +60,12 @@ export default async function DashboardOverview({
     commentsByCategory.map((c) => [c.category, c.count])
   );
 
-  const hasReviews = connected && totalPrs > 0;
+  const hasReviews = accountState.hasReviews;
   const firstName = (session.user.name ?? "").trim().split(" ")[0];
 
-  // Onboarding progress — honest, derived from real state. The setup card
-  // disappears once reviews are actually flowing.
-  const steps = [
-    { label: "Create your Kuma account", done: true },
-    { label: "Connect a repository", done: connected },
-    { label: "Open a pull request", done: hasReviews },
-    { label: "Get your first verified review", done: hasReviews },
-  ];
-  const doneCount = steps.filter((s) => s.done).length;
-  const setupComplete = hasReviews;
-  const nextStep = steps.find((s) => !s.done);
+  // Onboarding progress — derived from the Account-State resolver (single source
+  // of truth), honest across all three stages; the card evolves once reviews flow.
+  const { steps, doneCount, setupComplete, nextStep } = deriveOverviewSetup(accountState);
 
   return (
     <div className="mx-auto max-w-5xl">
