@@ -16,12 +16,13 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "prepare": "pnpm run build",
-    "test": "tsx --test src/*.test.ts",
+    "test": "vitest run src/cluster-layout.test.ts && tsx --test src/layout.test.ts src/enrich.test.ts src/providers.test.ts src/services.test.ts src/code-provider.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^22.10.1",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.9"
   }
 }

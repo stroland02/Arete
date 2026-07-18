@@ -87,7 +87,15 @@ export default async function DashboardOverview({
             a review has indexed the repo; never a fabricated graph. */}
         {sensorium.hasAccess && (
           <RevealItem className="space-y-3">
-            <SectionLabel>Code map</SectionLabel>
+            <div className="flex items-center justify-between">
+              <SectionLabel>Code map</SectionLabel>
+              <Link
+                href="/map"
+                className="inline-flex items-center gap-1 text-xs text-accent-primary hover:text-accent-primary/80"
+              >
+                Open map <IconArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
             {sensorium.available ? (
               <SensoriumMap topology={sensorium.topology!} sensors={sensorium.sensors!} />
             ) : (
