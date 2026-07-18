@@ -41,6 +41,10 @@ export async function probeModelConnection(input: {
   baseUrl?: string;
 }): Promise<ProbeResult> {
   const base = process.env.WEBHOOK_SERVICE_URL;
+  // Debug feed: the running process's actual WEBHOOK_SERVICE_URL — if this
+  // shows :3000 (the dashboard itself) instead of the webhook's :3001, the
+  // process was started with a stale env and needs a restart.
+  console.warn(`[model-connections/probe] provider=${input.provider} model=${input.model} -> WEBHOOK_SERVICE_URL=${base ?? '(unset)'}`);
   if (!base) return { ok: false, detail: 'unreachable: probe service not configured' };
   try {
     const res = await fetch(`${base}/internal/model-connections/test`, {
@@ -48,14 +52,19 @@ export async function probeModelConnection(input: {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(input),
     });
-    if (!res.ok) return { ok: false, detail: `unreachable: probe service ${res.status}` };
+    if (!res.ok) {
+      console.error(`[model-connections/probe] probe service returned ${res.status} from ${base}/internal/model-connections/test`);
+      return { ok: false, detail: `unreachable: probe service ${res.status}` };
+    }
     const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    console.warn(`[model-connections/probe] result ok=${body.ok === true} detail=${body.detail ?? '-'}`);
     return {
       ok: body.ok === true,
       model: typeof body.model === 'string' ? body.model : undefined,
       detail: typeof body.detail === 'string' ? body.detail : undefined,
     };
-  } catch {
+  } catch (err) {
+    console.error(`[model-connections/probe] could not reach ${base}:`, err instanceof Error ? err.message : err);
     return { ok: false, detail: 'unreachable: could not reach probe service' };
   }
 }
