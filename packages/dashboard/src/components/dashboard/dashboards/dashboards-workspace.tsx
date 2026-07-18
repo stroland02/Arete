@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { DashboardsViewModel } from "@/lib/queries";
+import type { AccountState } from "@/lib/account-state";
 import { ReviewActivityPreset } from "./presets/review-activity";
 import { FindingsPreset } from "./presets/findings";
 import { TelemetryPreset } from "./presets/telemetry";
@@ -37,23 +38,32 @@ const PRESETS = [
   { key: "telemetry", label: "Telemetry", Component: TelemetryPreset },
 ] as const;
 
-export function DashboardsWorkspace({ model }: { model: DashboardsViewModel }) {
+export function DashboardsWorkspace({ model, accountState }: { model: DashboardsViewModel; accountState: AccountState }) {
   const [tab, setTab] = useState<(typeof PRESETS)[number]["key"]>("activity");
   const [range, setRange] = useState<Range>(30);
   const Active = PRESETS.find((p) => p.key === tab)!.Component;
 
-  const connected = model.hasAccess;
+  // Connection facts come from the Account-State resolver (single source of
+  // truth); the view-model supplies only activity DATA (shown when it exists).
+  const connected = accountState.repoConnected;
   const data: Model = model.hasAccess ? model : EMPTY_MODEL;
 
-  // Skeleton + banner are decided per active tab against that tab's own data.
+  // Skeleton + banner derive from the resolver's lifecycle stage — never ad-hoc
+  // hasAccess/totalPrs. The telemetry tab keys on its own connection type
+  // (telemetry sources), which the account-state contract does not cover.
   let skeleton: boolean;
   let banner: BannerVariant | null;
   if (tab === "telemetry") {
     skeleton = data.telemetry.length === 0;
     banner = skeleton ? "connect-service" : null;
   } else {
-    skeleton = data.totalPrs === 0; // no reviews yet (whether or not a repo is linked)
-    banner = !connected ? "connect-repository" : data.totalPrs === 0 ? "awaiting-review" : null;
+    skeleton = !accountState.hasReviews;
+    banner =
+      accountState.stage === "disconnected"
+        ? "connect-repository"
+        : accountState.stage === "connected_idle"
+          ? "awaiting-review"
+          : null;
   }
 
   return (
