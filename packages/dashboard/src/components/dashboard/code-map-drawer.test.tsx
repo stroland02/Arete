@@ -38,6 +38,16 @@ describe('CodeMapDrawer', () => {
     expect(html).toContain('Security Agent');       // activity
   });
 
+  it('offers "View source" for a file when the callback is provided', () => {
+    const html = renderToStaticMarkup(
+      <CodeMapDrawer model={model} onClose={() => {}} onViewSource={() => {}} />,
+    );
+    expect(html).toContain('View source');
+    // Without the callback the affordance must not render.
+    const bare = renderToStaticMarkup(<CodeMapDrawer model={model} onClose={() => {}} />);
+    expect(bare).not.toContain('View source');
+  });
+
   it('renders honest empty states for a bare model', () => {
     const bare: SidebarModel = {
       kind: 'file',

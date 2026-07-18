@@ -7,6 +7,9 @@ export interface CodeMapDrawerProps {
   model: SidebarModel | null;
   onClose: () => void;
   onJump?: (sel: { kind: "file"; id: string }) => void;
+  /** When set (and a file is selected), the header offers "View source" —
+   *  opens the reading panel with the file's live code. */
+  onViewSource?: () => void;
 }
 
 const SEV_TEXT: Record<string, string> = {
@@ -64,7 +67,7 @@ function DepList({ rows, dir, onJump }: { rows: DepRow[]; dir: "imports" | "impo
  * every join/rollup rule is tested in lib/code-map-sidebar. Honest empties,
  * never fabricated data.
  */
-export function CodeMapDrawer({ model, onClose, onJump }: CodeMapDrawerProps) {
+export function CodeMapDrawer({ model, onClose, onJump, onViewSource }: CodeMapDrawerProps) {
   if (!model) return null;
   return (
     <aside className="flex h-full w-full max-w-sm shrink-0 flex-col overflow-y-auto rounded-xl border border-border-subtle bg-surface-1 shadow-[var(--shadow-card)]">
@@ -80,6 +83,15 @@ export function CodeMapDrawer({ model, onClose, onJump }: CodeMapDrawerProps) {
           <h2 className="truncate font-mono text-sm font-semibold text-content-primary">{model.title}</h2>
           {model.subtitle && <p className="truncate font-mono text-[11px] text-content-muted">{model.subtitle}</p>}
         </div>
+        {onViewSource && model.kind === "file" && (
+          <button
+            type="button"
+            onClick={onViewSource}
+            className="shrink-0 rounded-lg border border-accent-primary/40 bg-accent-primary/10 px-2.5 py-1 text-[11px] font-medium text-accent-primary transition-colors hover:bg-accent-primary/15"
+          >
+            View source
+          </button>
+        )}
         <button type="button" onClick={onClose} aria-label="Close" className="rounded p-1 text-content-muted hover:bg-surface-2 hover:text-content-secondary">
           <IconX size={14} stroke={2} />
         </button>
