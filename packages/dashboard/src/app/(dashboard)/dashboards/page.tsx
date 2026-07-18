@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getDashboardsViewModel, resolveSelectedInstallationIds } from "@/lib/queries";
+import { getAccountState } from "@/lib/account-state";
 import { DashboardsWorkspace } from "@/components/dashboard/dashboards/dashboards-workspace";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,7 @@ export default async function DashboardsPage({
   const { installation } = await searchParams;
   const installationIds = resolveSelectedInstallationIds(session.installations ?? [], installation);
   const model = await getDashboardsViewModel(db, installationIds);
+  const accountState = await getAccountState(db, installationIds);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -24,7 +26,7 @@ export default async function DashboardsPage({
         <h1 className="text-lg font-semibold text-content-primary">Dashboards</h1>
         <p className="text-sm text-content-muted">Your review pipeline and connected telemetry, at a glance.</p>
       </div>
-      <DashboardsWorkspace model={model} />
+      <DashboardsWorkspace model={model} accountState={accountState} />
     </div>
   );
 }
