@@ -79,7 +79,10 @@ export class HttpModelConnectionsClient implements ModelConnectionsClient {
 
   constructor(options: HttpModelConnectionsClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? "";
-    this.fetchImpl = options.fetch ?? (globalThis.fetch as unknown as FetchLike);
+    // Bind to the global: native fetch throws "Illegal invocation" if called as
+    // a method (this !== window), which is what happens when it's stored on the
+    // instance and invoked as this.fetchImpl(...).
+    this.fetchImpl = options.fetch ?? (globalThis.fetch.bind(globalThis) as unknown as FetchLike);
   }
 
   private url(suffix = ""): string {
