@@ -1104,10 +1104,28 @@ function WorkItemInboxSection({
 /**
  * Right pane for a selected work item: the discovered problem/opportunity with
  * its REAL file:line evidence — exactly what the agents cited, nothing else.
- * Triage actions (Fix it / Implement it / Dismiss) arrive with the triage
- * routes; a fixing item's live stream already plays in the center console.
+ * Triage v1 is exactly two actions (spec ruling): Fix it (issues/errors) or
+ * Implement it (opportunities) → the pipeline; Dismiss → dismissed. Only a
+ * human triggers either — nothing here auto-starts or auto-sends.
+ * Exported for the state-matrix tests.
  */
-function WorkItemPanel({ item }: { item: WorkItemView }) {
+export function WorkItemPanel({ item }: { item: WorkItemView }) {
+  const [busy, setBusy] = useState<null | 'fix' | 'dismiss'>(null);
+
+  async function act(action: 'fix' | 'dismiss') {
+    setBusy(action);
+    try {
+      const res = await fetch(`/api/work-items/${item.id}/${action}`, { method: 'POST' });
+      if (res.ok) {
+        window.location.reload();
+        return;
+      }
+    } catch {
+      // fall through to reset
+    }
+    setBusy(null);
+  }
+
   return (
     <>
       <header className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-3">
@@ -1146,11 +1164,67 @@ function WorkItemPanel({ item }: { item: WorkItemView }) {
           {item.state === "fixing" && item.containerId ? (
             <PanelSection title="Live fix">
               <p className="px-1 text-[11px] leading-5 text-content-muted">
-                Kuma is working this item now — the live stream is playing in the console on the left.
+                Kuma is working this item now — the live stream is playing in the console on the left.{" "}
+                <Link
+                  href={`/services?container=${encodeURIComponent(item.containerId)}`}
+                  className="font-medium text-accent-primary hover:underline"
+                >
+                  Open the live stream
+                </Link>
               </p>
             </PanelSection>
           ) : null}
+          {item.state === "posted" ? (
+            <PanelSection title="Pull request">
+              {item.prUrl ? (
+                <a
+                  href={item.prUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mx-1 inline-flex items-center gap-1.5 text-[11.5px] font-medium text-accent-primary hover:underline"
+                >
+                  <IconGitPullRequest size={13} stroke={2} aria-hidden /> View the posted pull request
+                </a>
+              ) : (
+                <p className="px-1 text-[11px] leading-5 text-content-muted">
+                  The pull request has been posted on your repository.
+                </p>
+              )}
+            </PanelSection>
+          ) : null}
         </div>
+
+        {/* Triage: only an OPEN item offers actions — everything later is
+            driven from the pipeline surfaces (approve on Agents, send on
+            Services), keeping one decision per stage. */}
+        {item.state === "open" && (
+          <footer className="shrink-0 space-y-1.5 border-t border-border-subtle px-3 py-3">
+            <button
+              type="button"
+              onClick={() => act("fix")}
+              disabled={busy !== null}
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent-primary px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-accent-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {busy === "fix" ? (
+                <IconLoader2 size={14} stroke={2} className="animate-spin" aria-hidden />
+              ) : (
+                <IconGitPullRequest size={14} stroke={2} aria-hidden />
+              )}
+              {item.kind === "opportunity" ? "Implement it" : "Fix it"}
+            </button>
+            <button
+              type="button"
+              onClick={() => act("dismiss")}
+              disabled={busy !== null}
+              className="inline-flex w-full items-center justify-center rounded-lg border border-border-default bg-surface-2 px-3 py-1.5 text-[11px] font-semibold text-content-secondary transition-colors hover:bg-content-primary/5 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Dismiss
+            </button>
+            <p className="text-[10px] leading-4 text-content-muted/80">
+              Fixing stages one pull request for this item — nothing posts until you approve it.
+            </p>
+          </footer>
+        )}
       </div>
     </>
   );

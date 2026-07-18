@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { ServicesWorkspace } from './services-workspace';
+import { ServicesWorkspace, WorkItemPanel } from './services-workspace';
 import type { InboxView } from '@/lib/work-items';
 
 function inboxWith(items: InboxView['items'], lastScan: InboxView['lastScan']): InboxView {
@@ -115,6 +115,33 @@ describe('ServicesWorkspace — work-item inbox', () => {
     expect(html).toContain('Scan failed');
     expect(html).toContain('agents /scan responded 503');
     expect(html).toContain('retry');
+  });
+
+  it('state matrix: an open item offers Fix it / Dismiss; an opportunity offers Implement it', () => {
+    const openHtml = renderToStaticMarkup(<WorkItemPanel item={item()} />);
+    expect(openHtml).toContain('Fix it');
+    expect(openHtml).toContain('Dismiss');
+
+    const oppHtml = renderToStaticMarkup(<WorkItemPanel item={item({ kind: 'opportunity' })} />);
+    expect(oppHtml).toContain('Implement it');
+  });
+
+  it('state matrix: a fixing item renders its live-stream link; a posted item shows the PR link', () => {
+    const fixingHtml = renderToStaticMarkup(
+      <WorkItemPanel item={item({ state: 'fixing', containerId: 'cont-7' })} />,
+    );
+    expect(fixingHtml).toContain('/services?container=cont-7');
+    expect(fixingHtml).toContain('Open the live stream');
+    // past triage — no triage buttons
+    expect(fixingHtml).not.toContain('Fix it');
+
+    const postedHtml = renderToStaticMarkup(
+      <WorkItemPanel
+        item={item({ state: 'posted', containerId: 'cont-7', prUrl: 'https://github.com/acme/shop/pull/12' })}
+      />,
+    );
+    expect(postedHtml).toContain('https://github.com/acme/shop/pull/12');
+    expect(postedHtml).not.toContain('Dismiss');
   });
 
   it('shows Scanning… while a run is in flight', () => {

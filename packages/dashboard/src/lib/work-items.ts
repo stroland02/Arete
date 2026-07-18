@@ -17,6 +17,8 @@ export interface WorkItemView {
   state: 'open' | 'fixing' | 'staged' | 'posted' | 'dismissed';
   /** Set once Fix started — deep-links the live container stream / PR panel. */
   containerId?: string | null;
+  /** The posted PR's URL, when the container's pr JSON carries one. */
+  prUrl?: string | null;
 }
 
 export interface InboxView {
@@ -63,6 +65,29 @@ export async function getWorkItemInbox(
     }),
   ]);
 
+  // PR links for posted items: read from the linked containers' pr JSON when
+  // present (tenant-scoped). Optional — a store without the delegate (older
+  // fakes) simply yields no links, never an error.
+  const prUrls = new Map<string, string>();
+  const containerIds = (rows as Array<{ containerId?: string | null }>)
+    .map((r) => r.containerId)
+    .filter((v): v is string => typeof v === 'string' && v.length > 0);
+  const issueContainer = (db as { issueContainer?: { findMany(args: unknown): Promise<unknown[]> } }).issueContainer;
+  if (containerIds.length > 0 && issueContainer?.findMany) {
+    try {
+      const containers = (await issueContainer.findMany({
+        where: { id: { in: containerIds }, ...scope },
+        select: { id: true, pr: true },
+      })) as Array<{ id: string; pr: unknown }>;
+      for (const c of containers) {
+        const url = (c.pr as { url?: unknown } | null)?.url;
+        if (typeof url === 'string') prUrls.set(c.id, url);
+      }
+    } catch {
+      // Links are an enhancement — the inbox itself must never fail on them.
+    }
+  }
+
   const items = (rows as Array<Record<string, unknown>>).map((r) => ({
     id: String(r.id),
     kind: r.kind as WorkItemView['kind'],
@@ -73,6 +98,7 @@ export async function getWorkItemInbox(
     confidence: Number(r.confidence),
     state: r.state as WorkItemView['state'],
     containerId: (r.containerId ?? null) as string | null,
+    prUrl: typeof r.containerId === 'string' ? prUrls.get(r.containerId) ?? null : null,
   }));
 
   return {
