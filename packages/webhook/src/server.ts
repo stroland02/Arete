@@ -212,6 +212,17 @@ export async function createServer(): Promise<express.Application> {
   const { createModelConnectionTestHandler } = await import('./model-connections/test-handler.js')
   server.post('/internal/model-connections/test', express.json(), createModelConnectionTestHandler())
 
+  // GET /internal/context-map/file — live source text for the code map's
+  // "read the code" panel, fetched from GitHub with the App installation token
+  // (pr-fetcher's getContent pattern). Tenant-scoped, so unlike the stateless
+  // probe above it is ONLY safe because the dashboard's session-authenticated
+  // /api/code-map/file route resolves the installationId from the session and
+  // proxies here server-to-server (same posture as the agents service's own
+  // /context-map/graph/{id}); the browser never reaches this endpoint. The
+  // path is additionally validated (isSafeRepoPath) before any GitHub call.
+  const { createContextMapFileHandler } = await import('./context-map/file-handler.js')
+  server.get('/internal/context-map/file', createContextMapFileHandler())
+
   // NOTE: the model-connection *management* API (/api/model-connections — GET list,
   // PUT upsert, DELETE, POST .../test) is deliberately NOT mounted here for the same
   // reason as the outbound-webhook management API below: it is tenant-scoped CRUD that
