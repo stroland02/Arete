@@ -5,6 +5,7 @@ import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { cn } from "@/lib/utils";
 import type { AuthorizedInstallation } from "@/lib/installations";
+import type { ActiveModelConnection } from "@/lib/model-connections-map";
 import { LoadingProvider } from "@/lib/loading-context";
 
 interface DashboardShellProps {
@@ -12,10 +13,11 @@ interface DashboardShellProps {
   installations: AuthorizedInstallation[];
   userName: string;
   userEmail: string | null;
+  activeModel: ActiveModelConnection | null;
   signOutSlot: ReactNode;
 }
 
-export function DashboardShell({ children, installations, userName, userEmail, signOutSlot }: DashboardShellProps) {
+export function DashboardShell({ children, installations, userName, userEmail, activeModel, signOutSlot }: DashboardShellProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -26,6 +28,7 @@ export function DashboardShell({ children, installations, userName, userEmail, s
         installations={installations}
         userName={userName}
         userEmail={userEmail}
+        activeModel={activeModel}
         signOutSlot={signOutSlot}
       />
       <main

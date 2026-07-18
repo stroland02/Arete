@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   IconAlertTriangle,
   IconBolt,
@@ -86,6 +87,7 @@ function outcomeMessage(provider: ModelProviderDef, outcome: ModelTestOutcome): 
 
 function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; client: ModelConnectionsClient }) {
   const isKey = provider.authKind === "api-key";
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [secret, setSecret] = useState("");
   const [model, setModel] = useState(provider.models[0]);
@@ -124,6 +126,27 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
       cancelled = true;
     };
   }, [provider.id]);
+
+  // Reflect the PERSISTED connection on load: if this provider is already saved,
+  // show it as connected so the badge survives reload and matches the sidebar /
+  // review path — it isn't ephemeral test-only state.
+  useEffect(() => {
+    let cancelled = false;
+    client
+      .list()
+      .then((rows) => {
+        if (cancelled) return;
+        const mine = rows.find((r) => r.provider === provider.id);
+        if (mine) {
+          setModel(mine.model);
+          setOutcome({ status: "connected", model: mine.model });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [provider.id, client]);
 
   // Real pulled models take precedence, then the catalog's suggestions.
   const modelOptions =
@@ -184,60 +207,74 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
       ...(isKey ? { apiKey: secret } : { baseUrl: secret.trim() || provider.authPlaceholder }),
     };
 
-    // API-key providers keep the opaque typed seam. Ollama (the one that's been
-    // failing) takes the diagnostic path below so its exact HTTP status + body
-    // are visible in the card.
+    // Determine the outcome. API-key providers use the opaque typed seam; Ollama
+    // uses the diagnostic path below so its exact HTTP status + body are visible.
+    let result: ModelTestOutcome;
     if (provider.id !== "ollama") {
-      setOutcome(await client.test(input));
-      setTesting(false);
-      return;
+      result = await client.test(input);
+    } else {
+      // Diagnostic-capturing probe. redirect:"manual" means an auth-gate 307
+      // shows up as an opaque redirect instead of being silently followed to the
+      // HTML /login page (which returns 200-not-JSON and masquerades as a
+      // generic failure).
+      const url = "/api/model-connections/test";
+      try {
+        const r = await fetch(url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(input),
+          redirect: "manual",
+        });
+        if (r.type === "opaqueredirect" || r.status === 0) {
+          setDiag(`POST ${url}\n→ redirected (auth gate). Your session cookie wasn't accepted for the API call.\nFix: sign out and back in, then retry.`);
+          result = { status: "failed", reason: "auth redirect — session not recognized for the API call" };
+        } else {
+          const bodyText = await r.text();
+          setDiag(`POST ${url}\n→ HTTP ${r.status}\n${bodyText.slice(0, 600)}`);
+          // eslint-disable-next-line no-console
+          console.info("[ollama-test]", { url, status: r.status, body: bodyText });
+          let parsed: Record<string, unknown> = {};
+          try {
+            parsed = JSON.parse(bodyText) as Record<string, unknown>;
+          } catch {
+            /* non-JSON body (e.g. an HTML error page) — leave parsed empty */
+          }
+          if (r.status === 200 && parsed.ok === true) {
+            result = { status: "connected", model: typeof parsed.model === "string" ? parsed.model : model };
+          } else if (r.status === 401 || r.status === 403) {
+            result = { status: "unauthorized" };
+          } else if (r.status === 404) {
+            result = { status: "not_configured" };
+          } else if (r.status >= 500) {
+            result = { status: "unreachable" };
+          } else {
+            result = { status: "failed", reason: typeof parsed.error === "string" ? parsed.error : `HTTP ${r.status}` };
+          }
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setDiag(`POST ${url}\n→ fetch threw: ${msg}`);
+        result = { status: "unreachable" };
+      }
     }
 
-    // Diagnostic-capturing test. We do the POST here (rather than the opaque
-    // client.test) so the exact HTTP status + response body land in the card.
-    // redirect:"manual" means an auth-gate 307 shows up as an opaque redirect
-    // instead of being silently followed to the HTML /login page — the latter
-    // returns 200-not-JSON and masquerades as a generic "Test failed".
-    const url = "/api/model-connections/test";
-    try {
-      const r = await fetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(input),
-        redirect: "manual",
-      });
-      if (r.type === "opaqueredirect" || r.status === 0) {
-        setDiag(`POST ${url}\n→ redirected (auth gate). Your session cookie wasn't accepted for the API call.\nFix: sign out and back in, then retry.`);
-        setOutcome({ status: "failed", reason: "auth redirect — session not recognized for the API call" });
-        setTesting(false);
-        return;
-      }
-      const bodyText = await r.text();
-      setDiag(`POST ${url}\n→ HTTP ${r.status}\n${bodyText.slice(0, 600)}`);
-      // eslint-disable-next-line no-console
-      console.info("[ollama-test]", { url, status: r.status, body: bodyText });
-      let parsed: Record<string, unknown> = {};
+    // Persist on success so the selection is saved ONCE and every surface — the
+    // sidebar chip and the review/scan path (resolveModelConnectionForReview) —
+    // runs on it. connect() upserts; a keyless Ollama connect skips the re-probe.
+    // router.refresh() re-runs the server layout so the sidebar updates at once.
+    if (result.status === "connected") {
       try {
-        parsed = JSON.parse(bodyText) as Record<string, unknown>;
-      } catch {
-        /* non-JSON body (e.g. an HTML error page) — leave parsed empty */
+        await client.connect(input);
+        router.refresh();
+      } catch (err) {
+        result = {
+          status: "failed",
+          reason: err instanceof Error ? err.message : "connected, but couldn't save the selection",
+        };
       }
-      if (r.status === 200 && parsed.ok === true) {
-        setOutcome({ status: "connected", model: typeof parsed.model === "string" ? parsed.model : model });
-      } else if (r.status === 401 || r.status === 403) {
-        setOutcome({ status: "unauthorized" });
-      } else if (r.status === 404) {
-        setOutcome({ status: "not_configured" });
-      } else if (r.status >= 500) {
-        setOutcome({ status: "unreachable" });
-      } else {
-        setOutcome({ status: "failed", reason: typeof parsed.error === "string" ? parsed.error : `HTTP ${r.status}` });
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setDiag(`POST ${url}\n→ fetch threw: ${msg}`);
-      setOutcome({ status: "unreachable" });
     }
+
+    setOutcome(result);
     setTesting(false);
   }
 
@@ -344,7 +381,7 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
         <div className="mt-3 flex items-center gap-2">
           <Button size="sm" onClick={runTest} disabled={!canTest} className="h-8 rounded-lg text-[12px]">
             {testing ? <IconLoader2 size={13} className="motion-safe:animate-spin" aria-hidden /> : null}
-            {pulling ? (pullStatus ?? "Pulling…") : testing ? "Testing…" : "Test"}
+            {pulling ? (pullStatus ?? "Pulling…") : testing ? "Connecting…" : connected ? "Reconnect" : "Connect"}
           </Button>
           {msg && (
             <span

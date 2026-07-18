@@ -3,6 +3,7 @@ import { auth } from "../../lib/auth";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { SignOutButton } from "@/components/SignOutButton";
 import { GlassBoxDock } from "@/components/dashboard/glassbox/glassbox-dock";
+import { getActiveModelConnection } from "@/lib/model-connections-api";
 
 // This layout wraps every authenticated dashboard route. It reads the
 // session itself (in addition to proxy.ts) so it can render the signed-in
@@ -27,6 +28,7 @@ export default async function DashboardLayout({
   const installations = session.installations ?? [];
   const userEmail = session.user.email ?? null;
   const userName = session.user.name ?? userEmail ?? "Signed in";
+  const activeModel = await getActiveModelConnection();
 
   return (
     <>
@@ -34,6 +36,7 @@ export default async function DashboardLayout({
         installations={installations}
         userName={userName}
         userEmail={userEmail}
+        activeModel={activeModel}
         signOutSlot={<SignOutButton />}
       >
         {children}

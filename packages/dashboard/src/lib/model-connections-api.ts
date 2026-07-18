@@ -13,11 +13,12 @@
 // re-exported here so the routes have a single import surface.
 
 import { auth } from '@/lib/auth';
+import { db } from '@/lib/db';
 import { resolveSelectedInstallationIds } from '@/lib/queries';
-import type { ProbeResult } from './model-connections-map';
+import type { ProbeResult, ActiveModelConnection } from './model-connections-map';
 
 export { toView, classifyTestOutcome } from './model-connections-map';
-export type { ModelConnectionView, ProbeResult, TestHttp } from './model-connections-map';
+export type { ModelConnectionView, ProbeResult, TestHttp, ActiveModelConnection } from './model-connections-map';
 
 export interface SessionScope {
   /** The caller's authorized Installation ids (internal uuids). */
@@ -30,6 +31,27 @@ export async function requireScope(): Promise<SessionScope | null> {
   const session = await auth();
   if (!session?.user) return null;
   return { installationIds: resolveSelectedInstallationIds(session.installations ?? [], undefined) };
+}
+
+/**
+ * The session's active model connection — the newest one across the caller's
+ * authorized installations, or null when none is configured. "Newest = active"
+ * mirrors resolveModelConnectionForReview (webhook), so what the sidebar shows
+ * is exactly what a review runs on. Never throws; returns null on any failure.
+ */
+export async function getActiveModelConnection(): Promise<ActiveModelConnection | null> {
+  try {
+    const scope = await requireScope();
+    if (!scope || scope.installationIds.length === 0) return null;
+    const row = await db.modelConnection.findFirst({
+      where: { installationId: { in: scope.installationIds } },
+      orderBy: { createdAt: 'desc' },
+      select: { provider: true, model: true },
+    });
+    return row ? { provider: row.provider, model: row.model } : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Proxy the provider probe to the webhook's SSRF-guarded internal endpoint.

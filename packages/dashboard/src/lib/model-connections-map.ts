@@ -14,6 +14,13 @@ export function toView(row: { id: string; provider: string; model: string; creat
   return { id: row.id, provider: row.provider, model: row.model, connectedAt: row.createdAt.toISOString() };
 }
 
+/** The session's currently-active model: provider + model. Pure type, safe to
+ *  import into client components (the sidebar chip) — no server dependency. */
+export interface ActiveModelConnection {
+  provider: string;
+  model: string;
+}
+
 export interface ProbeResult {
   ok: boolean;
   model?: string;

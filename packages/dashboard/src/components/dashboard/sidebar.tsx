@@ -3,14 +3,16 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
+import { IconChevronLeft, IconChevronRight, IconCpu } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import { springTransition } from "@/lib/motion";
 import { InstallationSwitcher } from "@/components/InstallationSwitcher";
 import { KumaLogo } from "@/components/ui/kuma-logo";
 import { useGlobalLoading } from "@/lib/loading-context";
+import { MODEL_PROVIDERS } from "@/lib/model-catalog";
 import type { ReactNode } from "react";
 import type { AuthorizedInstallation } from "@/lib/installations";
+import type { ActiveModelConnection } from "@/lib/model-connections-map";
 
 const collapseTransition = { ...springTransition, opacity: { duration: 0.15 } } as const;
 
@@ -31,13 +33,20 @@ interface SidebarProps {
   installations: AuthorizedInstallation[];
   userName: string;
   userEmail: string | null;
+  activeModel: ActiveModelConnection | null;
   signOutSlot: ReactNode;
 }
 
-export function Sidebar({ collapsed, onToggleCollapsed, installations, userName, userEmail, signOutSlot }: SidebarProps) {
+export function Sidebar({ collapsed, onToggleCollapsed, installations, userName, userEmail, activeModel, signOutSlot }: SidebarProps) {
   const pathname = usePathname();
   const { isLoading, setIsLoading } = useGlobalLoading();
   const initial = userName.charAt(0).toUpperCase();
+  // The model every AI-processing page/service runs on (newest = active,
+  // matching the review resolver). Shown on every page so "which model am I
+  // running" is answered globally, not just on the AI Models card.
+  const activeProviderName = activeModel
+    ? MODEL_PROVIDERS.find((p) => p.id === activeModel.provider)?.name ?? activeModel.provider
+    : null;
 
   // A quick demonstration handler to prove the decoupled data pipeline loading state
   const handleSimulateLoad = () => {
@@ -140,6 +149,33 @@ export function Sidebar({ collapsed, onToggleCollapsed, installations, userName,
       >
         {collapsed ? <IconChevronRight className="w-4 h-4" /> : <IconChevronLeft className="w-4 h-4" />}
       </button>
+
+      <Link
+        href="/connections/ai-models"
+        title={activeProviderName ? `Running on ${activeProviderName} · ${activeModel?.model}` : "No AI model connected — click to connect"}
+        className={cn(
+          "mx-4 mb-2 flex items-center gap-2.5 rounded-xl border px-3 py-2 transition-colors",
+          activeModel
+            ? "border-border-default bg-content-primary/5 hover:bg-content-primary/10"
+            : "border-dashed border-border-subtle text-content-muted hover:bg-content-primary/5",
+          collapsed && "justify-center px-0"
+        )}
+      >
+        <IconCpu className={cn("w-4 h-4 shrink-0", activeModel ? "text-accent-primary" : "text-content-muted")} />
+        {!collapsed && (
+          <span className="min-w-0 flex-1">
+            <span className="block text-[9px] uppercase tracking-wide text-content-muted">Running on</span>
+            {activeModel ? (
+              <>
+                <span className="block text-xs font-medium text-content-primary truncate">{activeProviderName}</span>
+                <span className="block font-mono text-[10px] text-content-muted truncate">{activeModel.model}</span>
+              </>
+            ) : (
+              <span className="block text-xs font-medium text-content-secondary truncate">Connect a model</span>
+            )}
+          </span>
+        )}
+      </Link>
 
       <div className="p-4 border-t border-border-subtle">
         <div className="flex items-center gap-3 px-2 py-2">
