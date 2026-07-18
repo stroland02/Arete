@@ -98,6 +98,10 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
   // yet, we pull it first — "Test" means "connect", no manual terminal step.
   const [pulling, setPulling] = useState(false);
   const [pullStatus, setPullStatus] = useState<string | null>(null);
+  // In-browser diagnostics for the Test flow: the exact request + HTTP status +
+  // response body, rendered in the card. Server-side probe logs aren't a surface
+  // the user watches, so failures are shown here where the click happens.
+  const [diag, setDiag] = useState<string | null>(null);
 
   useEffect(() => {
     if (provider.id !== "ollama") return;
@@ -134,6 +138,7 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
   async function runTest() {
     setTesting(true);
     setOutcome(null);
+    setDiag(null);
 
     // Ollama-only: if the selected model isn't pulled yet, pull it first —
     // clicking "Test" means "connect" end-to-end, no manual terminal step.
@@ -178,7 +183,61 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
       model,
       ...(isKey ? { apiKey: secret } : { baseUrl: secret.trim() || provider.authPlaceholder }),
     };
-    setOutcome(await client.test(input));
+
+    // API-key providers keep the opaque typed seam. Ollama (the one that's been
+    // failing) takes the diagnostic path below so its exact HTTP status + body
+    // are visible in the card.
+    if (provider.id !== "ollama") {
+      setOutcome(await client.test(input));
+      setTesting(false);
+      return;
+    }
+
+    // Diagnostic-capturing test. We do the POST here (rather than the opaque
+    // client.test) so the exact HTTP status + response body land in the card.
+    // redirect:"manual" means an auth-gate 307 shows up as an opaque redirect
+    // instead of being silently followed to the HTML /login page — the latter
+    // returns 200-not-JSON and masquerades as a generic "Test failed".
+    const url = "/api/model-connections/test";
+    try {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(input),
+        redirect: "manual",
+      });
+      if (r.type === "opaqueredirect" || r.status === 0) {
+        setDiag(`POST ${url}\n→ redirected (auth gate). Your session cookie wasn't accepted for the API call.\nFix: sign out and back in, then retry.`);
+        setOutcome({ status: "failed", reason: "auth redirect — session not recognized for the API call" });
+        setTesting(false);
+        return;
+      }
+      const bodyText = await r.text();
+      setDiag(`POST ${url}\n→ HTTP ${r.status}\n${bodyText.slice(0, 600)}`);
+      // eslint-disable-next-line no-console
+      console.info("[ollama-test]", { url, status: r.status, body: bodyText });
+      let parsed: Record<string, unknown> = {};
+      try {
+        parsed = JSON.parse(bodyText) as Record<string, unknown>;
+      } catch {
+        /* non-JSON body (e.g. an HTML error page) — leave parsed empty */
+      }
+      if (r.status === 200 && parsed.ok === true) {
+        setOutcome({ status: "connected", model: typeof parsed.model === "string" ? parsed.model : model });
+      } else if (r.status === 401 || r.status === 403) {
+        setOutcome({ status: "unauthorized" });
+      } else if (r.status === 404) {
+        setOutcome({ status: "not_configured" });
+      } else if (r.status >= 500) {
+        setOutcome({ status: "unreachable" });
+      } else {
+        setOutcome({ status: "failed", reason: typeof parsed.error === "string" ? parsed.error : `HTTP ${r.status}` });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setDiag(`POST ${url}\n→ fetch threw: ${msg}`);
+      setOutcome({ status: "unreachable" });
+    }
     setTesting(false);
   }
 
@@ -298,6 +357,11 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
             </span>
           )}
         </div>
+        {diag && (
+          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border-subtle bg-surface-2/40 px-2.5 py-2 font-mono text-[10px] leading-relaxed text-content-muted">
+            {diag}
+          </pre>
+        )}
       </div>
     </div>
   );
