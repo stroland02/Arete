@@ -21,6 +21,7 @@ import {
   type ModelConnectionsClient,
   type ModelTestOutcome,
 } from "@/lib/model-connections-client";
+import { consumePullStream } from "@/lib/ollama-pull";
 
 /**
  * The "AI Models" Connections section. Providers render as rows in the same
@@ -93,6 +94,10 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
   // Auto-detect a running local Ollama: prefill the Base URL and offer the
   // user's actually-pulled models. null = not yet probed. Ollama card only.
   const [detect, setDetect] = useState<{ running: boolean; models: string[] } | null>(null);
+  // Auto-pull state: when Test is clicked for a model Ollama hasn't pulled
+  // yet, we pull it first — "Test" means "connect", no manual terminal step.
+  const [pulling, setPulling] = useState(false);
+  const [pullStatus, setPullStatus] = useState<string | null>(null);
 
   useEffect(() => {
     if (provider.id !== "ollama") return;
@@ -124,11 +129,50 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
 
   const connected = outcome?.status === "connected";
   // api-key providers need a key; Ollama can fall back to its default base URL.
-  const canTest = !testing && (!isKey || secret.trim().length > 0);
+  const canTest = !testing && !pulling && (!isKey || secret.trim().length > 0);
 
   async function runTest() {
     setTesting(true);
     setOutcome(null);
+
+    // Ollama-only: if the selected model isn't pulled yet, pull it first —
+    // clicking "Test" means "connect" end-to-end, no manual terminal step.
+    if (provider.id === "ollama" && detect?.running && model && !detect.models.includes(model)) {
+      setPulling(true);
+      setPullStatus(`Pulling ${model}…`);
+      try {
+        const res = await fetch("/api/ollama/pull", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ model }),
+        });
+        const pullOutcome = await consumePullStream(res.body, (line) => {
+          if (!line.status) return;
+          setPullStatus(
+            line.total
+              ? `${line.status} (${Math.round(((line.completed ?? 0) / line.total) * 100)}%)`
+              : line.status,
+          );
+        });
+        if (!res.ok || !pullOutcome.ok) {
+          setOutcome({ status: "failed", reason: pullOutcome.detail ?? `pull failed (${res.status})` });
+          setPulling(false);
+          setPullStatus(null);
+          setTesting(false);
+          return;
+        }
+        setDetect((d) => (d ? { ...d, models: Array.from(new Set([...d.models, model])) } : d));
+      } catch (err) {
+        setOutcome({ status: "failed", reason: err instanceof Error ? err.message : "pull request failed" });
+        setPulling(false);
+        setPullStatus(null);
+        setTesting(false);
+        return;
+      }
+      setPulling(false);
+      setPullStatus(null);
+    }
+
     const input = {
       provider: provider.id,
       model,
@@ -231,17 +275,17 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
         </div>
         {provider.id === "ollama" && detect && (
           <p className="mt-2 text-[10px] leading-relaxed text-content-muted/80">
-            {detect.running && detect.models.length > 0
+            {detect.running && detect.models.includes(model)
               ? "Detected Ollama — Base URL and models auto-filled."
               : detect.running
-                ? "Ollama is running but no models are pulled yet — run: ollama pull qwen2.5-coder"
-                : "Ollama not detected — install it, run `ollama pull qwen2.5-coder`, keep it running, then reopen this page."}
+                ? "Ollama is running — click Test to pull the selected model and connect (no terminal needed)."
+                : "Ollama not detected — install it, keep it running, then reopen this page."}
           </p>
         )}
         <div className="mt-3 flex items-center gap-2">
           <Button size="sm" onClick={runTest} disabled={!canTest} className="h-8 rounded-lg text-[12px]">
             {testing ? <IconLoader2 size={13} className="motion-safe:animate-spin" aria-hidden /> : null}
-            {testing ? "Testing…" : "Test"}
+            {pulling ? (pullStatus ?? "Pulling…") : testing ? "Testing…" : "Test"}
           </Button>
           {msg && (
             <span
