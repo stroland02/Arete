@@ -117,7 +117,7 @@ export const MODEL_PROVIDERS: ModelProviderDef[] = [
     customModelAllowed: true,
     freeDefault: true,
     isAnthropic: false,
-    note: "Free default — runs on your own machine, bounded by your hardware. Install Ollama, run `ollama pull qwen2.5-coder`, and keep it running; Kuma auto-detects it at 127.0.0.1:11434 (use 127.0.0.1, not localhost). Verification runs on your connected model.",
+    note: "Free default — runs on your own machine, bounded by your hardware. Setup: 1) Install Ollama (link above) — the local server starts automatically once it's installed. 2) Pull a model: run `ollama pull qwen2.5-coder` in a terminal, or type qwen2.5-coder into the Ollama app's own launcher box and press Enter — either way downloads it (~4.7GB). 3) Keep Ollama running, then reopen this card — Kuma auto-detects it at 127.0.0.1:11434 and lists your pulled models below. Verification runs on your connected model.",
     setupUrl: "https://ollama.com/download",
     setupLabel: "Download Ollama (no key needed)",
   },
