@@ -392,9 +392,17 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
 
   // Same column widths as /agents (260px rail / flexible center / 320px
   // right) so the two pages read as one consistent system.
+  // Full-bleed (-m-8) lives on the WRAPPER so the triage bar and the 3-pane
+  // grid share one bleed column — putting it on the grid alone pulls the grid
+  // up underneath the bar (the header-collision bug). The grid then fills the
+  // remaining height as a flex child instead of claiming the full viewport.
+  const wrapperClass =
+    variant === "embedded"
+      ? "-m-8 flex min-h-0 flex-col border-t border-border-subtle bg-surface-1/20 lg:h-[calc(100vh-4.5rem)]"
+      : "flex min-h-0 flex-col";
   const outerClass =
     variant === "embedded"
-      ? "-m-8 grid min-h-[540px] grid-cols-1 divide-y divide-border-subtle border-t border-border-subtle bg-surface-1/20 overflow-hidden lg:grid lg:h-[calc(100vh-4.5rem)] lg:min-h-0 lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:divide-x lg:divide-y-0"
+      ? "grid min-h-[540px] grid-cols-1 divide-y divide-border-subtle overflow-hidden lg:min-h-0 lg:flex-1 lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:divide-x lg:divide-y-0"
       : "grid min-h-[560px] grid-cols-1 divide-y divide-border-subtle overflow-hidden lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:divide-x lg:divide-y-0";
 
   // Sample Issue.status → TriageStatus (marketing preview only).
@@ -407,7 +415,7 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
     : deriveTriage(issues.map((i) => ({ status: sampleStatus(i.status) })));
 
   return (
-    <div ref={containerRef} className="flex min-h-0 flex-col">
+    <div ref={containerRef} className={wrapperClass}>
       <TriageBar counts={triageCounts} />
       <div className={outerClass}>
       {/* Rail: services (each expandable to its issues) + connect catalog */}
@@ -1055,12 +1063,12 @@ function WorkItemInboxSection({
   return (
     <div className="border-b border-border-subtle">
       <header className="flex items-center gap-2 px-3 pb-1 pt-3">
-        <h3 className="text-[10px] font-semibold uppercase tracking-wider text-content-muted">Work items</h3>
-        <span className="ml-auto flex items-center gap-1 font-mono text-[10px] tabular-nums text-content-muted">
-          <span>Issues ({openIssues})</span>
-          <span aria-hidden>/</span>
-          <span>Opportunities ({openOpportunities})</span>
-        </span>
+        <div className="min-w-0">
+          <h3 className="text-[10px] font-semibold uppercase tracking-wider text-content-muted">Work items</h3>
+          <p className="mt-0.5 whitespace-nowrap font-mono text-[10px] tabular-nums text-content-muted">
+            Issues ({openIssues}) · Opportunities ({openOpportunities})
+          </p>
+        </div>
       </header>
 
       {inbox.items.length > 0 && (
