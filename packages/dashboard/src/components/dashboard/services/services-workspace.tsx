@@ -8,6 +8,7 @@ import { motion, AnimatePresence, useInView } from "framer-motion";
 import { IconArrowRight, IconBrandGithub, IconChevronDown, IconCopy, IconGitBranch, IconGitPullRequest, IconHourglassHigh, IconPlus, IconLoader2, IconCheck } from "@tabler/icons-react";
 import { KumaLogo } from "@/components/ui/kuma-logo";
 import type { ServiceReviewGroup, ServiceReviewRow } from "@/lib/queries";
+import type { InboxView, WorkItemView } from "@/lib/work-items";
 
 /**
  * Services "Triage Inbox" workspace. Production signals from CONNECTED
@@ -261,6 +262,13 @@ export interface ServicesWorkspaceProps {
    * mere presence (even []) switches the workspace into real mode.
    */
   reviewGroups?: ServiceReviewGroup[];
+  /**
+   * The work-item inbox (scans + review findings + telemetry errors) for the
+   * tenant's connected repos, plus the latest ScanRun for the honest scan
+   * status line. Null/undefined hides the section (marketing preview or a
+   * disconnected account).
+   */
+  inbox?: InboxView | null;
 }
 
 // Real review riskLevel → rail dot / pill styling (risk tiers, not the sample
@@ -292,7 +300,7 @@ function shortWhen(iso: string): string {
  * fabricated rows. The marketing preview passes SAMPLE_* + variant="framed"
  * to show the populated UI inside a card.
  */
-export function ServicesWorkspace({ services = [], issues = [], variant = "embedded", connected = false, containerId = null, reviewGroups, repositories = [] }: ServicesWorkspaceProps) {
+export function ServicesWorkspace({ services = [], issues = [], variant = "embedded", connected = false, containerId = null, reviewGroups, repositories = [], inbox = null }: ServicesWorkspaceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const isInView = useInView(containerRef, { margin: "-100px 0px -100px 0px" });
 
@@ -313,6 +321,17 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
   const [openRepo, setOpenRepo] = useState<string | null>(reviewGroups?.[0]?.repositoryFullName ?? null);
   const selectedReview: ServiceReviewRow | null =
     reviewGroups?.flatMap((g) => g.reviews).find((r) => r.id === activeContainerId) ?? null;
+
+  // Work-item inbox selection: selecting an item shows its detail+evidence in
+  // the right pane; a fixing/staged item also points the center Kuma console
+  // at its container stream.
+  const [activeItemId, setActiveItemId] = useState<string | null>(null);
+  const selectedItem: WorkItemView | null =
+    inbox?.items.find((i) => i.id === activeItemId) ?? null;
+  function handleSelectItem(it: WorkItemView) {
+    setActiveItemId((cur) => (cur === it.id ? null : it.id));
+    if (it.containerId) setActiveContainerId(it.containerId);
+  }
 
   const [serviceId, setServiceId] = useState<string | null>(services[0]?.id ?? null);
   const [issueId, setIssueId] = useState<string | null>(
@@ -554,6 +573,17 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
             </ul>
           )}
 
+          {/* Work-item inbox: what Kuma discovered in the connected repos —
+              scans, review findings, telemetry errors. Under the repo rows,
+              like unread counts on a mailbox. */}
+          {realMode && inbox && (
+            <WorkItemInboxSection
+              inbox={inbox}
+              activeItemId={activeItemId}
+              onSelect={handleSelectItem}
+            />
+          )}
+
           <div className="px-3 py-3">
             <Link
               href="/connections"
@@ -596,11 +626,16 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
         )}
       </section>
 
-      {/* Right: the selected item's detail — real review facts in real mode,
-          the scripted sample issue in the marketing preview. */}
+      {/* Right: the selected item's detail — a selected work item wins, then
+          real review facts in real mode, then the scripted sample issue in the
+          marketing preview. */}
       <section className="flex min-h-0 flex-1 flex-col" aria-label="Issue panel">
         {realMode ? (
-          <ReviewPanel review={selectedReview} />
+          selectedItem ? (
+            <WorkItemPanel item={selectedItem} />
+          ) : (
+            <ReviewPanel review={selectedReview} />
+          )
         ) : (
           <IssuePanel issue={selected} isReplaying={isReplaying} />
         )}
@@ -933,6 +968,190 @@ function IssuePanel({ issue, isReplaying }: { issue: Issue | null; isReplaying: 
           </footer>
         </motion.div>
       )}
+    </>
+  );
+}
+
+// ── Work-item inbox (rail) ───────────────────────────────────────────────────
+
+const KIND_LABEL: Record<WorkItemView["kind"], string> = {
+  issue: "Issue",
+  opportunity: "Opportunity",
+  error: "Error",
+  pr_finding: "PR finding",
+};
+const KIND_CHIP: Record<WorkItemView["kind"], string> = {
+  issue: "text-accent-danger border-accent-danger/30 bg-accent-danger/10",
+  error: "text-accent-danger border-accent-danger/30 bg-accent-danger/10",
+  opportunity: "text-accent-success border-accent-success/30 bg-accent-success/10",
+  pr_finding: "text-accent-info border-accent-info/30 bg-accent-info/10",
+};
+
+/** The honest scan-status line: real ScanRun status only, never invented. */
+function scanStatusLine(lastScan: InboxView["lastScan"]): string {
+  if (!lastScan) return "Not scanned yet.";
+  if (lastScan.status === "running") return "Scanning…";
+  if (lastScan.status === "failed") return `Scan failed: ${lastScan.error ?? "unknown error"} — retry`;
+  const when = lastScan.finishedAt ? new Date(lastScan.finishedAt).toLocaleDateString() : "";
+  if (lastScan.status === "no_findings") return `Scanned ${when} — no issues found. Rescan anytime.`;
+  return `Scanned ${when}.`;
+}
+
+function WorkItemInboxSection({
+  inbox,
+  activeItemId,
+  onSelect,
+}: {
+  inbox: InboxView;
+  activeItemId: string | null;
+  onSelect: (item: WorkItemView) => void;
+}) {
+  const [scanRequested, setScanRequested] = useState(false);
+  const openIssues = inbox.items.filter((i) => i.state === "open" && i.kind !== "opportunity").length;
+  const openOpportunities = inbox.items.filter((i) => i.state === "open" && i.kind === "opportunity").length;
+  const scanning = scanRequested || inbox.lastScan?.status === "running";
+
+  async function handleScan() {
+    setScanRequested(true);
+    try {
+      // 202 started / 409 already running — both mean a run is (now) live, so
+      // refresh shortly to pick up its ScanRun row. Anything else resets.
+      const res = await fetch("/api/scan", { method: "POST" });
+      if (res.status === 202 || res.status === 409) {
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        setScanRequested(false);
+      }
+    } catch {
+      setScanRequested(false);
+    }
+  }
+
+  return (
+    <div className="border-b border-border-subtle">
+      <header className="flex items-center gap-2 px-3 pb-1 pt-3">
+        <h3 className="text-[10px] font-semibold uppercase tracking-wider text-content-muted">Work items</h3>
+        <span className="ml-auto flex items-center gap-1 font-mono text-[10px] tabular-nums text-content-muted">
+          <span>Issues ({openIssues})</span>
+          <span aria-hidden>/</span>
+          <span>Opportunities ({openOpportunities})</span>
+        </span>
+      </header>
+
+      {inbox.items.length > 0 && (
+        <ul className="py-1">
+          {inbox.items.map((it) => {
+            const on = it.id === activeItemId;
+            return (
+              <li key={it.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(it)}
+                  aria-current={on ? "true" : undefined}
+                  className={`flex w-full items-center gap-2 py-1.5 pl-3 pr-3 text-left transition-colors ${
+                    on
+                      ? "bg-accent-primary/[0.1] text-content-primary"
+                      : "text-content-secondary hover:bg-content-primary/[0.04]"
+                  }`}
+                >
+                  <span
+                    className={`shrink-0 rounded-full border px-1.5 py-px text-[9px] font-bold ${KIND_CHIP[it.kind]}`}
+                  >
+                    {KIND_LABEL[it.kind]}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[11.5px]">{it.title}</span>
+                  <span className="shrink-0 font-mono text-[10px] text-content-muted">{it.dimension}</span>
+                  <span
+                    className="shrink-0 font-mono text-[10px] tabular-nums text-content-muted"
+                    title="Verified confidence from the scanning agents"
+                  >
+                    {Math.round(it.confidence * 100)}%
+                  </span>
+                  {it.state !== "open" && (
+                    <span className="shrink-0 rounded-full border border-border-default bg-surface-2 px-1.5 py-px font-mono text-[9px] text-content-muted">
+                      {it.state}
+                    </span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {/* Honest status line + manual re-scan. A scanned-clean repo is
+          connected_idle: populated ("no issues found"), never blank. */}
+      <div className="flex items-center gap-2 px-3 pb-3 pt-1">
+        <p className="min-w-0 flex-1 text-[10.5px] leading-4 text-content-muted">
+          {scanRequested ? "Scanning…" : scanStatusLine(inbox.lastScan)}
+        </p>
+        <button
+          type="button"
+          onClick={handleScan}
+          disabled={scanning}
+          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border-default bg-surface-2 px-2 py-1 text-[10.5px] font-medium text-content-secondary transition-colors hover:border-border-strong hover:bg-content-primary/5 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {scanning ? (
+            <IconLoader2 size={11} stroke={2} className="animate-spin" aria-hidden />
+          ) : null}
+          Scan
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Right pane for a selected work item: the discovered problem/opportunity with
+ * its REAL file:line evidence — exactly what the agents cited, nothing else.
+ * Triage actions (Fix it / Implement it / Dismiss) arrive with the triage
+ * routes; a fixing item's live stream already plays in the center console.
+ */
+function WorkItemPanel({ item }: { item: WorkItemView }) {
+  return (
+    <>
+      <header className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Work item</h2>
+        <span className={`rounded-full border px-1.5 py-px text-[9.5px] font-bold uppercase tracking-wide ${KIND_CHIP[item.kind]}`}>
+          {KIND_LABEL[item.kind]}
+        </span>
+      </header>
+
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="shrink-0 space-y-1 border-b border-border-subtle px-3 py-2.5">
+          <p className="text-[12.5px] font-semibold leading-snug text-content-primary">{item.title}</p>
+          <p className="font-mono text-[10.5px] text-content-muted">
+            {item.dimension} · {Math.round(item.confidence * 100)}% confidence · {item.state}
+          </p>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <PanelSection title="What Kuma found">
+            <p className="whitespace-pre-wrap px-1 text-[11.5px] leading-5 text-content-secondary">{item.detail}</p>
+          </PanelSection>
+          <PanelSection title="Evidence">
+            <ul className="mx-1 space-y-1.5">
+              {item.evidence.map((ev, idx) => (
+                <li key={idx} className="overflow-hidden rounded-lg border border-border-default bg-surface-2">
+                  <div className="border-b border-border-subtle px-2.5 py-1.5 font-mono text-[10.5px] text-content-muted">
+                    {ev.path}:{ev.line}
+                  </div>
+                  {ev.excerpt ? (
+                    <pre className="overflow-x-auto px-2.5 py-1.5 font-mono text-[11px] leading-relaxed text-content-secondary">{ev.excerpt}</pre>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </PanelSection>
+          {item.state === "fixing" && item.containerId ? (
+            <PanelSection title="Live fix">
+              <p className="px-1 text-[11px] leading-5 text-content-muted">
+                Kuma is working this item now — the live stream is playing in the console on the left.
+              </p>
+            </PanelSection>
+          ) : null}
+        </div>
+      </div>
     </>
   );
 }

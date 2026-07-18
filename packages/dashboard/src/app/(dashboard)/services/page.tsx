@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getConnectedRepositories, getServicesInbox, resolveSelectedInstallationIds } from "@/lib/queries";
+import { getWorkItemInbox } from "@/lib/work-items";
 import { ServicesWorkspace } from "@/components/dashboard/services/services-workspace";
 
 // Session-scoped like every dashboard page; never statically prerendered.
@@ -26,12 +27,13 @@ export default async function ServicesPage({
   const { container } = await searchParams;
   const installationIds = resolveSelectedInstallationIds(session.installations ?? [], undefined);
   const connected = installationIds.length > 0;
-  const [reviewGroups, repositories] = connected
+  const [reviewGroups, repositories, inbox] = connected
     ? await Promise.all([
         getServicesInbox(db, installationIds),
         getConnectedRepositories(db, installationIds),
+        getWorkItemInbox(db, installationIds),
       ])
-    : [[], []];
+    : [[], [], null];
 
   return (
     <ServicesWorkspace
@@ -39,6 +41,7 @@ export default async function ServicesPage({
       containerId={container ?? null}
       reviewGroups={reviewGroups}
       repositories={repositories}
+      inbox={inbox}
     />
   );
 }
