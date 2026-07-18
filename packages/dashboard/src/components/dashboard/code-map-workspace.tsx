@@ -8,6 +8,7 @@ import { buildSidebarModel, type CodeMapSelection } from "@/lib/code-map-sidebar
 import type { CodeMapFilter } from "@/lib/code-map-view";
 import { CodeMap } from "./code-map";
 import { CodeMapDrawer } from "./code-map-drawer";
+import { CodeSourcePanel } from "./code-source-panel";
 
 interface CodeMapWorkspaceProps {
   topology: Topology;
@@ -31,11 +32,24 @@ export function CodeMapWorkspace({ topology, sensors, findings, initialSelection
   const [selection, setSelection] = useState<CodeMapSelection | null>(initialSelection);
   const [filter, setFilter] = useState<CodeMapFilter>("all");
   const [search, setSearch] = useState("");
+  const [sourceOpen, setSourceOpen] = useState(false);
+
+  // Changing selection always closes the reading panel — the panel belongs to
+  // the file it was opened for, never silently re-targets.
+  const select = (sel: CodeMapSelection | null) => {
+    setSelection(sel);
+    setSourceOpen(false);
+  };
 
   const model = useMemo(
     () => (selection ? buildSidebarModel(topology, sensors, findings, selection) : null),
     [topology, sensors, findings, selection],
   );
+
+  const selectedPath =
+    selection?.kind === "file"
+      ? (topology.nodes.find((n) => n.id === selection.id)?.meta?.path as string | undefined)
+      : undefined;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
@@ -69,19 +83,35 @@ export function CodeMapWorkspace({ topology, sensors, findings, initialSelection
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 gap-3">
+      <div className="relative flex min-h-0 flex-1 gap-3">
         <div className="min-w-0 flex-1">
           <CodeMap
             topology={topology}
             sensors={sensors}
             interactive
             selected={selection}
-            onSelect={setSelection}
+            onSelect={select}
             filter={filter}
             search={search}
           />
         </div>
-        {model && <CodeMapDrawer model={model} onClose={() => setSelection(null)} onJump={setSelection} />}
+        {model && (
+          <CodeMapDrawer
+            model={model}
+            onClose={() => select(null)}
+            onJump={select}
+            onViewSource={selectedPath ? () => setSourceOpen(true) : undefined}
+          />
+        )}
+        {sourceOpen && selectedPath && model && (
+          <div className="absolute inset-y-0 right-0 z-20 w-full max-w-[62%] min-w-[420px]">
+            <CodeSourcePanel
+              path={selectedPath}
+              findings={model.health.rows}
+              onClose={() => setSourceOpen(false)}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
