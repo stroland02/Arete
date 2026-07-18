@@ -41,13 +41,12 @@ export async function runReviewPipeline(
 
   try {
     const baseUrl = getServiceConfig().pythonServiceUrl
-    // The agents /review parses the BYO block as `llm` (its LLMConfig shape) —
-    // send the resolved connection under that name, never `modelConnection`.
-    const { modelConnection, ...rest } = prContext
-    const body = modelConnection ? { ...rest, llm: modelConnection } : prContext
+    // prContext already carries the resolved `llm` block (attached above) —
+    // the agents /review parses exactly that name. (A stale merge remnant here
+    // used to re-map a long-gone `modelConnection` field; removed.)
     const res = await fetch(`${baseUrl}/review`, {
       method: 'POST',
-      body: JSON.stringify(body),
+      body: JSON.stringify(prContext),
       headers: { 'Content-Type': 'application/json' },
       signal: controller.signal
     })
