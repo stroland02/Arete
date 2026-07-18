@@ -131,6 +131,49 @@ model IssueContainer {
   @@index([installationId])
 }
 
+/// One unit of discovered work — the "email" in the Services inbox.
+/// kind: "issue" | "opportunity" | "error" | "pr_finding" (later: "campaign")
+/// source: "scan" | "review" | "telemetry" (later: "catalog")
+/// state: "open" | "fixing" | "staged" | "posted" | "dismissed"
+model WorkItem {
+  id             String   @id @default(uuid())
+  installationId String
+  kind           String
+  source         String
+  title          String
+  detail         String
+  /// [{ "path": "src/x.ts", "line": 12, "excerpt": "..." }] — REAL refs only.
+  evidence       Json
+  /// One of the six review dimensions (security, performance, quality,
+  /// test_coverage, deployment_safety, business_logic).
+  dimension      String
+  confidence     Float
+  state          String   @default("open")
+  /// Dedup key: sha256 of installationId + dimension + sorted evidence paths.
+  fingerprint    String
+  containerId    String?
+  scanRunId      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([installationId, fingerprint])
+  @@index([installationId, state])
+}
+
+/// One scan execution — honest status, always recorded.
+/// status: "running" | "complete" | "failed" | "no_findings"
+model ScanRun {
+  id             String    @id @default(uuid())
+  installationId String
+  repositoryId   String
+  status         String    @default("running")
+  error          String?
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+
+  @@index([installationId, startedAt])
+}
+
 model Repository {
   id             String       @id @default(uuid())
   provider       ScmProvider

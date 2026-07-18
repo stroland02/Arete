@@ -54,9 +54,10 @@ export async function createServer(): Promise<express.Application> {
     const account = payload.installation.account
     const owner = account && 'login' in account ? account.login : undefined
     if (!owner) return
+    let installationUuid: string | undefined
     try {
       const { persistInstallation } = await import('./persistence.js')
-      await persistInstallation({
+      installationUuid = await persistInstallation({
         provider: 'github',
         installationExternalId: payload.installation.id,
         owner,
@@ -92,6 +93,17 @@ export async function createServer(): Promise<express.Application> {
       await triggerContextMapIndex(app, payload.installation.id, repos)
     } catch (err) {
       console.error('[server] Error triggering code-map index on install:', err)
+    }
+
+    // Auto-scan on connect (work-item inbox): fire-and-forget — the trigger
+    // itself gates on repo+model both present, so whichever side of the pair
+    // completes last actually starts the scan. Runs AFTER the PR backfill so
+    // the tenant's Repository rows exist for the repo gate. Never blocks or
+    // fails the installation handler.
+    if (installationUuid) {
+      import('./scan/trigger.js')
+        .then(({ maybeStartScan }) => maybeStartScan(installationUuid!))
+        .catch((err) => console.error('[server] Error auto-triggering scan on install:', err))
     }
   })
 
@@ -201,6 +213,31 @@ export async function createServer(): Promise<express.Application> {
   }
   const { createStagingSendHandler } = await import('./staging/send-handler.js')
   server.post('/staging/send', express.json(), createStagingSendHandler(stagingSendDeps))
+
+  // Internal scan trigger (work-item inbox). The dashboard's session-scoped
+  // POST /api/scan proxies here with a session-derived internal installation
+  // uuid; the connect choke points fire it directly. All gating (repo present,
+  // model present, no scan already running) lives in maybeStartScan — this
+  // route only maps the result: 202 started / 409 already_running / 200
+  // {started:false, reason}. Deps import lazily (db-free registration).
+  server.post('/scan/trigger', express.json(), async (req, res) => {
+    const installationId =
+      typeof req.body?.installationId === 'string' ? req.body.installationId : ''
+    if (!installationId) {
+      res.status(400).json({ error: 'installationId required' })
+      return
+    }
+    try {
+      const { maybeStartScan } = await import('./scan/trigger.js')
+      const result = await maybeStartScan(installationId)
+      if (result.started) res.status(202).json(result)
+      else if (result.reason === 'already_running') res.status(409).json(result)
+      else res.status(200).json(result)
+    } catch (err) {
+      console.error('[scan] trigger route failed:', err)
+      res.status(500).json({ error: 'internal_error' })
+    }
+  })
 
   // Internal model-connection Test probe. The dashboard's session-authenticated
   // /api/model-connections/test route proxies here so the SSRF-guarded outbound

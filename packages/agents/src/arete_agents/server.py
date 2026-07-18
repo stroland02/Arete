@@ -23,9 +23,10 @@ from arete_agents.llm.base import (
 )
 
 _logger = logging.getLogger(__name__)
-from arete_agents.models.pr import PRContext
+from arete_agents.models.pr import PRContext, ScanRequest
 from arete_agents.orchestrator import ReviewOrchestrator
 from arete_agents.remediation import RemediationGraph
+from arete_agents.scan import ScanUnavailableError, run_scan
 from arete_agents.tools.executor import CommandExecutionError, get_command_executor
 
 app = FastAPI()
@@ -153,6 +154,56 @@ def review(pr: PRContext):
         if reason:
             raise HTTPException(status_code=503, detail=reason)
     return _get_orchestrator().run(pr)
+
+
+@app.post("/scan")
+def scan(req: ScanRequest):
+    """Repo-wide discovery scan (work-item inbox). Mirrors /review's structure
+    exactly: per-request BYO `llm` block builds fresh clients via
+    get_llms_by_role_from_config; the Ollama safety fallback returns an honest
+    503 (with the pull hint) when unreachable; keyless boot is unaffected —
+    the LLM requirement stays deferred to this endpoint."""
+    from arete_agents.context_map.graph_export import GraphExportError
+
+    def _execute(llms):
+        try:
+            return run_scan(req, llms)
+        except (GraphExportError, ScanUnavailableError) as exc:
+            # No code map / no checkout yet — an honest "can't scan yet",
+            # never an empty-but-complete result.
+            raise HTTPException(status_code=503, detail=str(exc))
+
+    if req.llm is not None:
+        if req.llm.provider == "ollama":
+            reason = ollama_unavailable_reason(
+                req.llm.base_url or DEFAULT_OLLAMA_BASE_URL,
+                req.llm.model or DEFAULT_OLLAMA_MODEL,
+                _resolve_settings().deployment_tier,
+            )
+            if reason:
+                raise HTTPException(status_code=503, detail=reason)
+        try:
+            llms = get_llms_by_role_from_config(
+                provider=req.llm.provider,
+                model=req.llm.model,
+                api_key=req.llm.api_key,
+                base_url=req.llm.base_url,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        return _execute(llms)
+
+    # Default path — may be the Ollama safety fallback (no primary key).
+    settings = _resolve_settings()
+    if settings.llm_provider == "ollama":
+        reason = ollama_unavailable_reason(
+            settings.ollama_base_url,
+            settings.ollama_model,
+            settings.deployment_tier,
+        )
+        if reason:
+            raise HTTPException(status_code=503, detail=reason)
+    return _execute(get_llms_by_role(settings))
 
 
 class ApplyApprovalRequest(BaseModel):

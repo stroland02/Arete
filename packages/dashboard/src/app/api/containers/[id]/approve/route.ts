@@ -68,6 +68,18 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     return Response.json({ error: "not_found" }, { status: 404 });
   }
 
+  // Work-item inbox hook: a human approving this container's solution is the
+  // moment its work item leaves "fixing" — the staged PR now awaits Send.
+  // Tenant-scoped and non-fatal: the approval outcome never depends on it.
+  try {
+    await db.workItem.updateMany({
+      where: { containerId: id, installationId: { in: installationIds }, state: "fixing" },
+      data: { state: "staged" },
+    });
+  } catch (err) {
+    console.error(`[approve] work-item staged hook failed for container ${id} (non-fatal):`, err);
+  }
+
   return Response.json(
     { container: { id, installationId: owningInstallationId, state: "solution_approved", gates } },
     { status: 200 },

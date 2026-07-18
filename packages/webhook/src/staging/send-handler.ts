@@ -46,6 +46,26 @@ export function createStagingSendHandler(
 
     try {
       const result = await run(deps, { containerId, installationId })
+
+      // Work-item inbox hook: the PR actually opening (or already being open —
+      // idempotent replay) flips the container's work item to `posted`. Lazy
+      // import + non-fatal by the same contract as the rest of this seam: the
+      // send outcome the caller sees never depends on the inbox update.
+      if (result.outcome === 'opened' || result.outcome === 'already_open') {
+        try {
+          const { prisma } = await import('../db.js')
+          await prisma.workItem.updateMany({
+            where: { containerId, installationId, state: { in: ['fixing', 'staged'] } },
+            data: { state: 'posted' },
+          })
+        } catch (err) {
+          console.error(
+            `[staging] work-item posted hook failed for container ${containerId} (non-fatal):`,
+            err,
+          )
+        }
+      }
+
       res.status(statusFor(result)).json(result)
     } catch (err) {
       // runStagingSend already converts expected errors to { outcome: 'failed' };
