@@ -5,6 +5,8 @@ import { motion } from "framer-motion";
 import { IconGitPullRequest } from "@tabler/icons-react";
 import { staggerContainer, fadeSlideUp } from "@/lib/motion";
 import { EmptyState } from "./empty-state";
+import { relativeTime } from "@/lib/relative-time";
+import { SeverityStripe } from "@/components/ui/severity-stripe";
 
 export interface ActivityItem {
   id: string;
@@ -14,20 +16,6 @@ export interface ActivityItem {
   riskLevel: string;
 }
 
-function timeAgo(date: Date): string {
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return date.toLocaleDateString();
-}
-
-// Semantic risk colors come from the accent-{danger,warning,success} tokens so
-// they adapt across both themes (never a fixed light/dark hue).
 function riskBadgeClasses(riskLevel: string): string {
   switch (riskLevel.toLowerCase()) {
     case "critical":
@@ -54,27 +42,24 @@ export function ActivityList({ reviews }: { reviews: ActivityItem[] }) {
   }
 
   return (
-    <motion.div className="space-y-4" variants={staggerContainer} initial="hidden" animate="show">
+    <motion.div className="flex flex-col" variants={staggerContainer} initial="hidden" animate="show">
       {reviews.map((review) => (
         <motion.div key={review.id} variants={fadeSlideUp}>
           <Link
             href={`/reviews/${review.id}`}
-            className="flex gap-4 p-3 rounded-xl hover:bg-content-primary/[0.04] transition-colors cursor-pointer border border-transparent hover:border-border-subtle"
+            className="group flex items-center gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-content-primary/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/40"
           >
-            <div className="w-2 h-2 mt-2 rounded-full bg-accent-primary" />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-medium text-content-secondary font-mono tabular-nums truncate">{review.repositoryName}</p>
-                <span
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide border shrink-0 ${riskBadgeClasses(review.riskLevel)}`}
-                >
-                  {review.riskLevel}
-                </span>
-              </div>
-              <p className="text-xs text-content-muted mt-1">
-                <span className="font-mono tabular-nums">PR #{review.prNumber}</span> • {timeAgo(new Date(review.createdAt))}
-              </p>
-            </div>
+            <SeverityStripe risk={review.riskLevel} />
+            <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-content-primary">{review.repositoryName}</span>
+            <span className="shrink-0 font-mono text-[12px] tabular-nums text-content-muted">PR #{review.prNumber}</span>
+            <span
+              className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${riskBadgeClasses(review.riskLevel)}`}
+            >
+              {review.riskLevel}
+            </span>
+            <span className="w-16 shrink-0 text-right text-[11px] tabular-nums text-content-muted">
+              {relativeTime(new Date(review.createdAt), new Date())}
+            </span>
           </Link>
         </motion.div>
       ))}

@@ -14,17 +14,22 @@ function fakeFetch(status: number, body: unknown) {
 async function sendWith(status: number, body: unknown): Promise<StagingOutcome> {
   const { fetch } = fakeFetch(status, body);
   const client = new HttpStagingClient({ baseUrl: "https://stg.example", fetch });
-  return client.send({ containerId: "c1" });
+  return client.send({ containerId: "c1", installationId: "inst-1" });
 }
 
 describe("HttpStagingClient — maps Eng1's /staging/send contract to typed outcomes", () => {
-  it("POSTs the container id to the staging path", async () => {
+  it("POSTs BOTH the container id and installation id to the staging path (tenancy)", async () => {
     const { fetch, calls } = fakeFetch(200, { status: "opened" });
-    await new HttpStagingClient({ baseUrl: "https://stg.example", fetch }).send({ containerId: "c9" });
+    await new HttpStagingClient({ baseUrl: "https://stg.example", fetch }).send({
+      containerId: "c9",
+      installationId: "inst-9",
+    });
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toBe(`https://stg.example${STAGING_SEND_PATH}`);
     expect((calls[0].init as { method: string }).method).toBe("POST");
-    expect((calls[0].init as { body: string }).body).toContain("c9");
+    const sent = (calls[0].init as { body: string }).body;
+    expect(sent).toContain("c9");
+    expect(sent).toContain("inst-9"); // the handler 400s without installationId
   });
 
   it("200 opened → opened, carrying the PR identity", async () => {

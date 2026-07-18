@@ -4,10 +4,14 @@ import { useState, useEffect, useRef, type ReactNode } from "react";
 import Link from "next/link";
 import { SynthesizerConsole } from "../agents/synthesizer-console";
 import { StatusBoardLive } from "./status-board";
+import { SendPrButton } from "./send-pr-button";
 import { motion, AnimatePresence, useInView } from "framer-motion";
 import { IconArrowRight, IconBrandGithub, IconChevronDown, IconCopy, IconGitBranch, IconGitPullRequest, IconHourglassHigh, IconPlus, IconLoader2, IconCheck } from "@tabler/icons-react";
 import { KumaLogo } from "@/components/ui/kuma-logo";
 import type { ServiceReviewGroup, ServiceReviewRow } from "@/lib/queries";
+import { TriageBar } from "./triage-bar";
+import { deriveTriage, type TriageStatus } from "./triage";
+import { DiffView } from "./diff-view";
 
 /**
  * Services "Triage Inbox" workspace. Production signals from CONNECTED
@@ -374,8 +378,19 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
       ? "-m-8 grid min-h-[540px] grid-cols-1 divide-y divide-border-subtle border-t border-border-subtle bg-surface-1/20 overflow-hidden lg:grid lg:h-[calc(100vh-4.5rem)] lg:min-h-0 lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:divide-x lg:divide-y-0"
       : "grid min-h-[560px] grid-cols-1 divide-y divide-border-subtle overflow-hidden lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:divide-x lg:divide-y-0";
 
+  // Sample Issue.status → TriageStatus (marketing preview only).
+  const sampleStatus = (s: string): TriageStatus =>
+    s === "Fix proposed" ? "awaiting" : s === "Agent fixing" || s === "Triaging" ? "in_flight" : "clear";
+  const triageCounts = realMode
+    // Real reviews carry no lifecycle field yet → each open review is in-flight;
+    // awaiting/blocked stay 0 until container state reaches this surface.
+    ? deriveTriage((reviewGroups ?? []).flatMap((g) => g.reviews).map(() => ({ status: "in_flight" as TriageStatus })))
+    : deriveTriage(issues.map((i) => ({ status: sampleStatus(i.status) })));
+
   return (
-    <div ref={containerRef} className={outerClass}>
+    <div ref={containerRef} className="flex min-h-0 flex-col">
+      <TriageBar counts={triageCounts} />
+      <div className={outerClass}>
       {/* Rail: services (each expandable to its issues) + connect catalog */}
       <section className="flex min-h-0 flex-1 flex-col" aria-label="Services">
         <header className="flex h-10 shrink-0 items-center justify-between border-b border-border-subtle px-3">
@@ -428,7 +443,7 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
                         aria-expanded={expanded}
                         className={`flex w-full items-center gap-2 py-2.5 pl-3 pr-3 text-left transition-colors ${
                           expanded ? "bg-accent-primary/[0.06]" : "hover:bg-content-primary/[0.04]"
-                        }`}
+                        } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-primary/40`}
                       >
                         <IconChevronDown
                           size={12}
@@ -458,7 +473,7 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
                                     on
                                       ? "bg-accent-primary/[0.1] text-content-primary"
                                       : "text-content-secondary hover:bg-content-primary/[0.04]"
-                                  }`}
+                                  } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-primary/40`}
                                 >
                                   <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${riskDot(r.riskLevel)}`} />
                                   <span className="min-w-0 flex-1 truncate font-mono text-[11.5px]">
@@ -506,7 +521,7 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
                       aria-expanded={expanded}
                       className={`flex w-full items-center gap-2 py-2.5 pl-3 pr-3 text-left transition-colors ${
                         expanded ? "bg-accent-primary/[0.06]" : "hover:bg-content-primary/[0.04]"
-                      }`}
+                      } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-primary/40`}
                     >
                       <IconChevronDown
                         size={12}
@@ -537,7 +552,7 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
                                   aria-current={on ? "true" : undefined}
                                   className={`flex w-full items-center gap-2 py-1.5 pl-9 pr-3 text-left transition-colors ${
                                     on ? "bg-accent-primary/[0.1] text-content-primary" : "text-content-secondary hover:bg-content-primary/[0.04]"
-                                  }`}
+                                  } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-primary/40`}
                                 >
                                   <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${SEV_DOT[iss.severity]}`} />
                                   <span className="min-w-0 flex-1 truncate text-[11.5px]">{iss.title}</span>
@@ -602,9 +617,10 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
         {realMode ? (
           <ReviewPanel review={selectedReview} />
         ) : (
-          <IssuePanel issue={selected} isReplaying={isReplaying} />
+          <IssuePanel issue={selected} isReplaying={isReplaying} containerId={realMode ? activeContainerId : null} />
         )}
       </section>
+      </div>
     </div>
   );
 }
@@ -791,7 +807,18 @@ function ReviewPanel({ review }: { review: ServiceReviewRow | null }) {
  * comment(s) as they'll post — plus the send gate. Per the pipeline spec, the
  * repo target and Post PR / Request changes live HERE (Services), not on Agents.
  */
-function IssuePanel({ issue, isReplaying }: { issue: Issue | null; isReplaying: boolean }) {
+function IssuePanel({
+  issue,
+  isReplaying,
+  containerId = null,
+}: {
+  issue: Issue | null;
+  isReplaying: boolean;
+  /** Real persisted container backing this issue → the send gate is LIVE. Null
+   *  (sample/demo data) → the honest disabled shell; the button never fires on
+   *  fabricated data. */
+  containerId?: string | null;
+}) {
   return (
     <>
       <header className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-3">
@@ -895,30 +922,28 @@ function IssuePanel({ issue, isReplaying }: { issue: Issue | null; isReplaying: 
                   <span className={`rounded-full border px-1.5 py-px text-[9px] font-bold uppercase tracking-wide ${SEV_PILL[issue.severity]}`}>{SEV_LABEL[issue.severity]}</span>
                   <span className="font-mono text-[10.5px] text-content-muted">{issue.where}</span>
                 </div>
-                <div className="overflow-hidden rounded-lg border border-border-default bg-surface-2">
-                  <div className="border-b border-border-subtle px-2.5 py-1.5 font-mono text-[10.5px] text-content-muted">{issue.fix.file}</div>
-                  <pre className="overflow-x-auto py-1 font-mono text-[11px] leading-relaxed">
-                    {issue.fix.rows.map((r, idx) => (
-                      <div
-                        key={idx}
-                        className={`flex gap-2 px-2 ${r.kind === "add" ? "bg-accent-success/10" : r.kind === "remove" ? "bg-accent-danger/10" : ""}`}
-                      >
-                        <span className={`select-none ${r.kind === "add" ? "text-accent-success" : r.kind === "remove" ? "text-accent-danger" : "text-content-muted/50"}`}>
-                          {r.kind === "add" ? "+" : r.kind === "remove" ? "-" : " "}
-                        </span>
-                        <span className={r.kind === "context" ? "text-content-muted" : "text-content-secondary"}>{r.text}</span>
-                      </div>
-                    ))}
-                  </pre>
-                </div>
+                <DiffView file={issue.fix.file} rows={issue.fix.rows} />
               </div>
             </PanelSection>
           </div>
 
           <footer className="shrink-0 space-y-2 border-t border-border-subtle px-3 py-3">
-            <button type="button" className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent-primary px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-accent-primary/90">
-              <IconGitPullRequest size={14} stroke={2} /> Post pull request
-            </button>
+            {/* Gate 2 of 2 (the send gate): LIVE only when a real container
+                backs this issue — it drives /api/containers/[id]/send and shows
+                the true outcome. On sample data it is an honest disabled shell,
+                never a no-op that implies it can post. */}
+            {containerId ? (
+              <SendPrButton containerId={containerId} />
+            ) : (
+              <button
+                type="button"
+                disabled
+                title="Open a reviewed issue backed by a real container to post its pull request"
+                className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent-primary px-3 py-1.5 text-[12px] font-semibold text-white opacity-50"
+              >
+                <IconGitPullRequest size={14} stroke={2} /> Post pull request
+              </button>
+            )}
             <div className="grid grid-cols-2 gap-1.5">
               <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-1.5 text-[11px] font-semibold text-content-secondary transition-colors hover:bg-content-primary/5">
                 Request changes
