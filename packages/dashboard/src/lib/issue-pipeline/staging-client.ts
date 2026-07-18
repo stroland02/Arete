@@ -1,25 +1,27 @@
 /**
  * StagingClient — the typed seam to Eng1's PR staging endpoint (POST /staging/send).
- * Wave-2 ③.
+ * Wave-2 ③ / Part B — now LIVE: the Send-PR route drives this against the real
+ * webhook service (base URL injected), and its outcomes are rendered honestly in
+ * the staged-PR view.
  *
- * TYPED BUT INERT: this maps the real contract Eng1 shipped, but the Send PR
- * action is NOT wired end-to-end this round — it cannot be verified until BOTH
- * Eng1's endpoint AND the persistent IssueContainer store reach the integration
- * line. Building to the real contract now (not a guessed stub) makes the eventual
- * wiring a one-line swap rather than a rewrite.
- *
- * Contract (HTTP status → outcome), per Eng1's endpoint @ a13a2b9 on
- * stroland02/Engineer-1:
+ * Contract (HTTP status → outcome), per the webhook send-handler:
  *   200  opened | already_open  → the PR is open (already_open = idempotent re-send)
  *   409  not_approved           → solution gate not cleared (canPost === false)
  *   404  not_found              → no such container for this tenant
  *   502  failed                 → host/upstream failed to open the PR
  *   400  bad_request            → missing / invalid input
+ *
+ * The handler requires BOTH ids in the body ({ containerId, installationId });
+ * omitting either is the handler's own 400 bad_request. The read on the far side
+ * is tenancy-scoped by installationId, so the id pair is mandatory, not optional.
  */
 
 export interface StagingSendInput {
   /** The container whose approved solution is being sent as a PR. */
   containerId: string;
+  /** Tenant scope — the send is resolved by (containerId, installationId). The
+   *  webhook returns 400 bad_request if this is missing. */
+  installationId: string;
 }
 
 /**

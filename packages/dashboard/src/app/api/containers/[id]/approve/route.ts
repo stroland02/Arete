@@ -1,25 +1,26 @@
 /**
  * POST /api/containers/[id]/approve — cross the FIRST human gate: the solution
- * approval (ready → solution_approved). Wave-2 ③.
+ * approval (ready → solution_approved). Wave-2 ③ + Part A.
  *
- * This is the HITL moat, enforced HERE on the backend (not merely disabled in the
- * UI): the driver leaves a composed container at `ready` and never advances it;
- * only this deliberate human action, checked against `canApprove`, crosses the
- * line. A container not in `ready` is refused with 409 — the UI can trigger
- * without knowing the state, because the server is the authority.
+ * The HITL moat, enforced HERE on the backend against STORED state (not merely
+ * disabled in the UI, and not trusting anything in the request): the driver
+ * leaves a composed container at `ready` and never advances it; only this
+ * deliberate human action crosses the line. The gate is now checked against the
+ * persisted IssueContainer row and the approval is WRITTEN BACK, so Eng1's
+ * loadApprovedContainer sees a real `gates.solutionApprovedAt` at send time.
  *
- * PERSISTENCE SEAM: the approved transition is computed and returned, but durable
- * persistence lands with the persistent IssueContainer store (a pending
- * integration dependency). Until then this enforces the gate and echoes the
- * approved container; it does not yet write it back. It never posts a PR — that
- * is the SECOND gate (Services / StagingClient), intentionally still inert.
+ *   • stored container not found for this tenant → 404
+ *   • stored state is not `ready`                 → 409 (server is the authority)
+ *   • otherwise → stamp gates.solutionApprovedAt/By in the DB, return 200
+ *
+ * It never posts a PR — that is the SECOND gate (Services / StagingClient).
  */
 
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { getLiveSampleContainer } from "@/lib/issue-pipeline/live-drive";
-import { approveSolution, canApprove } from "@/lib/issue-pipeline/pipeline";
-import { getReviewContainer } from "@/lib/issue-pipeline/review-container-store";
+import { PrismaContainerStore, type StoredContainer } from "@/lib/issue-pipeline/container-persistence";
+import { canApprove } from "@/lib/issue-pipeline/pipeline";
+import type { IssueContainer } from "@/lib/issue-pipeline/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,18 +33,43 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
 
   const { id } = await ctx.params;
   const installationIds = (session.installations ?? []).map((i) => i.id);
-  const container = (await getReviewContainer(db, installationIds, id)) ?? getLiveSampleContainer(id);
-  if (!container) {
+
+  // Resolve the stored container within the caller's own installations only —
+  // the read is tenancy-scoped (findFirst on id + installationId), so a
+  // container belonging to another tenant is simply not found here.
+  const store = new PrismaContainerStore(db);
+  let stored: StoredContainer | null = null;
+  let owningInstallationId: string | null = null;
+  for (const instId of installationIds) {
+    stored = await store.load(id, instId);
+    if (stored) {
+      owningInstallationId = instId;
+      break;
+    }
+  }
+  if (!stored || !owningInstallationId) {
     return Response.json({ error: "not_found" }, { status: 404 });
   }
 
-  // Server-enforced gate: refuse anything that has not reached `ready`.
-  if (!canApprove(container)) {
-    return Response.json({ error: "not_ready", state: container.state }, { status: 409 });
+  // Server-enforced gate against STORED state: refuse anything not at `ready`.
+  // canApprove reads only `.state`; pass the stored state through it so the rule
+  // stays single-sourced in the pipeline.
+  if (!canApprove({ state: stored.state } as IssueContainer)) {
+    return Response.json({ error: "not_ready", state: stored.state }, { status: 409 });
   }
 
   const approver = session.user.email ?? session.user.name ?? "unknown";
-  const approved = approveSolution(container, approver);
+  const at = new Date().toISOString();
+  const gates = { ...stored.gates, solutionApprovedAt: at, solutionApprovedBy: approver };
 
-  return Response.json({ container: approved }, { status: 200 });
+  const saved = await store.save(id, owningInstallationId, { state: "solution_approved", gates });
+  if (!saved) {
+    // A concurrent write moved/removed the row between load and save.
+    return Response.json({ error: "not_found" }, { status: 404 });
+  }
+
+  return Response.json(
+    { container: { id, installationId: owningInstallationId, state: "solution_approved", gates } },
+    { status: 200 },
+  );
 }
