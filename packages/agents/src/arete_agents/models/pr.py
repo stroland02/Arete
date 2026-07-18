@@ -36,6 +36,36 @@ class LLMConfig(BaseModel):
     base_url: str | None = Field(None, alias="baseUrl")
 
 
+class ScanRequest(BaseModel):
+    """POST /scan request (work-item inbox). The webhook scan trigger sends the
+    tenant's numeric installation id, the repo slug, and the same per-request
+    BYO `llm` block as /review — a scan runs on the tenant's own model."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    installation_id: int = Field(alias="installationId")
+    repo_slug: str = Field(alias="repoSlug")
+    llm: LLMConfig | None = None
+
+
+class ScanFinding(BaseModel):
+    """One discovered issue/opportunity, in WorkItem shape. Evidence is REAL
+    {path, line} refs validated against the actual checkout — a finding that
+    fails that check is dropped before it ever reaches this model."""
+
+    kind: str  # "issue" | "opportunity"
+    title: str
+    detail: str
+    evidence: list[dict]  # [{"path": str, "line": int, "excerpt": str|None}]
+    dimension: str  # one of the six review dimensions
+    confidence: float = Field(ge=0, le=1)  # from agent+critic — never synthesized
+
+
+class ScanResponse(BaseModel):
+    status: str  # "complete" | "no_findings"
+    findings: list[ScanFinding]
+
+
 class PRContext(BaseModel):
     # Accept both the TS/JS webhook convention (ciLogs, customRules) and the
     # Python/CLI convention (ci_logs, custom_rules). Without populate_by_name,
