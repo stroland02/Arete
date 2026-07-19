@@ -14,6 +14,7 @@
 
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { decryptCredentials } from '@/lib/telemetry-credentials';
 import { resolveSelectedInstallationIds } from '@/lib/queries';
 import type { ProbeResult, ActiveModelConnection } from './model-connections-map';
 
@@ -49,6 +50,45 @@ export async function getActiveModelConnection(): Promise<ActiveModelConnection 
       select: { provider: true, model: true },
     });
     return row ? { provider: row.provider, model: row.model } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The full `llm` block a request runs on — camelCase, mirroring the agents
+ *  Pydantic LlmConfig (everything but provider optional). */
+export interface LlmBlock {
+  provider: string;
+  model: string;
+  apiKey?: string;
+  baseUrl?: string;
+}
+
+/**
+ * Resolve the session's connected model into the `llm` block agent chat runs on
+ * — the SAME newest-connection convention reviews use, so chat and reviews run
+ * on the same model. Decrypts the stored key for API-key providers; keyless
+ * (Ollama) omits it. Returns null when nothing is connected (caller then runs on
+ * the service default). Never throws.
+ */
+export async function resolveActiveLlmForChat(): Promise<LlmBlock | null> {
+  try {
+    const scope = await requireScope();
+    if (!scope || scope.installationIds.length === 0) return null;
+    const row = await db.modelConnection.findFirst({
+      where: { installationId: { in: scope.installationIds } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!row) return null;
+    const apiKey = row.apiKeyEncrypted
+      ? decryptCredentials<{ apiKey: string }>(row.apiKeyEncrypted).apiKey
+      : undefined;
+    return {
+      provider: row.provider,
+      model: row.model,
+      ...(apiKey ? { apiKey } : {}),
+      ...(row.baseUrl ? { baseUrl: row.baseUrl } : {}),
+    };
   } catch {
     return null;
   }

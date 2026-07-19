@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { AGENTS } from "@/components/dashboard/agents/agent-catalog";
 import { sendAgentChat } from "@/lib/agent-chat";
+import { resolveActiveLlmForChat } from "@/lib/model-connections-api";
 
 // Session-scoped; never statically prerendered.
 export const dynamic = "force-dynamic";
@@ -35,7 +36,10 @@ export async function POST(
   }
 
   try {
-    const reply = await sendAgentChat({ agent, message });
+    // Run chat on the tenant's connected model (same resolution as reviews);
+    // null → the agents service default. Never blocks the reply.
+    const llm = await resolveActiveLlmForChat();
+    const reply = await sendAgentChat({ agent, message, llm });
     return NextResponse.json({ reply });
   } catch (err) {
     console.error("[agents/chat] upstream chat failed", err);

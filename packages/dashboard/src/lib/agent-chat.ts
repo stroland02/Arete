@@ -1,4 +1,5 @@
 import type { Agent } from "@/components/dashboard/agents/agent-catalog";
+import type { LlmBlock } from "@/lib/model-connections-api";
 
 // Mirrors packages/webhook/src/config.ts's PYTHON_SERVICE_URL default. The
 // dashboard reaches the same FastAPI agents service the webhook does. Server
@@ -14,7 +15,17 @@ const CHAT_TIMEOUT_MS = 120_000;
  * agent behavior. Throws on any non-OK response, network error, or timeout;
  * the caller maps that to an honest 503 (never a fabricated reply).
  */
-export async function sendAgentChat({ agent, message }: { agent: Agent; message: string }): Promise<string> {
+export async function sendAgentChat({
+  agent,
+  message,
+  llm,
+}: {
+  agent: Agent;
+  message: string;
+  /** The tenant's connected model. When present, /chat replies on THIS model
+   *  (mirrors /review's BYO block); omitted → the service default. */
+  llm?: LlmBlock | null;
+}): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
   try {
@@ -25,6 +36,7 @@ export async function sendAgentChat({ agent, message }: { agent: Agent; message:
       diff_hunk: "",
       bot_comment: agent.description,
       user_reply: message,
+      ...(llm ? { llm } : {}),
     };
     const res = await fetch(`${PYTHON_SERVICE_URL}/chat`, {
       method: "POST",
