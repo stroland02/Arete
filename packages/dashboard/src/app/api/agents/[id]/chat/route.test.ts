@@ -10,6 +10,14 @@ vi.mock('@/lib/agent-chat', () => ({ sendAgentChat: (...a: any[]) => sendAgentCh
 // time; null means "agents service default", the same contract the route uses.
 vi.mock('@/lib/model-connections-api', () => ({ resolveActiveLlmForChat: async () => null }));
 
+// agent-chat-history also imports @/lib/db at module load. Persistence is
+// best-effort in the route (fire-and-forget), so an empty/noop stub preserves
+// every asserted behaviour without needing a database.
+vi.mock('@/lib/agent-chat-history', () => ({
+  listChatTurns: async () => [],
+  appendChatTurn: async () => {},
+}));
+
 import { POST } from './route';
 
 function req(body: unknown) {
