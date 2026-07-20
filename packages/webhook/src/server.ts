@@ -249,6 +249,14 @@ export async function createServer(): Promise<express.Application> {
     }
   })
 
+  // Internal fix trigger (healing loop, spec 2026-07-19 §2/§6). The
+  // dashboard's session-scoped POST /api/work-items/[id]/fix proxies here
+  // after creating the detecting container. Body carries ONLY workItemId;
+  // tenancy is derived from the stored row. Deps import lazily (db-free
+  // registration, same posture as /scan/trigger).
+  const { createFixTriggerHandler } = await import('./fix/trigger-handler.js')
+  server.post('/fix/trigger', requireInternalToken, express.json(), createFixTriggerHandler())
+
   // Internal model-connection Test probe. The dashboard's session-authenticated
   // /api/model-connections/test route proxies here so the SSRF-guarded outbound
   // probe (net-guard, via testModelConnection) runs in this service, not in the

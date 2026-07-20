@@ -24,6 +24,11 @@ export const REVIEW_QUEUE_CONCURRENCY = 5
 // never delay an operator-approved remediation (and vice-versa).
 export const APPROVAL_QUEUE_NAME = 'approval-exec'
 
+// Healing-loop fix runs (spec 2026-07-19 §2). Separate queue for the same
+// isolation reason as approval-exec: a review backlog must never delay a
+// human-triggered fix, and vice-versa.
+export const FIX_QUEUE_NAME = 'fix-workitem'
+
 export interface GitHubPullRequestJobData {
   provider: 'github'
   kind: 'pull_request'
@@ -75,6 +80,13 @@ export interface ApprovalExecutionJobData {
   command: string
 }
 
+/** Payload for a healing-loop fix job: ONLY the work-item id. The worker
+ *  re-reads the row — tenancy and container identity are derived from the DB,
+ *  never from the caller. */
+export interface FixJobData {
+  workItemId: string
+}
+
 function redisUrl(): string {
   return process.env.REDIS_URL ?? 'redis://localhost:6379'
 }
@@ -91,12 +103,20 @@ function getConnection(): IORedis {
 let queueFast: Queue<ReviewJobData> | null = null
 let queueHeavy: Queue<ReviewJobData> | null = null
 let queueApproval: Queue<ApprovalExecutionJobData> | null = null
+let queueFix: Queue<FixJobData> | null = null
 
 export function getApprovalQueue(): Queue<ApprovalExecutionJobData> {
   if (!queueApproval) {
     queueApproval = new Queue<ApprovalExecutionJobData>(APPROVAL_QUEUE_NAME, { connection: getConnection() })
   }
   return queueApproval
+}
+
+export function getFixQueue(): Queue<FixJobData> {
+  if (!queueFix) {
+    queueFix = new Queue<FixJobData>(FIX_QUEUE_NAME, { connection: getConnection() })
+  }
+  return queueFix
 }
 
 export function getReviewQueue(lane: 'fast' | 'heavy' = 'fast'): Queue<ReviewJobData> {
@@ -128,14 +148,22 @@ export async function enqueueApprovalExecution(data: ApprovalExecutionJobData) {
   return getApprovalQueue().add(APPROVAL_QUEUE_NAME, data, DEFAULT_JOB_OPTIONS)
 }
 
+/** Enqueues a healing-loop fix run. Durable retry/backoff like reviews, so a
+ *  dispatched fix survives a worker restart rather than being lost. */
+export async function enqueueFixJob(data: FixJobData) {
+  return getFixQueue().add(FIX_QUEUE_NAME, data, DEFAULT_JOB_OPTIONS)
+}
+
 /** For graceful shutdown and test cleanup. */
 export async function closeReviewQueue(): Promise<void> {
   await queueFast?.close()
   await queueHeavy?.close()
   await queueApproval?.close()
+  await queueFix?.close()
   await connection?.quit()
   queueFast = null
   queueHeavy = null
   queueApproval = null
+  queueFix = null
   connection = null
 }
