@@ -201,6 +201,12 @@ model Review {
   headSha        String
   /// "complete" | "failed" — mirrors ReviewResult.analysis_status.
   analysisStatus String          @default("complete")
+  /// Per-specialist tiered-comms statuses from ReviewResult.agent_statuses
+  /// (array of { agent, status, summary, confidence, blockers }). Persisted
+  /// faithfully: [] means "no agent ran", NULL means the (older) agents
+  /// response carried no field. Read by the status board via the review
+  /// projection (Eng2) — never synthesized here.
+  agentStatuses  Json?
   createdAt      DateTime        @default(now())
   repository     Repository      @relation(fields: [repositoryId], references: [id])
   comments       ReviewComment[]

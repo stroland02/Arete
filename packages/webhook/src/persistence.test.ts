@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { TelemetrySnapshot } from './types.js'
+import type { AgentStatus, TelemetrySnapshot } from './types.js'
 
 // Same vi.doMock + vi.resetModules + dynamic import pattern used by
 // pipeline.integration.test.ts — persistence.ts imports the real prisma
@@ -256,6 +256,40 @@ describe('persistReview', () => {
     mocks.reviewFindUnique.mockResolvedValue(null)
     mocks.reviewCreate.mockResolvedValue({ id: 'review-uuid-1' })
     mocks.reviewCommentFindFirst.mockResolvedValue(null)
+  })
+
+  it('persists agent_statuses faithfully onto the review row', async () => {
+    const { persistReview } = await loadPersistence(mocks)
+    const statuses: AgentStatus[] = [
+      { agent: 'security', status: 'done', summary: 'no findings', confidence: 0.9, blockers: [] },
+      { agent: 'performance', status: 'blocked', summary: 'timeout', confidence: 0.2, blockers: ['llm timeout'] },
+    ]
+
+    await persistReview({
+      ...BASE_PARAMS,
+      result: { ...makeResult([]), agent_statuses: statuses },
+    })
+
+    expect(mocks.reviewCreate.mock.calls[0][0].data.agentStatuses).toEqual(statuses)
+  })
+
+  it('persists an EMPTY agent_statuses as [] — real "no agent ran" state, never synthesized', async () => {
+    const { persistReview } = await loadPersistence(mocks)
+
+    await persistReview({
+      ...BASE_PARAMS,
+      result: { ...makeResult([]), agent_statuses: [] },
+    })
+
+    expect(mocks.reviewCreate.mock.calls[0][0].data.agentStatuses).toEqual([])
+  })
+
+  it('omits agentStatuses when the response carries none (older agents) — column stays NULL', async () => {
+    const { persistReview } = await loadPersistence(mocks)
+
+    await persistReview({ ...BASE_PARAMS, result: makeResult([]) })
+
+    expect(mocks.reviewCreate.mock.calls[0][0].data.agentStatuses).toBeUndefined()
   })
 
   it('writes noiseState/escalateOn/threshold from the comment data onto each created row', async () => {

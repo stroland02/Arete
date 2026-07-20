@@ -1,4 +1,4 @@
-import type { ScmProvider } from '@arete/db'
+import type { Prisma, ScmProvider } from '@arete/db'
 import { prisma } from './db.js'
 import { emitReviewCreated } from './outbound/emit.js'
 import { PrismaWebhookStore, type WebhookPrismaClient } from './outbound/prisma-store.js'
@@ -201,6 +201,11 @@ export async function persistReview(params: PersistReviewParams): Promise<void> 
       overallSummary: result.overall_summary,
       headSha,
       analysisStatus: result.analysis_status ?? 'complete',
+      // Faithful pass-through: [] = "no agent ran" stays []; an absent field
+      // (older agents response) is omitted so the column stays NULL. Never
+      // synthesized (anti-fabrication rule). Cast: Prisma's InputJsonValue
+      // rejects interface arrays for lack of an index signature only.
+      agentStatuses: result.agent_statuses as unknown as Prisma.InputJsonValue | undefined,
       comments: {
         createMany: { data: commentsToCreate },
       },
