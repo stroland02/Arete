@@ -125,6 +125,10 @@ model IssueContainer {
   /// The review findings this container was opened from (informational source
   /// of the proposed fix). Shape: provider-specific finding objects.
   findings       Json
+  /// Ordered SynthStep[] transcript of the real fix drive (healing-loop v1
+  /// spec §4). Written on each incremental worker save; read by the stream
+  /// route for honest replay. Null for pre-healing-loop rows.
+  transcript     Json?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   installation   Installation @relation(fields: [installationId], references: [id])
@@ -154,6 +158,10 @@ model WorkItem {
   fingerprint    String
   containerId    String?
   scanRunId      String?
+  /// Honest reason the last fix attempt failed (fix_failed/escalation, spec
+  /// §7) — rendered in the panel while the item is back at `open`. Cleared
+  /// when a new fix run starts.
+  fixError       String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
