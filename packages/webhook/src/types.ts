@@ -78,6 +78,17 @@ export interface FileReview {
   summary: string
 }
 
+/** One specialist's tiered-comms update (agents ReviewResult.agent_statuses).
+ *  Snake_case over the wire, like the rest of ReviewResult; persisted verbatim
+ *  into Review.agentStatuses. Real run state only — never synthesized. */
+export interface AgentStatus {
+  agent: string
+  status: 'on_track' | 'blocked' | 'needs_input' | 'escalating' | 'done'
+  summary: string
+  confidence: number
+  blockers?: string[]
+}
+
 export interface ReviewResult {
   pr_context: PRContext
   file_reviews: FileReview[]
@@ -85,6 +96,9 @@ export interface ReviewResult {
   risk_level: 'low' | 'medium' | 'high' | 'critical'
   total_comments: number
   analysis_status?: 'complete' | 'failed'
+  // Per-specialist tiered-comms status. Optional/absent for older agent
+  // responses; persisted as-is (empty stays empty — no fabrication).
+  agent_statuses?: AgentStatus[]
   // Deterministic risk-tiered gate from the agents service (SP4). Optional
   // for backward-compat with older agent responses / non-review paths that
   // don't set it — reviewConclusion() falls back to risk_level when absent.

@@ -264,6 +264,15 @@ export interface ReviewFinding {
   category: string;
 }
 
+/** One specialist's persisted tiered-comms status (Review.agentStatuses). */
+export interface ReviewAgentStatus {
+  agent: string;
+  status: string;
+  summary: string;
+  confidence: number;
+  blockers?: string[];
+}
+
 export interface ReviewDetail {
   id: string;
   prNumber: number;
@@ -273,6 +282,8 @@ export interface ReviewDetail {
   createdAt: Date;
   repositoryFullName: string;
   findings: ReviewFinding[];
+  /** Per-specialist status the board renders; [] when the review stored none. */
+  agentStatuses: ReviewAgentStatus[];
 }
 
 /**
@@ -314,6 +325,9 @@ export async function getReviewDetail(
       severity: c.severity,
       category: c.category,
     })),
+    agentStatuses: Array.isArray(review.agentStatuses)
+      ? (review.agentStatuses as unknown as ReviewAgentStatus[])
+      : [],
   };
 }
 

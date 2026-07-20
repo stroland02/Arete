@@ -1,14 +1,17 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireScope } from '@/lib/model-connections-api';
+import { internalAuthHeaders } from '@/lib/internal-auth';
 
 // Session-scoped; never statically prerendered.
 export const dynamic = 'force-dynamic';
 
 /**
  * POST /api/work-items/[id]/fix — "Fix it" / "Implement it": turn a selected
- * work item into an IssueContainer and hand it to the existing drive → verify →
- * compose → stage pipeline. One PR per work item, on branch kuma/<kind>-<id8>.
+ * work item into an IssueContainer at the pipeline's real initial state
+ * (`detecting`) and dispatch the fix drive (webhook /fix/trigger → agents /fix),
+ * which authors + verifies a real patch and advances the container to `ready`
+ * (or `fix_failed`). One PR per work item, on branch kuma/<kind>-<id8>.
  *
  * Tenancy: the item is read with BOTH id AND the session-derived installation
  * scope — a cross-tenant id reads as not-found (404), never as forbidden-but-
@@ -46,7 +49,10 @@ export async function POST(
   const container = await db.issueContainer.create({
     data: {
       installationId: item.installationId,
-      state: 'open',
+      // The pipeline's REAL initial state — the fix drive advances it from here
+      // (detecting → fanning_out → ready). `open` is not a ContainerState and
+      // could never reach `ready`/approval.
+      state: 'detecting',
       gates: { solutionApprovedAt: null },
       target,
       pr: {
@@ -64,6 +70,25 @@ export async function POST(
     where: { id: item.id },
     data: { state: 'fixing', containerId: container.id },
   });
+
+  // Dispatch the fix drive (fire-and-forget): the webhook authors + verifies a
+  // real patch and advances the container to `ready`/`fix_failed`, persisting a
+  // live transcript the console streams. A drive failure lands the container in
+  // fix_failed on its own — never surfaced as a fix-route error, so the UI can
+  // open the live stream immediately with the containerId below.
+  const base = process.env.WEBHOOK_SERVICE_URL;
+  if (base) {
+    try {
+      await fetch(`${base}/fix/trigger`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...internalAuthHeaders() },
+        body: JSON.stringify({ workItemId: item.id }),
+      });
+    } catch (err) {
+      // The container exists and the item is `fixing`; the drive can be retried.
+      console.error(`[work-items/fix] dispatch to /fix/trigger failed for ${item.id}:`, err);
+    }
+  }
 
   return NextResponse.json({ containerId: container.id }, { status: 200 });
 }

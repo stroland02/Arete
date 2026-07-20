@@ -122,16 +122,18 @@ export function assertNoFabrication(findings: ReadonlyArray<Finding>, diff: Diff
 // ── State machine + gates (spec §4, §5) ─────────────────────────────────────
 
 const TRANSITIONS: Record<ContainerState, ReadonlyArray<ContainerState>> = {
-  detecting: ["fanning_out", "dismissed"],
-  fanning_out: ["verifying", "dismissed"],
-  verifying: ["composing", "dismissed"],
-  composing: ["ready", "dismissed"],
+  // A fix drive can fail at any pre-ready stage → fix_failed (terminal).
+  detecting: ["fanning_out", "fix_failed", "dismissed"],
+  fanning_out: ["verifying", "fix_failed", "dismissed"],
+  verifying: ["composing", "fix_failed", "dismissed"],
+  composing: ["ready", "fix_failed", "dismissed"],
   ready: ["solution_approved", "dismissed"],
   solution_approved: ["posted", "changes_requested", "dismissed"],
   changes_requested: ["fanning_out", "dismissed"],
   posted: ["merged", "dismissed"],
   merged: [],
   dismissed: [],
+  fix_failed: [],
 };
 
 export function canTransition(from: ContainerState, to: ContainerState): boolean {

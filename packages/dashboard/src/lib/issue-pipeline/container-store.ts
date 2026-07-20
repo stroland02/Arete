@@ -30,6 +30,7 @@ const TERMINAL_STATES = new Set([
   "changes_requested",
   "merged",
   "dismissed",
+  "fix_failed",
 ]);
 
 export class InMemoryContainerStore implements ContainerStore {

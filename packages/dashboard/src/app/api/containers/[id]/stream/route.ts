@@ -20,6 +20,7 @@ import { db } from "@/lib/db";
 import { InMemoryContainerStore } from "@/lib/issue-pipeline/container-store";
 import { getLiveSampleContainer } from "@/lib/issue-pipeline/live-drive";
 import { getReviewContainer } from "@/lib/issue-pipeline/review-container-store";
+import { getFixContainer } from "@/lib/issue-pipeline/fix-container-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,7 +33,12 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   const { id } = await ctx.params;
   const installationIds = (session.installations ?? []).map((i) => i.id);
-  const container = (await getReviewContainer(db, installationIds, id)) ?? getLiveSampleContainer(id);
+  // Resolve, in order: a real review container, then a fix-born IssueContainer
+  // (its persisted drive transcript), then the tenant-neutral sample.
+  const container =
+    (await getReviewContainer(db, installationIds, id)) ??
+    (await getFixContainer(db, installationIds, id)) ??
+    getLiveSampleContainer(id);
   if (!container) {
     return new Response("Not found", { status: 404 });
   }

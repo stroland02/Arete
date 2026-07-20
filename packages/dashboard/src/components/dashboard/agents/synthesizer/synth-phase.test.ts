@@ -13,6 +13,7 @@ const ALL_STATES: ContainerState[] = [
   "changes_requested",
   "merged",
   "dismissed",
+  "fix_failed",
 ];
 
 describe("phaseOf", () => {
@@ -28,6 +29,7 @@ describe("phaseOf", () => {
       changes_requested: "done",
       merged: "done",
       dismissed: "dismissed",
+      fix_failed: "dismissed",
     };
     for (const s of ALL_STATES) expect(phaseOf(s)).toBe(expected[s]);
   });

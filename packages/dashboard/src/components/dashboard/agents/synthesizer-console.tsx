@@ -81,6 +81,13 @@ function ConsoleStream({ containerId }: { containerId: string }) {
             Sample
           </span>
         )}
+        {/* A real, completed container replays its stored transcript instantly —
+            label it honestly so a replay is never mistaken for a live solve. */}
+        {!isSample && !live && view.phase !== "idle" && view.phase !== "working" && (
+          <span className="rounded-full border border-border-default px-1.5 py-px text-[10px] font-medium text-content-muted">
+            Replay
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-2 font-mono text-[11px] tabular-nums">
           <span className="text-accent-success">✓ {view.kept}</span>
           <span className="text-content-muted">✕ {view.dropped}</span>

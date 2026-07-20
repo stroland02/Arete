@@ -21,7 +21,10 @@ export type ContainerState =
   | "posted"
   | "changes_requested"
   | "merged"
-  | "dismissed";
+  | "dismissed"
+  // Terminal: a fix run authored no verified patch (healing-loop spec §4). The
+  // container is preserved (transcript viewable); its WorkItem returns to open.
+  | "fix_failed";
 
 export type Verdict = "candidate" | "kept" | "dropped";
 

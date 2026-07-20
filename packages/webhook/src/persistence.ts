@@ -201,6 +201,11 @@ export async function persistReview(params: PersistReviewParams): Promise<void> 
       overallSummary: result.overall_summary,
       headSha,
       analysisStatus: result.analysis_status ?? 'complete',
+      // Persist the specialists' tiered-comms status verbatim (the status
+      // board reads it). Empty/absent stays empty — never synthesized. Cast to
+      // Prisma's JSON input: an object array is valid JSON but doesn't match the
+      // generated InputJsonObject index signature.
+      agentStatuses: (result.agent_statuses ?? []) as unknown as object[],
       comments: {
         createMany: { data: commentsToCreate },
       },

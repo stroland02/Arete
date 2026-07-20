@@ -125,6 +125,10 @@ model IssueContainer {
   /// The review findings this container was opened from (informational source
   /// of the proposed fix). Shape: provider-specific finding objects.
   findings       Json
+  /// The live fix-drive transcript (SynthStep[]) — real per-stage steps the
+  /// console replays for a fix-born container. Null until a fix run writes it;
+  /// never synthesized for display (healing-loop spec §4).
+  transcript     Json?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   installation   Installation @relation(fields: [installationId], references: [id])
@@ -223,6 +227,10 @@ model Review {
   headSha        String
   /// "complete" | "failed" — mirrors ReviewResult.analysis_status.
   analysisStatus String          @default("complete")
+  /// Per-specialist tiered-comms status (ReviewResult.agent_statuses):
+  /// AgentStatus[] { agent, status, summary, confidence, blockers[] }. Real run
+  /// state only — empty/absent when the agents emitted none (never synthesized).
+  agentStatuses  Json?
   createdAt      DateTime        @default(now())
   repository     Repository      @relation(fields: [repositoryId], references: [id])
   comments       ReviewComment[]

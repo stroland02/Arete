@@ -261,6 +261,27 @@ export async function createServer(): Promise<express.Application> {
   // candidate { provider, model, apiKey?, baseUrl? } and returns { ok, model?,
   // detail? }. Kept separate from the (unmounted) tenant CRUD, which stays behind
   // the dashboard's Auth.js session.
+  // Internal fix trigger (healing loop). The dashboard's "Fix it" creates an
+  // IssueContainer at `detecting` and fires this with the work item's id. The
+  // drive runs in the background (agents /fix authors + verifies a real patch,
+  // then the container advances to `ready` or `fix_failed`); we ACK 202 at once
+  // so the UI can open the live stream while the container fills in. Never
+  // blocks on the up-to-280s author run. Deps import lazily (db-free registration).
+  server.post('/fix/trigger', requireInternalToken, express.json(), async (req, res) => {
+    const workItemId = typeof req.body?.workItemId === 'string' ? req.body.workItemId : ''
+    if (!workItemId) {
+      res.status(400).json({ error: 'workItemId required' })
+      return
+    }
+    const { driveFix, defaultFixTriggerDeps } = await import('./fix/trigger.js')
+    // Fire-and-forget: the drive is long-running and self-persisting; a failure
+    // lands the container in fix_failed on its own (never rethrown here).
+    void driveFix(workItemId, defaultFixTriggerDeps(app)).catch((err) => {
+      console.error(`[fix] drive failed for work item ${workItemId}:`, err)
+    })
+    res.status(202).json({ started: true })
+  })
+
   const { createModelConnectionTestHandler } = await import('./model-connections/test-handler.js')
   server.post('/internal/model-connections/test', express.json(), createModelConnectionTestHandler())
 
