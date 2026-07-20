@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { db } from '@/lib/db';
+import { internalAuthHeaders } from '@/lib/internal-auth';
 import { encryptCredentials } from '@/lib/telemetry-credentials';
 import {
   requireScope,
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (webhookBase) {
     void fetch(`${webhookBase}/scan/trigger`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...internalAuthHeaders() },
       body: JSON.stringify({ installationId: target }),
     }).catch(() => {});
   }

@@ -23,6 +23,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PrismaContainerStore, type StoredContainer } from "@/lib/issue-pipeline/container-persistence";
 import { canPost } from "@/lib/issue-pipeline/pipeline";
+import { internalAuthHeaders } from "@/lib/internal-auth";
 import { HttpStagingClient, type StagingOutcome } from "@/lib/issue-pipeline/staging-client";
 import type { IssueContainer } from "@/lib/issue-pipeline/types";
 
@@ -82,7 +83,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     return Response.json({ error: "staging_not_configured" }, { status: 503 });
   }
 
-  const client = new HttpStagingClient({ baseUrl });
+  const client = new HttpStagingClient({ baseUrl, headers: internalAuthHeaders() });
   const outcome = await client.send({ containerId: id, installationId: owningInstallationId });
 
   // On a real open, advance the persisted lifecycle to `posted`. Idempotent

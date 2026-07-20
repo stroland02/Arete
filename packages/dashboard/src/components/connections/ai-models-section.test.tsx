@@ -1,5 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+
+// ModelProviderRow calls useRouter() (router.refresh() after Connect); the app
+// router isn't mounted under renderToStaticMarkup, so stub the hook.
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }) }));
+
 import { AiModelsSection } from "./ai-models-section";
 import type { ModelConnectionsClient } from "@/lib/model-connections-client";
 
@@ -31,10 +36,10 @@ describe("AiModelsSection", () => {
     expect(html.toLowerCase()).toContain("verification runs on your connected model");
   });
 
-  it("offers connect + model-select + Test per provider", () => {
+  it("offers Connect + model-select per provider (Test is folded into Connect)", () => {
     expect(html).toContain("API key");
     expect(html).toContain("Base URL"); // Ollama
-    expect(html).toContain("Test");
+    expect(html).toContain("Connect");
     expect(html).toContain("claude-opus-4-8"); // a selectable model
   });
 

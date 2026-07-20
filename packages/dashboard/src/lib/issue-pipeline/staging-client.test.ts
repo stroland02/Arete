@@ -32,6 +32,20 @@ describe("HttpStagingClient — maps Eng1's /staging/send contract to typed outc
     expect(sent).toContain("inst-9"); // the handler 400s without installationId
   });
 
+  it("merges caller-supplied headers (internal bearer token) into the request", async () => {
+    const { fetch, calls } = fakeFetch(200, { status: "opened" });
+    await new HttpStagingClient({
+      baseUrl: "https://stg.example",
+      fetch,
+      headers: { authorization: "Bearer s3cret" },
+    }).send({ containerId: "c1", installationId: "inst-1" });
+    const headers = (calls[0].init as { headers: Record<string, string> }).headers;
+    expect(headers).toMatchObject({
+      "content-type": "application/json",
+      authorization: "Bearer s3cret",
+    });
+  });
+
   it("200 opened → opened, carrying the PR identity", async () => {
     expect(await sendWith(200, { status: "opened", prNumber: 42, url: "https://gh/pr/42" })).toEqual({
       status: "opened",

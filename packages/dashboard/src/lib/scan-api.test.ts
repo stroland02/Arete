@@ -66,6 +66,15 @@ describe('POST /api/scan — manual re-scan, session-scoped', () => {
     );
   });
 
+  it('sends the shared internal bearer token when configured', async () => {
+    vi.stubEnv('INTERNAL_API_TOKEN', 's3cret');
+    requireScope.mockResolvedValue({ installationIds: ['inst-1'] });
+    fetchMock.mockResolvedValue(webhookReply(202, { started: true }));
+    await POST(new Request('http://x/api/scan', { method: 'POST' }));
+    const init = fetchMock.mock.calls[0][1] as { headers: Record<string, string> };
+    expect(init.headers).toMatchObject({ authorization: 'Bearer s3cret' });
+  });
+
   it('passes through 409 already_running', async () => {
     requireScope.mockResolvedValue({ installationIds: ['inst-1'] });
     fetchMock.mockResolvedValue(

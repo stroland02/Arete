@@ -17,7 +17,7 @@ describe('fetchPostHogSnapshot', () => {
       json: async () => ({
         results: [['checkout_completed', 420], ['checkout_started', 1200]],
       }),
-    }) as any
+    } as unknown as Response)
 
     const result = await fetchPostHogSnapshot({ apiKey: 'phc_test' }, 'production-app')
     expect(result.status).toBe('ok')
@@ -28,13 +28,13 @@ describe('fetchPostHogSnapshot', () => {
   })
 
   it('returns no-data (not an error) when the project has no events in the window', async () => {
-    webhookFetchMock.mockResolvedValue({ ok: true, json: async () => ({ results: [] }) }) as any
+    webhookFetchMock.mockResolvedValue({ ok: true, json: async () => ({ results: [] }) } as unknown as Response)
     const result = await fetchPostHogSnapshot({ apiKey: 'phc_test' }, 'production-app')
     expect(result).toEqual({ status: 'no-data' })
   })
 
   it('returns an error result (never throws) on a non-OK response', async () => {
-    webhookFetchMock.mockResolvedValue({ ok: false, status: 401, text: async () => 'unauthorized' }) as any
+    webhookFetchMock.mockResolvedValue({ ok: false, status: 401, text: async () => 'unauthorized' } as unknown as Response)
     const result = await fetchPostHogSnapshot({ apiKey: 'bad-key' }, 'production-app')
     expect(result).toEqual({ status: 'error' })
   })
@@ -54,7 +54,7 @@ describe('fetchPostHogSnapshot', () => {
     // anything derived from caller input — there is no host parameter on
     // fetchPostHogSnapshot at all, which is the actual guarantee; this test
     // documents that contract.
-    webhookFetchMock.mockResolvedValue({ ok: true, json: async () => ({ results: [] }) }) as any
+    webhookFetchMock.mockResolvedValue({ ok: true, json: async () => ({ results: [] }) } as unknown as Response)
     await fetchPostHogSnapshot({ apiKey: 'phc_test' }, 'production-app')
     const calledUrl = webhookFetchMock.mock.calls[0][0] as string
     expect(new URL(calledUrl).hostname).toBe('app.posthog.com')
