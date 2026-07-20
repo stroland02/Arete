@@ -13,6 +13,7 @@ import { fetchTelemetryContext } from './telemetry/fetch-telemetry-context.js'
 import { fetchGitLabMRContext } from './gitlab-fetcher.js'
 import { runReviewPipeline } from './review-bridge.js'
 import { startApprovalWorker } from './approval-worker.js'
+import { startFixWorker, FIX_QUEUE_CONCURRENCY } from './fix/worker.js'
 import { postReview } from './comment-poster.js'
 import { postGitLabReview, type DiffRefs } from './gitlab-comment-poster.js'
 import { persistReview, persistTelemetrySnapshots, fetchProjectMemories } from './persistence.js'
@@ -327,4 +328,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   // agents /approvals/apply). Same process, separate queue/isolation.
   console.log('Areté approval-exec worker starting...')
   startApprovalWorker()
+  // And the healing-loop fix queue (work-item "Fix it" → agents /fix).
+  console.log(`Areté fix worker starting (concurrency: ${FIX_QUEUE_CONCURRENCY})...`)
+  startFixWorker()
 }
