@@ -1,6 +1,3 @@
-import { webhookFetch } from '@arete/net-guard'
-vi.mock('@arete/net-guard', () => ({ webhookFetch: vi.fn() }))
-const webhookFetchMock = vi.mocked(webhookFetch)
 import { describe, it, expect } from 'vitest'
 import { assertAllowedTelemetryHost } from './ssrf-guard.js'
 

@@ -18,7 +18,7 @@ describe('fetchVercelSnapshot', () => {
           { uid: 'd3', readyState: 'ERROR', createdAt: 1720000002000, url: 'app-3.vercel.app' },
         ],
       }),
-    }) as any
+    } as unknown as Response)
 
     const result = await fetchVercelSnapshot({ token: 'tok' }, 'prj_123')
     expect(result.status).toBe('ok')
@@ -32,13 +32,13 @@ describe('fetchVercelSnapshot', () => {
   })
 
   it('returns no-data when there are zero deployments', async () => {
-    webhookFetchMock.mockResolvedValue({ ok: true, json: async () => ({ deployments: [] }) }) as any
+    webhookFetchMock.mockResolvedValue({ ok: true, json: async () => ({ deployments: [] }) } as unknown as Response)
     const result = await fetchVercelSnapshot({ token: 'tok' }, 'prj_123')
     expect(result.status).toBe('no-data')
   })
 
   it('returns error (never throws) on a non-OK response', async () => {
-    webhookFetchMock.mockResolvedValue({ ok: false, status: 403 }) as any
+    webhookFetchMock.mockResolvedValue({ ok: false, status: 403 } as unknown as Response)
     const result = await fetchVercelSnapshot({ token: 'bad' }, 'prj_123')
     expect(result.status).toBe('error')
   })
@@ -54,7 +54,7 @@ describe('fetchVercelSnapshot', () => {
   })
 
   it('includes teamId in the query only when provided', async () => {
-    webhookFetchMock.mockResolvedValue({ ok: true, json: async () => ({ deployments: [] }) }) as any
+    webhookFetchMock.mockResolvedValue({ ok: true, json: async () => ({ deployments: [] }) } as unknown as Response)
     await fetchVercelSnapshot({ token: 'tok' }, 'prj_123', 'team_abc')
     const calledUrl = new URL(webhookFetchMock.mock.calls[0][0] as string)
     expect(calledUrl.hostname).toBe('api.vercel.com')
@@ -64,7 +64,7 @@ describe('fetchVercelSnapshot', () => {
   })
 
   it('omits teamId from the query when not provided', async () => {
-    webhookFetchMock.mockResolvedValue({ ok: true, json: async () => ({ deployments: [] }) }) as any
+    webhookFetchMock.mockResolvedValue({ ok: true, json: async () => ({ deployments: [] }) } as unknown as Response)
     await fetchVercelSnapshot({ token: 'tok' }, 'prj_123')
     const calledUrl = new URL(webhookFetchMock.mock.calls[0][0] as string)
     expect(calledUrl.searchParams.has('teamId')).toBe(false)

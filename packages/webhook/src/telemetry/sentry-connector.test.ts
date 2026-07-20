@@ -15,7 +15,7 @@ describe('fetchSentrySnapshot', () => {
         { title: 'TypeError: x is undefined', count: '42', shortId: 'ACME-1', permalink: 'https://acme.sentry.io/issues/1' },
         { title: 'NullPointerException', count: '7', shortId: 'ACME-2', permalink: 'https://acme.sentry.io/issues/2' },
       ]),
-    }) as any
+    } as unknown as Response)
 
     const result = await fetchSentrySnapshot({ token: 'tok' }, 'acme', 'backend')
     expect(result.status).toBe('ok')
@@ -28,13 +28,13 @@ describe('fetchSentrySnapshot', () => {
   })
 
   it('returns no-data when there are zero issues', async () => {
-    webhookFetchMock.mockResolvedValue({ ok: true, json: async () => ([]) }) as any
+    webhookFetchMock.mockResolvedValue({ ok: true, json: async () => ([]) } as unknown as Response)
     const result = await fetchSentrySnapshot({ token: 'tok' }, 'acme', 'backend')
     expect(result.status).toBe('no-data')
   })
 
   it('returns error (never throws) on a non-OK response', async () => {
-    webhookFetchMock.mockResolvedValue({ ok: false, status: 401 }) as any
+    webhookFetchMock.mockResolvedValue({ ok: false, status: 401 } as unknown as Response)
     const result = await fetchSentrySnapshot({ token: 'bad' }, 'acme', 'backend')
     expect(result.status).toBe('error')
   })
@@ -50,7 +50,7 @@ describe('fetchSentrySnapshot', () => {
   })
 
   it('queries the org-level issues endpoint with a 7-day statsPeriod and project filter', async () => {
-    webhookFetchMock.mockResolvedValue({ ok: true, json: async () => ([]) }) as any
+    webhookFetchMock.mockResolvedValue({ ok: true, json: async () => ([]) } as unknown as Response)
     await fetchSentrySnapshot({ token: 'tok' }, 'acme', 'backend')
     const calledUrl = new URL(webhookFetchMock.mock.calls[0][0] as string)
     expect(calledUrl.hostname).toBe('sentry.io')
