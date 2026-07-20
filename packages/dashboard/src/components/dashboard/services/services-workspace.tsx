@@ -1194,6 +1194,16 @@ export function WorkItemPanel({ item }: { item: WorkItemView }) {
               ))}
             </ul>
           </PanelSection>
+          {item.state === "open" && item.fixError ? (
+            <PanelSection title="Last fix attempt">
+              <p className="px-1 text-[11px] leading-5 text-content-secondary">
+                Fix failed: {item.fixError}
+              </p>
+              <p className="px-1 pt-1 text-[11px] leading-5 text-content-muted">
+                The item is back in the inbox — Fix it again to retry.
+              </p>
+            </PanelSection>
+          ) : null}
           {item.state === "fixing" && item.containerId ? (
             <PanelSection title="Live fix">
               <p className="px-1 text-[11px] leading-5 text-content-muted">

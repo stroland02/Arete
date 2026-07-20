@@ -56,6 +56,14 @@ describe('getWorkItemInbox', () => {
     });
   });
 
+  it('carries the honest fixError through to the view (healing loop §7)', async () => {
+    const { db } = fakeDb([row({ id: 'wi-9', state: 'open', fixError: 'timeout' })]);
+
+    const inbox = await getWorkItemInbox(db, ['inst-1']);
+
+    expect(inbox.items[0].fixError).toBe('timeout');
+  });
+
   it('returns an empty inbox without touching the db when the caller has no installations', async () => {
     const { db, workItemFindMany, scanRunFindFirst } = fakeDb();
 

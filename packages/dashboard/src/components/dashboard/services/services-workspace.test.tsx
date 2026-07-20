@@ -18,6 +18,7 @@ function item(overrides: Partial<InboxView['items'][number]> = {}): InboxView['i
     confidence: 0.8,
     state: 'open',
     containerId: null,
+    fixError: null,
     ...overrides,
   };
 }
@@ -142,6 +143,15 @@ describe('ServicesWorkspace — work-item inbox', () => {
     );
     expect(postedHtml).toContain('https://github.com/acme/shop/pull/12');
     expect(postedHtml).not.toContain('Dismiss');
+  });
+
+  it('state matrix: an open item with a failed fix shows the honest reason and still offers Fix it (retry)', () => {
+    const html = renderToStaticMarkup(
+      <WorkItemPanel item={item({ fixError: 'verification failed: issue still present' })} />,
+    );
+    expect(html).toContain('Fix failed');
+    expect(html).toContain('verification failed: issue still present');
+    expect(html).toContain('Fix it');
   });
 
   it('shows Scanning… while a run is in flight', () => {

@@ -19,6 +19,9 @@ export interface WorkItemView {
   containerId?: string | null;
   /** The posted PR's URL, when the container's pr JSON carries one. */
   prUrl?: string | null;
+  /** Honest reason the last fix attempt failed (healing loop §7) — rendered
+   *  while the item is back at `open`; the Fix it button doubles as retry. */
+  fixError?: string | null;
 }
 
 export interface InboxView {
@@ -99,6 +102,7 @@ export async function getWorkItemInbox(
     state: r.state as WorkItemView['state'],
     containerId: (r.containerId ?? null) as string | null,
     prUrl: typeof r.containerId === 'string' ? prUrls.get(r.containerId) ?? null : null,
+    fixError: (r.fixError ?? null) as string | null,
   }));
 
   return {
