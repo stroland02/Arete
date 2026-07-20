@@ -1,7 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AiModelsSection } from "./ai-models-section";
 import type { ModelConnectionsClient } from "@/lib/model-connections-client";
+
+// The rows call useRouter() (router.refresh() after connect/disconnect); a
+// static render has no app-router context, so mock it — same pattern the
+// glass-box dock test uses.
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }) }));
 
 const stubClient: ModelConnectionsClient = {
   list: async () => [],
@@ -31,15 +36,18 @@ describe("AiModelsSection", () => {
     expect(html.toLowerCase()).toContain("verification runs on your connected model");
   });
 
-  it("offers connect + model-select + Test per provider", () => {
+  it("offers credential + model-select + Connect per provider", () => {
     expect(html).toContain("API key");
     expect(html).toContain("Base URL"); // Ollama
-    expect(html).toContain("Test");
+    expect(html).toContain("Connect"); // the connect action (formerly labelled "Test")
     expect(html).toContain("claude-opus-4-8"); // a selectable model
   });
 
   it("fabricates no connected state before a successful Test", () => {
     // The green "Connected" badge only appears after test() returns connected.
     expect(html).not.toContain("Connected");
+    // ...and Disconnect is offered only for a PERSISTED connection (a
+    // connectionId from list() or connect()), never from a bare Test result.
+    expect(html).not.toContain("Disconnect");
   });
 });

@@ -23,6 +23,7 @@ import {
   type ModelTestOutcome,
 } from "@/lib/model-connections-client";
 import { consumePullStream } from "@/lib/ollama-pull";
+import { findProviderConnection, disconnectControl } from "@/lib/ai-models-view";
 
 /**
  * The "AI Models" Connections section. Providers render as rows in the same
@@ -104,6 +105,10 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
   // response body, rendered in the card. Server-side probe logs aren't a surface
   // the user watches, so failures are shown here where the click happens.
   const [diag, setDiag] = useState<string | null>(null);
+  // The persisted connection's id (null = not saved). Disconnect deletes by id,
+  // so we retain it from list() hydration and from a successful connect().
+  const [connectionId, setConnectionId] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   useEffect(() => {
     if (provider.id !== "ollama") return;
@@ -136,9 +141,10 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
       .list()
       .then((rows) => {
         if (cancelled) return;
-        const mine = rows.find((r) => r.provider === provider.id);
+        const mine = findProviderConnection(rows, provider.id);
         if (mine) {
           setModel(mine.model);
+          setConnectionId(mine.id);
           setOutcome({ status: "connected", model: mine.model });
         }
       })
@@ -156,7 +162,7 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
 
   const connected = outcome?.status === "connected";
   // api-key providers need a key; Ollama can fall back to its default base URL.
-  const canTest = !testing && !pulling && (!isKey || secret.trim().length > 0);
+  const canTest = !testing && !pulling && !disconnecting && (!isKey || secret.trim().length > 0);
 
   async function runTest() {
     setTesting(true);
@@ -264,7 +270,8 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
     // router.refresh() re-runs the server layout so the sidebar updates at once.
     if (result.status === "connected") {
       try {
-        await client.connect(input);
+        const saved = await client.connect(input);
+        setConnectionId(saved.id);
         router.refresh();
       } catch (err) {
         result = {
@@ -278,7 +285,30 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
     setTesting(false);
   }
 
+  // Disconnect: delete the persisted connection by id and return the row to its
+  // not-connected state. router.refresh() re-runs the server layout so the
+  // sidebar chip drops the model at once.
+  async function runDisconnect() {
+    if (!connectionId) return;
+    setDisconnecting(true);
+    try {
+      await client.disconnect(connectionId);
+      setConnectionId(null);
+      setOutcome(null);
+      setDiag(null);
+      router.refresh();
+    } catch (err) {
+      setOutcome({
+        status: "failed",
+        reason: err instanceof Error ? err.message : "couldn't disconnect",
+      });
+    } finally {
+      setDisconnecting(false);
+    }
+  }
+
   const msg = outcome ? outcomeMessage(provider, outcome) : null;
+  const disconnect = disconnectControl(connectionId, disconnecting);
   const RowIcon = PROVIDER_ICONS[provider.id] ?? IconSparkles;
   const panelId = `model-provider-${provider.id}`;
 
@@ -383,6 +413,18 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
             {testing ? <IconLoader2 size={13} className="motion-safe:animate-spin" aria-hidden /> : null}
             {pulling ? (pullStatus ?? "Pulling…") : testing ? "Connecting…" : connected ? "Reconnect" : "Connect"}
           </Button>
+          {disconnect.show && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={runDisconnect}
+              disabled={disconnect.disabled}
+              className="h-8 rounded-lg text-[12px]"
+            >
+              {disconnecting ? <IconLoader2 size={13} className="motion-safe:animate-spin" aria-hidden /> : null}
+              {disconnect.label}
+            </Button>
+          )}
           {msg && (
             <span
               className={`inline-flex items-center gap-1 text-[11px] ${
