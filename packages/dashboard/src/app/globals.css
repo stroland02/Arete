@@ -178,3 +178,25 @@ body {
     var(--shadow-card);
   border-radius: 12px;
 }
+
+/* Slim, themed scrollbar for internal scroll panes (agents rail, conversation,
+   consoles) — replaces the default chunky OS scrollbar with a thin one that
+   matches the surrounding chrome instead of standing out. */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-default) transparent;
+}
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: var(--color-border-default);
+  border-radius: 9999px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-border-strong);
+}

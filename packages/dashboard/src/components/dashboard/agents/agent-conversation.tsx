@@ -115,7 +115,7 @@ export function AgentConversation({ agent, findings, findingCount, hasReviews, r
         </button>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+      <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-3 py-3">
         {findings.length > 0 ? (
           <ol className="space-y-2">
             <li className="pb-1 text-[10px] uppercase tracking-wider text-content-muted">
@@ -144,12 +144,20 @@ export function AgentConversation({ agent, findings, findingCount, hasReviews, r
               </li>
             ))}
           </ol>
+        ) : turns.length > 0 ? (
+          /* A conversation is already running: collapse the full profile/CTA
+             block to one compact line right above the chat instead of the
+             h-full filler below — that filler used to push every turn well
+             below the fold with a dead gap in between. */
+          <p className="border-b border-border-subtle px-1 pb-3 text-[12px] leading-relaxed text-content-muted">
+            {agent.description}
+          </p>
         ) : (
-          /* No findings in view: preview the agent from real catalog metadata
-             (description + what it inspects) rather than a bare empty message,
-             so each specialist reads as intentional and complete before any
-             repo is connected. Nothing here is fabricated. */
-          <div className="flex h-full flex-col gap-4 px-1 py-1">
+          /* No findings, no conversation yet: preview the agent from real
+             catalog metadata (description + what it inspects) rather than a
+             bare empty message, so each specialist reads as intentional and
+             complete before any repo is connected. Nothing here is fabricated. */
+          <div className="flex flex-col gap-4 px-1 py-1">
             {findingCount > 0 && (
               <p className="rounded-lg border border-border-subtle bg-surface-2/40 px-3 py-2 text-[11px] leading-4 text-content-muted">
                 {agent.label} · {findingCount} finding{findingCount === 1 ? "" : "s"} on record — none in the most
@@ -210,7 +218,7 @@ export function AgentConversation({ agent, findings, findingCount, hasReviews, r
         )}
 
         {turns.length > 0 && (
-          <div className="mt-4 space-y-2 border-t border-border-subtle pt-3">
+          <div className="mt-3 space-y-2">
             {turns.map((t, i) => (
               <div
                 key={i}

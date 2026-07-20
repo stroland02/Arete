@@ -77,6 +77,7 @@ export function AgentsWorkspace({
           activeModel={activeModel}
         />
         <AgentConversation
+          key={selectedAgent.id}
           agent={selectedAgent}
           findings={selectedAgentFindings}
           findingCount={findingCountById[selectedAgent.id] ?? 0}

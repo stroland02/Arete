@@ -46,7 +46,7 @@ export function AgentRail({
         </span>
       </header>
 
-      <ul className="min-h-0 flex-1 overflow-y-auto py-1">
+      <ul className="scrollbar-thin min-h-0 flex-1 overflow-y-auto py-1">
         {agents.map((agent) => {
           const Icon = agent.icon;
           const count = findingCountById[agent.id] ?? 0;
