@@ -14,6 +14,7 @@
 
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { internalAuthHeaders } from '@/lib/internal-auth';
 import { decryptCredentials } from '@/lib/telemetry-credentials';
 import { resolveSelectedInstallationIds } from '@/lib/queries';
 import type { ProbeResult, ActiveModelConnection } from './model-connections-map';
@@ -111,7 +112,7 @@ export async function probeModelConnection(input: {
   try {
     const res = await fetch(`${base}/internal/model-connections/test`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...internalAuthHeaders() },
       body: JSON.stringify(input),
     });
     if (!res.ok) {

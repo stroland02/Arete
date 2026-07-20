@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { internalAuthHeaders } from '@/lib/internal-auth';
 import { requireScope } from '@/lib/model-connections-api';
 
 // Session-scoped; never statically prerendered.
@@ -27,7 +28,7 @@ export async function POST(_req: Request): Promise<Response> {
   try {
     const res = await fetch(`${base}/scan/trigger`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...internalAuthHeaders() },
       body: JSON.stringify({ installationId: target }),
     });
     const body = await res.json().catch(() => ({}));

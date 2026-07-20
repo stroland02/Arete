@@ -8,6 +8,8 @@
 // runs in the webhook service (App installation token, pr-fetcher pattern) —
 // this module only proxies and maps the envelope to an HTTP status.
 
+import { internalAuthHeaders } from '@/lib/internal-auth';
+
 /** Wire shape of the webhook's /internal/context-map/file envelope. */
 export type FileContentEnvelope =
   | { ok: true; path: string; text: string; truncated: boolean }
@@ -43,7 +45,7 @@ export async function fetchFileFromWebhook(
   if (!base) return { ok: false, reason: 'unavailable' };
   try {
     const url = `${base}/internal/context-map/file?installationId=${externalInstallationId}&path=${encodeURIComponent(path)}`;
-    const res = await fetch(url);
+    const res = await fetch(url, { headers: internalAuthHeaders() });
     const body = (await res.json().catch(() => null)) as FileContentEnvelope | null;
     if (!body || typeof body !== 'object') return { ok: false, reason: 'unavailable' };
     return body;

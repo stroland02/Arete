@@ -185,6 +185,16 @@ export async function createServer(): Promise<express.Application> {
     }
   })
   
+  // Service-to-service surface guard: /internal/*, /scan/trigger and
+  // /staging/send are called only by our own services (the dashboard proxies
+  // after session-scoping the tenant), so the hop itself requires the shared
+  // bearer token (INTERNAL_API_TOKEN). Fail-closed 503 when unconfigured.
+  // Public receivers (GitHub/Stripe/GitLab webhooks) and the browser-facing
+  // OAuth routes are deliberately NOT behind this guard.
+  const { createInternalAuthMiddleware } = await import('./internal-auth.js')
+  const requireInternalToken = createInternalAuthMiddleware()
+  server.use('/internal', requireInternalToken)
+
   // PR-staging send seam (internal). The dashboard's "Post PR" action calls this
   // with two internal uuids; we resolve the tenant to an installation Octokit,
   // load the approved container slice, and run the gate-enforced, idempotent
@@ -212,7 +222,7 @@ export async function createServer(): Promise<express.Application> {
     },
   }
   const { createStagingSendHandler } = await import('./staging/send-handler.js')
-  server.post('/staging/send', express.json(), createStagingSendHandler(stagingSendDeps))
+  server.post('/staging/send', requireInternalToken, express.json(), createStagingSendHandler(stagingSendDeps))
 
   // Internal scan trigger (work-item inbox). The dashboard's session-scoped
   // POST /api/scan proxies here with a session-derived internal installation
@@ -220,7 +230,7 @@ export async function createServer(): Promise<express.Application> {
   // model present, no scan already running) lives in maybeStartScan — this
   // route only maps the result: 202 started / 409 already_running / 200
   // {started:false, reason}. Deps import lazily (db-free registration).
-  server.post('/scan/trigger', express.json(), async (req, res) => {
+  server.post('/scan/trigger', requireInternalToken, express.json(), async (req, res) => {
     const installationId =
       typeof req.body?.installationId === 'string' ? req.body.installationId : ''
     if (!installationId) {

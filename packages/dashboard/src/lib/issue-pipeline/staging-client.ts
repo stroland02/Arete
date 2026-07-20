@@ -55,6 +55,8 @@ export interface HttpStagingClientOptions {
   baseUrl?: string;
   /** Injectable for tests; defaults to the global fetch. */
   fetch?: FetchLike;
+  /** Extra request headers — the internal bearer token (internalAuthHeaders). */
+  headers?: Record<string, string>;
 }
 
 async function readBody(res: { json: () => Promise<unknown> }): Promise<Record<string, unknown>> {
@@ -74,16 +76,18 @@ async function readBody(res: { json: () => Promise<unknown> }): Promise<Record<s
 export class HttpStagingClient implements StagingClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: FetchLike;
+  private readonly extraHeaders: Record<string, string>;
 
   constructor(options: HttpStagingClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? "";
     this.fetchImpl = options.fetch ?? (globalThis.fetch as unknown as FetchLike);
+    this.extraHeaders = options.headers ?? {};
   }
 
   async send(input: StagingSendInput): Promise<StagingOutcome> {
     const res = await this.fetchImpl(`${this.baseUrl}${STAGING_SEND_PATH}`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...this.extraHeaders },
       body: JSON.stringify(input),
     });
 
