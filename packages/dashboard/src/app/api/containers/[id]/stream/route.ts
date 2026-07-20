@@ -20,6 +20,7 @@ import { db } from "@/lib/db";
 import { InMemoryContainerStore } from "@/lib/issue-pipeline/container-store";
 import { getLiveSampleContainer } from "@/lib/issue-pipeline/live-drive";
 import { getReviewContainer } from "@/lib/issue-pipeline/review-container-store";
+import { getStoredContainer } from "@/lib/issue-pipeline/stored-container";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,7 +33,13 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   const { id } = await ctx.params;
   const installationIds = (session.installations ?? []).map((i) => i.id);
-  const container = (await getReviewContainer(db, installationIds, id)) ?? getLiveSampleContainer(id);
+  // Resolution order: review projection → PERSISTED fix container (the
+  // healing loop's real, incrementally-saved transcript — spec §4/§9, never
+  // the sample for a real row) → tenant-neutral sample fallback.
+  const container =
+    (await getReviewContainer(db, installationIds, id)) ??
+    (await getStoredContainer(db, installationIds, id)) ??
+    getLiveSampleContainer(id);
   if (!container) {
     return new Response("Not found", { status: 404 });
   }
