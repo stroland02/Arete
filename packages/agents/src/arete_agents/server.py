@@ -23,7 +23,7 @@ from arete_agents.llm.base import (
 )
 
 _logger = logging.getLogger(__name__)
-from arete_agents.models.pr import LlmConfig, PRContext, ScanRequest
+from arete_agents.models.pr import LLMConfig, PRContext, ScanRequest
 from arete_agents.orchestrator import ReviewOrchestrator
 from arete_agents.remediation import RemediationGraph
 from arete_agents.scan import ScanUnavailableError, run_scan
@@ -244,7 +244,7 @@ def chat(payload: Dict[str, Any]):
     # than a silent fallback to a different model.
     llm_raw = payload.pop("llm", None) if isinstance(payload, dict) else None
     if llm_raw:
-        cfg = LlmConfig.model_validate(llm_raw)
+        cfg = LLMConfig.model_validate(llm_raw)
         if cfg.provider == "ollama":
             reason = ollama_unavailable_reason(
                 cfg.base_url or DEFAULT_OLLAMA_BASE_URL,
