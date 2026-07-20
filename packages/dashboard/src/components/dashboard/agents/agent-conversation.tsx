@@ -31,6 +31,11 @@ export interface AgentConversationProps {
   /** The model this agent runs on. Replaces the old hardcoded Opus/Sonnet tier —
    *  every agent runs on the tenant's connected model today, so it's shown live. */
   activeModel?: ActiveModelConnection | null;
+  /** The work item/problem this chat is scoped to (Services deep-link), or
+   *  null for the agent's "general" thread. A different containerId is a
+   *  different, fresh conversation — the parent remounts this component (key)
+   *  when it changes, and history is (re)loaded for the new scope. */
+  containerId?: string | null;
   onConfigure: (agentId: string) => void;
 }
 
@@ -42,7 +47,7 @@ export interface AgentConversationProps {
  * service is unreachable the composer surfaces a truthful notice instead of a
  * canned reply.
  */
-export function AgentConversation({ agent, findings, findingCount, hasReviews, repoConnected = false, modelConnected = false, activeModel = null, onConfigure }: AgentConversationProps) {
+export function AgentConversation({ agent, findings, findingCount, hasReviews, repoConnected = false, modelConnected = false, activeModel = null, containerId = null, onConfigure }: AgentConversationProps) {
   const [message, setMessage] = useState("");
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [sending, setSending] = useState(false);
@@ -54,6 +59,25 @@ export function AgentConversation({ agent, findings, findingCount, hasReviews, r
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [turns, sending]);
+
+  // Load this thread's saved history on mount. The parent keys this component
+  // by (agent, containerId), so a fresh mount always means a genuinely
+  // different thread — one effect run per mount is correct, no deps needed.
+  useEffect(() => {
+    let cancelled = false;
+    const qs = containerId ? `?containerId=${encodeURIComponent(containerId)}` : "";
+    fetch(`/api/agents/${agent.id}/chat${qs}`)
+      .then((r) => (r.ok ? r.json() : { turns: [] }))
+      .then((d: { turns?: ChatTurn[] }) => {
+        if (cancelled) return;
+        if (Array.isArray(d.turns) && d.turns.length > 0) setTurns(d.turns);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleSend(e: FormEvent) {
     e.preventDefault();
@@ -67,7 +91,7 @@ export function AgentConversation({ agent, findings, findingCount, hasReviews, r
       const res = await fetch(`/api/agents/${agent.id}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: text, containerId }),
       });
       if (!res.ok) {
         setUnavailable(true);

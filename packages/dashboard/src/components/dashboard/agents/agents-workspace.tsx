@@ -77,7 +77,7 @@ export function AgentsWorkspace({
           activeModel={activeModel}
         />
         <AgentConversation
-          key={selectedAgent.id}
+          key={`${selectedAgent.id}:${containerId ?? "general"}`}
           agent={selectedAgent}
           findings={selectedAgentFindings}
           findingCount={findingCountById[selectedAgent.id] ?? 0}
@@ -85,6 +85,7 @@ export function AgentsWorkspace({
           repoConnected={connected}
           modelConnected={modelConnected}
           activeModel={activeModel}
+          containerId={containerId}
           onConfigure={setConfigAgentId}
         />
         <PrPanel

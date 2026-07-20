@@ -175,6 +175,28 @@ model ScanRun {
   @@index([installationId, startedAt])
 }
 
+/// One turn (user message or agent reply) in a specialist agent's chat
+/// (packages/dashboard /api/agents/[id]/chat). Solution-scoped: containerId
+/// ties a thread to the specific IssueContainer/problem it was opened for —
+/// switching to a different work item starts a fresh thread for the same
+/// agent. containerId is null for the "general" thread (no work item open).
+/// A plain scoping column (installationId, containerId — no @relation),
+/// mirroring WorkItem/ScanRun: high-volume, append-only, no need to traverse
+/// from Installation/IssueContainer.
+model AgentChatTurn {
+  id             String   @id @default(uuid())
+  installationId String
+  /// Matches an Agent.id from the dashboard's agent catalog, e.g. "security".
+  agentId        String
+  containerId    String?
+  /// "user" | "agent"
+  role           String
+  text           String
+  createdAt      DateTime @default(now())
+
+  @@index([installationId, agentId, containerId, createdAt])
+}
+
 model Repository {
   id             String       @id @default(uuid())
   provider       ScmProvider
