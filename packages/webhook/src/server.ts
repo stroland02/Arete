@@ -145,13 +145,28 @@ export async function createServer(): Promise<express.Application> {
   // GitLab webhook needs JSON body
   server.post('/gitlab-webhook', express.json(), handleGitLabWebhook)
   
+  // Service-to-service surface guard: /internal/*, /scan/trigger,
+  // /staging/send and /api/approvals/:id/execute are called only by our own
+  // services (the dashboard proxies after session-scoping the tenant), so the
+  // hop itself requires the shared bearer token (INTERNAL_API_TOKEN).
+  // Fail-closed 503 when unconfigured. Public receivers (GitHub/Stripe/GitLab
+  // webhooks) and the browser-facing OAuth routes are deliberately NOT behind
+  // this guard.
+  const { createInternalAuthMiddleware } = await import('./internal-auth.js')
+  const requireInternalToken = createInternalAuthMiddleware()
+  server.use('/internal', requireInternalToken)
+
   // Infrastructure Approvals Endpoint
   // Receives clicks from the dashboard when a human approves an LLM's
   // infrastructure command. Durably transitions the ApprovalPrompt to EXECUTED
   // and hands the command off to the `approval-exec` queue for the actual
   // apply/resume work (see approval-handler.ts). Idempotent on replay.
-  server.post('/api/approvals/:id/execute', express.json(), async (req, res) => {
-    const { id } = req.params
+  // Bearer-guarded (PM ruling 2026-07-19): no caller exists yet — Wave B's fix
+  // dispatcher will be the first and sends the header from day one.
+  server.post('/api/approvals/:id/execute', requireInternalToken, express.json(), async (req, res) => {
+    // The extra middleware in the chain widens Express's params inference to a
+    // generic dictionary; the route literal guarantees `id` is a string.
+    const { id } = req.params as { id: string }
     try {
       const { executeApproval } = await import('./approval-handler.js')
       const result = await executeApproval(id)
@@ -185,16 +200,6 @@ export async function createServer(): Promise<express.Application> {
     }
   })
   
-  // Service-to-service surface guard: /internal/*, /scan/trigger and
-  // /staging/send are called only by our own services (the dashboard proxies
-  // after session-scoping the tenant), so the hop itself requires the shared
-  // bearer token (INTERNAL_API_TOKEN). Fail-closed 503 when unconfigured.
-  // Public receivers (GitHub/Stripe/GitLab webhooks) and the browser-facing
-  // OAuth routes are deliberately NOT behind this guard.
-  const { createInternalAuthMiddleware } = await import('./internal-auth.js')
-  const requireInternalToken = createInternalAuthMiddleware()
-  server.use('/internal', requireInternalToken)
-
   // PR-staging send seam (internal). The dashboard's "Post PR" action calls this
   // with two internal uuids; we resolve the tenant to an installation Octokit,
   // load the approved container slice, and run the gate-enforced, idempotent

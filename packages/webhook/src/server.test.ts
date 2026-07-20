@@ -61,7 +61,12 @@ describe('server middleware mount', () => {
 })
 
 describe('POST /api/approvals/:id/execute route wiring', () => {
-  beforeEach(() => { vi.resetModules() })
+  // The route sits behind the shared internal bearer guard (PM ruling
+  // 2026-07-19) — provision the token and send it on legitimate calls.
+  beforeEach(() => {
+    vi.resetModules()
+    vi.stubEnv('INTERNAL_API_TOKEN', 'test-internal-token')
+  })
 
   async function buildWith(executeApproval: (id: string) => Promise<any>): Promise<Application> {
     vi.doMock('@arete/db', () => ({ PrismaClient: vi.fn() }))
@@ -70,12 +75,26 @@ describe('POST /api/approvals/:id/execute route wiring', () => {
     return createServer()
   }
 
+  const authed = (app: Application, path: string) =>
+    request(app).post(path).set('Authorization', 'Bearer test-internal-token')
+
+  it('401s without the internal bearer token and never runs the approval', async () => {
+    const execute = vi.fn()
+    const app = await buildWith(execute)
+
+    const res = await request(app).post('/api/approvals/a1/execute').send({})
+
+    expect(res.status).toBe(401)
+    expect(res.body).toEqual({ error: 'unauthorized' })
+    expect(execute).not.toHaveBeenCalled()
+  })
+
   it('returns 202 and the executed state when the approval is newly executed', async () => {
     const executedAt = new Date('2026-07-14T00:00:00Z')
     const execute = vi.fn().mockResolvedValue({ outcome: 'executed', approvalId: 'a1', executedAt })
     const app = await buildWith(execute)
 
-    const res = await request(app).post('/api/approvals/a1/execute').send({})
+    const res = await authed(app, '/api/approvals/a1/execute').send({})
 
     expect(execute).toHaveBeenCalledWith('a1')
     expect(res.status).toBe(202)
@@ -86,7 +105,7 @@ describe('POST /api/approvals/:id/execute route wiring', () => {
     const execute = vi.fn().mockResolvedValue({ outcome: 'not_found' })
     const app = await buildWith(execute)
 
-    const res = await request(app).post('/api/approvals/nope/execute').send({})
+    const res = await authed(app, '/api/approvals/nope/execute').send({})
 
     expect(res.status).toBe(404)
     expect(res.body).toMatchObject({ error: 'approval_not_found' })
@@ -97,7 +116,7 @@ describe('POST /api/approvals/:id/execute route wiring', () => {
     const execute = vi.fn().mockResolvedValue({ outcome: 'already_executed', approvalId: 'a1', executedAt })
     const app = await buildWith(execute)
 
-    const res = await request(app).post('/api/approvals/a1/execute').send({})
+    const res = await authed(app, '/api/approvals/a1/execute').send({})
 
     expect(res.status).toBe(200)
     expect(res.body).toMatchObject({ status: 'executed', idempotent: true })
@@ -107,7 +126,7 @@ describe('POST /api/approvals/:id/execute route wiring', () => {
     const execute = vi.fn().mockResolvedValue({ outcome: 'rejected', status: 'REJECTED' })
     const app = await buildWith(execute)
 
-    const res = await request(app).post('/api/approvals/a1/execute').send({})
+    const res = await authed(app, '/api/approvals/a1/execute').send({})
 
     expect(res.status).toBe(409)
     expect(res.body).toMatchObject({ error: 'approval_rejected' })
