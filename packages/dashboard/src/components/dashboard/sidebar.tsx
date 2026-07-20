@@ -18,7 +18,8 @@ const collapseTransition = { ...springTransition, opacity: { duration: 0.15 } } 
 
 const NAV_ITEMS = [
   { href: "/overview", label: "Overview" },
-  { href: "/map", label: "Code map" },
+  // Code map is reached from the Overview page (inline map + "Open map"), not a
+  // top-level tab. The /map route itself still exists for that link + deep-links.
   { href: "/dashboards", label: "Dashboards" },
   { href: "/services", label: "Services" },
   { href: "/agents", label: "Agents" },
