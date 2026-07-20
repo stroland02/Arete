@@ -6,6 +6,10 @@ vi.mock('@/lib/auth', () => ({ auth: () => authMock() }));
 const sendAgentChatMock = vi.fn();
 vi.mock('@/lib/agent-chat', () => ({ sendAgentChat: (...a: any[]) => sendAgentChatMock(...a) }));
 
+// The real resolver pulls in @/lib/db, which requires DATABASE_URL at import
+// time; null means "agents service default", the same contract the route uses.
+vi.mock('@/lib/model-connections-api', () => ({ resolveActiveLlmForChat: async () => null }));
+
 import { POST } from './route';
 
 function req(body: unknown) {
