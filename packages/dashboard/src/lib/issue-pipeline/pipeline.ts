@@ -122,16 +122,20 @@ export function assertNoFabrication(findings: ReadonlyArray<Finding>, diff: Diff
 // ── State machine + gates (spec §4, §5) ─────────────────────────────────────
 
 const TRANSITIONS: Record<ContainerState, ReadonlyArray<ContainerState>> = {
-  detecting: ["fanning_out", "dismissed"],
-  fanning_out: ["verifying", "dismissed"],
-  verifying: ["composing", "dismissed"],
-  composing: ["ready", "dismissed"],
+  detecting: ["fanning_out", "dismissed", "fix_failed"],
+  fanning_out: ["verifying", "dismissed", "fix_failed"],
+  verifying: ["composing", "dismissed", "fix_failed"],
+  composing: ["ready", "dismissed", "fix_failed"],
   ready: ["solution_approved", "dismissed"],
   solution_approved: ["posted", "changes_requested", "dismissed"],
   changes_requested: ["fanning_out", "dismissed"],
   posted: ["merged", "dismissed"],
   merged: [],
   dismissed: [],
+  // Healing-loop v1 (spec 2026-07-19 §4): a fix run that failed or timed out.
+  // Terminal — the container is preserved as the honest record of the attempt;
+  // a retry births a NEW container from the re-opened work item.
+  fix_failed: [],
 };
 
 export function canTransition(from: ContainerState, to: ContainerState): boolean {

@@ -21,7 +21,8 @@ export type ContainerState =
   | "posted"
   | "changes_requested"
   | "merged"
-  | "dismissed";
+  | "dismissed"
+  | "fix_failed";
 
 export type Verdict = "candidate" | "kept" | "dropped";
 

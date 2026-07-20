@@ -201,3 +201,21 @@ describe("PR composition", () => {
     expect(() => assertPrIntegrity(bad, findings)).toThrow(/non-kept/);
   });
 });
+
+describe("fix_failed (healing loop v1)", () => {
+  it("is reachable from every worker stage and terminal", () => {
+    expect(canTransition("detecting", "fix_failed")).toBe(true);
+    expect(canTransition("fanning_out", "fix_failed")).toBe(true);
+    expect(canTransition("verifying", "fix_failed")).toBe(true);
+    expect(canTransition("composing", "fix_failed")).toBe(true);
+    expect(canTransition("ready", "fix_failed")).toBe(false);
+    expect(canTransition("fix_failed", "ready")).toBe(false);
+    expect(canTransition("fix_failed", "dismissed")).toBe(false);
+  });
+
+  it("can never be approved or posted", () => {
+    const failed = container("fix_failed");
+    expect(canApprove(failed)).toBe(false);
+    expect(canPost(failed)).toBe(false);
+  });
+});
