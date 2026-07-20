@@ -24,6 +24,8 @@ from arete_agents.llm.base import (
 
 _logger = logging.getLogger(__name__)
 from arete_agents.models.pr import LLMConfig, PRContext, ScanRequest
+from arete_agents.models.fix import FixRequest, FixResponse
+from arete_agents.fix_pipeline import run_fix
 from arete_agents.orchestrator import ReviewOrchestrator
 from arete_agents.remediation import RemediationGraph
 from arete_agents.scan import ScanUnavailableError, run_scan
@@ -204,6 +206,53 @@ def scan(req: ScanRequest):
         if reason:
             raise HTTPException(status_code=503, detail=reason)
     return _execute(get_llms_by_role(settings))
+
+
+@app.post("/fix")
+def fix(req: FixRequest) -> FixResponse:
+    """POST /fix — author a real file patch for one work item's evidence,
+    verified by auto_resolver's core, an honest fix_failed when it can't
+    (healing-loop v1 §3). Per-request BYO model, mirroring /review and /scan:
+    req.llm builds fresh clients via get_llms_by_role_from_config; omitted
+    falls back to the service default (Ollama safety net).
+
+    Unlike /review and /scan, EVERY "could not do it" case here — an
+    unreachable Ollama, a checkout failure, a grounding violation, a failed
+    verification, a timeout — is reported as HTTP 200 with
+    FixResponse(status="fix_failed", reason=...), never a 503/400. FixResponse
+    already carries success/failure in its own `status` field, so callers
+    (the fix worker) have exactly one place to check, not two. Only a genuine
+    unhandled server error surfaces as a 500."""
+    if req.llm is not None:
+        if req.llm.provider == "ollama":
+            reason = ollama_unavailable_reason(
+                req.llm.base_url or DEFAULT_OLLAMA_BASE_URL,
+                req.llm.model or DEFAULT_OLLAMA_MODEL,
+                _resolve_settings().deployment_tier,
+            )
+            if reason:
+                return FixResponse(status="fix_failed", reason=reason)
+        try:
+            llms = get_llms_by_role_from_config(
+                provider=req.llm.provider,
+                model=req.llm.model,
+                api_key=req.llm.api_key,
+                base_url=req.llm.base_url,
+            )
+        except ValueError as exc:
+            return FixResponse(status="fix_failed", reason=str(exc))
+        return run_fix(req, llms, verify_settings=_resolve_settings())
+
+    settings = _resolve_settings()
+    if settings.llm_provider == "ollama":
+        reason = ollama_unavailable_reason(
+            settings.ollama_base_url,
+            settings.ollama_model,
+            settings.deployment_tier,
+        )
+        if reason:
+            return FixResponse(status="fix_failed", reason=reason)
+    return run_fix(req, get_llms_by_role(settings), verify_settings=settings)
 
 
 class ApplyApprovalRequest(BaseModel):
