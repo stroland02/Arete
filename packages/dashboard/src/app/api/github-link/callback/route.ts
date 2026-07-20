@@ -3,6 +3,8 @@ import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { verifyGithubLinkState } from '@/lib/github-link-state';
 import { exchangeGithubLinkCode, linkGithubAccount, GithubAccountConflictError } from '@/lib/github-link';
+import { fetchAuthorizedGithubLogins } from '@/lib/github';
+import { getAuthorizedInstallations, persistInstallationAccess } from '@/lib/installations';
 
 /**
  * Plain Next.js route handler (NOT /api/auth/callback/*) for the
@@ -50,6 +52,18 @@ export async function GET(req: NextRequest) {
     }
     console.error('[github-link] failed to persist linked GitHub account', error);
     return NextResponse.redirect(new URL('/settings?error=github_link_failed', req.url));
+  }
+
+  // Connect-time authoritative write of the durable account→installation mapping,
+  // so login can read the stored rows instead of re-deriving from the GitHub API
+  // every time (the connection-reset fix). Best-effort: a hiccup here doesn't fail
+  // the link — the login write-through backfills on the next successful refresh.
+  try {
+    const logins = await fetchAuthorizedGithubLogins(exchanged.accessToken);
+    const installations = await getAuthorizedInstallations(db, logins);
+    await persistInstallationAccess(db, verified.userId, installations);
+  } catch (error) {
+    console.error('[github-link] failed to persist installation access (will backfill on next login)', error);
   }
 
   return NextResponse.redirect(new URL('/settings?connected=github', req.url));

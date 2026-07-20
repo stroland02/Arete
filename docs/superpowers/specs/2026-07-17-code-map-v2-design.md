@@ -93,16 +93,17 @@ Produces the sidebar view model:
   - Folder regions, file chips, aggregated folder edges at rest; hovering/selecting a file
     reveals its individual curved edges.
   - Search input and filter chips (`All · Findings · Active`) above the canvas
-    (interactive mode only): search dims non-matching nodes to ~20% and centers the first
-    match; chips filter which nodes render at full opacity.
+    (interactive mode only): search dims non-matching nodes to ~20%; chips filter which
+    nodes render at full opacity. (Centering the first match is backlog polish, not v2 —
+    PM ruling 2026-07-18.)
 - **`code-map-sidebar.tsx`**: right slide-over drawer (same pattern as
   `agent-config-drawer.tsx`), rendering the `buildSidebarModel` output in the four
   sections; dependency rows are buttons that jump-select the target node.
 - **`/map` page** (`app/(dashboard)/map/page.tsx`): auth + installation scoping exactly
   like `/overview` (`resolveSelectedInstallationIds`; never trust client-supplied
   installation ids), `getSensoriumViewModel`, full-height interactive map + sidebar. Deep
-  link `/map?node=<id>` pre-selects and centers that node. Nav entry "Code map" added to
-  the sidebar nav.
+  link `/map?node=<id>` pre-selects that node (drawer opens; centering on it is backlog
+  polish — PM ruling 2026-07-18). Nav entry "Code map" added to the sidebar nav.
 - **`/overview`**: keeps the compact map (fit-to-width, non-interactive, no sidebar);
   clicking any node navigates to `/map?node=<id>`; an "Open map ↗" affordance links to
   `/map`.
@@ -119,8 +120,9 @@ Produces the sidebar view model:
   selection edges in cobalt at low opacity. Dot-grid backdrop kept but token-driven
   (`content-primary` at ~4% opacity) so it reads in both themes.
 - Accent discipline: cobalt only for selection/hover/active; bronze only for the folder
-  glyph; severity colors only for findings. Agent activity = soft cobalt breathing glow
-  (framer-motion, `ease-out-expo`), replacing `animate-pulse` on the border.
+  glyph; severity colors only for findings. Agent activity = a small pulsing cobalt dot
+  on the chip (CSS `animate-pulse`), replacing the old whole-border pulse. (A softer
+  framer-motion breathing glow remains optional future polish.)
 - Both themes styled via tokens only — no hardcoded slate/white values anywhere.
 
 ## Error handling

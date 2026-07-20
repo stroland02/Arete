@@ -47,6 +47,18 @@ class FileReview(BaseModel):
     noise_decisions: list[NoiseDecision] = Field(default_factory=list)
 
 
+class AgentStatus(BaseModel):
+    """One specialist's tiered-meeting update (tiered-comms spec §2). All
+    fields are REAL run state — status from whether the agent completed,
+    confidence from the critic/agent output, blockers from actual errors.
+    Never synthesized for display (anti-fabrication rule)."""
+    agent: str
+    status: Literal["on_track", "blocked", "needs_input", "escalating", "done"]
+    summary: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    blockers: list[str] = []
+
+
 class ReviewResult(BaseModel):
     pr_context: PRContext
     file_reviews: list[FileReview]
@@ -85,6 +97,9 @@ class ReviewResult(BaseModel):
     # merge authorization).
     verdict: Literal["pass", "comment", "review-required", "blocked"] = "pass"
     verdict_reason: str = ""
+    # Per-specialist tiered-comms status (see AgentStatus). Empty when no
+    # agent ran (e.g. the empty-PR short-circuit) — never fabricated.
+    agent_statuses: list[AgentStatus] = Field(default_factory=list)
 
     @computed_field
     @property
