@@ -7,7 +7,9 @@ from langchain_ollama import ChatOllama
 # not pulled, the review must fail honestly ("ollama pull qwen2.5-coder"),
 # never fabricate findings.
 DEFAULT_OLLAMA_MODEL = "qwen2.5-coder"
-DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
+# IPv4 127.0.0.1, not `localhost`: Ollama binds IPv4 only, and Node/httpx often
+# resolve `localhost` to IPv6 ::1 first, which refuses the connection.
+DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 
 
 def build_ollama_llm(

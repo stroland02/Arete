@@ -9,6 +9,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
+from pydantic import BaseModel
 
 from arete_agents.agents.business_logic import BusinessLogicAgent
 from arete_agents.agents.ci_agent import CIAgent
@@ -22,7 +23,7 @@ from arete_agents.critic import CriticAgent
 from arete_agents.grounding import has_quoted_evidence, valid_lines_for_patch
 from arete_agents.llm.base import ROLE_KEYS
 from arete_agents.models.pr import FileChange, PRContext
-from arete_agents.models.review import FileReview, NoiseDecision, ReviewResult
+from arete_agents.models.review import AgentStatus, FileReview, NoiseDecision, ReviewResult
 from arete_agents.verdict import decide_verdict
 
 _SEVERITY_WEIGHT = {"error": 3, "warning": 2, "info": 1}
@@ -85,6 +86,18 @@ def _merge_reviews(reviews_per_file: list[list[FileReview]]) -> list[FileReview]
     ]
 
 
+class AgentRunEvent(BaseModel):
+    """Internal per-(file, agent) execution outcome from the fan-out —
+    orchestrator-private raw data that _build_agent_statuses aggregates into
+    one AgentStatus per dispatched role. Not part of the public API (unlike
+    AgentStatus in models/review.py)."""
+    agent: str
+    ok: bool
+    error: str | None = None
+    comment_count: int = 0
+    summary: str = ""
+
+
 class GraphState(TypedDict):
     pr: PRContext
     raw_reviews: Annotated[list[FileReview], operator.add]
@@ -97,6 +110,11 @@ class GraphState(TypedDict):
     # error text in FileReview summaries after the fact.
     agent_successes: Annotated[int, operator.add]
     agent_failures: Annotated[int, operator.add]
+    # Per-(file, agent) outcomes, aggregated into AgentStatus per role in
+    # _synthesize_reviews (see _build_agent_statuses). Never populated for the
+    # "unknown agent" branch -- there is no real role to attribute it to
+    # (anti-fabrication rule: omit, don't invent).
+    agent_events: Annotated[list[AgentRunEvent], operator.add]
     final_result: ReviewResult
 
 
@@ -240,6 +258,55 @@ def _fallback_synthesize(pr: PRContext, flat_results: list[FileReview]) -> Revie
     )
 
 
+def _build_agent_statuses(
+    events: list[AgentRunEvent], final_result: ReviewResult
+) -> list[AgentStatus]:
+    """One AgentStatus per role actually dispatched (present in `events`),
+    built entirely from real run state:
+      - any failed (file, agent) execution for a role -> "blocked", the real
+        error string(s) as blockers, confidence 0.0
+      - otherwise -> "done"; confidence is the fraction of that role's own
+        proposed comments that survived synthesis/critic/grounding into
+        final_result (1.0 if it proposed none) -- a real, verifiable number,
+        never an invented one
+    A role that never ran has no event and is simply absent from the
+    result -- never fabricated (anti-fabrication rule)."""
+    by_agent: dict[str, list[AgentRunEvent]] = {}
+    for e in events:
+        by_agent.setdefault(e.agent, []).append(e)
+
+    survived_by_category: dict[str, int] = {}
+    for fr in final_result.file_reviews:
+        for c in fr.comments:
+            survived_by_category[c.category] = survived_by_category.get(c.category, 0) + 1
+
+    statuses: list[AgentStatus] = []
+    for agent, agent_events in by_agent.items():
+        failures = [e for e in agent_events if not e.ok]
+        if failures:
+            statuses.append(AgentStatus(
+                agent=agent,
+                status="blocked",
+                summary=f"{agent} failed",
+                confidence=0.0,
+                blockers=[e.error for e in failures if e.error],
+            ))
+            continue
+
+        raised = sum(e.comment_count for e in agent_events)
+        survived = survived_by_category.get(agent, 0)
+        confidence = 1.0 if raised == 0 else max(0.0, min(1.0, survived / raised))
+        summary = next((e.summary for e in agent_events if e.summary), f"{agent} completed.")
+        statuses.append(AgentStatus(
+            agent=agent,
+            status="done",
+            summary=summary,
+            confidence=confidence,
+            blockers=[],
+        ))
+    return statuses
+
+
 class ReviewOrchestrator:
     def __init__(
         self,
@@ -337,6 +404,12 @@ class ReviewOrchestrator:
                     "raw_reviews": [result],
                     "noise_decisions": result.noise_decisions,
                     "agent_successes": 1,
+                    "agent_events": [AgentRunEvent(
+                        agent=agent.agent_name,
+                        ok=True,
+                        comment_count=len(result.comments),
+                        summary=result.summary,
+                    )],
                 }
             except Exception as exc:
                 span.record_exception(exc)
@@ -347,6 +420,9 @@ class ReviewOrchestrator:
                         summary=f"{agent.agent_name} error: {exc}",
                     )],
                     "agent_failures": 1,
+                    "agent_events": [AgentRunEvent(
+                        agent=agent.agent_name, ok=False, error=str(exc),
+                    )],
                 }
 
     def _synthesize_reviews(self, state: GraphState) -> dict:
@@ -405,6 +481,13 @@ class ReviewOrchestrator:
             # (which can drop comments) and after the failed-status assignment
             # above, so it reflects the final analysis_status and risk_level.
             final_result.verdict, final_result.verdict_reason = decide_verdict(final_result)
+
+            # Per-specialist tiered-comms status, built from real fan-out
+            # events against the FINAL (post-critic/grounding) result so
+            # confidence reflects what actually survived.
+            final_result.agent_statuses = _build_agent_statuses(
+                state.get("agent_events", []), final_result
+            )
 
             return {"final_result": final_result}
 
@@ -567,6 +650,7 @@ class ReviewOrchestrator:
             # provider), so run this last-resort path in parallel too —
             # otherwise a genuine graph-level failure degrades into a
             # sequential, num_files * num_agents round-trip pileup.
+            events: list[AgentRunEvent] = []
             with ThreadPoolExecutor(max_workers=min(len(tasks), 12)) as pool:
                 futures = {
                     pool.submit(agent.review_file, file, pr): (file, agent)
@@ -575,8 +659,15 @@ class ReviewOrchestrator:
                 for future in as_completed(futures):
                     file, agent = futures[future]
                     try:
-                        flat_results.append(future.result())
+                        fr = future.result()
+                        flat_results.append(fr)
                         successes += 1
+                        events.append(AgentRunEvent(
+                            agent=agent.agent_name,
+                            ok=True,
+                            comment_count=len(fr.comments),
+                            summary=fr.summary,
+                        ))
                     except Exception as e:
                         failures += 1
                         flat_results.append(
@@ -586,9 +677,13 @@ class ReviewOrchestrator:
                                 summary=f"{agent.agent_name} error: {e}",
                             )
                         )
+                        events.append(AgentRunEvent(
+                            agent=agent.agent_name, ok=False, error=str(e),
+                        ))
 
             result = _fallback_synthesize(pr, flat_results)
             if failures > 0 and successes == 0:
                 result.analysis_status = "failed"
             result.verdict, result.verdict_reason = decide_verdict(result)
+            result.agent_statuses = _build_agent_statuses(events, result)
             return result
