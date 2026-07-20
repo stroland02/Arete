@@ -1,5 +1,7 @@
 'use server';
+import { headers } from 'next/headers';
 import { signIn } from '@/lib/auth';
+import { authGuard } from '@/lib/auth-rate-limit';
 import { db } from '@/lib/db';
 import { classifyAccount } from '@/lib/users';
 
@@ -20,6 +22,14 @@ export interface LoginState {
 export async function loginWithPassword(_prev: unknown, formData: FormData): Promise<LoginState> {
   const email = String(formData.get('email') ?? '').trim();
   const password = String(formData.get('password') ?? '');
+
+  // Brute-force guard BEFORE any credential work: per caller IP and per
+  // target email. The limited message is honest about the wait; every other
+  // path below is untouched.
+  const ip = (await headers()).get('x-forwarded-for')?.split(',')[0]?.trim() || null;
+  const limited = authGuard.check('login', ip, email);
+  if (limited.limited) return { error: limited.error };
+
   try {
     await signIn('credentials', { email, password, redirectTo: '/overview' });
   } catch (err) {
