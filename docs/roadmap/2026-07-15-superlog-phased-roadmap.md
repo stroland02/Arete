@@ -4,6 +4,16 @@
 **Companion:** `docs/research/superlog-integration-analysis.md` (page-by-page adopt/adapt/skip)
 **Build spec (Phase 1 #1):** `docs/superpowers/specs/2026-07-15-outbound-webhooks-design.md`
 
+> **2026-07-20 update — observability integration initiative.** The six SUPERLOG reference
+> docs (now in `docs/SUPERLOG*.md`, Rev2 source-verified) superseded parts of the original
+> study. The approved design extending this roadmap is
+> `docs/superpowers/specs/2026-07-20-superlog-observability-integration-design.md`:
+> Phase 0 (CI hardening) → Phase 1 (instrument Areté itself) → Phase 2 (healing-agent
+> upgrade + alerting) → Phase 3 (this roadmap's deferred telemetry-ingestion half).
+> Execution plans: `docs/superpowers/plans/2026-07-20-obs-lane-a-typescript.md` (Agent A)
+> and `docs/superpowers/plans/2026-07-20-obs-lane-b-python-infra.md` (Agent B).
+> Standing backlog: `docs/roadmap/backlog.md`.
+
 ---
 
 ## 0. How to read this
