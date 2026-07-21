@@ -25,6 +25,7 @@ dependencies = [
     "opentelemetry-instrumentation-langchain>=0.62.0,<0.63",
     "structlog>=25.1",
     "langchain-openai>=0.2.0",
+    "pyjwt>=2.9.0",
 ]
 
 [project.optional-dependencies]

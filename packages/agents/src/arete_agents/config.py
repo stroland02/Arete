@@ -62,12 +62,19 @@ class Settings(BaseSettings):
     # reverse direction (WEBHOOK_SERVICE_URL, e.g.
     # packages/dashboard/src/app/api/scan/route.ts).
     webhook_service_url: str = "http://localhost:3000"
-    # Shared bearer for the webhook's `/internal/*` surface
-    # (packages/webhook/src/internal-auth.ts). Empty by default -- a memory
-    # write attempted with no token configured is rejected by the webhook's
-    # own fail-closed 503, which add_project_memory reports as an honest
+    # Signed short-lived internal-token keyset (arete_agents/internal_token.py,
+    # obs Phase 3 Task 4) guarding this service's own `/internal/*`-shaped
+    # surface AND minted here to call the webhook's own guarded
+    # `/internal/memory` (see tools/memory.py). Replaces the old single
+    # static INTERNAL_API_TOKEN shared secret -- a keyset addressed by kid
+    # can drop one compromised/rotated key without touching every other
+    # caller's credential. `internal_token_signing_keys` is a JSON object
+    # mapping kid -> secret; empty by default -- a memory write or an
+    # internal request attempted with no keyset configured is rejected
+    # fail-closed (503), which add_project_memory reports as an honest
     # failure string (never invents success).
-    internal_api_token: str = ""
+    internal_token_signing_keys: str = ""
+    internal_token_active_kid: str = ""
 
     @field_validator("gemini_api_key")
     @classmethod

@@ -1,26 +1,40 @@
+import json
+import os
 from unittest.mock import MagicMock
 
 import pytest
 from langchain_core.messages import AIMessage
 
+from arete_agents.internal_token import mint_internal_token
 from arete_agents.models.pr import FileChange, PRContext
 
-# The agents service's POST surface is behind the shared internal bearer
-# (arete_agents/internal_auth.py, review finding B4) and FAILS CLOSED with 503
-# when no token is configured. Endpoint tests are standing in for our own
-# server-side callers (packages/webhook, packages/dashboard), so they configure
-# the token and present it -- exactly as those callers do in production.
-INTERNAL_TEST_TOKEN = "test-internal-token"
-INTERNAL_HEADERS = {"Authorization": f"Bearer {INTERNAL_TEST_TOKEN}"}
+# The agents service's POST surface is behind the signed internal-token guard
+# (arete_agents/internal_auth.py + internal_token.py, review finding B4) and
+# FAILS CLOSED with 503 when no keyset is configured. Endpoint tests are
+# standing in for our own server-side callers (packages/webhook,
+# packages/dashboard), so they configure the keyset and present a token
+# minted from it -- exactly as those callers do in production.
+INTERNAL_TEST_KEYS = {"test-kid": "test-internal-token-signing-key-0123456789ab"}
+INTERNAL_TEST_ACTIVE_KID = "test-kid"
+
+# Set directly at collection time (not via monkeypatch, which is fixture-scoped)
+# so the module-level mint_internal_token() call below -- building the
+# constant INTERNAL_HEADERS many test modules import -- has a configured
+# keyset to read.
+os.environ.setdefault("INTERNAL_TOKEN_SIGNING_KEYS", json.dumps(INTERNAL_TEST_KEYS))
+os.environ.setdefault("INTERNAL_TOKEN_ACTIVE_KID", INTERNAL_TEST_ACTIVE_KID)
+
+INTERNAL_HEADERS = {"Authorization": f"Bearer {mint_internal_token('arete-webhook')}"}
 
 
 @pytest.fixture(autouse=True)
-def _internal_api_token(monkeypatch):
-    """Configure the shared token for every test. Deliberately does NOT touch
-    get_settings()'s cache: internal_auth.configured_token() falls back to the
-    bare environment, and clearing a process-wide lru_cache under every test
-    would perturb the many suites that seed Settings themselves."""
-    monkeypatch.setenv("INTERNAL_API_TOKEN", INTERNAL_TEST_TOKEN)
+def _internal_token_keyset(monkeypatch):
+    """Configure the signing keyset for every test. Deliberately does NOT
+    touch get_settings()'s cache: internal_token.load_keyset() falls back to
+    the bare environment, and clearing a process-wide lru_cache under every
+    test would perturb the many suites that seed Settings themselves."""
+    monkeypatch.setenv("INTERNAL_TOKEN_SIGNING_KEYS", json.dumps(INTERNAL_TEST_KEYS))
+    monkeypatch.setenv("INTERNAL_TOKEN_ACTIVE_KID", INTERNAL_TEST_ACTIVE_KID)
     yield
 
 SEC = (

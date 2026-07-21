@@ -16,6 +16,7 @@ import httpx
 import pytest
 
 from arete_agents.config import get_settings
+from arete_agents.internal_token import verify_internal_token
 from arete_agents.tools.memory import build_memory_tool
 
 
@@ -24,9 +25,10 @@ def _settings_env(monkeypatch):
     # Settings() eagerly validates ANTHROPIC_API_KEY when LLM_PROVIDER=anthropic
     # (the default) -- unrelated to this tool, but get_settings() is a single
     # process-wide lru_cache shared with every other Settings consumer, same as
-    # test_llm.py / test_cli.py's existing pattern. internal_api_token /
-    # webhook_service_url are left at their defaults; every test here injects
-    # its own `post` fn, so the real webhook_service_url is never dialed.
+    # test_llm.py / test_cli.py's existing pattern. The internal-token keyset
+    # (conftest.py's autouse fixture) / webhook_service_url are left at their
+    # defaults; every test here injects its own `post` fn, so the real
+    # webhook_service_url is never dialed.
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     get_settings.cache_clear()
     yield
@@ -268,7 +270,14 @@ def canned_server(monkeypatch):
     """Start a real HTTP server and point Settings.webhook_service_url at it,
     so `_default_post` (the production code path) is what actually runs."""
 
-    def _start(*, status: int, content_type: str, payload: bytes, token: str = "test-token"):
+    def _start(
+        *,
+        status: int,
+        content_type: str,
+        payload: bytes,
+        kid: str = "canned-server-kid",
+        secret: str = "canned-server-signing-key-0123456789abcdef",
+    ):
         handler = type(
             "Handler",
             (_CannedHandler,),
@@ -279,7 +288,8 @@ def canned_server(monkeypatch):
         thread.start()
         started.append((server, thread))
         monkeypatch.setenv("WEBHOOK_SERVICE_URL", f"http://127.0.0.1:{server.server_port}")
-        monkeypatch.setenv("INTERNAL_API_TOKEN", token)
+        monkeypatch.setenv("INTERNAL_TOKEN_SIGNING_KEYS", json.dumps({kid: secret}))
+        monkeypatch.setenv("INTERNAL_TOKEN_ACTIVE_KID", kid)
         get_settings.cache_clear()
         return handler
 
@@ -337,11 +347,11 @@ def test_201_with_a_non_json_body_is_not_reported_as_success(canned_server):
 def test_real_201_ok_true_over_real_http_reports_success_and_sends_the_bearer(canned_server):
     """The one genuine success shape -- and the only test that proves the
     Authorization header is actually PUT ON THE WIRE by `_default_post`
-    (previously only Content-Type was asserted, against a fake poster)."""
-    handler = canned_server(
-        status=201, content_type="application/json", payload=b'{"ok": true, "id": "mem-7"}',
-        token="s3cret-token",
-    )
+    (previously only Content-Type was asserted, against a fake poster). The
+    header must be a genuine signed internal token identifying THIS process
+    ("arete-agents") -- not a literal string match, since obs Phase 3 Task 4
+    replaced the static shared secret with a minted, verifiable JWT."""
+    handler = canned_server(status=201, content_type="application/json", payload=b'{"ok": true, "id": "mem-7"}')
     tool = build_memory_tool(42, "owner/repo")
 
     result = tool.invoke({"note": "Use tabs, not spaces.", "kind": "terminology"})
@@ -350,7 +360,11 @@ def test_real_201_ok_true_over_real_http_reports_success_and_sends_the_bearer(ca
     assert len(handler.seen) == 1
     request = handler.seen[0]
     assert request["path"] == "/internal/memory"
-    assert request["headers"]["Authorization"] == "Bearer s3cret-token"
+    auth_header = request["headers"]["Authorization"]
+    assert auth_header.startswith("Bearer ")
+    verified = verify_internal_token(auth_header)
+    assert verified.ok is True
+    assert verified.iss == "arete-agents"
     assert request["headers"]["Content-Type"] == "application/json"
     assert request["body"]["installationId"] == 42
     assert request["body"]["repoFullName"] == "owner/repo"
