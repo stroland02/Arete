@@ -109,6 +109,9 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
   // so we retain it from list() hydration and from a successful connect().
   const [connectionId, setConnectionId] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
+  // Disconnect DELETES the saved (encrypted) key, and providers don't re-issue
+  // keys — so it's guarded behind an explicit confirm to prevent accidental loss.
+  const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
 
   useEffect(() => {
     if (provider.id !== "ollama") return;
@@ -413,16 +416,40 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
             {testing ? <IconLoader2 size={13} className="motion-safe:animate-spin" aria-hidden /> : null}
             {pulling ? (pullStatus ?? "Pulling…") : testing ? "Connecting…" : connected ? "Reconnect" : "Connect"}
           </Button>
-          {disconnect.show && (
+          {disconnect.show && !confirmingDisconnect && (
             <Button
               size="sm"
               variant="ghost"
-              onClick={runDisconnect}
+              onClick={() => setConfirmingDisconnect(true)}
               disabled={disconnect.disabled}
               className="h-8 rounded-lg text-[12px]"
             >
+              Disconnect
+            </Button>
+          )}
+          {disconnect.show && confirmingDisconnect && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setConfirmingDisconnect(false)}
+              disabled={disconnecting}
+              className="h-8 rounded-lg text-[12px]"
+            >
+              Cancel
+            </Button>
+          )}
+          {disconnect.show && confirmingDisconnect && (
+            <Button
+              size="sm"
+              onClick={() => {
+                setConfirmingDisconnect(false);
+                void runDisconnect();
+              }}
+              disabled={disconnecting}
+              className="h-8 rounded-lg bg-accent-danger text-[12px] text-white hover:bg-accent-danger/90"
+            >
               {disconnecting ? <IconLoader2 size={13} className="motion-safe:animate-spin" aria-hidden /> : null}
-              {disconnect.label}
+              {isKey ? "Remove key" : "Remove"}
             </Button>
           )}
           {msg && (
@@ -436,6 +463,14 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
             </span>
           )}
         </div>
+        {confirmingDisconnect && (
+          <p className="mt-2 flex items-start gap-1.5 text-[11px] leading-relaxed text-accent-warning">
+            <IconAlertTriangle size={12} className="mt-0.5 shrink-0" aria-hidden />
+            {isKey
+              ? "This permanently deletes the saved API key. Your provider won't show it again — you'll need to paste a new key to reconnect. To just switch models, connect a different one instead (no need to disconnect)."
+              : "This removes the saved connection. To switch models, connect a different one instead."}
+          </p>
+        )}
         {diag && (
           <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border-subtle bg-surface-2/40 px-2.5 py-2 font-mono text-[10px] leading-relaxed text-content-muted">
             {diag}
