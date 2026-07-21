@@ -109,6 +109,16 @@ Consequence: the full **scan → Fix it → authored+verified patch → approve 
 
 Both engineer lanes for the healing loop are closed. Remaining follow-ups (Eng1 promote-by-id, telemetry worker, SDLC/CI) are tracked in the roadmap above, not part of the Eng3/Eng4 healing-loop scope.
 
+## Engineer Closeout — Eng1 & Eng2
+
+**Engineer 1 — CLOSED.** Integrated this phase: internal-token bearer guard (`d8f8485`), approvals-guard (`1fa8cc2`), rate-limit login/signup (`ba63a82`), plus the earlier ownership-rows + llm-block spine + Code Map v2/reader.
+- *Record correction — agent-statuses (`a875d80`) is SUPERSEDED, not merged.* It adds the same `Review.agentStatuses` Json column + `persistReview` write + `AgentStatus` wire type + a migration — but that exact persistence was already built and integrated this session (`eb8dd74`, migration `20260720120000`) as part of the status-board read path. Merging `a875d80` would duplicate the column and collide on the migration, so it is intentionally not merged. The one non-overlapping asset is its `persistence.test.ts` round-trip coverage — cherry-pickable later if wanted, not blocking. Semantic note: the integrated version stores an absent field as `[]`; Eng1's stored it as `NULL` — both anti-fabrication-safe.
+- Handoff items resolved: (1) agent-statuses merge+migration → **already done via the parallel integrated path; no action**. (2) OAuth env → managed-env-template task, folded into SDLC/deploy hardening (roadmap #5), not blocking local. (3) Browser QA on the code-map reading panel → **manual/user task** (a real browser pass a unit suite can't stand in for).
+
+**Engineer 2 — CLOSED.** All work integrated: Wave-2 Fix-UI (TriageBar/DiffView), IssueContainer persistence + StagingClient/Send-PR, account-state migration, Sensorium code map, Disconnect wiring, and the **Active-badge + Set-active** model-switching UI (`a748668`, merged `f363060`) with the PM's key-preservation hardening on the connect route. Their open cross-lane contract — Eng1 **promote-by-id** (`PATCH .../activate`, no key re-entry) — is a roadmap follow-up (#2), not unfinished Eng2 work.
+
+All four engineer lanes (Eng1–Eng4) are now formally closed for this phase.
+
 ## Areas Requiring Manual Intervention Before Next Phase
 1. **User must add Anthropic credits** (account at $0) or run on **Local · Ollama** — the "no response" was billing, now surfaced honestly. A lost Anthropic key must be regenerated (providers don't reissue).
 2. **User's Connect Workspace data** is the gate for the next feature.
