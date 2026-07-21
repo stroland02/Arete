@@ -1,0 +1,19 @@
+{
+  "description": "Cross-language test vector for @arete/internal-token (Task 1) and its Python counterpart (Task 4). Pins the exact HS256 compact-JWT wire format so both implementations can be verified to produce/accept byte-identical tokens.",
+  "input": {
+    "keys": { "vec": "0123456789abcdef0123456789abcdef" },
+    "activeKid": "vec",
+    "iss": "arete-webhook",
+    "aud": "arete-internal",
+    "iat": 1700000000,
+    "exp": 1700000120,
+    "ttlSeconds": 120
+  },
+  "header": { "alg": "HS256", "typ": "JWT", "kid": "vec" },
+  "payload": { "iss": "arete-webhook", "aud": "arete-internal", "iat": 1700000000, "exp": 1700000120 },
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InZlYyJ9.eyJpc3MiOiJhcmV0ZS13ZWJob29rIiwiYXVkIjoiYXJldGUtaW50ZXJuYWwiLCJpYXQiOjE3MDAwMDAwMDAsImV4cCI6MTcwMDAwMDEyMH0.X8kJI4zjgyq_acTxlZI8tuVK78YqmlUvYsNrnl3iK2U",
+  "verify": {
+    "acceptsAtNow": 1700000100,
+    "expiredAtNow": 1700000200
+  }
+}
