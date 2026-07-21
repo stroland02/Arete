@@ -94,6 +94,61 @@ Apply the agent-runner patterns (SUPERLOG_AGENT_RUNNER.md) to the fix/healing en
 
 **Exit criteria:** a fix run triggered by an alert-created incident completes with rubric-scored findings, enforced budgets, and dispatch-before-ack semantics; Phase 2 security gates pass.
 
+#### Phase 2 amendments (2026-07-21)
+
+Recorded at Phase 2 close (Task 10). A source survey at Phase 2 kickoff found four places where the
+Phase 2 bullets above assume behaviour the code does not have; the implementation plan
+(`docs/superpowers/plans/2026-07-21-obs-phase-2-healing-alerting.md`, "Scope decisions") ruled on
+each and **those rulings govern**. This block records them against the spec so a future reader does
+not re-derive them. **§5 conventions are untouched and remain frozen.**
+
+| Bullet above | What the code actually is | Amendment |
+|---|---|---|
+| "Tool descriptions carry the rubrics — in a tool-calling agent, tool descriptions ARE the prompt" | The **fix agent has no tool loop.** `fix_pipeline.py` invokes the LLM directly for a JSON blob; tool-calling exists only on the review side (`agents/base.py`). There is no tool description to carry anything. | Rubrics live in the **fix prompt**. The sentence is correct *about tool-calling agents* and simply does not apply to this one. Giving the fix pipeline a tool loop → Phase 2b. |
+| "confidence 0–10 with concrete criteria" | 0–1 floats in five consumers — `StatusReport`, `AgentStatus`, `FixItem`, `WorkItem.confidence` (Prisma), `escalationTier()` — and the UI renders `confidence * 100`. | **Keep 0–1.** Adopt the *criteria* (the load-bearing half) anchored on the existing scale: ≥0.9 verbatim quote from a file read this run **and** an observed failure; 0.7–0.9 quote-backed, failure inferred; 0.4–0.7 grounded but paraphrased or argued; ≤0.3 speculative. No conversion boundary, no consumer touched. |
+| "Dispatch-before-ack … must be built" | **Already correct.** approve/send/apply perform the effect and then ack; `propose_pr`'s description already tells the model it only validates. | Reduces to an **audit plus regression tests** that pin the ordering (Task 9), not a rewrite. The one deliberate inversion — `/fix/trigger`'s `202` before the drive — is safe because what the client then streams is container *state*, never a completion claim. |
+| "Budgets: runtime cap, wall-clock backstop, cooldowns" | A 280s wall-clock cap already existed. **The real hole was elsewhere:** `POST /fix/trigger` ran `void driveFix(...)` in-process on the webhook HTTP server — no queue, no concurrency cap, and no cooldown after a run failed back to `open`. (`MAX_TOOL_ROUNDS` / `MAX_PATCH_CHARS`, often cited as fix budgets, are review-path constants that never gate a fix drive at all.) | Build the **missing** guard: fix drives onto BullMQ at `FIX_QUEUE_CONCURRENCY = 2`, plus an exponential cooldown (5 min → 1 h) enforced at both entry points. |
+
+**What Phase 2 discovered that contradicts this spec's own assumptions.** Each was found only by a
+*consumer* exercising Phase 1's output, which is why none was visible to Phase 1's green suites:
+
+- **§4's "dashboards built on stable names" was not true of the shipped names.** The collector's
+  `prometheus` exporter applied `namespace: arete` on top of instruments already named `arete.*`,
+  exposing `arete_arete_review_runs_total` and mangling semconv metrics into
+  `arete_http_client_…`. Fixed in Phase 2. Any spec claim about metric names must be verified
+  against `:8889/metrics`, not against the instrument name in source.
+- **§5's canonical scrubber was not reachable.** `scrubLogValue` existed in
+  `packages/telemetry/src/redaction.ts` but was never re-exported from the package's `index.ts` — a
+  frozen convention nothing outside the package could actually apply. Phase 2 also had to add
+  `scrubSinkText`/`scrubSinkValue`, which *compose* the frozen §5 sets (value patterns + key
+  blocklist + URL-query strip) for persistence sinks; composition, not amendment — §5's sets are
+  unchanged.
+- **§5's redaction is shape-based, so prose credentials survive.** `password: hunter2` written as
+  ordinary prose has no secret shape, and the key blocklist binds to object *keys*, not words in a
+  string. Catching it needs an amendment to the frozen pattern set with real false-positive risk on
+  human text. Filed, deliberately not done here.
+- **§6 gate 4 ("internal endpoints keep the fail-closed bearer-token pattern") had never been
+  implemented on the agents service** — `POST /review` and friends had no authentication at all, and
+  two `GET /context-map/{installation_id}` routes returned any tenant's code graph to any caller.
+  Closed in Phase 2. A gate written in a spec is not a gate until something asserts it.
+- **§6 Phase 2's "with expiry" is not satisfied and is recorded as an open finding**, not a pass:
+  `INTERNAL_API_TOKEN` is a static shared secret with no `exp`, `iat`, rotation, or revocation, and
+  the MCP token store has no expiry field at all (its OAuth flow fabricates
+  `simulated_token_for_<code>` rather than exchanging one). Evidence in
+  `.superpowers/sdd/phase-2-gate-report.md` §1 gate 2. The GitHub *installation* token — the
+  credential that reaches a customer's repo — does expire and is minted per drive; the gap is on the
+  internal/MCP surface.
+- **Alerting cannot take tenancy from the wire.** All shipped rules are platform-wide, and §5's hard
+  cardinality rule forbids tenant ids as metric dimensions — so an alert has no trustworthy tenant.
+  Every incoming alert is attributed to a configured `ARETE_PLATFORM_INSTALLATION_ID`; an
+  `installationId` label is **not read**. Per-tenant alerting, when it comes, must arrive as a
+  trusted server-side mapping, never as a label.
+
+**Deferred to Phase 2b** (filed in `docs/roadmap/backlog.md`): telemetry-fed investigations — the
+last Phase 2 bullet above — which need an internal query surface that does not yet exist (only
+`getAgentEventsPerMinute` reaches ClickHouse today); the fix-pipeline tool loop; expiry/rotation for
+the internal and MCP credentials; and the Minor findings accumulated in `.superpowers/sdd/progress.md`.
+
 ### Phase 3 — Tenant telemetry platform (scoped at Phase 2 close)
 
 The deferred Phase 4 of the 2026-07-15 roadmap, built on everything above: two-tier ingest (thin auth/quota/admission edge reusing `net-guard` + internal-token patterns → stock Collector → ClickHouse), strip-then-stamp tenancy (delete client-supplied tenant attributes, stamp server-side; tenant id denormalized into every row), admission-control backpressure with the OTLP status-code contract (permanent 400/402/413 vs retryable 5xx), deterministic fingerprint grouping before any LLM grouping, purpose-built rollups with arrival-ordered cursors, background telemetry poller + snapshot history. **Detailed spec deliberately deferred** — it must be informed by operating our own pipeline through Phases 1–2.
