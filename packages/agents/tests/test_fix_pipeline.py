@@ -13,6 +13,8 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
+from tests.conftest import INTERNAL_HEADERS
+
 from arete_agents.config import Settings
 from arete_agents.fix_pipeline import author_patch, run_fix
 from arete_agents.models.fix import FixItem, FixRepo, FixRequest, FixResponse
@@ -241,7 +243,7 @@ def test_fix_endpoint_builds_clients_from_llm_block_and_returns_200():
     with patch.object(server, "get_llms_by_role_from_config", side_effect=fake_from_config), patch.object(
         server, "run_fix", return_value=fake_response
     ) as run_mock, patch.object(server, "ollama_unavailable_reason", return_value=None):
-        client = TestClient(server.app)
+        client = TestClient(server.app, headers=INTERNAL_HEADERS)
         resp = client.post(
             "/fix",
             json={
@@ -277,7 +279,7 @@ def test_fix_endpoint_ollama_unavailable_is_honest_fix_failed_not_503():
     with patch.object(server, "ollama_unavailable_reason", return_value=hint), patch.object(
         server, "run_fix"
     ) as run_mock:
-        client = TestClient(server.app)
+        client = TestClient(server.app, headers=INTERNAL_HEADERS)
         resp = client.post(
             "/fix",
             json={
