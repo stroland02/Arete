@@ -44,11 +44,35 @@ def test_openai_key_never_in_url_fields():
 
 
 def test_gemini_key_never_in_url_fields_or_transport_host():
+    """Gemini's ChatGoogleGenerativeAI leaves all _URL_FIELD_NAMES attributes
+    as None, so the generic _url_fields() check is vacuously true here — it
+    can never fail for this provider. The real object graph (google-genai
+    SDK) carries the wire config at ``llm.client._api_client._http_options``,
+    a ``google.genai.types.HttpOptions`` with ``.base_url`` (no credentials)
+    and ``.headers`` (carries the API key under ``x-goog-api-key``). This
+    test inspects THAT object graph directly, so it can actually fail if the
+    key ever leaked into the URL or dropped out of the header.
+
+    If the private attribute path below breaks (library refactor), this
+    test FAILS with a clear message instead of silently skipping or falling
+    back to a vacuous check — a maintainer must re-map the object graph.
+    """
     llm = build_gemini_llm(CANARY)
     assert all(CANARY not in url for url in _url_fields(llm))
-    transport = getattr(getattr(llm, "client", None), "_transport", None)
-    host = str(getattr(transport, "host", ""))
-    assert CANARY not in host
+
+    client = getattr(llm, "client", None)
+    api_client = getattr(client, "_api_client", None)
+    http_options = getattr(api_client, "_http_options", None)
+    if http_options is None:
+        raise AssertionError(
+            "llm.client._api_client._http_options is missing — the "
+            "google-genai SDK's object graph has changed. Re-map where "
+            "the Gemini client stores its base URL / headers and update "
+            "this test; do NOT skip or fall back to a vacuous check."
+        )
+
+    assert CANARY not in str(http_options.base_url)
+    assert http_options.headers.get("x-goog-api-key") == CANARY
 
 
 def test_openai_compatible_wire_key_in_header_not_url():
