@@ -10,6 +10,16 @@ import { registerOTel } from '@vercel/otel'
  */
 export function register(): void {
   try {
+    if (process.env.OTEL_SDK_DISABLED === 'true') return
+    // Shared seam with @arete/telemetry init.ts: unset endpoint is a graceful
+    // no-op, never a localhost default. @vercel/otel falls back to
+    // http://localhost:4318/v1/traces when OTEL_EXPORTER_OTLP_ENDPOINT (and
+    // its _TRACES_ variant) are unset, so that fallback must be guarded
+    // against explicitly here.
+    if (!process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
+      console.warn('[telemetry] OTEL_EXPORTER_OTLP_ENDPOINT is not set; running without telemetry')
+      return
+    }
     registerOTel({
       serviceName: 'arete-dashboard',
       attributes: {
