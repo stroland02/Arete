@@ -24,7 +24,6 @@ dependencies = [
     "opentelemetry-instrumentation-openai-v2>=2.0b0,<2.5",
     "opentelemetry-instrumentation-langchain>=0.62.0,<0.63",
     "structlog>=25.1",
-    "langchain-ollama>=0.2.0",
     "langchain-openai>=0.2.0",
 ]
 

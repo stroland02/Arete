@@ -1,5 +1,6 @@
 import httpx
-from langchain_ollama import ChatOllama
+from langchain_core.language_models import BaseChatModel
+from langchain_openai import ChatOpenAI
 
 # Ollama has no opus/sonnet tiering — a single local model serves every role
 # (see get_llms_by_role's ollama branch and the critic-fallback ruling). The
@@ -15,11 +16,25 @@ DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 def build_ollama_llm(
     model: str = DEFAULT_OLLAMA_MODEL,
     base_url: str = DEFAULT_OLLAMA_BASE_URL,
-) -> ChatOllama:
-    """Build a local Ollama chat client. Construction does not open a
-    connection — an unreachable server or an un-pulled model only surfaces on
-    the first call, which the review path turns into an honest empty state."""
-    return ChatOllama(model=model, base_url=base_url, temperature=0.1)
+) -> BaseChatModel:
+    """Build a local Ollama chat client via Ollama's OpenAI-compatible /v1
+    endpoint (ChatOpenAI), not langchain-ollama's native client. Deliberate
+    (obs spec §4): the official opentelemetry-instrumentation-openai-v2 hook
+    then covers Ollama calls — no Ollama-native instrumentation exists, and we
+    never run two instrumentations of one layer. The "ollama" api_key is a
+    placeholder the local server ignores (the OpenAI client requires one); it
+    travels in the Authorization header like every real credential (§6 gate 1:
+    headers, never URLs). Construction does not open a connection — an
+    unreachable server or un-pulled model only surfaces on the first call,
+    which the review path turns into an honest empty state via
+    ollama_unavailable_reason (that probe still uses Ollama's native
+    /api/tags, unchanged)."""
+    return ChatOpenAI(
+        model=model,
+        api_key="ollama",
+        base_url=f"{base_url.rstrip('/')}/v1",
+        temperature=0.1,
+    )
 
 
 def _is_localhost(base_url: str) -> bool:

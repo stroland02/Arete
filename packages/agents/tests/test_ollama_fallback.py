@@ -59,7 +59,9 @@ def test_ollama_settings_need_no_api_key():
     s = Settings(llm_provider="ollama", anthropic_api_key="")
     llms = get_llms_by_role(s)
     assert set(llms) == set(ROLE_KEYS)
-    assert "ollama" in type(llms["security"]).__module__.lower()
+    # Ollama rides the openai-v2 hook (ChatOpenAI on /v1) — see
+    # test_build_ollama_llm_uses_model_and_base_url in test_llm_providers.py.
+    assert "openai" in type(llms["security"]).__module__.lower()
 
 
 def _min_pr(**extra):

@@ -209,7 +209,50 @@ def _histogram_views() -> list[View]:
 
 
 def _instrument_llm_layers() -> None:
-    """Filled in by the LLM-instrumentation work item (plan Task 8)."""
+    """Instrument the LLM stack — exactly one hook per layer (§4):
+
+    * Provider-SDK layer: official contrib genai instrumentations. Emits
+      llm client spans with gen_ai.provider.name (NOT deprecated
+      gen_ai.system), gen_ai.usage.input_tokens / output_tokens, and the
+      gen_ai.client.operation.duration histogram (bucketed by our Views).
+      Ollama and OpenRouter ride the openai-v2 hook via their
+      OpenAI-compatible endpoints (see llm/ollama.py, llm/openai.py).
+    * Orchestration layer: Traceloop's LangChain callback instrumentation —
+      LangGraph node/graph structure only. Traceloop's own provider-level
+      packages must NEVER be installed alongside the contrib ones (duplicate
+      spans; review-blocking).
+
+    Content capture stays OFF (OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT
+    =false, set in init_observability): token counts and metadata only.
+    Each hook is wrapped separately — a broken instrumentation loses that
+    layer's spans, never the service.
+    """
+    try:
+        from opentelemetry.instrumentation.anthropic import AnthropicInstrumentor
+
+        AnthropicInstrumentor().instrument()
+    except Exception:
+        _logger.warning("anthropic instrumentation unavailable", exc_info=True)
+    try:
+        from opentelemetry.instrumentation.google_genai import (
+            GoogleGenAiSdkInstrumentor,
+        )
+
+        GoogleGenAiSdkInstrumentor().instrument()
+    except Exception:
+        _logger.warning("google-genai instrumentation unavailable", exc_info=True)
+    try:
+        from opentelemetry.instrumentation.openai_v2 import OpenAIInstrumentor
+
+        OpenAIInstrumentor().instrument()
+    except Exception:
+        _logger.warning("openai instrumentation unavailable", exc_info=True)
+    try:
+        from opentelemetry.instrumentation.langchain import LangchainInstrumentor
+
+        LangchainInstrumentor().instrument()
+    except Exception:
+        _logger.warning("langchain instrumentation unavailable", exc_info=True)
 
 
 def _init_providers(endpoint: str) -> None:
