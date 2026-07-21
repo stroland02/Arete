@@ -119,6 +119,72 @@ def test_a_correct_token_passes_the_guard(client, monkeypatch):
     assert response.status_code not in (401, 503)
 
 
+# The read-side twin of B4: GET /context-map/ui-url/{id} and
+# GET /context-map/graph/{id} took an installation id straight from the URL
+# path and returned that tenant's code graph with no auth of any kind --
+# anyone with network reach to this port could read any tenant's code graph
+# by iterating ids. A VICTIM installation id, exactly like VICTIM_REVIEW
+# above: the guard must reject before the handler ever looks it up.
+VICTIM_INSTALLATION_ID = 999
+
+GUARDED_GETS = [
+    f"/context-map/ui-url/{VICTIM_INSTALLATION_ID}",
+    f"/context-map/graph/{VICTIM_INSTALLATION_ID}",
+]
+
+
+@pytest.mark.parametrize("path", GUARDED_GETS)
+def test_get_routes_reject_a_request_with_no_token_at_all(client, monkeypatch, path):
+    monkeypatch.setenv("INTERNAL_API_TOKEN", "s3cret")
+    get_settings.cache_clear()
+
+    response = client.get(path)
+
+    assert response.status_code == 401
+    # No tenant data leaks in the rejection body -- just the guard's own detail.
+    assert response.json() == {"detail": "unauthorized"}
+
+
+@pytest.mark.parametrize("path", GUARDED_GETS)
+def test_get_routes_reject_a_request_with_the_wrong_token(client, monkeypatch, path):
+    monkeypatch.setenv("INTERNAL_API_TOKEN", "s3cret")
+    get_settings.cache_clear()
+
+    response = client.get(path, headers={"Authorization": "Bearer wrong"})
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "unauthorized"}
+
+
+@pytest.mark.parametrize("path", GUARDED_GETS)
+def test_get_routes_fail_closed_503_when_the_token_is_not_configured(
+    client, monkeypatch, path
+):
+    monkeypatch.setenv("INTERNAL_API_TOKEN", "")
+    get_settings.cache_clear()
+
+    response = client.get(path, headers={"Authorization": "Bearer anything"})
+
+    # 503, not 200 and not 401: an unconfigured guard is a loud prod
+    # misconfiguration, never a surface that silently runs open.
+    assert response.status_code == 503
+
+
+@pytest.mark.parametrize("path", GUARDED_GETS)
+def test_get_routes_pass_with_correct_token(client, monkeypatch, path):
+    """The guard must not be a brick on the read side either. With the right
+    bearer the request reaches the handler, which -- for an installation id
+    with nothing indexed -- returns its own honest empty state, not a 401/503
+    from the guard."""
+    monkeypatch.setenv("INTERNAL_API_TOKEN", "s3cret")
+    get_settings.cache_clear()
+
+    response = client.get(path, headers={"Authorization": "Bearer s3cret"})
+
+    assert response.status_code not in (401, 503)
+    assert response.json()["available"] is False
+
+
 def test_health_is_never_guarded(client, monkeypatch):
     """Container healthchecks carry no bearer. A guarded /health would make the
     fail-closed posture take the whole service down on a misconfig."""

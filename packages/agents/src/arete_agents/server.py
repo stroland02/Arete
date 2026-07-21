@@ -135,8 +135,17 @@ _remediation = RemediationGraph(get_command_executor())
 # hop is therefore authenticated with the same shared bearer and the same
 # fail-closed posture the webhook uses (internal_auth.py).
 #
-# GET /health and the read-only GET /context-map/* routes are deliberately NOT
-# behind this guard; see internal_auth.py and docs/roadmap/backlog.md.
+# GET /health is deliberately NOT behind this guard; see internal_auth.py.
+#
+# The read-only GET /context-map/ui-url/{id} and /context-map/graph/{id}
+# routes WERE left open here (review finding B4 covered only the write/spend
+# POST surface above) -- but they take an installation id straight from the
+# URL path and return that tenant's code graph, so leaving them open is a
+# cross-tenant READ leak to anyone with network reach to this port. Their
+# only caller (packages/dashboard/src/lib/context-map-client.ts, called
+# server-side from the overview/map pages) already holds INTERNAL_API_TOKEN,
+# so they get the same guard below (spec section 6 gate 4; see
+# docs/roadmap/backlog.md for the original finding).
 _INTERNAL = [Depends(require_internal_token)]
 
 
@@ -336,7 +345,7 @@ def chat(payload: Dict[str, Any]):
     return _get_chat_agent().reply(payload)
 
 
-@app.get("/context-map/ui-url/{installation_id}")
+@app.get("/context-map/ui-url/{installation_id}", dependencies=_INTERNAL)
 def context_map_ui_url(installation_id: int):
     try:
         url = get_or_start_ui(installation_id)
@@ -345,7 +354,7 @@ def context_map_ui_url(installation_id: int):
         return {"available": False, "url": None, "reason": str(exc)}
 
 
-@app.get("/context-map/graph/{installation_id}")
+@app.get("/context-map/graph/{installation_id}", dependencies=_INTERNAL)
 def context_map_graph(installation_id: int):
     """Return the normalized code-graph JSON (GraphExport) for an installation's
     indexed repo, for the dashboard's Sensorium map. Mirrors the /context-map/
