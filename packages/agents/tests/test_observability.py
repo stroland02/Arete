@@ -96,6 +96,7 @@ def test_histogram_views_use_llm_boundaries():
         "gen_ai.client.operation.duration",
         "arete.review.duration",
         "arete.agent.duration",
+        "arete.fix.duration",
     }
     for view in views:
         assert view._aggregation._boundaries == list(obs.LLM_DURATION_BOUNDARIES)
