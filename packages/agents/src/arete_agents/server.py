@@ -3,7 +3,7 @@ from typing import Any, Dict
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -38,13 +38,18 @@ _logger = logging.getLogger(__name__)
 app = FastAPI()
 
 # OpenTelemetry Auto-Instrumentation
+# NOTE (Task B3 dependency swap): `opentelemetry-exporter-otlp` (bundled
+# gRPC+HTTP) was replaced by the HTTP-only `opentelemetry-exporter-otlp-proto-http`
+# package (see packages/agents/pyproject.toml), so the top-of-file exporter import
+# now uses the HTTP variant. Plan Task 6 replaces this whole block with
+# observability.init_observability() (env-driven, no-op-safe).
 # Set up the tracer provider with service name
 resource = Resource(attributes={SERVICE_NAME: "arete-agents"})
 provider = TracerProvider(resource=resource)
 
 # Export traces to the OTel Collector in the infra stack
-# The infra docker-compose sets up the collector at localhost:4317
-otlp_exporter = OTLPSpanExporter(endpoint="http://localhost:4317", insecure=True)
+# The infra docker-compose sets up the collector at localhost:4318 (OTLP/HTTP)
+otlp_exporter = OTLPSpanExporter(endpoint="http://localhost:4318/v1/traces")
 processor = BatchSpanProcessor(otlp_exporter)
 provider.add_span_processor(processor)
 trace.set_tracer_provider(provider)
