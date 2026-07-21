@@ -1,12 +1,17 @@
 # Areté observability Phase 2 — Prometheus alerting rules.
 #
 # Series names are the collector's Prometheus-exporter-rewritten names, NOT
-# the OTel-side instrument names (verified live at
-# http://localhost:8889/metrics against a running arete-worker instance —
-# see infra/prometheus-rules/arete-alerts.test.yml header for the exact
-# translation, including the doubled `arete_arete_` prefix caused by
-# `namespace: arete` in infra/otel-collector-config.yaml being applied on
-# top of instrument names that already start with `arete.`).
+# the OTel-side instrument names: dots become underscores and counters gain a
+# `_total` suffix, so `arete.review.runs` is scraped as
+# `arete_review_runs_total`. Verified live at http://localhost:8889/metrics.
+#
+# History worth keeping: these were originally written against
+# `arete_arete_review_runs_total`, because the collector's prometheus exporter
+# carried `namespace: arete` and prepended it to instruments whose names
+# already start with `arete.` (spec §5). That namespace has since been removed
+# — it also prefixed the semconv instruments, defeating §4's "dashboards built
+# on stable names." If a rule here ever stops matching, check the exporter
+# config before assuming the instrument was renamed.
 #
 # Both an error-rate rule and a p95 latency rule are required (spec §3):
 # error-driven alerting alone is blind to a pipeline that returns correct
@@ -26,9 +31,9 @@ groups:
       - alert: AreteReviewErrorRate
         expr: >-
           (
-            sum(rate(arete_arete_review_runs_total{outcome="failure"}[15m]))
+            sum(rate(arete_review_runs_total{outcome="failure"}[15m]))
             /
-            sum(rate(arete_arete_review_runs_total[15m]))
+            sum(rate(arete_review_runs_total[15m]))
           ) > 0.1
         for: 10m
         labels:
@@ -46,7 +51,7 @@ groups:
       # alert would never see.
       - alert: AreteReviewLatencyP95
         expr: >-
-          histogram_quantile(0.95, sum(rate(arete_arete_review_duration_seconds_bucket[15m])) by (le)) > 180
+          histogram_quantile(0.95, sum(rate(arete_review_duration_seconds_bucket[15m])) by (le)) > 180
         for: 15m
         labels:
           severity: warning
@@ -65,9 +70,9 @@ groups:
       - alert: AreteQueueFailureRate
         expr: >-
           (
-            sum by (queue) (rate(arete_arete_queue_jobs_total{outcome="failed"}[15m]))
+            sum by (queue) (rate(arete_queue_jobs_total{outcome="failed"}[15m]))
             /
-            sum by (queue) (rate(arete_arete_queue_jobs_total[15m]))
+            sum by (queue) (rate(arete_queue_jobs_total[15m]))
           ) > 0.1
         for: 10m
         labels:

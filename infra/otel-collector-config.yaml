@@ -117,8 +117,17 @@ exporters:
     tls:
       insecure: true
   prometheus:
+    # No `namespace:`. It was `arete`, which the exporter prepends to EVERY
+    # instrument — including ours, which already begin with `arete.` per the
+    # frozen §5 metric namespace. The result was `arete_arete_review_runs_total`
+    # (verified live at :8889/metrics). It also prefixed the semconv
+    # instruments, producing `arete_http_client_request_duration_seconds` and
+    # defeating §4's "dashboards built on stable names" — the whole point of
+    # semconv names is that they are portable across services.
+    # Dropping it yields `arete_review_runs_total` (our prefix, from the
+    # instrument name where it belongs) and untouched semconv names.
+    # Service attribution comes from resource labels, not a name prefix.
     endpoint: 0.0.0.0:8889
-    namespace: arete
   # Debug exporter (the old `logging:` exporter was removed upstream).
   debug:
     verbosity: basic
