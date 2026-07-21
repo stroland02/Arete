@@ -46,6 +46,7 @@ model Installation {
   modelConnections     ModelConnection[]
   issueContainers      IssueContainer[]
   accessGrants         InstallationAccess[]
+  incidents            Incident[]
 
   @@unique([provider, externalId])
 }
@@ -163,6 +164,35 @@ model WorkItem {
 
   @@unique([installationId, fingerprint])
   @@index([installationId, state])
+}
+
+/// An alert-born incident. Created by the Alertmanager receiver, resolved when
+/// the alert clears. One row per (installationId, fingerprint) — Alertmanager
+/// re-sends the same firing alert on its repeat interval, and every resend must
+/// land on the same row rather than opening a new incident.
+model Incident {
+  id             String       @id @default(uuid())
+  installationId String
+  /// Alertmanager's own fingerprint for the alert instance. The idempotency key.
+  fingerprint    String
+  alertName      String
+  severity       String       /// "critical" | "warning"
+  /// "firing" | "resolved"
+  status         String       @default("firing")
+  summary        String
+  /// Alert labels + annotations as received. Scrubbed before write (Task 3).
+  payload        Json
+  startsAt       DateTime
+  resolvedAt     DateTime?
+  /// Set when this incident opened a fix run. Null if it never did.
+  workItemId     String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  installation   Installation @relation(fields: [installationId], references: [id])
+
+  @@unique([installationId, fingerprint])
+  @@index([installationId, status])
 }
 
 /// One scan execution — honest status, always recorded.
