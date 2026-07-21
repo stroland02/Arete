@@ -32,6 +32,9 @@ into scope. Reprioritize only at phase boundaries or by explicit user decision.
 
 - `packages/webhook`: `@typescript-eslint/no-explicit-any` is `off` (Octokit boundary casts,
   per config comment) — unlike dashboard's `warn`. Revisit when the Octokit types allow it.
+- `packages/agents`: ruff `line-length = 120` (was default 88 with 212 violations — the
+  codebase never followed it). All other rules enforced at 0 errors. Tighten only if the
+  team adopts a formatter.
 - **Descoped from Phase 0** (final-review finding, 2026-07-21): spec §3's "coverage reporting
   turned on, thresholds advisory" was dropped between the two lane plans with no owner.
   Rescheduled here: enable vitest/pytest coverage reporting (advisory only) in Phase 1.
