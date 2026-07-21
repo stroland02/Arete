@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireScope } from '@/lib/model-connections-api';
 import { internalAuthHeaders } from '@/lib/internal-auth';
+import { computeFixCooldown } from '@/lib/fix-cooldown';
 
 // Session-scoped; never statically prerendered.
 export const dynamic = 'force-dynamic';
@@ -33,6 +34,20 @@ export async function POST(
   if (!item) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   if (item.state !== 'open') {
     return NextResponse.json({ error: 'not_open', state: item.state }, { status: 409 });
+  }
+
+  // Cooldown guard (Phase 2 Task 6): distinct from the state check above.
+  // `state !== 'open'` only ever blocks while a run is actively in flight —
+  // the moment driveFix's fail() path returns the item to `open`, that check
+  // alone would let an immediate re-trigger through, retrying a failing fix
+  // in a tight loop. 429 (not 409) is deliberate: it tells the client the
+  // request itself was fine and retrying IS meaningful, just not yet.
+  const cooldown = computeFixCooldown(item.fixFailureCount, item.fixFailureAt);
+  if (!cooldown.allowed) {
+    return NextResponse.json(
+      { error: 'cooldown_active', retryAfterSeconds: cooldown.retryAfterSeconds },
+      { status: 429, headers: { 'Retry-After': String(cooldown.retryAfterSeconds) } },
+    );
   }
 
   // PR target from the tenant's connected repo (owner/repo from fullName).

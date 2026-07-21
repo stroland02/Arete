@@ -4,13 +4,18 @@ import { FIX_QUEUE_NAME } from '../queue.js'
 
 const JOB = { workItemId: 'wi-1' }
 
+// All of these exercise behavior downstream of the cooldown check, so they
+// stub checkCooldown to 'allowed' — the cooldown-specific behavior has its
+// own describe block below.
+const cooldownAllowed = async () => ({ allowed: true })
+
 describe('processFixJob', () => {
   test('invokes driveFix exactly once with the job workItemId and the built deps', async () => {
     const fakeDeps = { marker: 'fake-deps' } as any
     const drive = vi.fn().mockResolvedValue({ ok: true, status: 'fixed' })
     const buildDeps = vi.fn().mockReturnValue(fakeDeps)
 
-    const result = await processFixJob(JOB, { driveFix: drive, buildDeps })
+    const result = await processFixJob(JOB, { driveFix: drive, buildDeps, checkCooldown: cooldownAllowed })
 
     expect(drive).toHaveBeenCalledTimes(1)
     expect(drive).toHaveBeenCalledWith('wi-1', fakeDeps)
@@ -25,7 +30,9 @@ describe('processFixJob', () => {
   // queue. This job must resolve (not reject) on a fix_failed outcome.
   test('resolves normally (does not throw) when driveFix reports fix_failed', async () => {
     const drive = vi.fn().mockResolvedValue({ ok: true, status: 'fix_failed', reason: 'no model' })
-    await expect(processFixJob(JOB, { driveFix: drive, buildDeps: () => ({} as any) })).resolves.toEqual({
+    await expect(
+      processFixJob(JOB, { driveFix: drive, buildDeps: () => ({} as any), checkCooldown: cooldownAllowed }),
+    ).resolves.toEqual({
       ok: true,
       status: 'fix_failed',
       reason: 'no model',
@@ -35,8 +42,31 @@ describe('processFixJob', () => {
   test('resolves normally when the work item or its container is gone (nothing to retry)', async () => {
     const drive = vi.fn().mockResolvedValue({ ok: false, reason: 'not_found' })
     await expect(
-      processFixJob(JOB, { driveFix: drive, buildDeps: () => ({} as any) }),
+      processFixJob(JOB, { driveFix: drive, buildDeps: () => ({} as any), checkCooldown: cooldownAllowed }),
     ).resolves.toEqual({ ok: false, reason: 'not_found' })
+  })
+})
+
+describe('processFixJob cooldown enforcement', () => {
+  test('drops the job without invoking driveFix when the cooldown is active', async () => {
+    const drive = vi.fn()
+    const checkCooldown = vi.fn().mockResolvedValue({ allowed: false, retryAfterSeconds: 120 })
+
+    const result = await processFixJob(JOB, { driveFix: drive, buildDeps: () => ({} as any), checkCooldown })
+
+    expect(checkCooldown).toHaveBeenCalledWith('wi-1')
+    expect(drive).not.toHaveBeenCalled()
+    expect(result).toEqual({ ok: false, reason: 'cooldown', retryAfterSeconds: 120 })
+  })
+
+  test('runs driveFix as normal when the cooldown allows it', async () => {
+    const drive = vi.fn().mockResolvedValue({ ok: true, status: 'fixed' })
+    const checkCooldown = vi.fn().mockResolvedValue({ allowed: true })
+
+    const result = await processFixJob(JOB, { driveFix: drive, buildDeps: () => ({} as any), checkCooldown })
+
+    expect(drive).toHaveBeenCalledTimes(1)
+    expect(result).toEqual({ ok: true, status: 'fixed' })
   })
 })
 

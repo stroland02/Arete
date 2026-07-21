@@ -79,7 +79,9 @@ export interface FixResponseBody {
 export interface FixDriveResult {
   ok: boolean
   status?: 'fixed' | 'fix_failed'
-  reason?: 'not_found' | 'no_repo' | 'no_model' | 'no_container'
+  reason?: 'not_found' | 'no_repo' | 'no_model' | 'no_container' | 'cooldown'
+  /** Populated when reason === 'cooldown' (queue-consumer.ts). */
+  retryAfterSeconds?: number
 }
 
 export interface FixTriggerDeps {
@@ -95,6 +97,7 @@ export interface FixTriggerDeps {
         dimension: string
         confidence: number
         evidence: unknown
+        fixFailureCount: number
       } | null>
       update(args: unknown): Promise<unknown>
     }
@@ -105,6 +108,7 @@ export interface FixTriggerDeps {
       findFirst(args: unknown): Promise<{ id: string; fullName: string } | null>
     }
     issueContainer: {
+      findUnique(args: unknown): Promise<{ id: string; state: string } | null>
       update(args: unknown): Promise<unknown>
     }
   }
@@ -177,11 +181,30 @@ export async function driveFix(
       dimension: true,
       confidence: true,
       evidence: true,
+      fixFailureCount: true,
     },
   })
   if (!item) return { ok: false, reason: 'not_found' }
   if (!item.containerId) return { ok: false, reason: 'no_container' }
   const containerId = item.containerId
+
+  // Idempotent terminate: a container that already settled at a terminal
+  // state (ready / fix_failed) must not be re-driven — no re-write, no
+  // re-emitted outcome. This guards a drive that runs twice for the same
+  // work item (e.g. a duplicate enqueue, or a job processed after the
+  // cooldown check already let a second attempt through the queue) from
+  // double-writing state or double-counting a failure.
+  const currentContainer = await deps.prisma.issueContainer.findUnique({
+    where: { id: containerId },
+    select: { id: true, state: true },
+  })
+  if (currentContainer && (currentContainer.state === 'ready' || currentContainer.state === 'fix_failed')) {
+    log.info(
+      { containerId, state: currentContainer.state },
+      'fix drive already terminal — skipping (idempotent terminate)',
+    )
+    return { ok: true, status: currentContainer.state === 'ready' ? 'fixed' : 'fix_failed' }
+  }
 
   const fail = async (reason: string, priorSteps: SynthStepJson[] = []): Promise<FixDriveResult> => {
     const transcript = [...priorSteps, { kind: 'drop', text: `Fix failed — ${reason}`, at: nowIso() }]
@@ -190,8 +213,13 @@ export async function driveFix(
         where: { id: containerId },
         data: { state: 'fix_failed', transcript },
       })
-      // Return the item to the inbox so the human can retry (scan-failure UX).
-      await deps.prisma.workItem.update({ where: { id: item.id }, data: { state: 'open' } })
+      // Return the item to the inbox so the human can retry (scan-failure
+      // UX), and bump the cooldown bookkeeping in the SAME write so the
+      // count and its timestamp stay atomic with the state flip (Task 6).
+      await deps.prisma.workItem.update({
+        where: { id: item.id },
+        data: { state: 'open', fixFailureCount: { increment: 1 }, fixFailureAt: new Date() },
+      })
     } catch (err) {
       log.error({ err, containerId }, 'failed to record fix_failed')
     }
@@ -276,7 +304,23 @@ export async function driveFix(
       log.error({ err, containerId }, 'failed to mark ready')
       return fail('could not persist the composed patch', driveSteps)
     }
-    // WorkItem stays `fixing` — it now awaits the human approve → send.
+    // WorkItem stays `fixing` — it now awaits the human approve → send. A
+    // successful run DOES clear the cooldown accumulated by prior failures
+    // (Task 6 requirement 4: a cooldown that only ever grows would eventually
+    // lock out a work item that started succeeding). Only written when there
+    // is something to clear, so the common first-try-succeeds path stays a
+    // single container write with no WorkItem touch, matching the existing
+    // HITL-moat contract (no *state* change on success).
+    if (item.fixFailureCount > 0) {
+      try {
+        await deps.prisma.workItem.update({
+          where: { id: item.id },
+          data: { fixFailureCount: 0, fixFailureAt: null },
+        })
+      } catch (err) {
+        log.error({ err, workItemId: item.id }, 'failed to clear fix cooldown after a successful drive')
+      }
+    }
     return { ok: true, status: 'fixed' }
   }
 
@@ -301,7 +345,10 @@ export function defaultFixTriggerDeps(app: App): FixTriggerDeps {
       },
       installation: { findUnique: delegate('installation', 'findUnique') },
       repository: { findFirst: delegate('repository', 'findFirst') },
-      issueContainer: { update: delegate('issueContainer', 'update') },
+      issueContainer: {
+        findUnique: delegate('issueContainer', 'findUnique'),
+        update: delegate('issueContainer', 'update'),
+      },
     },
     resolveModel: (externalId) =>
       resolveModelConnectionForReview(externalId, defaultResolveModelDeps()),

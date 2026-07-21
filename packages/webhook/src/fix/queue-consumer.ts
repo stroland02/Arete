@@ -34,6 +34,7 @@ import { FIX_QUEUE_NAME, FIX_QUEUE_CONCURRENCY, type FixDriveJobData } from '../
 import { recordQueueJob } from '../observability.js'
 import { logger } from '../logger.js'
 import { driveFix, defaultFixTriggerDeps, type FixTriggerDeps, type FixDriveResult } from './trigger.js'
+import { checkFixCooldown, defaultCooldownDeps, type FixCooldownResult } from './cooldown.js'
 
 const log = logger.child({ component: 'fix-queue-consumer' })
 
@@ -44,6 +45,13 @@ export interface ProcessFixJobDeps {
    *  (mirrors worker.ts's processReviewJob, which also calls createApp() per job
    *  rather than sharing one App across the process). */
   buildDeps?: () => FixTriggerDeps
+  /** Injectable for tests; defaults to the real checkFixCooldown against
+   *  @arete/db (Task 6). This is the second of the two cooldown enforcement
+   *  points — the dashboard route is the first (returns 429 + Retry-After
+   *  before ever enqueueing). Here, a cooldown that's active DROPS the job
+   *  rather than running it: driveFix never even sees a job whose work item
+   *  is still inside its backoff window. */
+  checkCooldown?: (workItemId: string) => Promise<FixCooldownResult>
 }
 
 /**
@@ -55,6 +63,16 @@ export async function processFixJob(
   data: FixDriveJobData,
   deps: ProcessFixJobDeps = {},
 ): Promise<FixDriveResult> {
+  const checkCooldown = deps.checkCooldown ?? ((workItemId: string) => checkFixCooldown(workItemId, defaultCooldownDeps()))
+  const cooldown = await checkCooldown(data.workItemId)
+  if (!cooldown.allowed) {
+    log.warn(
+      { workItemId: data.workItemId, retryAfterSeconds: cooldown.retryAfterSeconds },
+      'Fix job dropped — cooldown active',
+    )
+    return { ok: false, reason: 'cooldown', retryAfterSeconds: cooldown.retryAfterSeconds }
+  }
+
   const drive = deps.driveFix ?? driveFix
   const buildDeps = deps.buildDeps ?? (() => defaultFixTriggerDeps(createApp()))
 

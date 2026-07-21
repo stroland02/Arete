@@ -159,6 +159,22 @@ model WorkItem {
   fingerprint    String
   containerId    String?
   scanRunId      String?
+  /// Consecutive fix_failed count for this item's healing runs (Phase 2 Task 6
+  /// cooldown). Incremented atomically alongside the `state: "open"` write in
+  /// driveFix's fail() path; reset to 0 by a successful drive. Added rather
+  /// than derived: each "Fix it" click creates a BRAND NEW IssueContainer
+  /// (work-items/[id]/fix route) and IssueContainer carries no back-reference
+  /// to the WorkItem that spawned it, so once a retry overwrites
+  /// WorkItem.containerId the prior (possibly failed) container becomes
+  /// unreachable from here — there is no query that reconstructs "how many
+  /// times in a row has this item failed" from existing rows.
+  fixFailureCount Int      @default(0)
+  /// Timestamp of the most recent fix_failed outcome. Deliberately NOT derived
+  /// from `updatedAt`: scan/trigger.ts and review-sync.ts both refresh an
+  /// open WorkItem's title/detail/confidence/scanRunId on every re-scan pass
+  /// that still matches its fingerprint, which would reset `updatedAt` and
+  /// silently corrupt the cooldown clock if that were the timestamp used.
+  fixFailureAt   DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
