@@ -1,7 +1,9 @@
 import { UnrecoverableError, Worker } from 'bullmq'
 import { Redis as IORedis } from 'ioredis'
+import { BullMQOtel } from 'bullmq-otel'
 import { getServiceConfig } from './config.js'
 import { APPROVAL_QUEUE_NAME, type ApprovalExecutionJobData } from './queue.js'
+import { recordQueueJob } from './observability.js'
 
 // Consumer of the `approval-exec` queue (the enqueue side already ships in
 // queue.ts; worker.ts only consumes the review queue — this is the gap).
@@ -107,11 +109,30 @@ export async function processApprovalJob(
 export function startApprovalWorker(): Worker<ApprovalExecutionJobData> {
   const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379'
   const connection = new IORedis(redisUrl, { maxRetriesPerRequest: null })
-  return new Worker<ApprovalExecutionJobData>(
+  const worker = new Worker<ApprovalExecutionJobData>(
     APPROVAL_QUEUE_NAME,
     async (job) => {
       await processApprovalJob(job.data)
     },
-    { connection },
+    {
+      connection,
+      // Same tracerName as startReviewWorker (worker.ts) — both are
+      // consumer-side instances in the worker process; the producer side
+      // (queue.ts's getApprovalQueue) uses a separate 'arete-webhook'
+      // instance. Without this, approval jobs get no consumer-side span and
+      // lose the producer→consumer trace link (review finding).
+      telemetry: new BullMQOtel({ tracerName: 'arete-worker' }),
+    },
   )
+
+  worker.on('completed', (job) => {
+    recordQueueJob(APPROVAL_QUEUE_NAME, 'completed')
+    console.log(`[approval-worker] Job ${job.id} completed`)
+  })
+  worker.on('failed', (job, err) => {
+    recordQueueJob(APPROVAL_QUEUE_NAME, 'failed')
+    console.error(`[approval-worker] Job ${job?.id} failed:`, err)
+  })
+
+  return worker
 }
