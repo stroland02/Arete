@@ -19,6 +19,7 @@ export async function createServer(): Promise<express.Application> {
   const logScan = logger.child({ component: 'scan' })
   const logFix = logger.child({ component: 'fix' })
   const logAlerting = logger.child({ component: 'alerting' })
+  const logMemory = logger.child({ component: 'memory' })
   const { App } = await import('@octokit/app')
   const { createNodeMiddleware } = await import('@octokit/webhooks')
 
@@ -136,7 +137,15 @@ export async function createServer(): Promise<express.Application> {
 
   // Pre-auth Poison Message Guard: Drop empty/malformed payloads instantly
   // before they consume DB reads or queue resources.
+  // EXCEPT /alerts/incoming: Alertmanager treats any 4xx as PERMANENT and
+  // drops the notification rather than retrying, so on that path a malformed
+  // body must be logged and answered 2xx — auth failure is the only non-2xx
+  // outcome (Task 3 requirement; review finding I4).
   server.use((req, res, next) => {
+    if (req.path === '/alerts/incoming') {
+      next()
+      return
+    }
     const contentLength = req.headers['content-length']
     if (contentLength !== undefined && /^\s*0+\s*$/.test(contentLength)) {
       res.status(400).send('empty request body; no records to ingest')
@@ -329,6 +338,51 @@ export async function createServer(): Promise<express.Application> {
   const { createContextMapFileHandler } = await import('./context-map/file-handler.js')
   server.get('/internal/context-map/file', createContextMapFileHandler())
 
+  // Internal memory write-back (Phase 2 Task 8). Closes the
+  // add_project_memory stub in
+  // packages/agents/src/arete_agents/tools/memory.py — before this route
+  // existed, that tool logged and returned a hardcoded success string
+  // without persisting anything. Reuses the SAME `/internal` prefix guard
+  // as /internal/model-connections/test and /internal/context-map/file
+  // above (requireInternalToken, mounted once at the top of this function) —
+  // no second auth path. The tenant guard (repo scoped to the caller's own
+  // installation) and the size caps live in memory-write.ts; this route only
+  // maps its result to a status code and must be honest: 2xx ONLY on an
+  // actually-persisted row, never on a rejection.
+  server.post('/internal/memory', express.json(), async (req, res) => {
+    const body = (req.body ?? {}) as Record<string, unknown>
+    const installationExternalId = typeof body.installationId === 'number' ? body.installationId : NaN
+    const repoFullName = typeof body.repoFullName === 'string' ? body.repoFullName : ''
+    const memoryBody = typeof body.body === 'string' ? body.body : ''
+    const kind = typeof body.kind === 'string' ? body.kind : undefined
+    const title = typeof body.title === 'string' ? body.title : undefined
+
+    try {
+      const { saveAgentMemory } = await import('./memory-write.js')
+      const result = await saveAgentMemory({
+        installationExternalId,
+        repoFullName,
+        kind,
+        title,
+        body: memoryBody,
+      })
+      if (result.ok) {
+        res.status(201).json({ ok: true, id: result.id })
+        return
+      }
+      // repo_not_found deliberately maps to 404 whether the repo genuinely
+      // doesn't exist or belongs to a different installation — the tenant
+      // guard must never let a caller distinguish "wrong tenant" from
+      // "doesn't exist" (memory-write.ts module header).
+      const status =
+        result.reason === 'repo_not_found' ? 404 : result.reason === 'internal_error' ? 500 : 400
+      res.status(status).json({ ok: false, reason: result.reason, detail: result.detail })
+    } catch (err) {
+      logMemory.error({ err }, 'failed to save agent memory')
+      res.status(500).json({ ok: false, reason: 'internal_error' })
+    }
+  })
+
   // NOTE: the model-connection *management* API (/api/model-connections — GET list,
   // PUT upsert, DELETE, POST .../test) is deliberately NOT mounted here for the same
   // reason as the outbound-webhook management API below: it is tenant-scoped CRUD that
@@ -372,6 +426,36 @@ export async function createServer(): Promise<express.Application> {
   server.get('/oauth/:provider/callback', handleOAuthCallback)
 
   server.get('/health', (_req, res) => res.json({ status: 'ok' }))
+
+  // Error middleware (4-arity — Express identifies it by arity, so the unused
+  // `_next` parameter is load-bearing). MUST be registered last.
+  //
+  // `express.json()` runs as ROUTE middleware, so a body-parse failure never
+  // reaches the route handler's own try/catch: body-parser 1.20.6 emits a
+  // SyntaxError (status 400) for malformed JSON and a PayloadTooLargeError
+  // (status 413) over the 100kb default, and express 4.22.2's default error
+  // handler answers those statuses. On /alerts/incoming that is a silent data
+  // loss bug: Alertmanager treats 4xx as PERMANENT and drops the notification
+  // instead of retrying, so a truncated or oversized batch disappears with no
+  // incident row and no retry (review finding I4). Log it and answer 2xx —
+  // auth failure (401/503 from requireInternalToken, which runs BEFORE the
+  // parser) stays the only non-2xx outcome on this path.
+  //
+  // Every other route keeps Express's default behaviour: `next(err)`.
+  server.use(
+    (err: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+      if (req.path === '/alerts/incoming' && !res.headersSent) {
+        const e = err as { type?: string; status?: number; message?: string }
+        logAlerting.error(
+          { err, parseErrorType: e?.type, parseErrorStatus: e?.status },
+          'malformed or oversized alert body — answering 2xx so Alertmanager does not drop the notification'
+        )
+        res.status(200).json({ created: 0, updated: 0 })
+        return
+      }
+      _next(err)
+    }
+  )
 
   return server
 }
