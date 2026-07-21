@@ -94,6 +94,21 @@ Three services: **dashboard** (Next.js 16, session-authed, BYO-model), **webhook
 
 ---
 
+## Engineer Closeout — Eng3 & Eng4
+
+**Engineer 3 — CLOSED.** Agents `POST /fix` harness delivered and integrated (`1d8e65f` + LLMConfig import fix `339bac3`, merged forward through `integration-preview`). `fix_pipeline.py`: checkout → author a real file patch from the work item's evidence → **hard deterministic grounding gate** (any hallucinated path fails the whole patch) → verify via `auto_resolver.verify_resolved` → honest `fix_failed`. `/fix` live on :8000 (confirmed in `/openapi.json`); imports resolve clean; agents suite 367 passed / 0 failed, no regressions from the slice. Noted-not-touched (out of scope, pre-existing): server.py OTel-block E402/F401 import-order debt and some >88-char prompt-literal lines — no project ruff config enforces either.
+
+**Engineer 4 — CLOSED.** *Record correction:* Eng3's report lists Eng4's lane as "not built… none of that exists yet." That reflects Eng3's view of their own lane branch only — **Eng4's lane was implemented by the PM/integrator this session (`eb8dd74`) and is integrated**, so the end-to-end loop IS wired and testable. Delivered:
+- webhook `POST /fix/trigger` (bearer-guarded) + `driveFix` (`packages/webhook/src/fix/trigger.ts`) — resolve repo+model, mint installation token, call agents `/fix`, advance the container `detecting → fanning_out → ready` with the real patch, honest empty-patch = failure, `fix_failed` → WorkItem back to `open`;
+- dashboard `work-items/[id]/fix/route.ts` corrected to birth the container at `detecting` (not the dead-end `open`) and dispatch `/fix/trigger`;
+- `IssueContainer.transcript` Json migration (`20260720120000`) + `getFixContainer` SSE resolver streaming the real transcript;
+- `fix_failed` terminal `ContainerState` (union + `TRANSITIONS` + `TERMINAL_STATES` + synth-phase maps);
+- legacy dead-end `open` containers purged, their WorkItems reopened.
+
+Consequence: the full **scan → Fix it → authored+verified patch → approve → PR with content** loop is closed end-to-end (webhook 370 / dashboard 415 / agents 367 all green). The scan→fix→PR path IS testable start-to-finish now — Eng3's "not testable end-to-end" is superseded by the integrated state.
+
+Both engineer lanes for the healing loop are closed. Remaining follow-ups (Eng1 promote-by-id, telemetry worker, SDLC/CI) are tracked in the roadmap above, not part of the Eng3/Eng4 healing-loop scope.
+
 ## Areas Requiring Manual Intervention Before Next Phase
 1. **User must add Anthropic credits** (account at $0) or run on **Local · Ollama** — the "no response" was billing, now surfaced honestly. A lost Anthropic key must be regenerated (providers don't reissue).
 2. **User's Connect Workspace data** is the gate for the next feature.
