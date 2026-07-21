@@ -38,12 +38,45 @@ services:
       - "9000:9000"
     volumes:
       - clickhouse_data:/var/lib/clickhouse
-      - ../packages/db/clickhouse/schema/ha-replicated-otel.sql:/docker-entrypoint-initdb.d/init.sql
+      # Single-node DDL with TTLs (packages/db/clickhouse/RETENTION.md). The
+      # HA schema (ha-replicated-otel.sql) is ON CLUSTER and cannot boot here.
+      - ../packages/db/clickhouse/schema/single-node-otel.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
       interval: 5s
       timeout: 5s
       retries: 5
+
+  # --- observability stack (obs spec §3 "Infra promotion") -------------------
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.156.0
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317"  # OTLP gRPC in
+      - "4318:4318"  # OTLP HTTP in (services default here)
+      - "8889:8889"  # Prometheus scrape endpoint
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
+
+  # Jaeger v2 all-in-one (OTLP-native). v1 + the npm Jaeger exporter are
+  # legacy; the collector exports OTLP to jaeger:4317 on the compose network.
+  jaeger:
+    image: jaegertracing/jaeger:2.13.0
+    ports:
+      - "16686:16686"  # UI
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"  # UI
 
 volumes:
   postgres_data:

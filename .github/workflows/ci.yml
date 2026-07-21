@@ -224,21 +224,10 @@ jobs:
             exit 1
           fi
 
-      - name: Validate otel compose file
-        run: |
-          STATUS=0
-          OUTPUT=$(docker compose -f infra/docker-compose-otel.yml config --quiet 2>&1 >/dev/null) || STATUS=$?
-          echo "$OUTPUT"
-          if [ "$STATUS" -ne 0 ]; then
-            exit "$STATUS"
-          fi
-          if echo "$OUTPUT" | grep -qi "variable is not set"; then
-            echo "::error::Undefined variable interpolation in infra/docker-compose-otel.yml"
-            exit 1
-          fi
-
-      # Must stay pinned to the same image tag infra uses (Task 11 promotes
-      # the default compose stack to the same 0.156.0 tag).
+      # Must stay pinned to the same image tag infra uses (the default
+      # compose stack now ships the same 0.156.0 tag; the otel stack was
+      # promoted into infra/docker-compose.yml, so there is no longer a
+      # separate otel compose file to validate).
       - name: Validate collector config
         run: |
           docker run --rm \
