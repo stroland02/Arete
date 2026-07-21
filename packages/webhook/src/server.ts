@@ -7,12 +7,17 @@ import { buildOAuthAuthorizeUrl } from './oauth/build-authorize-url.js'
 import { handleOAuthCallback } from './oauth/oauth-callback-handler.js'
 import type { StagingSendDeps } from './staging/send.js'
 import type { StagingOctokit } from './staging/stage-pr.js'
+import { logger } from './logger.js'
 
 // @octokit/app and @octokit/webhooks are pure ESM (import-only "exports" maps);
 // this package compiles to CJS, so they must be loaded via dynamic import(),
 // which tsx/esbuild preserves as a native import at runtime.
 export async function createServer(): Promise<express.Application> {
   const config = getConfig()
+  const log = logger.child({ component: 'server' })
+  const logApprovals = logger.child({ component: 'approvals' })
+  const logScan = logger.child({ component: 'scan' })
+  const logFix = logger.child({ component: 'fix' })
   const { App } = await import('@octokit/app')
   const { createNodeMiddleware } = await import('@octokit/webhooks')
 
@@ -26,10 +31,10 @@ export async function createServer(): Promise<express.Application> {
     try {
       await handlePullRequestEvent(octokit as any, payload as any)
     } catch (err) {
-      console.error('[server] Error handling pull_request event:', err)
+      log.error({ err }, 'Error handling pull_request event')
     }
   })
-  
+
   const { registerCheckRunWebhooks } = await import('./webhook-handler.js')
   registerCheckRunWebhooks(app)
 
@@ -39,7 +44,7 @@ export async function createServer(): Promise<express.Application> {
     try {
       await handleReviewCommentEvent(octokit as any, payload as any)
     } catch (err) {
-      console.error('[server] Error handling pull_request_review_comment event:', err)
+      log.error({ err }, 'Error handling pull_request_review_comment event')
     }
   })
 
@@ -63,7 +68,7 @@ export async function createServer(): Promise<express.Application> {
         owner,
       })
     } catch (err) {
-      console.error('[server] Error handling installation event:', err)
+      log.error({ err }, 'Error handling installation event')
     }
 
     // Backfill the repos' EXISTING open PRs so past work becomes visible
@@ -80,7 +85,7 @@ export async function createServer(): Promise<express.Application> {
       const repos = (payload as any).repositories ?? []
       await backfillInstallationPRs(octokit as any, payload.installation.id, repos)
     } catch (err) {
-      console.error('[server] Error backfilling PRs for installation:', err)
+      log.error({ err }, 'Error backfilling PRs for installation')
     }
 
     // Build the Sensorium code map right away, so the dashboard's code map is
@@ -92,7 +97,7 @@ export async function createServer(): Promise<express.Application> {
       const { triggerContextMapIndex } = await import('./context-map-index.js')
       await triggerContextMapIndex(app, payload.installation.id, repos)
     } catch (err) {
-      console.error('[server] Error triggering code-map index on install:', err)
+      log.error({ err }, 'Error triggering code-map index on install')
     }
 
     // Auto-scan on connect (work-item inbox): fire-and-forget — the trigger
@@ -103,7 +108,7 @@ export async function createServer(): Promise<express.Application> {
     if (installationUuid) {
       import('./scan/trigger.js')
         .then(({ maybeStartScan }) => maybeStartScan(installationUuid!))
-        .catch((err) => console.error('[server] Error auto-triggering scan on install:', err))
+        .catch((err) => log.error({ err }, 'Error auto-triggering scan on install'))
     }
   })
 
@@ -122,12 +127,12 @@ export async function createServer(): Promise<express.Application> {
       const { triggerContextMapIndex } = await import('./context-map-index.js')
       await triggerContextMapIndex(app, payload.installation.id, payload.repositories_added as any)
     } catch (err) {
-      console.error('[server] Error handling installation_repositories event:', err)
+      log.error({ err }, 'Error handling installation_repositories event')
     }
   })
 
   const server = express()
-  
+
   // Pre-auth Poison Message Guard: Drop empty/malformed payloads instantly
   // before they consume DB reads or queue resources.
   server.use((req, res, next) => {
@@ -141,10 +146,10 @@ export async function createServer(): Promise<express.Application> {
 
   // Stripe webhook needs raw body
   server.post('/stripe-webhook', express.raw({ type: 'application/json' }), handleStripeWebhook)
-  
+
   // GitLab webhook needs JSON body
   server.post('/gitlab-webhook', express.json(), handleGitLabWebhook)
-  
+
   // Service-to-service surface guard: /internal/*, /scan/trigger,
   // /staging/send and /api/approvals/:id/execute are called only by our own
   // services (the dashboard proxies after session-scoping the tenant), so the
@@ -195,11 +200,11 @@ export async function createServer(): Promise<express.Application> {
           return
       }
     } catch (err) {
-      console.error(`[approvals] Failed to execute approval ${id}:`, err)
+      logApprovals.error({ err, approvalId: id }, 'Failed to execute approval')
       res.status(500).json({ error: 'internal_error', id })
     }
   })
-  
+
   // PR-staging send seam (internal). The dashboard's "Post PR" action calls this
   // with two internal uuids; we resolve the tenant to an installation Octokit,
   // load the approved container slice, and run the gate-enforced, idempotent
@@ -249,7 +254,7 @@ export async function createServer(): Promise<express.Application> {
       else if (result.reason === 'already_running') res.status(409).json(result)
       else res.status(200).json(result)
     } catch (err) {
-      console.error('[scan] trigger route failed:', err)
+      logScan.error({ err }, 'trigger route failed')
       res.status(500).json({ error: 'internal_error' })
     }
   })
@@ -277,7 +282,7 @@ export async function createServer(): Promise<express.Application> {
     // Fire-and-forget: the drive is long-running and self-persisting; a failure
     // lands the container in fix_failed on its own (never rethrown here).
     void driveFix(workItemId, defaultFixTriggerDeps(app)).catch((err) => {
-      console.error(`[fix] drive failed for work item ${workItemId}:`, err)
+      logFix.error({ err, workItemId }, 'drive failed')
     })
     res.status(202).json({ started: true })
   })

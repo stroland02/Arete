@@ -2291,14 +2291,14 @@ Everything below must pass, with outputs captured verbatim into PR-5's body (and
 
 **Steps**
 
-- [ ] **Test suites green:**
+- [x] **Test suites green:**
   - `pnpm --filter @arete/dashboard test` → 0 failures (includes Task 1's `queries.clickhouse.test.ts`).
   - From `packages/agents`: `uv run ruff check src/ tests/ scripts/` → no findings (E402/F401 debt gone, no `noqa` added).
   - `LLM_PROVIDER=gemini GEMINI_API_KEY=test-key-not-real uv run pytest tests/ --ignore=tests/test_e2e_smoke.py -v` → 0 failures, **0 skipped tests added by this lane**.
-- [ ] **Infra validation (the CI job, run locally):**
+- [x] **Infra validation (the CI job, run locally):**
   - `docker compose -f infra/docker-compose.yml config --quiet` → exit 0.
   - `docker run --rm -v "$PWD/infra/otel-collector-config.yaml:/etc/otelcol/config.yaml" otel/opentelemetry-collector-contrib:0.156.0 validate --config=/etc/otelcol/config.yaml` → exit 0.
-- [ ] **Per-signal verification evidence (spec §5, verbatim requirement — status codes AND partial-success):** with the stack up (`pnpm infra:up`), from `packages/agents`:
+- [x] **Per-signal verification evidence (spec §5, verbatim requirement — status codes AND partial-success):** with the stack up (`pnpm infra:up`), from `packages/agents`:
   - `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 uv run python scripts/verify_telemetry.py` → paste the three lines; required:
     ```
     PASS POST /v1/traces -> 200 partialSuccess={}
@@ -2306,7 +2306,7 @@ Everything below must pass, with outputs captured verbatim into PR-5's body (and
     PASS POST /v1/metrics -> 200 partialSuccess={}
     ```
     exit code 0. Any non-empty `rejectedSpans`/`rejectedLogRecords`/`rejectedDataPoints` is a FAIL even on HTTP 200 — diagnose via `docker compose -f infra/docker-compose.yml logs otel-collector` before proceeding.
-- [ ] **End-to-end service check (real server, real stack):** from `packages/agents`:
+- [x] **End-to-end service check (real server, real stack):** from `packages/agents`:
   - `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 LLM_PROVIDER=gemini GEMINI_API_KEY=test-key-not-real uv run uvicorn arete_agents.server:app --port 8000` (background), then:
   - `curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/health` → `200`.
   - Hit it 5×, wait ~10s (batch flush), then:

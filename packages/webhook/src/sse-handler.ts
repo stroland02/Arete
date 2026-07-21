@@ -1,5 +1,8 @@
 import type { Request, Response } from 'express';
 import { Redis } from 'ioredis';
+import { logger } from './logger.js';
+
+const log = logger.child({ component: 'sse' });
 
 const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
 
@@ -21,7 +24,7 @@ export function handleMetricsStream(req: Request, res: Response) {
   
   subscriber.subscribe('agent_metrics', (err) => {
     if (err) {
-      console.error('[sse] Failed to subscribe to agent_metrics', err);
+      log.error({ err }, 'Failed to subscribe to agent_metrics');
       res.write(`event: error\ndata: ${JSON.stringify({ error: err.message })}\n\n`);
     } else {
       res.write(`event: connected\ndata: ${JSON.stringify({ status: 'listening' })}\n\n`);

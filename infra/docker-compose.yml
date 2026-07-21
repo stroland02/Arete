@@ -38,9 +38,71 @@ services:
       - "9000:9000"
     volumes:
       - clickhouse_data:/var/lib/clickhouse
-      - ../packages/db/clickhouse/schema/ha-replicated-otel.sql:/docker-entrypoint-initdb.d/init.sql
+      # Single-node DDL with TTLs (packages/db/clickhouse/RETENTION.md). The
+      # HA schema (ha-replicated-otel.sql) is ON CLUSTER and cannot boot here.
+      - ../packages/db/clickhouse/schema/single-node-otel.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      # 127.0.0.1, not `localhost`: on this Docker Desktop network AF_INET6
+      # sockets are unsupported inside the container (confirmed via
+      # clickhouse-server.log: "Listen [::]:8123 failed ... Address family
+      # for hostname not supported"), so busybox wget's IPv6-first lookup
+      # of "localhost" hits ::1 and gets an immediate refusal, never falling
+      # back to the IPv4 listener that's actually up. Same class of bug as
+      # llm/ollama.py's DEFAULT_OLLAMA_BASE_URL comment.
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- observability stack (obs spec §3 "Infra promotion") -------------------
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.156.0
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317"  # OTLP gRPC in
+      - "4318:4318"  # OTLP HTTP in (services default here)
+      - "8889:8889"  # Prometheus scrape endpoint
+      - "13133:13133"  # health_check extension (see note below)
+    # No compose-level healthcheck here: otel/opentelemetry-collector-contrib
+    # is distroless (verified via `docker export` — the image contains only
+    # the otelcol-contrib binary, ca-certificates, and config; no /bin/sh,
+    # wget, curl, or nc), so there is no binary Docker can exec inside the
+    # container to probe the health_check extension's :13133 endpoint. The
+    # extension is enabled below anyway (standard practice) so the endpoint
+    # is reachable from the host / external tooling for manual/CI checks.
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+
+  # Jaeger v2 all-in-one (OTLP-native). v1 + the npm Jaeger exporter are
+  # legacy; the collector exports OTLP to jaeger:4317 on the compose network.
+  jaeger:
+    image: jaegertracing/jaeger:2.13.0
+    ports:
+      - "16686:16686"  # UI
+    healthcheck:
+      # Jaeger v2 is itself collector-core based and ships its own
+      # health_check extension on :13133 (busybox/wget confirmed present
+      # in this image); "/status" is the extension's healthcheckv2 path,
+      # "/" 404s.
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/status"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"  # UI
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
       interval: 5s
       timeout: 5s
       retries: 5

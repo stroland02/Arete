@@ -1,7 +1,12 @@
 import { UnrecoverableError, Worker } from 'bullmq'
 import { Redis as IORedis } from 'ioredis'
+import { BullMQOtel } from 'bullmq-otel'
 import { getServiceConfig } from './config.js'
 import { APPROVAL_QUEUE_NAME, type ApprovalExecutionJobData } from './queue.js'
+import { recordQueueJob } from './observability.js'
+import { logger } from './logger.js'
+
+const log = logger.child({ component: 'approval-worker' })
 
 // Consumer of the `approval-exec` queue (the enqueue side already ships in
 // queue.ts; worker.ts only consumes the review queue — this is the gap).
@@ -87,16 +92,17 @@ export async function processApprovalJob(
   // A regular Error thrown here (transport/non-2xx/timeout) is retryable.
   const result = await apply(data)
   if (result.status === 'applied') {
-    console.log(
-      `[approval-worker] Applied approval ${data.approvalId}` +
-        (result.resumedRunId ? ` (resumed run ${result.resumedRunId})` : ''),
+    log.info(
+      { approvalId: data.approvalId, resumedRunId: result.resumedRunId },
+      'Applied approval',
     )
     return
   }
   // Terminal failure: the apply ran and failed deterministically. Log it and
   // throw UnrecoverableError so BullMQ marks the job failed WITHOUT retrying.
-  console.error(
-    `[approval-worker] Approval ${data.approvalId} failed terminally (no retry): ${result.detail}`,
+  log.error(
+    { approvalId: data.approvalId, detail: result.detail },
+    'Approval failed terminally (no retry)',
   )
   throw new UnrecoverableError(`approval ${data.approvalId} apply failed: ${result.detail}`)
 }
@@ -107,11 +113,30 @@ export async function processApprovalJob(
 export function startApprovalWorker(): Worker<ApprovalExecutionJobData> {
   const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379'
   const connection = new IORedis(redisUrl, { maxRetriesPerRequest: null })
-  return new Worker<ApprovalExecutionJobData>(
+  const worker = new Worker<ApprovalExecutionJobData>(
     APPROVAL_QUEUE_NAME,
     async (job) => {
       await processApprovalJob(job.data)
     },
-    { connection },
+    {
+      connection,
+      // Same tracerName as startReviewWorker (worker.ts) — both are
+      // consumer-side instances in the worker process; the producer side
+      // (queue.ts's getApprovalQueue) uses a separate 'arete-webhook'
+      // instance. Without this, approval jobs get no consumer-side span and
+      // lose the producer→consumer trace link (review finding).
+      telemetry: new BullMQOtel({ tracerName: 'arete-worker' }),
+    },
   )
+
+  worker.on('completed', (job) => {
+    recordQueueJob(APPROVAL_QUEUE_NAME, 'completed')
+    log.info({ jobId: job.id }, 'Job completed')
+  })
+  worker.on('failed', (job, err) => {
+    recordQueueJob(APPROVAL_QUEUE_NAME, 'failed')
+    log.error({ err, jobId: job?.id }, 'Job failed')
+  })
+
+  return worker
 }

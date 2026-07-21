@@ -23,6 +23,9 @@ export const authConfig = {
         pathname.startsWith('/login') ||
         pathname.startsWith('/signup') ||
         pathname.startsWith('/api/auth') ||
+        // Liveness probe (spec §3 exit criteria): must be reachable without a
+        // session — a health check that requires login isn't a health check.
+        pathname === '/api/health' ||
         pathname.endsWith('.jpg') ||
         pathname.endsWith('.png') ||
         pathname.endsWith('.svg');

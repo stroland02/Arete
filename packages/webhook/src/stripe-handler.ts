@@ -2,6 +2,9 @@ import Stripe from 'stripe';
 import { Request, Response } from 'express';
 import { prisma } from './db.js';
 import { getStripeConfig } from './config.js';
+import { logger } from './logger.js';
+
+const log = logger.child({ component: 'stripe-handler' });
 
 const stripeKey = getStripeConfig().secretKey
 if (!stripeKey) throw new Error('STRIPE_SECRET_KEY env var is required')
@@ -23,7 +26,7 @@ export async function handleStripeWebhook(req: Request, res: Response) {
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
   } catch (err: any) {
-    console.error(`⚠️ Webhook signature verification failed.`, err.message);
+    log.error({ err }, 'Webhook signature verification failed');
     res.status(400).send(`Webhook Error: ${err.message}`);
     return;
   }
@@ -46,7 +49,7 @@ export async function handleStripeWebhook(req: Request, res: Response) {
               subscriptionStatus: 'active',
             },
           });
-          console.log(`Updated installation ${githubInstallationId} with Stripe details.`);
+          log.info({ installationId: githubInstallationId }, 'Updated installation with Stripe details');
         }
         break;
       }
@@ -72,18 +75,18 @@ export async function handleStripeWebhook(req: Request, res: Response) {
           where: { stripeSubscriptionId: subscription.id },
           data,
         });
-        console.log(
-          `Updated subscription ${subscription.id} to status ${subscription.status}` +
-          (tier ? ` (tier: ${tier}).` : '.')
+        log.info(
+          { subscriptionId: subscription.id, status: subscription.status, tier },
+          'Updated subscription'
         );
         break;
       }
       default:
-        console.log(`Unhandled event type ${event.type}`);
+        log.info({ eventType: event.type }, 'Unhandled event type');
     }
     res.json({ received: true });
   } catch (error) {
-    console.error('Error processing webhook:', error);
+    log.error({ err: error }, 'Error processing webhook');
     res.status(500).send('Internal Server Error');
   }
 }

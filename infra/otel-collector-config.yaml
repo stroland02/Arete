@@ -6,34 +6,135 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
+extensions:
+  # Backs the compose healthcheck (:13133/) — surfaces readiness/liveness
+  # without requiring curl/wget in the (minimal) contrib image.
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+processors:
+  # Must run first in every pipeline: sheds load under memory pressure
+  # before the (potentially large) redaction/transform/batch work runs.
+  # Values per the clickhouseexporter/collector recommended defaults.
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+  # §5 redaction, collector-side (defense in depth behind the in-process
+  # scrubbers). Allowlist mode OFF: allow_all_keys + key blocklist + value
+  # patterns. Key patterns match whole segments so gen_ai.usage.input_tokens
+  # is never masked by "token".
+  redaction:
+    allow_all_keys: true
+    blocked_key_patterns:
+      - (?i).*(^|[^a-z0-9])(authorization|x-api-key|api_key|token|secret|password|cookie|set-cookie)([^a-z0-9]|$).*
+    # Canonical §5 value-shape set, mirrored from
+    # packages/telemetry/src/redaction.ts (the documented policy) and kept in
+    # parity with packages/agents/src/arete_agents/observability.py. A shape
+    # present in one layer and missing here is a hole: the dashboard lane has
+    # no in-process scrubber and reaches ClickHouse through this processor only.
+    blocked_values:
+      - (?i)bearer\s+[a-z0-9._~+/=\-]{8,}
+      - sk-[A-Za-z0-9_\-]{10,}
+      - gh[pousr]_[A-Za-z0-9]{16,}
+      - glpat-[A-Za-z0-9_\-]{10,}
+      - whsec_[A-Za-z0-9]{10,}
+      - (?i)[?&](key|api_key|apikey|token|access_token|client_secret)=[^&#\s]+
+    summary: info
+  # Surgical OTTL passes for the places redaction's attribute scan can't
+  # reach: URL attributes lose their entire query string; status/body text
+  # loses key-in-URL shapes (the Superlog Gemini incident class). Covered set
+  # must stay identical to the in-process scrubbers (scrub-processor.ts,
+  # observability.py): http.url, url.full, http.target, url.path, url.query.
+  # url.query (semconv) IS the query string with no leading "?" — a
+  # "\\?.*$" slice would be a no-op on it, so it is cleared in full instead.
+  transform:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - replace_pattern(attributes["url.full"], "\\?.*$", "")
+          - replace_pattern(attributes["http.url"], "\\?.*$", "")
+          - replace_pattern(attributes["http.target"], "\\?.*$", "")
+          - replace_pattern(attributes["url.path"], "\\?.*$", "")
+          - replace_pattern(attributes["url.query"], ".*", "")
+          # status.message and body.string are NOT reached by the redaction
+          # processor (it scans attributes only), so these OTTL passes are the
+          # whole defense for them — and for the dashboard lane, which has no
+          # in-process scrubber at all, the only one. Keep this set identical to
+          # blocked_values above; a shape missing here leaks a Next.js error
+          # message straight into otel_traces.StatusMessage.
+          - replace_pattern(status.message, "(?i)bearer\\s+[a-z0-9._~+/=\\-]{8,}", "[REDACTED]")
+          - replace_pattern(status.message, "sk-[A-Za-z0-9_\\-]{10,}", "[REDACTED]")
+          - replace_pattern(status.message, "gh[pousr]_[A-Za-z0-9]{16,}", "[REDACTED]")
+          - replace_pattern(status.message, "glpat-[A-Za-z0-9_\\-]{10,}", "[REDACTED]")
+          - replace_pattern(status.message, "whsec_[A-Za-z0-9]{10,}", "[REDACTED]")
+          - replace_pattern(status.message, "(?i)([?&](key|api_key|apikey|token|access_token|client_secret)=)[^&#\\s]+", "$$1[REDACTED]")
+    log_statements:
+      - context: log
+        statements:
+          - replace_pattern(body.string, "(?i)bearer\\s+[a-z0-9._~+/=\\-]{8,}", "[REDACTED]")
+          - replace_pattern(body.string, "sk-[A-Za-z0-9_\\-]{10,}", "[REDACTED]")
+          - replace_pattern(body.string, "gh[pousr]_[A-Za-z0-9]{16,}", "[REDACTED]")
+          - replace_pattern(body.string, "glpat-[A-Za-z0-9_\\-]{10,}", "[REDACTED]")
+          - replace_pattern(body.string, "whsec_[A-Za-z0-9]{10,}", "[REDACTED]")
+          - replace_pattern(body.string, "(?i)([?&](key|api_key|apikey|token|access_token|client_secret)=)[^&#\\s]+", "$$1[REDACTED]")
+  batch: {}
+
 exporters:
   clickhouse:
     endpoint: tcp://clickhouse:9000?dial_timeout=10s&compress=lz4
     database: superlog
     username: superlog
     password: superlog
-    ttl_days: 30
+    # We own the DDL (packages/db/clickhouse, TTLs included). The exporter
+    # must never race replicas creating TTL-less tables at startup.
+    create_schema: false
     traces_table_name: otel_traces
-
-  # Export metrics to Prometheus
+    logs_table_name: otel_logs
+    # metrics_table_name (flat, deprecated) let the exporter derive
+    # sub-table names with its own fixed suffixes, which disagree with our
+    # owned DDL for exponential histograms (_exp_histogram here vs the
+    # exporter's default _exponential_histogram). Name every sub-table
+    # explicitly so create_schema: false always targets a real table.
+    metrics_tables:
+      gauge:
+        name: otel_metrics_gauge
+      sum:
+        name: otel_metrics_sum
+      summary:
+        name: otel_metrics_summary
+      histogram:
+        name: otel_metrics_histogram
+      exponential_histogram:
+        name: otel_metrics_exp_histogram
+    timeout: 5s
+    retry_on_failure:
+      enabled: true
+  # Jaeger v2 speaks OTLP — the legacy jaeger exporter is gone.
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
   prometheus:
-    endpoint: "0.0.0.0:8889"
-    namespace: "arete"
-
-  # Logging exporter for debugging
-  logging:
-    verbosity: detailed
-
-processors:
-  batch:
+    endpoint: 0.0.0.0:8889
+    namespace: arete
+  # Debug exporter (the old `logging:` exporter was removed upstream).
+  debug:
+    verbosity: basic
 
 service:
+  extensions: [health_check]
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch]
-      exporters: [clickhouse, logging]
+      processors: [memory_limiter, redaction, transform, batch]
+      exporters: [clickhouse, otlp/jaeger]
     metrics:
       receivers: [otlp]
-      processors: [batch]
-      exporters: [prometheus, logging]
+      processors: [memory_limiter, redaction, batch]
+      exporters: [clickhouse, prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, redaction, transform, batch]
+      exporters: [clickhouse]
