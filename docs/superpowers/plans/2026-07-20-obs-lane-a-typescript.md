@@ -29,7 +29,7 @@
 - **Telemetry never crashes the app:** every init wrapped in try/catch, logs exactly one warning, returns a boolean; the service runs without telemetry on failure.
 - **No new bare `console.*`** in server code (the single init-failure warning in `@arete/telemetry` is the documented exception).
 - **Prompt/completion content NOT captured** (`gen_ai.input.messages`/`output.messages` off).
-- **Env seam (shared with Agent B):** `OTEL_EXPORTER_OTLP_ENDPOINT` (default `http://localhost:4318`), `OTEL_SEMCONV_STABILITY_OPT_IN=http/dup`, `OTEL_SDK_DISABLED`, `DEPLOYMENT_ENVIRONMENT` — defined once in `.env.example`.
+- **Env seam (shared with Agent B):** `OTEL_EXPORTER_OTLP_ENDPOINT` (**unset ⇒ telemetry is a graceful no-op — never a localhost default**; local stack uses `http://localhost:4318`), `OTEL_SEMCONV_STABILITY_OPT_IN=http/dup,gen_ai_latest_experimental`, `OTEL_SDK_DISABLED`, `DEPLOYMENT_ENVIRONMENT` — defined once in `.env.example`. These semantics are identical in `@arete/telemetry` and `arete_agents/observability.py`.
 - **Histogram boundaries** for `arete.review.duration` / `arete.agent.duration`: `[1, 2, 5, 10, 30, 60, 120, 180, 300]` seconds.
 - **Verification per signal, every time:** drive one span, one metric batch, one log through the real bootstrap; confirm HTTP 2xx per endpoint (`/v1/traces`, `/v1/logs`, `/v1/metrics`) AND inspect OTLP partial-success payloads.
 
