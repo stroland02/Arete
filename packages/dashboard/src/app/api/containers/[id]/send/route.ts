@@ -83,7 +83,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     return Response.json({ error: "staging_not_configured" }, { status: 503 });
   }
 
-  const client = new HttpStagingClient({ baseUrl, headers: internalAuthHeaders() });
+  const client = new HttpStagingClient({ baseUrl, headers: await internalAuthHeaders() });
   const outcome = await client.send({ containerId: id, installationId: owningInstallationId });
 
   // On a real open, advance the persisted lifecycle to `posted`. Idempotent

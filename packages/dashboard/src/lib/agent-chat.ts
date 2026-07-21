@@ -51,7 +51,7 @@ export async function sendAgentChat({
       // with a fail-closed 503 (arete_agents/internal_auth.py, review finding
       // B4) — the same posture the webhook's own /internal/* already has, and
       // the same token this module's sibling already sends the other way.
-      headers: { "Content-Type": "application/json", ...internalAuthHeaders() },
+      headers: { "Content-Type": "application/json", ...(await internalAuthHeaders()) },
       body: JSON.stringify(context),
       signal: controller.signal,
     });

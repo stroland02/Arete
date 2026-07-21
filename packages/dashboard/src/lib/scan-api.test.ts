@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { verifyInternalToken } from '@arete/internal-token';
 
 const requireScope = vi.fn();
 vi.mock('@/lib/model-connections-api', () => ({
@@ -6,6 +7,8 @@ vi.mock('@/lib/model-connections-api', () => ({
 }));
 
 import { POST } from '@/app/api/scan/route';
+
+const KEYS = JSON.stringify({ k1: 'a'.repeat(48) });
 
 function webhookReply(status: number, body: unknown) {
   return {
@@ -66,13 +69,15 @@ describe('POST /api/scan — manual re-scan, session-scoped', () => {
     );
   });
 
-  it('sends the shared internal bearer token when configured', async () => {
-    vi.stubEnv('INTERNAL_API_TOKEN', 's3cret');
+  it('sends a signed internal bearer token when configured', async () => {
+    vi.stubEnv('INTERNAL_TOKEN_SIGNING_KEYS', KEYS);
+    vi.stubEnv('INTERNAL_TOKEN_ACTIVE_KID', 'k1');
     requireScope.mockResolvedValue({ installationIds: ['inst-1'] });
     fetchMock.mockResolvedValue(webhookReply(202, { started: true }));
     await POST(new Request('http://x/api/scan', { method: 'POST' }));
     const init = fetchMock.mock.calls[0][1] as { headers: Record<string, string> };
-    expect(init.headers).toMatchObject({ authorization: 'Bearer s3cret' });
+    const result = await verifyInternalToken(init.headers.authorization);
+    expect(result).toMatchObject({ ok: true, iss: 'arete-dashboard' });
   });
 
   it('passes through 409 already_running', async () => {

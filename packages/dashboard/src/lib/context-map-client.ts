@@ -26,7 +26,7 @@ export async function fetchCodeGraph(installationId: number): Promise<CodeGraphE
       // -- the read-side twin of the POST guard in agent-chat.ts above. This
       // is the ONLY caller of /context-map/graph in the repo (confirmed by a
       // full-repo sweep); nothing browser-facing reaches this fetch.
-      headers: { ...internalAuthHeaders() },
+      headers: { ...(await internalAuthHeaders()) },
     });
     if (!res.ok) return null;
     const body = (await res.json()) as { available: boolean; graph: CodeGraphExport | null };
