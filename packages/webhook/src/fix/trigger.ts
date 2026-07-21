@@ -21,6 +21,9 @@ import {
   defaultResolveModelDeps,
   type LlmConfig,
 } from '../resolve-model-connection.js'
+import { logger } from '../logger.js'
+
+const log = logger.child({ component: 'fix' })
 
 const REVIEW_DIMENSIONS = new Set([
   'security',
@@ -190,7 +193,7 @@ export async function driveFix(
       // Return the item to the inbox so the human can retry (scan-failure UX).
       await deps.prisma.workItem.update({ where: { id: item.id }, data: { state: 'open' } })
     } catch (err) {
-      console.error(`[fix] failed to record fix_failed for ${containerId}:`, err)
+      log.error({ err, containerId }, 'failed to record fix_failed')
     }
     return { ok: true, status: 'fix_failed' }
   }
@@ -228,7 +231,7 @@ export async function driveFix(
       data: { state: 'fanning_out', transcript: authoring },
     })
   } catch (err) {
-    console.error(`[fix] failed to advance ${containerId} to fanning_out:`, err)
+    log.error({ err, containerId }, 'failed to advance to fanning_out')
   }
 
   const evidence = Array.isArray(item.evidence)
@@ -270,7 +273,7 @@ export async function driveFix(
         data: { state: 'ready', patch: resp.patch, transcript },
       })
     } catch (err) {
-      console.error(`[fix] failed to mark ${containerId} ready:`, err)
+      log.error({ err, containerId }, 'failed to mark ready')
       return fail('could not persist the composed patch', driveSteps)
     }
     // WorkItem stays `fixing` — it now awaits the human approve → send.

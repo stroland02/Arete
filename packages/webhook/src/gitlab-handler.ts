@@ -5,6 +5,9 @@ import { getGitLabConfig } from './config.js';
 import { gitlabBaseUrl } from './gitlab-fetcher.js';
 import { prisma } from './db.js';
 import { evaluateBillingGate } from './billing.js';
+import { logger } from './logger.js';
+
+const log = logger.child({ component: 'gitlab-handler' });
 
 /** Posts a plain top-level note on the MR (used for billing-gate messages). */
 async function postMergeRequestNote(projectId: number, mrIid: number, body: string): Promise<void> {
@@ -18,7 +21,7 @@ async function postMergeRequestNote(projectId: number, mrIid: number, body: stri
     body: JSON.stringify({ body }),
   })
   if (!res.ok) {
-    console.error(`[gitlab-handler] Failed to post note on MR !${mrIid} (status ${res.status})`)
+    log.error({ mrIid, status: res.status }, 'Failed to post note on MR')
   }
 }
 
@@ -35,7 +38,7 @@ async function enqueueMergeRequestJob(body: any): Promise<void> {
   const mrIid: number = body.object_attributes?.iid
 
   if (!projectId || !mrIid) {
-    console.warn('[gitlab-handler] Missing project id or MR iid in payload — skipping')
+    log.warn('Missing project id or MR iid in payload — skipping')
     return
   }
 
@@ -48,9 +51,14 @@ async function enqueueMergeRequestJob(body: any): Promise<void> {
   })
   const gate = evaluateBillingGate(installation)
   if (!gate.allowed) {
-    console.log(
-      `[gitlab-handler] Review blocked for project ${projectId} (${gate.reason}). ` +
-      `Status: ${installation?.subscriptionStatus}, usage: ${installation?.usageCount}`
+    log.info(
+      {
+        projectId,
+        reason: gate.reason,
+        subscriptionStatus: installation?.subscriptionStatus,
+        usage: installation?.usageCount,
+      },
+      'Review blocked'
     )
     await postMergeRequestNote(projectId, mrIid, gate.message)
     return
@@ -70,8 +78,9 @@ async function enqueueMergeRequestJob(body: any): Promise<void> {
     headSha,
   })
   if (alreadyReviewed) {
-    console.log(
-      `[gitlab-handler] Review already exists for project ${projectId} MR !${mrIid} @ ${headSha} — skipping duplicate delivery`
+    log.info(
+      { projectId, mrIid, headSha },
+      'Review already exists — skipping duplicate delivery'
     )
     return
   }
@@ -84,7 +93,7 @@ async function enqueueMergeRequestJob(body: any): Promise<void> {
     payload: body,
   })
 
-  console.log(`[gitlab-handler] Enqueued review-pr job for project ${projectId} MR !${mrIid}`)
+  log.info({ projectId, mrIid }, 'Enqueued review-pr job')
 }
 
 export async function handleGitLabWebhook(req: Request, res: Response): Promise<void> {
@@ -95,7 +104,7 @@ export async function handleGitLabWebhook(req: Request, res: Response): Promise<
   // actually came from GitLab, so refuse to process it rather than trusting
   // an unauthenticated caller to trigger the (costly) review pipeline.
   if (!secret) {
-    console.error('[gitlab-handler] GITLAB_WEBHOOK_SECRET is not configured — rejecting request')
+    log.error('GITLAB_WEBHOOK_SECRET is not configured — rejecting request')
     res.status(401).send('Unauthorized');
     return;
   }
@@ -113,12 +122,12 @@ export async function handleGitLabWebhook(req: Request, res: Response): Promise<
     if (state === 'opened' || action === 'update') {
       const repo = body.project?.path_with_namespace || 'unknown/repo'
       const mrIid = body.object_attributes?.iid || 0
-      console.log(`[gitlab-handler] Handling merge request event for ${repo}!${mrIid}`);
+      log.info({ repo, mrIid }, 'Handling merge request event');
 
       try {
         await enqueueMergeRequestJob(body)
       } catch (err) {
-        console.error(`[gitlab-handler] Failed to enqueue review job for MR !${mrIid}`, err);
+        log.error({ err, mrIid }, 'Failed to enqueue review job');
       }
     }
   }

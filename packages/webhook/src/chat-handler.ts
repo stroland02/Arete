@@ -2,6 +2,9 @@ import type { Octokit } from '@octokit/core'
 import { getServiceConfig } from './config.js'
 import { prisma } from './db.js'
 import { evaluateBillingGate } from './billing.js'
+import { logger } from './logger.js'
+
+const log = logger.child({ component: 'chat' })
 
 interface PullRequestReviewCommentPayload {
   action: string
@@ -52,7 +55,7 @@ export async function handleReviewCommentEvent(
       botCommentBody = response.data.body
     }
   } catch (err) {
-    console.error('[chat-handler] Error fetching original comment:', err)
+    log.error({ err }, 'Error fetching original comment')
     return
   }
 
@@ -72,8 +75,9 @@ export async function handleReviewCommentEvent(
     })
     const gate = evaluateBillingGate(installation)
     if (!gate.allowed) {
-      console.log(
-        `[chat-handler] Chat reply blocked for installation ${installationId} (${gate.reason})`
+      log.info(
+        { installationId, reason: gate.reason },
+        'Chat reply blocked'
       )
       await (octokit as any).rest.pulls.createReplyForReviewComment({
         owner: payload.repository.owner.login,
@@ -116,7 +120,7 @@ export async function handleReviewCommentEvent(
               body: action.body
             }
           })
-          console.log(`[chat-handler] Saved memory for ${repoFullName}: ${action.title}`)
+          log.info({ repoFullName, title: action.title }, 'Saved memory')
         }
       }
     }

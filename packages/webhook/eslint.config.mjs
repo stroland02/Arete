@@ -11,7 +11,7 @@ export default tseslint.config(
       // Ratchet: 'warn' until the pino migration lands (obs plan Task 13
       // flips this to 'error'). Spec §8 DoD: no NEW bare console.* — new
       // warnings are review-blocking even while old ones burn down.
-      'no-console': 'warn',
+      'no-console': 'error',
       // Pre-existing codebase style: Octokit payloads are cast via `any`
       // at the boundary (see server.ts). Not this initiative's fight.
       '@typescript-eslint/no-explicit-any': 'off',

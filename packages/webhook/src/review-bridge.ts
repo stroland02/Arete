@@ -5,6 +5,9 @@ import {
   defaultResolveModelDeps,
   type LlmConfig,
 } from './resolve-model-connection.js'
+import { logger } from './logger.js'
+
+const log = logger.child({ component: 'review-bridge' })
 
 export interface ReviewBridgeDeps {
   /** Resolve the tenant's `llm` block from the numeric installation id, or
@@ -32,7 +35,7 @@ export async function runReviewPipeline(
       const llm = await resolve(prContext.installationId)
       if (llm) prContext.llm = llm
     } catch (err) {
-      console.error('[review-bridge] model-connection resolve failed; proceeding on service default:', err)
+      log.error({ err }, 'model-connection resolve failed; proceeding on service default')
     }
   }
 

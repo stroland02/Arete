@@ -28,6 +28,9 @@ import {
   type GitHubCheckRunJobData,
   type GitLabMergeRequestJobData,
 } from './queue.js'
+import { logger } from './logger.js'
+
+const log = logger.child({ component: 'worker' })
 
 /**
  * Pure helper so the clone-URL construction is unit-testable without
@@ -129,7 +132,7 @@ async function processGitHubPullRequest(octokit: Octokit, installationToken: str
       result,
     })
   } catch (err) {
-    console.error('[worker] Failed to persist review (review was still posted):', err)
+    log.error({ err }, 'Failed to persist review (review was still posted)')
   }
 
   try {
@@ -139,10 +142,10 @@ async function processGitHubPullRequest(octokit: Octokit, installationToken: str
       snapshots: prContext.telemetry ?? [],
     })
   } catch (err) {
-    console.error('[worker] Failed to persist telemetry snapshots (review was still posted):', err)
+    log.error({ err }, 'Failed to persist telemetry snapshots (review was still posted)')
   }
 
-  console.log(`[worker] Posted review — risk: ${result.risk_level}, comments: ${result.total_comments}`)
+  log.info({ riskLevel: result.risk_level, comments: result.total_comments }, 'Posted review')
 }
 
 /**
@@ -209,10 +212,10 @@ async function processGitHubCheckRun(octokit: Octokit, installationToken: string
       result,
     })
   } catch (err) {
-    console.error('[worker] Failed to persist review (review was still posted):', err)
+    log.error({ err }, 'Failed to persist review (review was still posted)')
   }
 
-  console.log(`[worker] Posted CI diagnosis — risk: ${result.risk_level}, comments: ${result.total_comments}`)
+  log.info({ riskLevel: result.risk_level, comments: result.total_comments }, 'Posted CI diagnosis')
 }
 
 async function processGitLabMergeRequest(data: GitLabMergeRequestJobData): Promise<void> {
@@ -247,11 +250,12 @@ async function processGitLabMergeRequest(data: GitLabMergeRequestJobData): Promi
       result,
     })
   } catch (err) {
-    console.error('[worker] Failed to persist review (review was still posted):', err)
+    log.error({ err }, 'Failed to persist review (review was still posted)')
   }
 
-  console.log(
-    `[worker] Posted review for ${fullName}!${mrIid} — risk: ${result.risk_level}, comments: ${result.total_comments}`
+  log.info(
+    { fullName, mrIid, riskLevel: result.risk_level, comments: result.total_comments },
+    'Posted review'
   )
 }
 
@@ -320,11 +324,11 @@ export function startReviewWorker(): Worker<ReviewJobData> {
 
   worker.on('completed', (job) => {
     recordQueueJob(REVIEW_QUEUE_NAME, 'completed')
-    console.log(`[worker] Job ${job.id} completed`)
+    log.info({ jobId: job.id }, 'Job completed')
   })
   worker.on('failed', (job, err) => {
     recordQueueJob(REVIEW_QUEUE_NAME, 'failed')
-    console.error(`[worker] Job ${job?.id} failed:`, err)
+    log.error({ err, jobId: job?.id }, 'Job failed')
   })
 
   return worker
@@ -336,10 +340,10 @@ export function startReviewWorker(): Worker<ReviewJobData> {
 // moduleResolution "nodenext") — this is the standard ESM equivalent,
 // comparing this module's URL to the URL of the process's entry script.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  console.log(`Areté review worker starting (concurrency: ${REVIEW_QUEUE_CONCURRENCY})...`)
+  log.info({ concurrency: REVIEW_QUEUE_CONCURRENCY }, 'Areté review worker starting')
   startReviewWorker()
   // Also consume the approval-exec queue (human-approved infra commands →
   // agents /approvals/apply). Same process, separate queue/isolation.
-  console.log('Areté approval-exec worker starting...')
+  log.info('Areté approval-exec worker starting')
   startApprovalWorker()
 }

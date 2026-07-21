@@ -4,6 +4,9 @@ import { BullMQOtel } from 'bullmq-otel'
 import { getServiceConfig } from './config.js'
 import { APPROVAL_QUEUE_NAME, type ApprovalExecutionJobData } from './queue.js'
 import { recordQueueJob } from './observability.js'
+import { logger } from './logger.js'
+
+const log = logger.child({ component: 'approval-worker' })
 
 // Consumer of the `approval-exec` queue (the enqueue side already ships in
 // queue.ts; worker.ts only consumes the review queue — this is the gap).
@@ -89,16 +92,17 @@ export async function processApprovalJob(
   // A regular Error thrown here (transport/non-2xx/timeout) is retryable.
   const result = await apply(data)
   if (result.status === 'applied') {
-    console.log(
-      `[approval-worker] Applied approval ${data.approvalId}` +
-        (result.resumedRunId ? ` (resumed run ${result.resumedRunId})` : ''),
+    log.info(
+      { approvalId: data.approvalId, resumedRunId: result.resumedRunId },
+      'Applied approval',
     )
     return
   }
   // Terminal failure: the apply ran and failed deterministically. Log it and
   // throw UnrecoverableError so BullMQ marks the job failed WITHOUT retrying.
-  console.error(
-    `[approval-worker] Approval ${data.approvalId} failed terminally (no retry): ${result.detail}`,
+  log.error(
+    { approvalId: data.approvalId, detail: result.detail },
+    'Approval failed terminally (no retry)',
   )
   throw new UnrecoverableError(`approval ${data.approvalId} apply failed: ${result.detail}`)
 }
@@ -127,11 +131,11 @@ export function startApprovalWorker(): Worker<ApprovalExecutionJobData> {
 
   worker.on('completed', (job) => {
     recordQueueJob(APPROVAL_QUEUE_NAME, 'completed')
-    console.log(`[approval-worker] Job ${job.id} completed`)
+    log.info({ jobId: job.id }, 'Job completed')
   })
   worker.on('failed', (job, err) => {
     recordQueueJob(APPROVAL_QUEUE_NAME, 'failed')
-    console.error(`[approval-worker] Job ${job?.id} failed:`, err)
+    log.error({ err, jobId: job?.id }, 'Job failed')
   })
 
   return worker

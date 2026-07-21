@@ -21,6 +21,9 @@ import {
   defaultResolveModelDeps,
   type LlmConfig,
 } from '../resolve-model-connection.js'
+import { logger } from '../logger.js'
+
+const log = logger.child({ component: 'scan' })
 
 export interface ScanFindingBody {
   kind: 'issue' | 'opportunity'
@@ -181,7 +184,7 @@ export async function maybeStartScan(
         data: { status: 'failed', error: message, finishedAt: new Date() },
       })
     } catch (updateErr) {
-      console.error('[scan-trigger] failed to record ScanRun failure:', updateErr)
+      log.error({ err: updateErr }, 'failed to record ScanRun failure')
     }
   }
 

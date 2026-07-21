@@ -82,7 +82,6 @@ describe('backfillInstallationPRs', () => {
   it('continues backfilling other repos when one repo fails to list PRs (best-effort)', async () => {
     const mockEnqueue = vi.fn().mockResolvedValue(undefined)
     vi.doMock('./queue.js', () => ({ enqueueReviewJob: mockEnqueue }))
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     const octokit = makeOctokit({
       broken: new Error('boom: GitHub API 500'),
@@ -95,13 +94,14 @@ describe('backfillInstallationPRs', () => {
       { id: 2, name: 'ok', full_name: 'acme/ok' },
     ])
 
+    // Behavior under test: the broken repo does not stop the ok repo from
+    // being backfilled (best-effort). Failure is logged via the pino
+    // logger (see logger.ts), not console.* — no console spy needed here.
     expect(mockEnqueue).toHaveBeenCalledTimes(1)
     expect(mockEnqueue).toHaveBeenCalledWith(
       expect.objectContaining({ repo: 'ok', prNumber: 9 }),
       'fast'
     )
-    expect(consoleErrorSpy).toHaveBeenCalled()
-    consoleErrorSpy.mockRestore()
   })
 
   it('continues enqueueing other PRs in a repo when one PR fails to enqueue (best-effort)', async () => {
@@ -109,7 +109,6 @@ describe('backfillInstallationPRs', () => {
       .mockRejectedValueOnce(new Error('redis down'))
       .mockResolvedValueOnce(undefined)
     vi.doMock('./queue.js', () => ({ enqueueReviewJob: mockEnqueue }))
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     const octokit = makeOctokit({
       api: [
@@ -124,7 +123,6 @@ describe('backfillInstallationPRs', () => {
     ])
 
     expect(mockEnqueue).toHaveBeenCalledTimes(2)
-    consoleErrorSpy.mockRestore()
   })
 })
 

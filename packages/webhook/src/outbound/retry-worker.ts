@@ -1,6 +1,9 @@
 import { deliverWebhook } from './deliver.js'
 import type { WebhookPayload } from './payload.js'
 import type { StoredDelivery, WebhookStore } from './store.js'
+import { logger } from '../logger.js'
+
+const log = logger.child({ component: 'outbound' })
 
 // Retry worker for outbound webhooks. The schedule lives in the database:
 // WebhookDelivery.nextAttempt (indexed by [status, nextAttempt]) is the due-time,
@@ -51,7 +54,7 @@ export function startRetryWorker(
     try {
       await processDueDeliveries(store)
     } catch (err) {
-      console.error('[webhook-retry] tick failed:', err)
+      log.error({ err }, 'tick failed')
     } finally {
       running = false
     }

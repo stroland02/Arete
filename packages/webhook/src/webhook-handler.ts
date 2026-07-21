@@ -4,6 +4,9 @@ import { reviewExists } from './persistence.js'
 import { enqueueReviewJob } from './queue.js'
 import { ARETE_CHECK_RUN_NAME } from './constants.js'
 import { evaluateBillingGate } from './billing.js'
+import { logger } from './logger.js'
+
+const log = logger.child({ component: 'webhook-handler' })
 
 const HANDLED_ACTIONS = new Set(['opened', 'synchronize', 'reopened'])
 
@@ -34,7 +37,7 @@ export async function handlePullRequestEvent(
   payload: PullRequestPayload
 ): Promise<void> {
   if (!HANDLED_ACTIONS.has(payload.action)) {
-    console.log(`[handler] Ignoring pull_request.${payload.action}`)
+    log.info({ action: payload.action }, 'Ignoring pull_request action')
     return
   }
 
@@ -44,7 +47,7 @@ export async function handlePullRequestEvent(
   const headSha = payload.pull_request.head.sha
   const installationId = payload.installation?.id
 
-  console.log(`[handler] Received pull_request.${payload.action} for ${owner}/${repo}#${prNumber}`)
+  log.info({ action: payload.action, owner, repo, prNumber }, 'Received pull_request event')
 
   if (installationId) {
     const installation = await prisma.installation.findUnique({
@@ -57,9 +60,14 @@ export async function handlePullRequestEvent(
     // (50 free reviews, no active paid subscription).
     const gate = evaluateBillingGate(installation)
     if (!gate.allowed) {
-      console.log(
-        `[handler] Review blocked for installation ${installationId} (${gate.reason}). ` +
-        `Status: ${installation?.subscriptionStatus}, usage: ${installation?.usageCount}`
+      log.info(
+        {
+          installationId,
+          reason: gate.reason,
+          subscriptionStatus: installation?.subscriptionStatus,
+          usage: installation?.usageCount,
+        },
+        'Review blocked'
       )
       await octokit.request('POST /repos/{owner}/{repo}/issues/{issue_number}/comments', {
         owner,
@@ -84,15 +92,17 @@ export async function handlePullRequestEvent(
     headSha,
   })
   if (alreadyReviewed) {
-    console.log(
-      `[handler] Review already exists for ${owner}/${repo}#${prNumber} @ ${headSha} — skipping duplicate delivery`
+    log.info(
+      { owner, repo, prNumber, headSha },
+      'Review already exists — skipping duplicate delivery'
     )
     return
   }
 
   if (!installationId) {
-    console.warn(
-      `[handler] No installation id on payload for ${owner}/${repo}#${prNumber} — cannot enqueue review job`
+    log.warn(
+      { owner, repo, prNumber },
+      'No installation id on payload — cannot enqueue review job'
     )
     return
   }
@@ -115,7 +125,7 @@ export async function handlePullRequestEvent(
     headSha,
   }, lane)
 
-  console.log(`[handler] Enqueued review-pr job for ${owner}/${repo}#${prNumber} on '${lane}' lane`)
+  log.info({ owner, repo, prNumber, lane }, 'Enqueued review-pr job')
 }
 
 export function registerCheckRunWebhooks(app: any) {
@@ -129,8 +139,9 @@ export function registerCheckRunWebhooks(app: any) {
     // cost and posts duplicate reviews. Only fire for the CUSTOMER's own CI
     // checks (e.g. their GitHub Actions workflow), never Areté's own.
     if (payload.check_run.name === ARETE_CHECK_RUN_NAME) {
-      console.log(
-        `[handler] Ignoring check_run.completed for Areté's own check run "${payload.check_run.name}" (avoiding self-trigger loop)`
+      log.info(
+        { checkRunName: payload.check_run.name },
+        "Ignoring check_run.completed for Areté's own check run (avoiding self-trigger loop)"
       )
       return
     }
@@ -150,11 +161,12 @@ export function registerCheckRunWebhooks(app: any) {
     const installationId = payload.installation?.id
     const ciLogs = payload.check_run.output?.text || "No logs provided by GitHub Actions."
 
-    console.log(`[handler] CI Failure detected for ${owner}/${repo}#${prNumber}`)
+    log.info({ owner, repo, prNumber }, 'CI failure detected')
 
     if (!installationId) {
-      console.warn(
-        `[handler] No installation id on check_run payload for ${owner}/${repo}#${prNumber} — cannot enqueue CI diagnosis job`
+      log.warn(
+        { owner, repo, prNumber },
+        'No installation id on check_run payload — cannot enqueue CI diagnosis job'
       )
       return
     }
@@ -172,6 +184,6 @@ export function registerCheckRunWebhooks(app: any) {
       ciLogs,
     })
 
-    console.log(`[handler] Enqueued CI diagnosis job for ${owner}/${repo}#${prNumber}`)
+    log.info({ owner, repo, prNumber }, 'Enqueued CI diagnosis job')
   })
 }
