@@ -28,6 +28,14 @@ into scope. Reprioritize only at phase boundaries or by explicit user decision.
 - Background telemetry poller + snapshot history
 - Per-tenant retention/deletion; prompt-content capture consent model
 
+## Typed debt (ratchets — flip back to `error` once paid)
+
+- `packages/dashboard`: 51 `@typescript-eslint/no-explicit-any` (mostly test files plus
+  `src/lib/queries.ts`). To be held at `warn` in `packages/dashboard/eslint.config.mjs` so CI
+  can be green; the genuine-bug-class rules (`react-hooks/*`, `@next/next/*`) stay at `error`.
+- `packages/webhook`: 78 `no-console` held at `warn` in `packages/webhook/eslint.config.mjs`.
+  Phase 1 Lane A Task 13 migrates them to pino and flips the rule to `error`.
+
 ## Discovered / unscheduled
 
 - SSE endpoint (`sse-handler.ts`): no auth/tenant scoping, CORS `*` — flagged during Lane A
