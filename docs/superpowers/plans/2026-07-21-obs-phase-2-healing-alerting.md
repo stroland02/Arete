@@ -39,6 +39,32 @@ amended in Task 10.**
 investigations (needs an internal query surface — only `getAgentEventsPerMinute` reaches ClickHouse
 today, `queries.ts:781-815`), and the fix-pipeline tool loop.
 
+## Precedence (user ruling, 2026-07-21)
+
+> "this workflow and development takes precedence over conflicting data pipelines and workflows as
+> this is from the source and should take priority. this includes UI design as well."
+
+**Operative meaning.** Where this plan's conventions collide with an existing pattern elsewhere in
+the repo — telemetry/data pipelines, queue and workflow shapes, dashboard and UI treatment of
+incidents, findings, and confidence — **this line of work wins.** An implementer who finds a
+conflict adopts the convention here and notes the divergence in their report; they do not stop and
+ask, and they do not bend this work to match the older pattern.
+
+Concretely: the `arete.*` metric namespace, the §5 span tree, the redaction pattern set, the
+`Incident` shape, and the queue/cooldown semantics defined here are the reference the rest of the
+codebase converges toward. Where a dashboard surface must render incidents, alerts, findings, or
+confidence, this work's model governs the presentation.
+
+**Two things this ruling does not authorize**, because they are cost-asymmetric — a wrong call is
+cheap to avoid and expensive to undo:
+
+- **Deleting or disabling working behavior** that other features depend on, as opposed to overriding
+  a convention. Overriding a naming or display pattern: proceed. Removing a pipeline something else
+  consumes: report it and let the orchestrator decide.
+- **Relaxing a security, tenancy, or HITL constraint** (Global Constraints 1–5 below). Precedence
+  resolves style and architecture conflicts, not safety ones. If this work appears to require
+  loosening one, that is a finding to surface, not a licence.
+
 ## Global Constraints
 
 Copied verbatim from the spec and the retrospective. Every task's requirements include these.
