@@ -295,3 +295,32 @@ rather than guess.
   `ttl_only_drop_parts=1`) but unverified live** — every row in this dev
   ClickHouse is hours old, nowhere near the retention window. Revisit once
   real aged data exists to confirm parts actually drop.
+
+## Deferred from Phase 3 (credential integrity, frontend consumption, harness efficiency)
+
+Each needs a real Anthropic key, real production volume, or a design decision that
+Phase 3 deliberately did not make blind — recorded with evidence rather than silently
+dropped.
+
+1. **Is haiku adequate to *author* fixes for performance/quality/test_coverage?**
+   Fix authoring reuses each dimension's configured *review* tier
+   (`fix_pipeline.py:313`, `author_llm = llms.get(req.item.dimension, fallback_llm)`),
+   and those three dimensions default to haiku (`config.py:49-51`). Haiku's original
+   job is critiquing a diff, not generating a complete file replacement — unverified
+   whether it is good enough at the harder generative task. Do NOT change the tier
+   blind: needs a real Anthropic key plus a regression corpus of known-fixable issues
+   to measure haiku-vs-sonnet-authored patch pass rate before touching the default.
+2. **MCP OAuth has no refresh-on-expiry path, and no RFC 8414 discovery / dynamic
+   client registration.** Task 6 implemented a configured-`token_url` exchange only.
+   `mcp/manager.py`'s stored record carries `expires_at`/`refresh_token` fields, but
+   nothing in `mcp/auth.py` or `mcp/manager.py` ever reads them to refresh a token
+   before it expires, and there is no discovery/DCR flow for servers that don't hand
+   out a static `token_url` up front.
+3. **Review `max_concurrency` default (N=8) is un-tuned.** Set on the `graph.invoke`
+   config in `orchestrator.py`; the right value depends on real provider rate limits
+   under real concurrent review load, which needs a real large PR and a real
+   Anthropic key to validate — not measured this phase.
+4. **`processGitHubCheckRun` (the CI-diagnosis path in `packages/webhook/src/worker.ts`)
+   has the same shared try/catch double-retry exposure that Task 10 fixed for the PR
+   review path, left untouched.** No test harness exists for this path yet, so fixing
+   it blind risked an unverified change to a path nothing currently exercises in CI.
