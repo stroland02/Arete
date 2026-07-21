@@ -104,3 +104,45 @@ leak, missing CI gate) were fixed on the phase branch before merge.
 - Spec §6 gate 4 (egress compliance): nothing on the branch routes exporter egress through
   `@arete/net-guard`. Either the gate is satisfied because exporters only talk to a loopback
   collector — state that explicitly — or it is unmet and needs an owner.
+
+**Agent memory sink (Phase 2 Task 8 — from fix round 1 of the adversarial review, 2026-07-21)**
+
+Everything blocking was fixed in that round. These are the reviewer-verified
+leftovers, kept here with their evidence rather than fixed, because each needs
+a design decision or a schema change rather than a patch:
+
+- **Row cap is check-then-create, with no transaction and no DB constraint.**
+  `memory-write.ts` counts active rows and then creates, so N concurrent writes
+  for one repo can all observe `count == 19` and all insert — a repo can exceed
+  `MAX_MEMORIES_PER_REPO` (20). Not exploitable for unbounded growth (each racer
+  still inserts exactly one row, so the overshoot is bounded by concurrency),
+  but the cap is advisory rather than enforced. Correct fix is a serializable
+  transaction or a DB-level constraint/trigger, not a wider read.
+- **No eviction path: nothing in the repo ever sets `status='archived'`.** The
+  read cap (`fetchProjectMemories`, 20 most recent) and the write cap are the
+  same number, so once a repo reaches 20 ACTIVE rows every subsequent write
+  returns `cap_exceeded` forever and the memory set is frozen at whatever it
+  first learned. `status` exists and is honoured by both the count and the read,
+  so the mechanism is there — what is missing is the policy (age out? evict
+  least-recently-cited? let a human archive from the dashboard?) and a surface
+  to apply it.
+- **`scrubSinkText` does not catch prose-shaped credentials.** The canonical
+  pattern set (`packages/telemetry/src/redaction.ts`) matches secret *shapes*
+  (`sk-*`, `gh?_*`, `Bearer …`, key-ish URL query params) and — via
+  `scrubSinkValue` — blocklisted object KEYS. A memory body containing
+  `password: hunter2` as free text has neither: no secret shape, and `password`
+  is a word in a string rather than a key in an object. Verified stored verbatim
+  after the redaction fix landed. Fixing this means amending the frozen §5
+  pattern set (a spec amendment, and one with real false-positive risk on prose
+  — "the password field is required" would be mangled), which is why it was not
+  done under a review-fix mandate. Applies to every sink equally, not just this
+  one.
+- **`GET /context-map/graph/{installation_id}` and `/context-map/ui-url/{id}` on
+  the agents service remain unauthenticated.** The POST surface was put behind
+  the shared internal bearer (review finding B4); these two GETs were left open
+  to keep that change to the write/spend surface. They take an installation id
+  straight from the path and return that tenant's code graph, so they are a
+  cross-tenant READ leak to anyone with network reach to port 8000. The callers
+  (`packages/dashboard/src/lib/context-map-client.ts`) already have
+  `INTERNAL_API_TOKEN`, so the fix is the same two-line pattern — it just needs
+  its own mutation test and a check for any other caller.
