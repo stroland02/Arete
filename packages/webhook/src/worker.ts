@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url'
 import { Redis as IORedis } from 'ioredis'
 import { BullMQOtel } from 'bullmq-otel'
 import type { Octokit } from '@octokit/core'
-import type { PRContext } from './types.js'
+import type { PRContext, ReviewResult } from './types.js'
 import { createApp, getInstallationOctokit, getInstallationToken } from './github-auth.js'
 import { fetchPRContext } from './pr-fetcher.js'
 import { fetchTelemetryContext } from './telemetry/fetch-telemetry-context.js'
@@ -19,6 +19,7 @@ import { postGitLabReview, type DiffRefs } from './gitlab-comment-poster.js'
 import { persistReview, persistTelemetrySnapshots, fetchProjectMemories } from './persistence.js'
 import { ARETE_CHECK_RUN_NAME } from './constants.js'
 import { reviewConclusion } from './verdict-conclusion.js'
+import { runWithReviewSpan, withChildSpan, recordQueueJob } from './observability.js'
 import {
   REVIEW_QUEUE_NAME,
   REVIEW_QUEUE_CONCURRENCY,
@@ -57,21 +58,23 @@ export function buildCloneContext(
 async function processGitHubPullRequest(octokit: Octokit, installationToken: string, data: GitHubPullRequestJobData): Promise<void> {
   const { owner, repo, prNumber, headSha, installationId, repositoryExternalId, fullName } = data
 
-  const prContext = await fetchPRContext(octokit, owner, repo, prNumber)
-  // `installationId` here is the GitHub App's numeric installation id
-  // (Installation.externalId), not the internal Installation UUID —
-  // fetchTelemetryContext resolves the UUID itself, like persistReview.
-  prContext.telemetry = await fetchTelemetryContext(
-    octokit,
-    'github',
-    installationId,
-    owner,
-    repo,
-    prContext.telemetryConnectors ?? []
-  )
-  prContext.projectMemories = await fetchProjectMemories('github', repositoryExternalId)
-
-  Object.assign(prContext, buildCloneContext(fullName, installationId, installationToken))
+  const prContext = await withChildSpan('review.context.build', async () => {
+    // `installationId` here is the GitHub App's numeric installation id
+    // (Installation.externalId), not the internal Installation UUID —
+    // fetchTelemetryContext resolves the UUID itself, like persistReview.
+    const ctx = await fetchPRContext(octokit, owner, repo, prNumber)
+    ctx.telemetry = await fetchTelemetryContext(
+      octokit,
+      'github',
+      installationId,
+      owner,
+      repo,
+      ctx.telemetryConnectors ?? []
+    )
+    ctx.projectMemories = await fetchProjectMemories('github', repositoryExternalId)
+    Object.assign(ctx, buildCloneContext(fullName, installationId, installationToken))
+    return ctx
+  })
 
   const checkRun = await (octokit as any).rest.checks.create({
     owner,
@@ -83,10 +86,10 @@ async function processGitHubPullRequest(octokit: Octokit, installationToken: str
   })
   const checkRunId = checkRun.data.id
 
-  let result
+  let result: ReviewResult
   try {
     result = await runReviewPipeline(prContext)
-    await postReview(octokit, owner, repo, prNumber, result)
+    await withChildSpan('review.publish', () => postReview(octokit, owner, repo, prNumber, result))
   } catch (err) {
     // Without this, a failure here (Python pipeline error, GitHub API error, etc.)
     // leaves the check run stuck "in_progress" forever on the PR.
@@ -225,7 +228,7 @@ async function processGitLabMergeRequest(data: GitLabMergeRequestJobData): Promi
 
   const prContext = await fetchGitLabMRContext(projectId, mrIid, payload)
   const result = await runReviewPipeline(prContext)
-  await postGitLabReview(projectId, mrIid, result, diffRefs)
+  await withChildSpan('review.publish', () => postGitLabReview(projectId, mrIid, result, diffRefs))
 
   const fullName: string = payload.project?.path_with_namespace || `project-${projectId}`
   const owner = fullName.split('/')[0]
@@ -269,19 +272,25 @@ export async function processReviewJob(data: ReviewJobData): Promise<void> {
     throw new UnrecoverableError('PoisonMessage: GitHub job missing critical identifier fields')
   }
 
-  if (data.provider === 'github') {
-    const app = createApp()
-    const octokit = await getInstallationOctokit(app, data.installationId)
-    const installationToken = await getInstallationToken(app, data.installationId)
-    if (data.kind === 'pull_request') {
-      await processGitHubPullRequest(octokit, installationToken, data)
-    } else {
-      await processGitHubCheckRun(octokit, installationToken, data)
-    }
-    return
-  }
+  const attrs =
+    data.provider === 'github'
+      ? { provider: 'github' as const, trigger: data.kind, repoFullName: data.fullName, prNumber: data.prNumber }
+      : { provider: 'gitlab' as const, trigger: 'merge_request' as const, repoFullName: String(data.projectId), prNumber: data.mrIid }
 
-  await processGitLabMergeRequest(data)
+  return runWithReviewSpan(attrs, async () => {
+    if (data.provider === 'github') {
+      const app = createApp()
+      const octokit = await getInstallationOctokit(app, data.installationId)
+      const installationToken = await getInstallationToken(app, data.installationId)
+      if (data.kind === 'pull_request') {
+        await processGitHubPullRequest(octokit, installationToken, data)
+      } else {
+        await processGitHubCheckRun(octokit, installationToken, data)
+      }
+      return
+    }
+    await processGitLabMergeRequest(data)
+  })
 }
 
 /**
@@ -303,14 +312,18 @@ export function startReviewWorker(): Worker<ReviewJobData> {
     {
       connection,
       concurrency: REVIEW_QUEUE_CONCURRENCY,
-      telemetry: new BullMQOtel('arete-worker'),
+      // See the deviation note in queue.ts: bullmq-otel@2.0.0's BullMQOtel
+      // constructor takes a BullMQOtelOptions object, not a bare string.
+      telemetry: new BullMQOtel({ tracerName: 'arete-worker' }),
     }
   )
 
   worker.on('completed', (job) => {
+    recordQueueJob(REVIEW_QUEUE_NAME, 'completed')
     console.log(`[worker] Job ${job.id} completed`)
   })
   worker.on('failed', (job, err) => {
+    recordQueueJob(REVIEW_QUEUE_NAME, 'failed')
     console.error(`[worker] Job ${job?.id} failed:`, err)
   })
 
