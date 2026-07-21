@@ -61,10 +61,16 @@ export async function POST(req: NextRequest): Promise<Response> {
   }
 
   const apiKeyEncrypted = apiKey ? encryptCredentials({ apiKey }) : null;
+  // Connecting a model (re)ACTIVATES it: the active model everywhere is the
+  // newest ModelConnection (resolveActiveLlmForChat / resolveModelConnectionForReview,
+  // orderBy createdAt desc). Without bumping createdAt on re-connect, a user who
+  // connected provider B after A could never switch back to A — the upsert would
+  // update A's row in place and A would stay older. Bumping createdAt makes
+  // "Connect" mean "use this one now", so switching providers is a single click.
   const row = await db.modelConnection.upsert({
     where: { installationId_provider: { installationId: target, provider } },
     create: { installationId: target, provider, model, baseUrl, apiKeyEncrypted },
-    update: { model, baseUrl, apiKeyEncrypted },
+    update: { model, baseUrl, apiKeyEncrypted, createdAt: new Date() },
   });
 
   // Auto-scan on connect (work-item inbox): connecting a model may complete the
