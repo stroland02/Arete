@@ -52,6 +52,14 @@ export function stripUrlQuery(url: string): string {
   return i === -1 ? url : url.slice(0, i)
 }
 
+/** For `url.query` (semconv: the query string itself, with NO leading `?` and
+ *  no scheme/host/path) — the entire attribute value IS the query, so
+ *  `stripUrlQuery` (which only cuts from a literal `?`) would be a no-op and
+ *  leak it whole. Redact the value unconditionally instead. */
+export function clearUrlQuery(_value: string): string {
+  return ''
+}
+
 /** pino redact.paths — key blocklist at top level, one wildcard level deep,
  *  and under req/res headers. `installationToken` is Areté-specific: PRContext
  *  carries a live GitHub App installation token (worker.ts buildCloneContext). */

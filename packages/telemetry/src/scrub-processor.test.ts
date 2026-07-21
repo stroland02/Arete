@@ -85,6 +85,39 @@ describe('ScrubbingSpanProcessor (canary scrub test — spec §6 gate 2)', () =>
     expect(attrs['arete.debug.notes']).toEqual(['failed with [REDACTED]', 'clean value'])
   })
 
+  it('strips the query string from every URL-bearing attribute, including http.target and url.query, while the path survives (§6 gate: OAuth callback code never persists)', () => {
+    const tracer = provider.getTracer('canary')
+    const span = tracer.startSpan('http.server.request')
+    const OAUTH_URL = 'https://app.example.com/api/auth/callback?code=SECRETCODE123&state=xyz'
+    span.setAttribute('http.url', OAUTH_URL)
+    span.setAttribute('url.full', OAUTH_URL)
+    span.setAttribute('http.target', OAUTH_URL) // Next.js sets this to the full req.url
+    span.setAttribute('url.path', OAUTH_URL)
+    span.setAttribute('url.query', 'code=SECRETCODE123&state=xyz') // semconv: no leading '?'
+    span.end()
+
+    const exported = exporter.getFinishedSpans()
+    expect(exported).toHaveLength(1)
+    const seen = new WeakSet<object>()
+    const serialized = JSON.stringify(exported, (_k, v) => {
+      if (typeof v === 'bigint') return v.toString()
+      if (typeof v === 'object' && v !== null) {
+        if (seen.has(v)) return undefined
+        seen.add(v)
+      }
+      return v
+    })
+    expect(serialized).not.toContain('SECRETCODE123')
+
+    const attrs = exported[0].attributes
+    const expectedPath = 'https://app.example.com/api/auth/callback'
+    expect(attrs['http.url']).toBe(expectedPath)
+    expect(attrs['url.full']).toBe(expectedPath)
+    expect(attrs['http.target']).toBe(expectedPath)
+    expect(attrs['url.path']).toBe(expectedPath)
+    expect(attrs['url.query']).toBe('')
+  })
+
   it('leaves clean spans untouched', () => {
     const tracer = provider.getTracer('canary')
     const span = tracer.startSpan('review.run')

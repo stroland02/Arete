@@ -70,7 +70,12 @@ _VALUE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(?i)([?&](?:api_)?key=)[^&#\s]+"), r"\1" + REDACTED),
 )
 
-_URL_ATTR_KEYS = ("http.url", "url.full")
+# Query-string-bearing URL attributes: strip everything from the first "?".
+_URL_ATTR_KEYS = ("http.url", "url.full", "http.target", "url.path")
+# "url.query" (semconv) IS the query string, with no leading "?" and no
+# scheme/host/path — stripping at "?" would be a no-op and leak it whole, so
+# this key is cleared entirely instead (see _scrub_attribute below).
+_URL_QUERY_ONLY_ATTR_KEYS = ("url.query",)
 
 
 def scrub_text(value: str) -> str:
@@ -91,8 +96,9 @@ class ScrubbingSpanProcessor(SpanProcessor):
 
     Registered FIRST on the TracerProvider so on_end mutates the span before
     the (later-registered) batch processor hands it to the OTLP exporter.
-    Scrubs: URL query strings on http.url/url.full (the Superlog Gemini
-    ``?key=`` incident class), blocklisted attribute keys, secret-shaped
+    Scrubs: URL query strings on http.url/url.full/http.target/url.path and
+    the whole value of url.query (the Superlog Gemini ``?key=`` incident
+    class), blocklisted attribute keys, secret-shaped
     values in string attributes, exception-event attributes, and the span
     status description. Never raises — a scrubbing bug loses the scrub for
     that span, never the span pipeline or the app.
@@ -131,14 +137,19 @@ class ScrubbingSpanProcessor(SpanProcessor):
         if isinstance(value, str):
             if key in _URL_ATTR_KEYS:
                 return value.split("?", 1)[0]
+            if key in _URL_QUERY_ONLY_ATTR_KEYS:
+                return ""
             return scrub_text(value)
         if isinstance(value, (list, tuple)):
+            def _scrub_element(element: str) -> str:
+                if key in _URL_ATTR_KEYS:
+                    return element.split("?", 1)[0]
+                if key in _URL_QUERY_ONLY_ATTR_KEYS:
+                    return ""
+                return scrub_text(element)
+
             return tuple(
-                (
-                    (element.split("?", 1)[0] if key in _URL_ATTR_KEYS else scrub_text(element))
-                    if isinstance(element, str)
-                    else element
-                )
+                _scrub_element(element) if isinstance(element, str) else element
                 for element in value
             )
         return value

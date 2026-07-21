@@ -87,6 +87,30 @@ def test_array_attribute_values_are_scrubbed():
     assert headers[1] == "no secrets here"
 
 
+def test_all_url_attributes_lose_query_strings_oauth_callback_canary():
+    """§6 gate: an OAuth callback code must never persist on ANY url-bearing
+    attribute — http.url, url.full, http.target (Next.js sets this to the
+    full req.url), url.path, and url.query (semconv: the bare query string,
+    no leading '?', so the '?'-slice used for the others would be a no-op)."""
+    provider, exporter = _provider_with_scrubber()
+    tracer = provider.get_tracer("test")
+    oauth_url = "https://app.example.com/api/auth/callback?code=SECRETCODE123&state=xyz"
+    with tracer.start_as_current_span("http.server.request") as span:
+        span.set_attribute("http.url", oauth_url)
+        span.set_attribute("url.full", oauth_url)
+        span.set_attribute("http.target", oauth_url)
+        span.set_attribute("url.path", oauth_url)
+        span.set_attribute("url.query", "code=SECRETCODE123&state=xyz")
+    [finished] = exporter.get_finished_spans()
+    expected_path = "https://app.example.com/api/auth/callback"
+    assert finished.attributes["http.url"] == expected_path
+    assert finished.attributes["url.full"] == expected_path
+    assert finished.attributes["http.target"] == expected_path
+    assert finished.attributes["url.path"] == expected_path
+    assert finished.attributes["url.query"] == ""
+    assert "SECRETCODE123" not in str(finished.attributes)
+
+
 def test_exception_event_and_status_are_scrubbed():
     provider, exporter = _provider_with_scrubber()
     tracer = provider.get_tracer("test")

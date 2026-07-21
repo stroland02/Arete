@@ -1,8 +1,12 @@
 import type { Context } from '@opentelemetry/api'
 import type { ReadableSpan, Span, SpanProcessor } from '@opentelemetry/sdk-trace-node'
-import { REDACT_KEYS, REDACTED, scrubText, stripUrlQuery } from './redaction.js'
+import { REDACT_KEYS, REDACTED, clearUrlQuery, scrubText, stripUrlQuery } from './redaction.js'
 
+// Query-string-bearing URL attributes: strip everything from the first `?`.
 const URL_ATTRIBUTES = new Set(['http.url', 'url.full', 'http.target', 'url.path'])
+// `url.query` (semconv) IS the query string with no leading `?` — cleared
+// entirely rather than sliced (see clearUrlQuery doc in redaction.ts).
+const URL_QUERY_ONLY_ATTRIBUTES = new Set(['url.query'])
 const BLOCKED_KEY_SET = new Set<string>(REDACT_KEYS)
 
 function isBlockedKey(key: string): boolean {
@@ -36,6 +40,10 @@ export class ScrubbingSpanProcessor implements SpanProcessor {
       if (typeof value !== 'string') continue
       if (URL_ATTRIBUTES.has(key)) {
         attrs[key] = stripUrlQuery(value)
+        continue
+      }
+      if (URL_QUERY_ONLY_ATTRIBUTES.has(key)) {
+        attrs[key] = clearUrlQuery(value)
         continue
       }
       attrs[key] = scrubText(value)
