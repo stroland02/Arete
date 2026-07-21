@@ -1,4 +1,5 @@
 import { trace, metrics, SpanStatusCode, type Counter, type Histogram } from '@opentelemetry/api'
+import { publishAgentMetricsEvent } from './agent-metrics.js'
 
 /**
  * Worker-side observability helpers — the §5 span tree (review.run root,
@@ -59,13 +60,33 @@ export async function runWithReviewSpan(attrs: ReviewSpanAttrs, fn: () => Promis
     },
     async (span) => {
       let outcome: 'success' | 'failure' = 'success'
+      const base = {
+        provider: attrs.provider,
+        repo: attrs.repoFullName,
+        prNumber: attrs.prNumber,
+        trigger: attrs.trigger,
+        traceId: span.spanContext().traceId,
+      }
+      publishAgentMetricsEvent({ ts: new Date().toISOString(), event: 'review.started', ...base })
       try {
         await fn()
         span.setStatus({ code: SpanStatusCode.OK })
+        publishAgentMetricsEvent({
+          ts: new Date().toISOString(),
+          event: 'review.completed',
+          durationMs: Date.now() - started,
+          ...base,
+        })
       } catch (err) {
         outcome = 'failure'
         span.recordException(err instanceof Error ? err : new Error(String(err)))
         span.setStatus({ code: SpanStatusCode.ERROR, message: err instanceof Error ? err.message : String(err) })
+        publishAgentMetricsEvent({
+          ts: new Date().toISOString(),
+          event: 'review.failed',
+          durationMs: Date.now() - started,
+          ...base,
+        })
         throw err
       } finally {
         const m = areteMetrics()
