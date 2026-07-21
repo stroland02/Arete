@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, integration-preview]
   pull_request:
-    branches: [main]
+    branches: [main, integration-preview]
 
 jobs:
   test-agents:
@@ -153,3 +153,43 @@ jobs:
       - name: Test
         run: pnpm test
         working-directory: packages/dashboard
+
+  test-packages:
+    name: Package ${{ matrix.package }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: orchestration
+            filter: "@arete/orchestration"
+            commands: "typecheck test"
+          - package: topology
+            filter: "@arete/topology"
+            commands: "typecheck test"
+          - package: net-guard
+            filter: "@arete/net-guard"
+            commands: "typecheck test"
+          - package: db
+            filter: "@arete/db"
+            commands: "build lint"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run package gates
+        run: |
+          for cmd in ${{ matrix.commands }}; do
+            pnpm --filter ${{ matrix.filter }} run "$cmd"
+          done
