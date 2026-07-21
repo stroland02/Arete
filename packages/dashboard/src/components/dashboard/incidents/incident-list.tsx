@@ -50,8 +50,9 @@ export function IncidentList({ incidents }: { incidents: IncidentView[] }) {
   return (
     <div className="flex flex-col">
       {incidents.map((incident) => (
-        <div
+        <Link
           key={incident.id}
+          href={`/incidents/${incident.id}`}
           className="flex flex-col gap-1 rounded-lg px-2 py-2.5 transition-colors hover:bg-content-primary/[0.04]"
         >
           <div className="flex items-center gap-3">
@@ -80,19 +81,19 @@ export function IncidentList({ incidents }: { incidents: IncidentView[] }) {
             <p className="min-w-0 flex-1 truncate text-[11px] leading-4 text-content-muted">
               {incident.summary}
             </p>
+            {/* The row itself now links through to the incident detail page
+                (which has the first-class "View fix run" action), so this is
+                a plain status hint rather than a second, nested link. */}
             {incident.workItemId && incident.fixContainerId && (
-              <Link
-                href={`/services?container=${encodeURIComponent(incident.fixContainerId)}`}
-                className="shrink-0 text-[11px] font-medium text-accent-primary hover:underline"
-              >
-                View fix run
-              </Link>
+              <span className="shrink-0 text-[11px] font-medium text-accent-primary">
+                View fix run →
+              </span>
             )}
             {incident.workItemId && !incident.fixContainerId && (
               <span className="shrink-0 text-[11px] text-content-muted">Fix opened</span>
             )}
           </div>
-        </div>
+        </Link>
       ))}
     </div>
   );

@@ -32,6 +32,32 @@ type IncidentsDb = {
   workItem: { findMany(args: unknown): Promise<unknown[]> };
 };
 
+export interface IncidentDetail {
+  id: string;
+  fingerprint: string;
+  alertName: string;
+  /** "critical" | "warning" */
+  severity: string;
+  /** "firing" | "resolved" */
+  status: string;
+  summary: string;
+  startsAt: string; // ISO — client-safe
+  resolvedAt: string | null;
+  /** Alert labels + annotations as received and scrubbed (receiver.ts) —
+   *  `{ labels: Record<string, unknown>; annotations: Record<string, unknown>; ... }`.
+   *  Passed through as-is; already scrubbed before it was written. */
+  payload: unknown;
+  workItemId: string | null;
+  fixContainerId: string | null;
+}
+
+/** Prisma delegates `getIncidentDetail` uses — a single-row lookup by id, so
+ *  `findFirst` rather than the list's `findMany`. */
+type IncidentDetailDb = {
+  incident: { findFirst(args: unknown): Promise<unknown | null> };
+  workItem: { findFirst(args: unknown): Promise<unknown | null> };
+};
+
 const LIMIT = 100;
 
 /**
@@ -93,4 +119,56 @@ export async function getIncidents(
       fixContainerId: workItemId ? containerByWorkItem.get(workItemId) ?? null : null,
     };
   });
+}
+
+/**
+ * Loads ONE incident by id, scoped exactly like `getIncidents` —
+ * `where: { id, installationId: { in: installationIds } }`. A row whose
+ * installation is not in `installationIds` never matches that WHERE clause,
+ * so it comes back `null` from the SAME query path as a genuinely missing
+ * id — a cross-tenant probe cannot distinguish "not yours" from "doesn't
+ * exist" (Global Constraint 4). Empty `installationIds` => `null`, no query
+ * run, same short-circuit as `getIncidents`' `[]`.
+ *
+ * Resolves the linked WorkItem's `containerId` (also scoped to
+ * `installationIds`) for the "View fix run" deep link, the same
+ * defense-in-depth lookup `getIncidents` performs per row.
+ */
+export async function getIncidentDetail(
+  db: IncidentDetailDb | PrismaClient,
+  installationIds: string[],
+  id: string,
+): Promise<IncidentDetail | null> {
+  if (installationIds.length === 0) return null;
+
+  const row = (await (db as IncidentDetailDb).incident.findFirst({
+    where: { id, installationId: { in: installationIds } },
+  })) as Record<string, unknown> | null;
+
+  if (!row) return null;
+
+  const workItemId = (row.workItemId ?? null) as string | null;
+
+  let fixContainerId: string | null = null;
+  if (workItemId) {
+    const workItem = (await (db as IncidentDetailDb).workItem.findFirst({
+      where: { id: workItemId, installationId: { in: installationIds } },
+      select: { containerId: true },
+    })) as { containerId: string | null } | null;
+    fixContainerId = workItem?.containerId ?? null;
+  }
+
+  return {
+    id: String(row.id),
+    fingerprint: String(row.fingerprint),
+    alertName: String(row.alertName),
+    severity: String(row.severity),
+    status: String(row.status),
+    summary: String(row.summary),
+    startsAt: (row.startsAt as Date).toISOString(),
+    resolvedAt: row.resolvedAt ? (row.resolvedAt as Date).toISOString() : null,
+    payload: row.payload,
+    workItemId,
+    fixContainerId,
+  };
 }
