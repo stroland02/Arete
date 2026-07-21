@@ -19,8 +19,8 @@ const collapseTransition = { ...springTransition, opacity: { duration: 0.15 } } 
 const NAV_ITEMS = [
   { href: "/overview", label: "Overview" },
   // Code map is reached from the Overview page (inline map + "Open map"), not a
-  // top-level tab. The /map route itself still exists for that link + deep-links.
-  { href: "/dashboards", label: "Dashboards" },
+  // top-level tab. Dashboards charts are now a section of Overview too. Both
+  // routes still exist (/map deep-links; /dashboards redirects to /overview).
   { href: "/services", label: "Services" },
   { href: "/agents", label: "Agents" },
   // Connections and Review History now live under Settings (linked from the

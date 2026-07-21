@@ -1,32 +1,17 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { getDashboardsViewModel, resolveSelectedInstallationIds } from "@/lib/queries";
-import { getAccountState } from "@/lib/account-state";
-import { DashboardsWorkspace } from "@/components/dashboard/dashboards/dashboards-workspace";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * The Dashboards charts now live as a section of the Overview page (one home,
+ * not two tabs). This route is kept only to redirect old links/bookmarks —
+ * preserving any `?installation=` selection so the redirect is lossless.
+ */
 export default async function DashboardsPage({
   searchParams,
 }: {
   searchParams: Promise<{ installation?: string }>;
 }) {
-  const session = await auth();
-  if (!session?.user) redirect("/login");
-
   const { installation } = await searchParams;
-  const installationIds = resolveSelectedInstallationIds(session.installations ?? [], installation);
-  const model = await getDashboardsViewModel(db, installationIds);
-  const accountState = await getAccountState(db, installationIds);
-
-  return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <div className="space-y-1.5">
-        <h1 className="text-lg font-semibold text-content-primary">Dashboards</h1>
-        <p className="text-sm text-content-muted">Your review pipeline and connected telemetry, at a glance.</p>
-      </div>
-      <DashboardsWorkspace model={model} accountState={accountState} />
-    </div>
-  );
+  redirect(installation ? `/overview?installation=${encodeURIComponent(installation)}` : "/overview");
 }

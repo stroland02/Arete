@@ -8,7 +8,7 @@ import {
 } from "@tabler/icons-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { getDashboardViewModel, resolveSelectedInstallationIds } from "@/lib/queries";
+import { getDashboardViewModel, getDashboardsViewModel, resolveSelectedInstallationIds } from "@/lib/queries";
 import { getSensoriumViewModel } from "@/lib/sensorium";
 import { getAccountState } from "@/lib/account-state";
 import { deriveOverviewSetup } from "@/lib/overview-setup";
@@ -16,6 +16,7 @@ import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 import { ActivityList } from "@/components/dashboard/activity-list";
 import { AgentsAtWorkStrip } from "@/components/dashboard/agents-at-work-strip";
 import { SensoriumMap } from "@/components/dashboard/sensorium-map";
+import { DashboardsWorkspace } from "@/components/dashboard/dashboards/dashboards-workspace";
 
 // This page reads the session and queries Prisma scoped to it on every
 // request — it must never be statically prerendered (that would either fail
@@ -40,6 +41,10 @@ export default async function DashboardOverview({
   );
 
   const viewModel = await getDashboardViewModel(db, installationIds);
+  // The dashboards presets (Review Activity / Findings / Telemetry) now live on
+  // this page too — Overview is the single home. Same view-model the standalone
+  // /dashboards page used, so the charts are unchanged.
+  const dashboardsModel = await getDashboardsViewModel(db, installationIds);
   // The Sensorium code graph is keyed by the GitHub external installation id,
   // not the DB uuid — resolve the primary selected installation's externalId.
   const graphExternalId = (session.installations ?? []).find(
@@ -222,6 +227,13 @@ export default async function DashboardOverview({
         <RevealItem className="space-y-3">
           <SectionLabel>Agents at work</SectionLabel>
           <AgentsAtWorkStrip findingCountById={findingCountById} hasReviews={hasReviews} />
+        </RevealItem>
+
+        {/* Dashboards — the review-pipeline + telemetry charts, folded in from
+            the former standalone /dashboards page (one home, not two tabs). */}
+        <RevealItem className="space-y-3">
+          <SectionLabel>Dashboards</SectionLabel>
+          <DashboardsWorkspace model={dashboardsModel} accountState={accountState} />
         </RevealItem>
 
         {/* Critical findings */}
