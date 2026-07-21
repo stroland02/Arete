@@ -24,6 +24,7 @@ import { scrubText, scrubLogValue } from '@arete/telemetry'
 import { Prisma } from '@arete/db'
 import { prisma } from '../db.js'
 import { logger } from '../logger.js'
+import { routeIncidentToFix, defaultRouteIncidentDeps } from './incident.js'
 
 const log = logger.child({ component: 'alerting' })
 const tracer = trace.getTracer('arete-webhook')
@@ -183,7 +184,7 @@ async function processOneAlert(raw: unknown): Promise<'created' | 'updated' | 's
       select: { id: true },
     })
 
-    await prisma.incident.upsert({
+    const incident = await prisma.incident.upsert({
       where: { installationId_fingerprint: { installationId, fingerprint } },
       create: {
         installationId,
@@ -207,6 +208,19 @@ async function processOneAlert(raw: unknown): Promise<'created' | 'updated' | 's
     })
 
     incidentsMetric().add(1, { alertName, severity, status })
+
+    // Incident -> WorkItem routing (Phase 2 Task 4). Runs AFTER the incident
+    // write succeeds and is independently guarded so a routing failure can
+    // never turn a correctly-recorded incident into a "failed" delivery that
+    // Alertmanager retries (this function's own contract never throws, but
+    // the try/catch here is belt-and-suspenders, matching the rest of this
+    // module's "never propagate" posture).
+    try {
+      await routeIncidentToFix(incident.id, defaultRouteIncidentDeps())
+    } catch (err) {
+      log.error({ err, incidentId: incident.id }, 'incident-to-WorkItem routing failed')
+    }
+
     return existing ? 'updated' : 'created'
   } catch (err) {
     log.error({ err }, 'failed to upsert incident for alert')

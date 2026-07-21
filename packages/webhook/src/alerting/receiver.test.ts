@@ -21,6 +21,7 @@ interface FakeIncidentRow {
   resolvedAt: Date | null
   createdAt: Date
   updatedAt: Date
+  workItemId: string | null
 }
 
 function makeFakeIncidentStore() {
@@ -29,9 +30,26 @@ function makeFakeIncidentStore() {
   const key = (installationId: string, fingerprint: string) => `${installationId}::${fingerprint}`
 
   const incident = {
+    // Task 4's routeIncidentToFix looks incidents up by id (Incident.workItemId
+    // has no Prisma relation, so it is never reached by traversal — see
+    // incident.ts's header) — support both shapes this suite's callers use.
     findUnique: vi.fn(async (args: any) => {
+      if (args.where?.id) {
+        for (const row of rows.values()) if (row.id === args.where.id) return row
+        return null
+      }
       const { installationId, fingerprint } = args.where.installationId_fingerprint
       return rows.get(key(installationId, fingerprint)) ?? null
+    }),
+    update: vi.fn(async (args: any) => {
+      for (const [k, row] of rows.entries()) {
+        if (row.id === args.where.id) {
+          const updated = { ...row, ...args.data }
+          rows.set(k, updated)
+          return updated
+        }
+      }
+      throw new Error('not found')
     }),
     upsert: vi.fn(async (args: any) => {
       const { installationId, fingerprint } = args.where.installationId_fingerprint
@@ -76,7 +94,39 @@ function baseAlert(overrides: Record<string, unknown> = {}) {
 }
 
 async function loadReceiver(store: ReturnType<typeof makeFakeIncidentStore>) {
-  vi.doMock('../db.js', () => ({ prisma: { incident: store.incident } }))
+  // Task 4 (incident.ts) reads incident.workItemId via the SAME '../db.js'
+  // import right after every upsert. This suite is only exercising the
+  // record/upsert behavior, so the WorkItem side is stubbed minimally:
+  // repository.findFirst -> null makes routeIncidentToFix's dispatchFixDrive
+  // early-return right after opening the WorkItem, without needing to also
+  // fake issueContainer/queue/cooldown. routeIncidentToFix's own contract
+  // never throws, so leaving it unstubbed would already be safe (just
+  // logged-and-swallowed) — this is here so the suite's real assertions on
+  // `created`/`updated` are exercised against genuinely working routing
+  // rather than a routing call that errors out on every alert.
+  const workItems = new Map<string, { id: string; installationId: string; fingerprint: string }>()
+  let seq = 0
+  const workItem = {
+    create: vi.fn(async (args: any) => {
+      seq += 1
+      const row = { id: `wi-${seq}`, ...args.data }
+      workItems.set(row.id, row)
+      return row
+    }),
+    findUnique: vi.fn(async (args: any) => {
+      if (args.where?.installationId_fingerprint) {
+        const { installationId, fingerprint } = args.where.installationId_fingerprint
+        for (const row of workItems.values()) {
+          if (row.installationId === installationId && row.fingerprint === fingerprint) return row
+        }
+        return null
+      }
+      return workItems.get(args.where.id) ?? null
+    }),
+    update: vi.fn(async () => ({})),
+  }
+  const repository = { findFirst: vi.fn(async () => null) }
+  vi.doMock('../db.js', () => ({ prisma: { incident: store.incident, workItem, repository } }))
   return import('./receiver.js')
 }
 
