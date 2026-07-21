@@ -2,11 +2,7 @@ import logging
 from typing import Any, Dict
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
-from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import SERVICE_NAME, Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from pydantic import BaseModel, ValidationError
 
 from arete_agents.agents.chat import ChatAgent
@@ -28,31 +24,37 @@ from arete_agents.llm.ollama import (
 )
 from arete_agents.models.fix import FixRequest, FixResponse
 from arete_agents.models.pr import LLMConfig, PRContext, ScanRequest
+from arete_agents.observability import init_observability
 from arete_agents.orchestrator import ReviewOrchestrator
 from arete_agents.remediation import RemediationGraph
 from arete_agents.scan import ScanUnavailableError, run_scan
 from arete_agents.tools.executor import CommandExecutionError, get_command_executor
 
+# Telemetry bootstrap. Import time == inside the uvicorn worker process
+# (`uvicorn arete_agents.server:app`) — exporter threads must live in the
+# serving process. No-ops (one INFO line) when OTEL_EXPORTER_OTLP_ENDPOINT is
+# unset; never raises (telemetry must never take the app down). Replaces the
+# old unconditional hardcoded gRPC exporter to localhost:4317.
+init_observability()
+
 _logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# OpenTelemetry Auto-Instrumentation
-# NOTE (Task B3 dependency swap): `opentelemetry-exporter-otlp` (bundled
-# gRPC+HTTP) was replaced by the HTTP-only `opentelemetry-exporter-otlp-proto-http`
-# package (see packages/agents/pyproject.toml), so the top-of-file exporter import
-# now uses the HTTP variant. Plan Task 6 replaces this whole block with
-# observability.init_observability() (env-driven, no-op-safe).
-# Set up the tracer provider with service name
-resource = Resource(attributes={SERVICE_NAME: "arete-agents"})
-provider = TracerProvider(resource=resource)
+# /health is excluded from tracing (spec §3): a container healthcheck on a
+# 5s interval would otherwise dominate span volume for zero information.
+try:
+    FastAPIInstrumentor.instrument_app(app, excluded_urls="health")
+except Exception:
+    _logger.warning("FastAPI instrumentation failed; serving untraced", exc_info=True)
 
-# Export traces to the OTel Collector in the infra stack
-# The infra docker-compose sets up the collector at localhost:4318 (OTLP/HTTP)
-otlp_exporter = OTLPSpanExporter(endpoint="http://localhost:4318/v1/traces")
-processor = BatchSpanProcessor(otlp_exporter)
-provider.add_span_processor(processor)
-trace.set_tracer_provider(provider)
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    """Liveness probe for compose healthchecks and LB checks. Excluded from
+    tracing via excluded_urls above; must stay dependency-free (no DB, no
+    LLM) so it answers even on a keyless boot."""
+    return {"status": "ok"}
 
 # LLM-backed singletons are built LAZILY, on the first /review or /chat call.
 # LangGraph graph compilation is expensive (one orchestrator + one chat agent
