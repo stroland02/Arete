@@ -6,6 +6,14 @@
 // internal-token guard (server.ts `/internal` mount) the same as every other
 // service-to-service surface (/scan/trigger, /staging/send, /fix/trigger).
 //
+// "THE ONE real write path" is literal, and is now enforced rather than
+// merely asserted: `saveAgentMemory` is the only caller of
+// `prisma.agentMemory.create` in this package. chat-handler.ts used to open a
+// second, weaker one (repo resolved by fullName alone, no tenant scoping, no
+// caps, no redaction — review finding B6) and now goes through here too. A
+// future sink that wants to persist a memory calls this function; if it
+// cannot, that is a signal the guard needs extending, not bypassing.
+//
 // Tenant guard (Global Constraint 4): the caller supplies the GitHub App's
 // numeric installation id (the same identity PRContext.installation_id
 // already carries end-to-end) and a repo full name. The repository is
@@ -33,6 +41,7 @@
 // report `ok: true` without an actual persisted row.
 
 import { trace, metrics, SpanStatusCode, type Counter } from '@opentelemetry/api'
+import { scrubSinkText } from '@arete/telemetry'
 import { prisma } from './db.js'
 import { logger } from './logger.js'
 import { MAX_PROJECT_MEMORIES } from './persistence.js'
@@ -43,6 +52,14 @@ const tracer = trace.getTracer('arete-webhook')
 /** Mirrors packages/agents/src/arete_agents/tools/memory.py's _MAX_NOTE_CHARS
  *  comment — kept in sync manually, both sides document the other. */
 export const MAX_MEMORY_BODY_CHARS = 4000
+
+/** Server-side cap on `title` (Phase 2 review finding B2). The cap used to
+ *  exist on `body` ONLY, so an 80,000-char title returned 201 over real HTTP
+ *  and stored all 80,000 — the Python tool's `note[:80]` truncation was the
+ *  only bound, and a client-side-only bound is exactly what this task exists
+ *  to remove. Comfortably above the 80 chars tools/memory.py actually sends,
+ *  so a well-behaved client can never trip it. */
+export const MAX_MEMORY_TITLE_CHARS = 200
 
 /** Reuses persistence.ts's read-side cap (see module header) rather than
  *  introducing a second, potentially-drifting constant. */
@@ -76,6 +93,7 @@ export type SaveMemoryReason =
   | 'invalid_input'
   | 'repo_not_found'
   | 'body_too_long'
+  | 'title_too_long'
   | 'cap_exceeded'
   | 'internal_error'
 
@@ -91,8 +109,17 @@ export async function saveAgentMemory(params: SaveMemoryParams): Promise<SaveMem
   // known SaveMemoryReason, so a caller can never mistake a failure for a
   // success.
   return tracer.startActiveSpan('memory.write', async (span): Promise<SaveMemoryResult> => {
+    // Tenant ids belong on SPANS, never on metric dimensions (Global
+    // Constraint 1) — the `arete.memory.writes` counter below stays
+    // outcome-only. Without these a failed write was unattributable in Jaeger:
+    // you could see that *a* write was rejected, but not whose.
+    span.setAttribute('arete.installation.id', String(params.installationExternalId))
+    span.setAttribute('arete.repo.full_name', String(params.repoFullName))
     try {
       const result = await saveInner(params)
+      // `reason` is the same closed set the metric uses, so it is safe as an
+      // attribute and is the one thing you actually need to debug a rejection.
+      span.setAttribute('arete.memory.reason', result.ok ? 'saved' : result.reason)
       memoryWritesMetric().add(1, { outcome: result.ok ? 'saved' : result.reason })
       span.setStatus({ code: result.ok ? SpanStatusCode.OK : SpanStatusCode.ERROR })
       return result
@@ -105,6 +132,7 @@ export async function saveAgentMemory(params: SaveMemoryParams): Promise<SaveMem
       log.error({ err }, 'unexpected error saving agent memory')
       span.recordException(err instanceof Error ? err : new Error(String(err)))
       span.setStatus({ code: SpanStatusCode.ERROR })
+      span.setAttribute('arete.memory.reason', 'internal_error')
       memoryWritesMetric().add(1, { outcome: 'internal_error' })
       return { ok: false, reason: 'internal_error' }
     } finally {
@@ -116,13 +144,19 @@ export async function saveAgentMemory(params: SaveMemoryParams): Promise<SaveMem
 async function saveInner(params: SaveMemoryParams): Promise<SaveMemoryResult> {
   const { installationExternalId, repoFullName, body } = params
   const kind = params.kind && ALLOWED_KINDS.has(params.kind) ? params.kind : 'project'
-  const title = (params.title && params.title.trim()) || body.slice(0, 80).trim() || 'Rule'
 
+  // VALIDATE FIRST, derive second. This ordering used to be inverted: the
+  // `body.slice(0, 80)` title fallback ran BEFORE the `typeof body !==
+  // 'string'` check below, so a non-string body threw inside saveInner and
+  // came back as `internal_error` (500) when it is plainly a 400
+  // `invalid_input`. Nothing may read `body`/`title` as strings above here.
   if (
     !Number.isFinite(installationExternalId) ||
+    typeof repoFullName !== 'string' ||
     !repoFullName ||
     typeof body !== 'string' ||
-    !body.trim()
+    !body.trim() ||
+    (params.title != null && typeof params.title !== 'string')
   ) {
     return { ok: false, reason: 'invalid_input' }
   }
@@ -134,6 +168,21 @@ async function saveInner(params: SaveMemoryParams): Promise<SaveMemoryResult> {
       ok: false,
       reason: 'body_too_long',
       detail: `body is ${body.length} chars; max is ${MAX_MEMORY_BODY_CHARS}`,
+    }
+  }
+
+  const title = (params.title && params.title.trim()) || body.slice(0, 80).trim() || 'Rule'
+
+  // The SAME reject-never-truncate rule on `title` (review finding B2). Both
+  // caps are enforced on the RAW input, before redaction, so what is bounded
+  // is what the caller actually sent — scrubbing can only shorten or lengthen
+  // a string, and a cap that moved with the scrubber's output would be a cap
+  // an attacker could steer.
+  if (title.length > MAX_MEMORY_TITLE_CHARS) {
+    return {
+      ok: false,
+      reason: 'title_too_long',
+      detail: `title is ${title.length} chars; max is ${MAX_MEMORY_TITLE_CHARS}`,
     }
   }
 
@@ -173,8 +222,23 @@ async function saveInner(params: SaveMemoryParams): Promise<SaveMemoryResult> {
   }
 
   try {
+    // REDACTION (Global Constraint 2, review finding B1). `title` and `body`
+    // are model-authored free text derived from a PR's diff and description —
+    // attacker-adjacent by construction — and an AgentMemory row is a
+    // persistence sink whose contents fetchProjectMemories re-injects into
+    // EVERY later review prompt for this repo (base.py). An unscrubbed secret
+    // here is therefore amplified to the model provider on every subsequent
+    // review, not merely stored once. Both columns go through the canonical
+    // @arete/telemetry sink scrubber — the same call the sibling alerting sink
+    // makes for every persisted field (alerting/receiver.ts) — never a
+    // bespoke one.
     const created = await prisma.agentMemory.create({
-      data: { repositoryId: repository.id, kind, title, body },
+      data: {
+        repositoryId: repository.id,
+        kind,
+        title: scrubSinkText(title),
+        body: scrubSinkText(body),
+      },
       select: { id: true },
     })
     return { ok: true, id: created.id }

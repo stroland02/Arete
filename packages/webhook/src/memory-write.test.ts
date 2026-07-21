@@ -228,4 +228,105 @@ describe('saveAgentMemory', () => {
     expect(result).toMatchObject({ ok: true })
     expect(store.memories[0].kind).toBe('project')
   })
+
+  // REDACTION mutation test (finding B1, Global Constraint 2). AgentMemory
+  // rows are a PERSISTENCE SINK that is re-sent to the model provider on
+  // every later review of the repo (fetchProjectMemories -> base.py's prompt),
+  // so an unscrubbed secret here is amplified, not merely stored. Both
+  // model-authored free-text columns must go through the SAME canonical
+  // @arete/telemetry sink scrubber the alerting sink uses (receiver.ts:46) —
+  // a review probe stored `sk-ant-api03-…` byte-for-byte in both.
+  it('scrubs secret-shaped substrings out of body before persisting', async () => {
+    const store = makeFakeStore({ installations: [INST_A], repositories: [REPO_A] })
+    const { saveAgentMemory } = await loadModule(store)
+
+    const result = await saveAgentMemory(
+      baseParams({
+        title: 'Deploy note',
+        body: 'Deploy key is sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAA and the callback is https://x.dev/cb?token=abc123',
+      })
+    )
+
+    expect(result).toMatchObject({ ok: true })
+    const stored = store.memories[0].body
+    expect(stored).not.toContain('sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAA')
+    expect(stored).not.toContain('abc123')
+    expect(stored).toContain('[REDACTED]')
+  })
+
+  it('scrubs secret-shaped substrings out of title before persisting', async () => {
+    const store = makeFakeStore({ installations: [INST_A], repositories: [REPO_A] })
+    const { saveAgentMemory } = await loadModule(store)
+
+    const result = await saveAgentMemory(
+      baseParams({ title: 'use ghp_AAAAAAAAAAAAAAAAAAAA for CI', body: 'irrelevant' })
+    )
+
+    expect(result).toMatchObject({ ok: true })
+    expect(store.memories[0].title).not.toContain('ghp_AAAAAAAAAAAAAAAAAAAA')
+    expect(store.memories[0].title).toContain('[REDACTED]')
+  })
+
+  it('scrubs the title even when it is derived from the body', async () => {
+    const store = makeFakeStore({ installations: [INST_A], repositories: [REPO_A] })
+    const { saveAgentMemory } = await loadModule(store)
+
+    await saveAgentMemory(
+      baseParams({ title: undefined, body: 'ghp_BBBBBBBBBBBBBBBBBBBB is the CI token' })
+    )
+
+    expect(store.memories[0].title).not.toContain('ghp_BBBBBBBBBBBBBBBBBBBB')
+  })
+
+  // SIZE-CAP mutation test (finding B2). The cap existed on `body` only, so an
+  // 80,000-char `title` returned 201 over real HTTP and stored all 80,000. The
+  // Python tool truncates title client-side — exactly the client-side-only
+  // bound this task exists to remove.
+  it('rejects an oversized title -- not truncated, not persisted', async () => {
+    const store = makeFakeStore({ installations: [INST_A], repositories: [REPO_A] })
+    const { saveAgentMemory, MAX_MEMORY_TITLE_CHARS } = await loadModule(store)
+
+    const result = await saveAgentMemory(baseParams({ title: 'x'.repeat(80_000) }))
+
+    expect(result).toMatchObject({ ok: false, reason: 'title_too_long' })
+    expect(store.agentMemory.create).not.toHaveBeenCalled()
+    expect(store.memories).toHaveLength(0)
+    expect(MAX_MEMORY_TITLE_CHARS).toBeLessThan(80_000)
+  })
+
+  it('accepts a title exactly at the cap (boundary)', async () => {
+    const store = makeFakeStore({ installations: [INST_A], repositories: [REPO_A] })
+    const { saveAgentMemory, MAX_MEMORY_TITLE_CHARS } = await loadModule(store)
+
+    const result = await saveAgentMemory(baseParams({ title: 'x'.repeat(MAX_MEMORY_TITLE_CHARS) }))
+
+    expect(result).toMatchObject({ ok: true })
+  })
+
+  // Ordering (minor finding): `body.slice(0, 80)` ran BEFORE the
+  // `typeof body !== 'string'` check, so a non-string body threw and reported
+  // internal_error (500) instead of invalid_input (400).
+  it('reports a non-string body as invalid_input, not internal_error', async () => {
+    const store = makeFakeStore({ installations: [INST_A], repositories: [REPO_A] })
+    const { saveAgentMemory } = await loadModule(store)
+
+    // `title` omitted on purpose: the inverted line is `body.slice(0, 80)` in
+    // the title fallback, which a supplied title short-circuits past.
+    const result = await saveAgentMemory(
+      baseParams({ title: undefined, body: { nope: true } as unknown as string })
+    )
+
+    expect(result).toEqual({ ok: false, reason: 'invalid_input' })
+    expect(store.agentMemory.create).not.toHaveBeenCalled()
+  })
+
+  it('reports a non-string title as invalid_input, not internal_error', async () => {
+    const store = makeFakeStore({ installations: [INST_A], repositories: [REPO_A] })
+    const { saveAgentMemory } = await loadModule(store)
+
+    const result = await saveAgentMemory(baseParams({ title: 42 as unknown as string }))
+
+    expect(result).toEqual({ ok: false, reason: 'invalid_input' })
+    expect(store.agentMemory.create).not.toHaveBeenCalled()
+  })
 })
