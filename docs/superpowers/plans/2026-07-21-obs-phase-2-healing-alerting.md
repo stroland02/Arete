@@ -458,21 +458,23 @@ needs rewriting. What is missing is **anything stopping a future change from bre
 
 ### Task 10: Security gate sweep, spec amendment, DoD evidence — **independent review**
 
-- [ ] **Step 1: Spec §6 Phase 2 gates**, each with captured evidence:
-  1. Healing-agent repo access scoped to instrumented repos only — show the scoping code and a failing cross-scope attempt.
-  2. MCP/internal tokens treated as write credentials **with expiry** — document current expiry behavior; if none exists, that is a finding, not a checkbox.
-  3. No secrets in `AGENTS.md` / skill files — grep the canonical pattern set from `packages/telemetry/src/redaction.ts` across `**/AGENTS.md` and `.claude/skills/**`.
-  4. Alert receiver auth mutation test (Task 3) demonstrably fails when the guard is removed.
-- [ ] **Step 2: Amend the spec.** Add a "Phase 2 amendments (2026-07-21)" block to
-      `docs/superpowers/specs/2026-07-20-superlog-observability-integration-design.md` §3 recording
-      the four scope decisions above and their rationale. Spec §5 conventions remain frozen and
-      untouched.
-- [ ] **Step 3: File Phase 2b to backlog** — telemetry-fed investigations (needs an internal query
-      surface), the fix-pipeline tool loop, plus anything Minor accumulated in the ledger.
-- [ ] **Step 4: Write the evidence file BEFORE ticking anything** (retrospective action 6):
-      `.superpowers/sdd/phase-2-gate-report.md`, with real captured output.
+- [x] **Step 1: Spec §6 Phase 2 gates**, each with captured evidence:
+  1. [x] Healing-agent repo access scoped to instrumented repos only — **PASS**. Scoping code shown for all five healing-path lookups; unit mutation fails exactly the gate's own test; live cross-scope attempt returns 404 with zero rows written.
+  2. [ ] MCP/internal tokens treated as write credentials **with expiry** — **FINDING, not a checkbox.** No expiry exists on `INTERNAL_API_TOKEN` and none is expressible (`tokenMatches` has no clock); the MCP store has no expiry field and its OAuth flow fabricates tokens. Filed as Phase 2b item 1.
+  3. [x] No secrets in `AGENTS.md` / skill files — **PASS**. Scanner parses the canonical patterns out of `redaction.ts` (cannot drift); 8 files, 1 adjudicated false positive (the skill file documenting the pattern set); planted `ghp_…` → exit 1.
+  4. [x] Alert receiver auth mutation test (Task 3) demonstrably fails when the guard is removed — **PASS**. Guard removed → 3 tests fail (401→200); reverted → 9 pass.
+- [x] **Step 2: Amend the spec.** "Phase 2 amendments (2026-07-21)" block added to §3 — the four
+      scope decisions, six discovered contradictions of the spec's own assumptions, and the Phase 2b
+      deferrals. **§5 conventions untouched and still frozen** (`scrubSinkText`/`scrubSinkValue`
+      *compose* the frozen sets rather than changing them).
+- [x] **Step 3: File Phase 2b to backlog** — 9 ranked entries in `docs/roadmap/backlog.md`, led by
+      the token-expiry gap; the Phase 2 section is now marked shipped with per-bullet dispositions.
+- [x] **Step 4: Write the evidence file BEFORE ticking anything** (retrospective action 6):
+      `.superpowers/sdd/phase-2-gate-report.md`, written and committed before any box above was
+      ticked, with real captured output throughout.
 - [ ] **Step 5: Whole-branch review** on the most capable model, with the review package.
 - [ ] **Step 6: PR into `integration-preview`** with the DoD checklist and evidence in the body.
+      *(Steps 5–6 are the orchestrator's; Task 10 deliberately does not open the PR.)*
 
 ---
 
@@ -619,11 +621,15 @@ to measure on the pipeline Phase 2 exists to improve.
 
 ## Phase 2 exit criteria (DoD)
 
-- [ ] A **synthetic alert fired into the running stack** produces an `Incident` row, which opens a `WorkItem`, which runs the fix pipeline — end to end, observed, not unit-tested only.
-- [ ] The p95 latency rule fires on slow-but-successful runs (proven by a rule test with a boundary case, plus a live check).
-- [ ] Fix runs execute on BullMQ under a concurrency cap; a repeated failure is refused with 429 and a `Retry-After` header.
-- [ ] `author_patch` is unreachable without grounded findings; a run that cannot ground returns an honest `fix_failed`.
-- [ ] `add_project_memory` persists a real row, is tenant-guarded and size-capped, and returns failure when it fails.
-- [ ] All four spec §6 Phase 2 gates pass with captured evidence, each with a mutation test.
-- [ ] Trace continuity holds through the new queue hop (one trace in Jaeger).
-- [ ] CI green, all checks.
+Verified 2026-07-21 (Task 10). **Every tick below is backed by captured output in
+[`.superpowers/sdd/phase-2-gate-report.md`](../../../.superpowers/sdd/phase-2-gate-report.md)**;
+unticked boxes say why.
+
+- [x] A **synthetic alert fired into the running stack** produces an `Incident` row, which opens a `WorkItem`, which runs the fix pipeline — end to end, observed, not unit-tested only. — *Alertmanager `/api/v2/alerts` → `Incident 8714ef8f` (platform-attributed, secrets scrubbed) → `WorkItem e68e482c` → BullMQ → worker → real GitHub token mint → agents `POST /fix` → real checkout; terminal `fix_failed / no_grounded_findings`, which is the gate working, not the chain breaking.*
+- [x] The p95 latency rule fires on slow-but-successful runs (proven by a rule test with a boundary case, plus a live check). — *`promtool test rules` SUCCESS; firing series are `outcome="success"`; boundary case at ~178.8s asserts silence; all 3 rules live in Prometheus with `health ok` / no `lastError`, against series names that exist on `:8889/metrics`. The rule was not watched firing live (needs 15m of degraded traffic).*
+- [x] Fix runs execute on BullMQ under a concurrency cap; a repeated failure is refused with 429 and a `Retry-After` header. — *Worker boots `fix-drive` at concurrency 2 in a separate process; live re-trigger dropped by the consumer with `retryAfterSeconds: 234` and no second drive. The **429 + `Retry-After` HTTP arm is test-verified, not live** — that route is session-authenticated.*
+- [x] `author_patch` is unreachable without grounded findings; a run that cannot ground returns an honest `fix_failed`. — *Live: `refusing to author a patch`, `arete_fix_runs_total{outcome="fix_failed",stage="findings"} 1`.*
+- [x] `add_project_memory` persists a real row, is tenant-guarded and size-capped, and returns failure when it fails. — *Live over real HTTP: 201 + persisted redacted row; cross-tenant 404 with 0 rows; 4001 chars rejected not truncated; a `200 text/html` server now yields "Failed to save memory", the original defect's exact shape.*
+- [ ] All four spec §6 Phase 2 gates pass with captured evidence, each with a mutation test. — **NOT MET.** Gates 1, 3, 4 pass with mutation tests. **Gate 2 (tokens as write credentials *with expiry*) is a finding, not a pass**: `INTERNAL_API_TOKEN` has no `exp`/`iat`/rotation and `tokenMatches` takes no clock, so the property is not expressible and no mutation test can exist; the MCP token store has no expiry field and its OAuth flow fabricates tokens. Filed as Phase 2b item 1.
+- [x] Trace continuity holds through the new queue hop (one trace in Jaeger). — *Trace `b7d92490d4201d84498fbe5414dcff12`: 81 spans, `arete-webhook` → (Redis) → `arete-worker` → (HTTP) → `arete-agents`, unbroken parent/child.*
+- [ ] CI green, all checks. — **Not verified**: no PR opened yet (orchestrator owns that step). Locally at `bdba033`: webhook 474, dashboard 458, telemetry 45, agents 489 all passing; `tsc --noEmit` clean in webhook, dashboard and telemetry; `promtool` SUCCESS.
