@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   IconAlertTriangle,
@@ -19,11 +19,18 @@ import { Button } from "@/components/ui/button";
 import { MODEL_PROVIDERS, type ModelProviderDef } from "@/lib/model-catalog";
 import {
   HttpModelConnectionsClient,
+  type ModelConnection,
   type ModelConnectionsClient,
   type ModelTestOutcome,
 } from "@/lib/model-connections-client";
 import { consumePullStream } from "@/lib/ollama-pull";
-import { findProviderConnection, disconnectControl } from "@/lib/ai-models-view";
+import {
+  activeConnectionId,
+  connectionBadge,
+  disconnectControl,
+  findProviderConnection,
+  setActiveControl,
+} from "@/lib/ai-models-view";
 
 /**
  * The "AI Models" Connections section. Providers render as rows in the same
@@ -35,6 +42,10 @@ import { findProviderConnection, disconnectControl } from "@/lib/ai-models-view"
  * SEAM-FIRST: Test/connect go through ModelConnectionsClient (Eng1's
  * /api/model-connections). Until that route lands, `test` returns `not_configured`
  * and the row says so — it never fabricates a "Connected" state.
+ *
+ * ACTIVE = NEWEST: several providers can be connected, but reviews run on the
+ * newest connection ("newest = active", mirroring getActiveModelConnection). The
+ * section lists once, marks that one Active, and offers "Set active" on the rest.
  *
  * HONESTY: Ollama is badged the free default but never "infinite"; a non-Anthropic
  * provider states that verification runs on the connected model.
@@ -50,19 +61,59 @@ const PROVIDER_ICONS: Record<string, typeof IconSparkles> = {
 };
 
 export function AiModelsSection({ client = defaultClient }: { client?: ModelConnectionsClient }) {
+  // One list() for the whole section: a single source of truth for which
+  // connections exist and which one is active (newest). Each row derives its
+  // own state from this — no per-row list() and no way for two rows to disagree
+  // about which is the live model.
+  const [rows, setRows] = useState<ModelConnection[]>([]);
+
+  const reload = useCallback(async () => {
+    try {
+      setRows(await client.list());
+    } catch {
+      /* leave the last-known rows in place on a transient list() failure */
+    }
+  }, [client]);
+
+  useEffect(() => {
+    let cancelled = false;
+    client
+      .list()
+      .then((next) => {
+        if (!cancelled) setRows(next);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [client]);
+
+  const activeId = activeConnectionId(rows);
+
   return (
     <section aria-label="AI Models" className="space-y-3">
       <div className="space-y-1">
         <h2 className="text-sm font-semibold text-content-primary">AI Models</h2>
         <p className="text-xs text-content-muted">
           Choose the model Kuma runs reviews on. Local · Ollama is the free default; connect a hosted
-          provider with your own key to run on it instead.
+          provider with your own key to run on it instead. With several connected, the one marked{" "}
+          <span className="font-medium text-content-secondary">Active</span> is the model reviews use.
         </p>
       </div>
       <div className="glass-panel divide-y divide-border-subtle overflow-hidden">
-        {MODEL_PROVIDERS.map((provider) => (
-          <ModelProviderRow key={provider.id} provider={provider} client={client} />
-        ))}
+        {MODEL_PROVIDERS.map((provider) => {
+          const connection = findProviderConnection(rows, provider.id);
+          return (
+            <ModelProviderRow
+              key={provider.id}
+              provider={provider}
+              client={client}
+              connection={connection}
+              isActive={!!connection && connection.id === activeId}
+              reload={reload}
+            />
+          );
+        })}
       </div>
     </section>
   );
@@ -86,7 +137,22 @@ function outcomeMessage(provider: ModelProviderDef, outcome: ModelTestOutcome): 
   }
 }
 
-function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; client: ModelConnectionsClient }) {
+function ModelProviderRow({
+  provider,
+  client,
+  connection,
+  isActive,
+  reload,
+}: {
+  provider: ModelProviderDef;
+  client: ModelConnectionsClient;
+  /** This provider's persisted connection, or null. Owned by the section. */
+  connection: ModelConnection | null;
+  /** True when this connection is the newest one — the model reviews run on. */
+  isActive: boolean;
+  /** Re-list the section after a mutation so the Active badge moves at once. */
+  reload: () => Promise<void>;
+}) {
   const isKey = provider.authKind === "api-key";
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -105,9 +171,8 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
   // response body, rendered in the card. Server-side probe logs aren't a surface
   // the user watches, so failures are shown here where the click happens.
   const [diag, setDiag] = useState<string | null>(null);
-  // The persisted connection's id (null = not saved). Disconnect deletes by id,
-  // so we retain it from list() hydration and from a successful connect().
-  const [connectionId, setConnectionId] = useState<string | null>(null);
+  // Switch-active in flight (delete old row + recreate = fresh createdAt = active).
+  const [switching, setSwitching] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
 
   useEffect(() => {
@@ -132,27 +197,12 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
     };
   }, [provider.id]);
 
-  // Reflect the PERSISTED connection on load: if this provider is already saved,
-  // show it as connected so the badge survives reload and matches the sidebar /
-  // review path — it isn't ephemeral test-only state.
+  // Reflect the PERSISTED selection: when this provider is saved, default the
+  // model select to the stored model so reopening the row matches reality. The
+  // section owns whether it's connected/active — this only seeds the dropdown.
   useEffect(() => {
-    let cancelled = false;
-    client
-      .list()
-      .then((rows) => {
-        if (cancelled) return;
-        const mine = findProviderConnection(rows, provider.id);
-        if (mine) {
-          setModel(mine.model);
-          setConnectionId(mine.id);
-          setOutcome({ status: "connected", model: mine.model });
-        }
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [provider.id, client]);
+    if (connection) setModel(connection.model);
+  }, [connection?.id, connection?.model]);
 
   // Real pulled models take precedence, then the catalog's suggestions.
   const modelOptions =
@@ -160,9 +210,17 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
       ? Array.from(new Set([...detect.models, ...provider.models]))
       : provider.models;
 
-  const connected = outcome?.status === "connected";
   // api-key providers need a key; Ollama can fall back to its default base URL.
-  const canTest = !testing && !pulling && !disconnecting && (!isKey || secret.trim().length > 0);
+  const canTest = !testing && !pulling && !switching && (!isKey || secret.trim().length > 0);
+
+  // The connect input for this provider's current form state.
+  function connectInput() {
+    return {
+      provider: provider.id,
+      model,
+      ...(isKey ? { apiKey: secret } : { baseUrl: secret.trim() || provider.authPlaceholder }),
+    };
+  }
 
   async function runTest() {
     setTesting(true);
@@ -207,11 +265,7 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
       setPullStatus(null);
     }
 
-    const input = {
-      provider: provider.id,
-      model,
-      ...(isKey ? { apiKey: secret } : { baseUrl: secret.trim() || provider.authPlaceholder }),
-    };
+    const input = connectInput();
 
     // Determine the outcome. API-key providers use the opaque typed seam; Ollama
     // uses the diagnostic path below so its exact HTTP status + body are visible.
@@ -266,12 +320,15 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
 
     // Persist on success so the selection is saved ONCE and every surface — the
     // sidebar chip and the review/scan path (resolveModelConnectionForReview) —
-    // runs on it. connect() upserts; a keyless Ollama connect skips the re-probe.
+    // runs on it. A Connect/Reconnect also PROMOTES: if this provider is already
+    // saved, recreate the row so it gets a fresh createdAt (newest = active). The
+    // probe above already validated the key, so the brief delete→create is safe.
     // router.refresh() re-runs the server layout so the sidebar updates at once.
     if (result.status === "connected") {
       try {
-        const saved = await client.connect(input);
-        setConnectionId(saved.id);
+        if (connection) await client.disconnect(connection.id);
+        await client.connect(input);
+        await reload();
         router.refresh();
       } catch (err) {
         result = {
@@ -285,17 +342,44 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
     setTesting(false);
   }
 
+  // Set active: make this saved connection the one reviews run on. Keyless
+  // (Ollama) promotes in one click — delete the row + recreate = fresh createdAt
+  // = newest. An api-key provider can't be re-POSTed without the key (we never
+  // store it), so open the row and let the user re-enter it; Connect then
+  // promotes through the same path above.
+  async function runSetActive() {
+    if (!connection || isActive || switching) return;
+    if (isKey) {
+      setOpen(true);
+      return;
+    }
+    setSwitching(true);
+    setOutcome(null);
+    try {
+      const input = connectInput();
+      await client.disconnect(connection.id);
+      await client.connect(input);
+      await reload();
+      router.refresh();
+    } catch (err) {
+      setOutcome({ status: "failed", reason: err instanceof Error ? err.message : "couldn't switch the active model" });
+      await reload();
+    } finally {
+      setSwitching(false);
+    }
+  }
+
   // Disconnect: delete the persisted connection by id and return the row to its
   // not-connected state. router.refresh() re-runs the server layout so the
   // sidebar chip drops the model at once.
   async function runDisconnect() {
-    if (!connectionId) return;
+    if (!connection) return;
     setDisconnecting(true);
     try {
-      await client.disconnect(connectionId);
-      setConnectionId(null);
+      await client.disconnect(connection.id);
       setOutcome(null);
       setDiag(null);
+      await reload();
       router.refresh();
     } catch (err) {
       setOutcome({
@@ -308,7 +392,9 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
   }
 
   const msg = outcome ? outcomeMessage(provider, outcome) : null;
-  const disconnect = disconnectControl(connectionId, disconnecting);
+  const badge = connectionBadge({ hasConnection: !!connection, isActive, freeDefault: provider.freeDefault });
+  const disconnect = disconnectControl(connection?.id ?? null, disconnecting);
+  const switchTo = setActiveControl({ hasConnection: !!connection, isActive, switching });
   const RowIcon = PROVIDER_ICONS[provider.id] ?? IconSparkles;
   const panelId = `model-provider-${provider.id}`;
 
@@ -331,12 +417,19 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
             <span className="text-[10px] font-medium text-content-muted border border-border-subtle rounded-full px-1.5 py-0.5">
               AI model
             </span>
-            {connected ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-accent-success/25 bg-accent-success/10 px-1.5 py-0.5 text-[10px] font-medium text-accent-success">
+            {badge === "active" ? (
+              <span
+                title="Kuma runs reviews on this model"
+                className="inline-flex items-center gap-1 rounded-full border border-accent-success/25 bg-accent-success/10 px-1.5 py-0.5 text-[10px] font-medium text-accent-success"
+              >
                 <IconCheck className="h-3 w-3" stroke={2.25} aria-hidden />
+                Active
+              </span>
+            ) : badge === "connected" ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-border-default bg-content-primary/5 px-1.5 py-0.5 text-[10px] font-medium text-content-secondary">
                 Connected
               </span>
-            ) : provider.freeDefault ? (
+            ) : badge === "free-default" ? (
               <span className="inline-flex items-center gap-1 rounded-full border border-accent-primary/25 bg-accent-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-accent-primary">
                 <IconBolt className="h-3 w-3" aria-hidden />
                 Free default
@@ -399,6 +492,13 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
             )}
           </label>
         </div>
+        {/* Keyed provider that's connected but idle: switching needs the key we
+            never stored, so prompt for it — Connect then promotes it to active. */}
+        {connection && !isActive && isKey && (
+          <p className="mt-2 text-[10px] leading-relaxed text-accent-primary/90">
+            Re-enter your key and Connect to make this the active model.
+          </p>
+        )}
         {provider.id === "ollama" && detect && (
           <p className="mt-2 text-[10px] leading-relaxed text-content-muted/80">
             {detect.running && detect.models.includes(model)
@@ -408,11 +508,23 @@ function ModelProviderRow({ provider, client }: { provider: ModelProviderDef; cl
                 : "Ollama not detected — install it, keep it running, then reopen this page."}
           </p>
         )}
-        <div className="mt-3 flex items-center gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <Button size="sm" onClick={runTest} disabled={!canTest} className="h-8 rounded-lg text-[12px]">
             {testing ? <IconLoader2 size={13} className="motion-safe:animate-spin" aria-hidden /> : null}
-            {pulling ? (pullStatus ?? "Pulling…") : testing ? "Connecting…" : connected ? "Reconnect" : "Connect"}
+            {pulling ? (pullStatus ?? "Pulling…") : testing ? "Connecting…" : connection ? "Reconnect" : "Connect"}
           </Button>
+          {switchTo.show && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={runSetActive}
+              disabled={switchTo.disabled}
+              className="h-8 rounded-lg text-[12px]"
+            >
+              {switching ? <IconLoader2 size={13} className="motion-safe:animate-spin" aria-hidden /> : null}
+              {switchTo.label}
+            </Button>
+          )}
           {disconnect.show && (
             <Button
               size="sm"

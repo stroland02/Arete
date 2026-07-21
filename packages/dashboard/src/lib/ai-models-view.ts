@@ -38,3 +38,60 @@ export function disconnectControl(
     disabled: disconnecting,
   };
 }
+
+/**
+ * The active connection's id — the NEWEST by `connectedAt`. Reviews (and the
+ * sidebar chip and agent chat) run on the newest connection — "newest = active",
+ * mirroring `getActiveModelConnection` — so among several connected providers
+ * exactly one is live. Null when nothing is connected. ISO-8601 UTC timestamps
+ * compare correctly as plain strings, so no Date parsing is needed.
+ */
+export function activeConnectionId(rows: ModelConnection[]): string | null {
+  let best: ModelConnection | null = null;
+  for (const r of rows) {
+    if (!best || r.connectedAt > best.connectedAt) best = r;
+  }
+  return best?.id ?? null;
+}
+
+export type ConnectionBadge = "active" | "connected" | "free-default" | null;
+
+/**
+ * Which badge a provider row shows. A persisted connection reads "active" when
+ * it is the live one (Kuma runs reviews on it) and "connected" (saved but idle)
+ * otherwise; an unconnected provider shows "free-default" for the free default,
+ * else nothing. `hasConnection` MUST come from the persisted list() — never from
+ * an ephemeral Test outcome — so a bare Test never fabricates a saved state.
+ */
+export function connectionBadge(opts: {
+  hasConnection: boolean;
+  isActive: boolean;
+  freeDefault: boolean;
+}): ConnectionBadge {
+  if (opts.hasConnection) return opts.isActive ? "active" : "connected";
+  return opts.freeDefault ? "free-default" : null;
+}
+
+export interface SetActiveControl {
+  /** Only a saved-but-idle connection can be switched to. */
+  show: boolean;
+  label: string;
+  disabled: boolean;
+}
+
+/**
+ * "Set active" button state. It appears only for a connection that is saved but
+ * NOT the active one — the already-active row and unconnected providers have
+ * nothing to switch to — and disables itself while the switch is in flight.
+ */
+export function setActiveControl(opts: {
+  hasConnection: boolean;
+  isActive: boolean;
+  switching: boolean;
+}): SetActiveControl {
+  return {
+    show: opts.hasConnection && !opts.isActive,
+    label: opts.switching ? "Switching…" : "Set active",
+    disabled: opts.switching,
+  };
+}

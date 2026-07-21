@@ -43,11 +43,16 @@ describe("AiModelsSection", () => {
     expect(html).toContain("claude-opus-4-8"); // a selectable model
   });
 
-  it("fabricates no connected state before a successful Test", () => {
-    // The green "Connected" badge only appears after test() returns connected.
+  it("fabricates no connected/active state before list() hydrates", () => {
+    // With an empty list() (the stub), no provider is connected — so neither the
+    // "Connected" badge nor the "Active" badge is fabricated from a bare render.
+    // (The section's intro copy mentions the word "Active", so we assert the
+    // Active *badge* is absent via its unique title rather than the bare word.)
     expect(html).not.toContain("Connected");
-    // ...and Disconnect is offered only for a PERSISTED connection (a
-    // connectionId from list() or connect()), never from a bare Test result.
+    expect(html).not.toContain("Kuma runs reviews on this model");
+    // ...and Disconnect / Set active are offered only for a PERSISTED connection
+    // (an id from list() or connect()), never from a bare Test result.
     expect(html).not.toContain("Disconnect");
+    expect(html).not.toContain("Set active");
   });
 });
