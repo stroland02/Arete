@@ -19,8 +19,10 @@ on the configured port, e.g. connection refused):
     (default 3s each, overridable by the caller) — NOT by the
     force_flush(timeout_millis=...) argument below. As of SDK 1.44.0,
     BatchSpanProcessor/BatchLogRecordProcessor.force_flush() ignores its
-    timeout_millis entirely (a known upstream gap, see
-    open-telemetry/opentelemetry-python#4568) and PeriodicExportingMetricReader
+    timeout_millis entirely (verify in the installed SDK:
+    opentelemetry/sdk/_shared_internal/__init__.py, whose own comment reads
+    "Not used. No way currently to pass timeout to export.")
+    and PeriodicExportingMetricReader
     threads timeout_millis through to the exporter but the exporter still
     computes its retry deadline from its own constructor `timeout`, not the
     passed value. We pass force_flush(timeout_millis=...) anyway for
