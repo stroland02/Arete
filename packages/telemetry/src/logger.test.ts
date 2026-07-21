@@ -89,6 +89,20 @@ describe('createLogger (canary scrub — log sink, spec §6 gate 2)', () => {
     expect(message).not.toBe('') // previously lost entirely
   })
 
+  it('does not re-expose a secret through a cycle back-reference', () => {
+    const { stream, lines } = collect()
+    const log = createLogger('webhook', { destination: stream })
+    // The cycle guard used to return the ORIGINAL on revisit, so the value was
+    // redacted on first visit and survived verbatim one level down. Goes live
+    // the moment anyone logs a req/res/socket/client object.
+    const a: Record<string, unknown> = { name: 'sk-ant-CANARY1234567' }
+    a.self = a
+    expect(() => log.info({ a }, 'circ')).not.toThrow()
+    const raw = JSON.stringify(lines()[0])
+    expect(raw).not.toContain('sk-ant-CANARY1234567')
+    expect(raw).toContain('[REDACTED]')
+  })
+
   it('drops the payload instead of throwing if scrubbing itself fails', () => {
     const { stream, lines } = collect()
     const log = createLogger('webhook', { destination: stream })

@@ -74,11 +74,17 @@ export function clearUrlQuery(_value: string): string {
  * message/stack, other own enumerable props scrubbed too) instead of
  * flattening it to a plain object.
  */
-export function scrubLogValue(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
+export function scrubLogValue(
+  value: unknown,
+  // Original -> its clone, NOT a plain seen-set. Returning the original on a
+  // revisit would re-expose it unscrubbed one level down in any cyclic payload
+  // (`a.self = a` leaked its own secret-bearing fields). The clone is recorded
+  // before recursing, so a cycle resolves to the scrubbed copy.
+  seen: WeakMap<object, unknown> = new WeakMap()
+): unknown {
   if (typeof value === 'string') return scrubText(value)
   if (value instanceof Error) {
-    if (seen.has(value)) return value
-    seen.add(value)
+    if (seen.has(value)) return seen.get(value)
     // Clone by prototype, never `new value.constructor(message)`: subclass
     // constructors take their own argument shapes, and re-running one with a
     // lone string throws or corrupts. @octokit/request-error does
@@ -88,6 +94,7 @@ export function scrubLogValue(value: unknown, seen: WeakSet<object> = new WeakSe
     // — violating the §3 "telemetry never takes the app down" invariant on the
     // exact path where the log matters most.
     const scrubbed = Object.create(Object.getPrototypeOf(value)) as Error
+    seen.set(value, scrubbed) // before recursing, so cycles land on the clone
     Object.assign(scrubbed, value)
     scrubbed.name = value.name
     scrubbed.message = scrubText(value.message)
@@ -102,9 +109,9 @@ export function scrubLogValue(value: unknown, seen: WeakSet<object> = new WeakSe
   }
   if (Array.isArray(value)) return value.map((el) => scrubLogValue(el, seen))
   if (value && typeof value === 'object') {
-    if (seen.has(value)) return value
-    seen.add(value)
+    if (seen.has(value)) return seen.get(value)
     const out: Record<string, unknown> = {}
+    seen.set(value, out) // before recursing, so cycles land on the clone
     for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
       out[key] = scrubLogValue(val, seen)
     }
