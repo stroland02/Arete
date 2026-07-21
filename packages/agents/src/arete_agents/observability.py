@@ -355,8 +355,11 @@ def init_observability() -> None:
         return
 
     # gen_ai semconv opt-in + content capture OFF (§5) — set before any
-    # instrumentation reads them, even in the no-op path so a later manual
-    # init can't accidentally capture prompt bodies.
+    # instrumentation reads them. Note these run AFTER the OTEL_SDK_DISABLED
+    # return above: on that path no instrumentor is ever activated, so there is
+    # nothing to gag. They also run before the endpoint check below, so the
+    # unset-endpoint no-op path still leaves capture disabled for any later
+    # manual init.
     os.environ.setdefault(
         "OTEL_SEMCONV_STABILITY_OPT_IN", "gen_ai_latest_experimental"
     )
