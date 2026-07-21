@@ -83,6 +83,50 @@ async function loadReceiver(store: ReturnType<typeof makeFakeIncidentStore>) {
 describe('handleIncomingAlert', () => {
   beforeEach(() => {
     vi.resetModules()
+    delete process.env.ARETE_PLATFORM_INSTALLATION_ID
+  })
+
+  // Platform-alert attribution (user ruling 2026-07-21). The three rules that
+  // actually ship carry no installationId label — a tenant id can never be a
+  // metric dimension — so without this fallback the entire alerting chain
+  // would work for hand-labelled synthetic alerts only, and every real alert
+  // would be silently dropped.
+  describe('platform-wide alerts with no installationId label', () => {
+    it('attributes to the configured platform installation', async () => {
+      process.env.ARETE_PLATFORM_INSTALLATION_ID = 'inst-platform'
+      const store = makeFakeIncidentStore()
+      const { handleIncomingAlert } = await loadReceiver(store)
+
+      const alert = baseAlert()
+      delete (alert.labels as Record<string, unknown>).installationId
+
+      expect(await handleIncomingAlert({ alerts: [alert] })).toEqual({ created: 1, updated: 0 })
+      expect([...store.rows.values()][0]).toMatchObject({ installationId: 'inst-platform' })
+    })
+
+    it('never overrides an installationId the alert already carries', async () => {
+      process.env.ARETE_PLATFORM_INSTALLATION_ID = 'inst-platform'
+      const store = makeFakeIncidentStore()
+      const { handleIncomingAlert } = await loadReceiver(store)
+
+      await handleIncomingAlert({ alerts: [baseAlert()] })
+
+      // A future per-tenant rule must still attribute to its own tenant.
+      expect([...store.rows.values()][0]).toMatchObject({ installationId: 'inst-a' })
+    })
+
+    it('still drops when no label and no configured platform installation', async () => {
+      const store = makeFakeIncidentStore()
+      const { handleIncomingAlert } = await loadReceiver(store)
+
+      const alert = baseAlert()
+      delete (alert.labels as Record<string, unknown>).installationId
+
+      // Dropping a platform alert is recoverable; filing it against an
+      // arbitrary customer is not. Unset env must not invent an owner.
+      expect(await handleIncomingAlert({ alerts: [alert] })).toEqual({ created: 0, updated: 0 })
+      expect(store.rows.size).toBe(0)
+    })
   })
 
   it('a valid firing alert creates exactly one Incident', async () => {

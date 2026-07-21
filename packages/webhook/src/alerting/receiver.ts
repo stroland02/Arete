@@ -116,7 +116,27 @@ async function processOneAlert(raw: unknown): Promise<'created' | 'updated' | 's
     const labels = asRecord(alert.labels)
     const annotations = asRecord(alert.annotations)
 
-    const installationId = labels.installationId
+    // Tenancy attribution for PLATFORM-WIDE alerts (user ruling 2026-07-21,
+    // "configured platform owner, receiver-side"). The three shipped rules
+    // (AreteReviewErrorRate, AreteReviewLatencyP95, AreteQueueFailureRate)
+    // deliberately carry NO installationId label: metric dimensions must be
+    // closed low-cardinality sets, so a tenant id can never be one (spec §5,
+    // Global Constraint 1). Without a fallback every real alert would be
+    // logged-and-dropped here and the whole alerting chain would only ever
+    // work for synthetic alerts that hand-set the label.
+    //
+    // Fallback, never override: an alert that DOES carry installationId keeps
+    // it, so a future per-tenant rule attributes to that tenant. Only
+    // unlabelled (i.e. platform-wide) alerts land on the operator-owned
+    // installation. If the env var is unset the old drop behaviour stands —
+    // dropping a platform alert is recoverable, filing it against an arbitrary
+    // customer is not.
+    const platformInstallationId = process.env.ARETE_PLATFORM_INSTALLATION_ID
+    const installationId = isNonEmptyString(labels.installationId)
+      ? labels.installationId
+      : isNonEmptyString(platformInstallationId)
+        ? platformInstallationId
+        : undefined
     const alertName = labels.alertname
     const fingerprint = alert.fingerprint
     const status = alert.status === 'resolved' ? 'resolved' : 'firing'
