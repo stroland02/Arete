@@ -193,3 +193,24 @@ jobs:
           for cmd in ${{ matrix.commands }}; do
             pnpm --filter ${{ matrix.filter }} run "$cmd"
           done
+
+  validate-infra:
+    name: Infra config validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate default compose file
+        run: docker compose -f infra/docker-compose.yml config --quiet
+
+      - name: Validate otel compose file
+        run: docker compose -f infra/docker-compose-otel.yml config --quiet
+
+      # Must stay pinned to the same image tag infra uses. Task 11 of the
+      # obs-lane-b plan bumps this to 0.156.0 when the config is rewritten.
+      - name: Validate collector config
+        run: |
+          docker run --rm \
+            -v "$PWD/infra/otel-collector-config.yaml:/etc/otelcol/config.yaml" \
+            otel/opentelemetry-collector-contrib:0.100.0 \
+            validate --config=/etc/otelcol/config.yaml
