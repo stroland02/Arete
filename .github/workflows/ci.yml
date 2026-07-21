@@ -203,13 +203,18 @@ jobs:
       # `config --quiet` exits 0 even when a ${VAR} interpolation is
       # undefined (it just warns on stderr and substitutes an empty
       # string), so the exit code alone can't be trusted for that error
-      # class. Capture stderr and fail explicitly if the warning appears,
-      # while still propagating the command's own exit code first so
-      # syntax/schema/reference errors keep failing the step as before.
+      # class. Capture stderr and fail explicitly if the warning appears.
+      # GitHub Actions runs `run:` blocks under `bash -e`, and
+      # `OUTPUT=$(failing-cmd)` is a simple command that carries the
+      # failing command's exit status, so a non-`||`-guarded assignment
+      # would abort the step at that line before STATUS or the stderr
+      # echo ever ran. The `|| STATUS=$?` guard is exempt from errexit,
+      # so the exit code is still propagated (and stderr still printed)
+      # for syntax/schema/reference errors, exactly as before.
       - name: Validate default compose file
         run: |
-          OUTPUT=$(docker compose -f infra/docker-compose.yml config --quiet 2>&1 >/dev/null)
-          STATUS=$?
+          STATUS=0
+          OUTPUT=$(docker compose -f infra/docker-compose.yml config --quiet 2>&1 >/dev/null) || STATUS=$?
           echo "$OUTPUT"
           if [ "$STATUS" -ne 0 ]; then
             exit "$STATUS"
@@ -221,8 +226,8 @@ jobs:
 
       - name: Validate otel compose file
         run: |
-          OUTPUT=$(docker compose -f infra/docker-compose-otel.yml config --quiet 2>&1 >/dev/null)
-          STATUS=$?
+          STATUS=0
+          OUTPUT=$(docker compose -f infra/docker-compose-otel.yml config --quiet 2>&1 >/dev/null) || STATUS=$?
           echo "$OUTPUT"
           if [ "$STATUS" -ne 0 ]; then
             exit "$STATUS"
