@@ -30,6 +30,12 @@ into scope. Reprioritize only at phase boundaries or by explicit user decision.
 
 ## Typed debt (ratchets — flip back to `error` once paid)
 
+- `packages/webhook`: `@typescript-eslint/no-explicit-any` is `off` (Octokit boundary casts,
+  per config comment) — unlike dashboard's `warn`. Revisit when the Octokit types allow it.
+- **Descoped from Phase 0** (final-review finding, 2026-07-21): spec §3's "coverage reporting
+  turned on, thresholds advisory" was dropped between the two lane plans with no owner.
+  Rescheduled here: enable vitest/pytest coverage reporting (advisory only) in Phase 1.
+
 - `packages/dashboard`: 51 `@typescript-eslint/no-explicit-any` (mostly test files plus
   `src/lib/queries.ts`). To be held at `warn` in `packages/dashboard/eslint.config.mjs` so CI
   can be green; the genuine-bug-class rules (`react-hooks/*`, `@next/next/*`) stay at `error`.

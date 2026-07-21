@@ -181,10 +181,13 @@ export function HeroAgentGraph() {
 
   useEffect(() => {
     if (isThinking) {
-      // thinkingStep is already 0 here: both callers that flip isThinking to
-      // true (handleSelectFinding below, and the autoplay effect above) reset
-      // it in the same synchronous batch before this effect runs, so no
-      // separate setState is needed at the top of the effect body.
+      // thinkingStep is already 0 here. handleSelectFinding (below) resets it
+      // in the same synchronous batch. The autoplay effect (above) does NOT
+      // reset it, but its set is a guaranteed no-op: isThinking initializes
+      // true, so by the time the 1s autoplay fires, this animation is already
+      // mid-flight and the flip-to-true never re-runs this effect from a
+      // stale step. If the initial state or autoplay delay changes, add a
+      // thinkingStep reset to the autoplay path.
       const timers = [
         setTimeout(() => setThinkingStep(1), 700),
         setTimeout(() => setThinkingStep(2), 1400),
