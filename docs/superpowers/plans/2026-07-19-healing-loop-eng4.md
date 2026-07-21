@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **STATUS: COMPLETE (2026-07-19, commits d06733e..064125c on `stroland02/Engineer-4`).** All 8 tasks executed, suites green (dashboard 395, webhook 374, agents 349+1 skipped, webhook tsc clean). Two recorded deviations from the written steps: **Task 2** applied the migration via `prisma db execute` + `migrate resolve --applied` because an out-of-band `20260720020814_add_agent_chat_turn` (file absent from the tree) blocked `migrate dev` on the shared DB; **Task 7** left the approve route untouched — Eng2's post-merge version already loads/gates/saves the stored row, exactly the plan's "if so nothing more is needed" branch.
+
 **Goal:** Close the healing loop per the frozen spec `docs/superpowers/specs/2026-07-19-healing-loop-design.md` — the fix route births a real `detecting` container and dispatches a real fix run; the worker advances real state transitions with the patch attached; failures surface honestly and the item returns to `open`.
 
 **Architecture:** Webhook-service topology mirroring review/scan: dashboard fix route (session-scoped) → webhook `POST /fix/trigger` (bearer-guarded, `{workItemId}` only) → BullMQ `fix-workitem` queue → fix worker calls agents `POST /fix` (Eng3, frozen §3 contract, injected in tests) and persists each container transition + transcript incrementally. New terminal `fix_failed` state; `transcript` column on IssueContainer; `fixError` on WorkItem; stream/approve routes resolve stored containers so real transitions render (no sample).
@@ -34,7 +36,7 @@
 - Consumes: existing `canTransition`, `canApprove`, `canPost` from `pipeline.ts`.
 - Produces: `ContainerState` now includes `"fix_failed"` (terminal; reachable from `detecting | fanning_out | verifying | composing`; never approvable/postable). Tasks 3, 5, 7 rely on the literal string `"fix_failed"`.
 
-- [ ] **Step 1: Write the failing test** — append to `pipeline.test.ts`:
+- [x] **Step 1: Write the failing test** — append to `pipeline.test.ts`:
 
 ```ts
 describe("fix_failed (healing loop v1)", () => {
@@ -61,12 +63,12 @@ describe("fix_failed (healing loop v1)", () => {
 
 (Reuse the file's existing imports; add `canApprove`, `canPost`, `IssueContainer` to them if not yet imported.)
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm --filter dashboard exec vitest run src/lib/issue-pipeline/pipeline.test.ts`
 Expected: FAIL — TS/type error `"fix_failed"` not assignable to `ContainerState` (or `canTransition` returns false).
 
-- [ ] **Step 3: Minimal implementation**
+- [x] **Step 3: Minimal implementation**
 
 `types.ts` — extend the union (after `"dismissed"`):
 
@@ -105,12 +107,12 @@ const TRANSITIONS: Record<ContainerState, ReadonlyArray<ContainerState>> = {
 
 `container-store.ts` — add `"fix_failed",` to `TERMINAL_STATES` (a failed run's transcript is history: replayed instantly, never paced as live).
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pnpm --filter dashboard exec vitest run src/lib/issue-pipeline/`
 Expected: PASS (all pipeline suites — the widened union must not break driver/persist-drive tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/dashboard/src/lib/issue-pipeline/types.ts packages/dashboard/src/lib/issue-pipeline/pipeline.ts packages/dashboard/src/lib/issue-pipeline/container-store.ts packages/dashboard/src/lib/issue-pipeline/pipeline.test.ts
@@ -130,7 +132,7 @@ git commit -m "feat(pipeline): fix_failed terminal state — reachable from work
 **Interfaces:**
 - Produces: nullable `transcript` (Json) on IssueContainer — ordered SynthStep[] written incrementally by the fix worker (Task 5), read by the stream route (Task 7). Nullable `fixError` (String) on WorkItem — honest failure reason read by the inbox (Task 6), cleared by the fix route (Task 3).
 
-- [ ] **Step 1: Schema edits** — inside `model IssueContainer` after `findings`:
+- [x] **Step 1: Schema edits** — inside `model IssueContainer` after `findings`:
 
 ```prisma
   /// Ordered SynthStep[] transcript of the real fix drive (healing-loop v1
@@ -148,7 +150,7 @@ Inside `model WorkItem` after `scanRunId`:
   fixError       String?
 ```
 
-- [ ] **Step 2: Migration SQL** — create the migration file:
+- [x] **Step 2: Migration SQL** — create the migration file:
 
 ```sql
 -- Healing loop v1 (spec 2026-07-19 §4, §7): the real fix drive's transcript,
@@ -157,12 +159,12 @@ ALTER TABLE "IssueContainer" ADD COLUMN "transcript" JSONB;
 ALTER TABLE "WorkItem" ADD COLUMN "fixError" TEXT;
 ```
 
-- [ ] **Step 3: Apply to the shared dev DB** (env from the main-tree `.env`; NEVER reset):
+- [x] **Step 3: Apply to the shared dev DB** (env from the main-tree `.env`; NEVER reset):
 
 Run: `pnpm --filter @arete/db exec prisma migrate dev --name add_container_transcript_work_item_fix_error`
 Expected: "Your database is now in sync with your schema." then client regeneration. Verify with `prisma migrate status` → "Database schema is up to date".
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add packages/db/prisma/schema.prisma packages/db/prisma/migrations/20260719120000_add_container_transcript_work_item_fix_error/migration.sql
@@ -183,7 +185,7 @@ git commit -m "feat(db): IssueContainer.transcript + WorkItem.fixError — heali
 - Consumes: `internalAuthHeaders()` from `@/lib/internal-auth`; env `WEBHOOK_SERVICE_URL`; `"fix_failed"` literal (Task 1); `fixError` column (Task 2).
 - Produces: containers born `{ state: 'detecting', gates: {4-field null shape}, transcript: [] }`; `POST ${WEBHOOK_SERVICE_URL}/fix/trigger` with body `{ workItemId }`; honest revert (`container → fix_failed`, `item → open + fixError`, HTTP 502) when dispatch fails. Task 4's handler receives exactly `{ workItemId: string }`.
 
-- [ ] **Step 1: Write the failing tests** — add to the triage suite (using its existing fakeDb/scope mocks):
+- [x] **Step 1: Write the failing tests** — add to the triage suite (using its existing fakeDb/scope mocks):
 
 ```ts
 describe('POST /fix — healing loop dispatch', () => {
@@ -235,12 +237,12 @@ describe('POST /fix — healing loop dispatch', () => {
 
 (Adapt fake wiring to the file's existing `fakeDb` shape — it must gain `issueContainer.updateMany` if absent.)
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `pnpm --filter dashboard exec vitest run src/app/api/work-items/work-item-triage.test.ts`
 Expected: FAIL — created state is `'open'`, no fetch performed.
 
-- [ ] **Step 3: Implement** — rewrite the mutation half of `route.ts` (tenancy/409/no_repo checks unchanged):
+- [x] **Step 3: Implement** — rewrite the mutation half of `route.ts` (tenancy/409/no_repo checks unchanged):
 
 ```ts
   const branch = `kuma/${item.kind}-${item.id.slice(0, 8)}`;
@@ -298,10 +300,10 @@ Expected: FAIL — created state is `'open'`, no fetch performed.
 
 Add `import { internalAuthHeaders } from '@/lib/internal-auth';` at the top. Update the route's doc comment: it now creates a `detecting` container and dispatches the run.
 
-- [ ] **Step 4: Run to verify pass** — same command as Step 2, then the full triage + work-items suites.
+- [x] **Step 4: Run to verify pass** — same command as Step 2, then the full triage + work-items suites.
 Expected: PASS (existing dismiss/tenancy tests untouched).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add "packages/dashboard/src/app/api/work-items/[id]/fix/route.ts" packages/dashboard/src/app/api/work-items/work-item-triage.test.ts
@@ -322,7 +324,7 @@ git commit -m "feat(dashboard): fix route births real detecting containers and d
 - Consumes: `createInternalAuthMiddleware` (already instantiated in server.ts as `requireInternalToken`); `{ workItemId }` body from Task 3.
 - Produces: `FIX_QUEUE_NAME = 'fix-workitem'`, `interface FixJobData { workItemId: string }`, `enqueueFixJob(data)` — Task 5's worker consumes this queue. HTTP: 400 missing id / 404 unknown / 409 not-dispatchable / 202 enqueued.
 
-- [ ] **Step 1: Write the failing tests** — `trigger-handler.test.ts`:
+- [x] **Step 1: Write the failing tests** — `trigger-handler.test.ts`:
 
 ```ts
 import { describe, it, expect, vi } from 'vitest'
@@ -374,12 +376,12 @@ describe('POST /fix/trigger handler', () => {
 })
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `pnpm --filter @arete/webhook exec vitest run src/fix/trigger-handler.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `queue.ts` additions (below the approval queue definitions, reusing `getConnection` + `DEFAULT_JOB_OPTIONS`):
 
@@ -487,12 +489,12 @@ export function createFixTriggerHandler(deps: FixTriggerDeps = defaultFixTrigger
   server.post('/fix/trigger', requireInternalToken, express.json(), createFixTriggerHandler())
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `pnpm --filter @arete/webhook exec vitest run src/fix/ src/queue.test.ts src/internal-auth.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/webhook/src/queue.ts packages/webhook/src/fix/trigger-handler.ts packages/webhook/src/fix/trigger-handler.test.ts packages/webhook/src/server.ts
@@ -513,7 +515,7 @@ git commit -m "feat(webhook): /fix/trigger + fix-workitem queue — bearer-guard
 - Consumes: `FixJobData` (Task 4); `resolveModelConnectionForReview`/`defaultResolveModelDeps` + `LlmConfig` from `../resolve-model-connection.js`; `createApp`/`getInstallationToken` from `../github-auth.js`; `getServiceConfig().pythonServiceUrl`; columns from Task 2.
 - Produces: `runFixJob({workItemId}, deps)` — never throws; persists container transitions `fanning_out → verifying → composing (patch attached) → ready` (success) or `→ fix_failed` + WorkItem `open`/`fixError` (failure/timeout). `FixRequestBody`/`FixResponseBody` mirror frozen §3 exactly. `startFixWorker()` consumes `fix-workitem`.
 
-- [ ] **Step 1: Write the failing tests** — `run.test.ts`:
+- [x] **Step 1: Write the failing tests** — `run.test.ts`:
 
 ```ts
 import { describe, it, expect, vi } from 'vitest'
@@ -622,12 +624,12 @@ describe('runFixJob', () => {
 })
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `pnpm --filter @arete/webhook exec vitest run src/fix/run.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `run.ts`**
+- [x] **Step 3: Implement `run.ts`**
 
 ```ts
 // The healing-loop fix run (spec 2026-07-19 §2–§4): consume one fix-workitem
@@ -930,12 +932,12 @@ export function startFixWorker(): Worker<FixJobData> {
 
 with `import { startFixWorker } from './fix/worker.js'` alongside the approval-worker import.
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `pnpm --filter @arete/webhook exec vitest run src/fix/`
 Expected: PASS (6 run tests + 4 trigger tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/webhook/src/fix/run.ts packages/webhook/src/fix/run.test.ts packages/webhook/src/fix/worker.ts packages/webhook/src/worker.ts
@@ -955,7 +957,7 @@ git commit -m "feat(webhook): fix worker — incremental drive persistence + age
 - Consumes: `fixError` column (Task 2).
 - Produces: `WorkItemView.fixError?: string | null`; the panel renders `Fix failed: <reason>` on an `open` item carrying one — the existing Fix it button doubles as the retry.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `work-items.test.ts` — add (reusing the file's existing fake-db fixture pattern):
 
@@ -986,12 +988,12 @@ it('state matrix: an open item with a failed fix shows the honest reason and sti
 
 (Add `fixError: null` to the test's `item()` factory defaults.)
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `pnpm --filter dashboard exec vitest run src/lib/work-items.test.ts src/components/dashboard/services/services-workspace.test.tsx`
 Expected: FAIL — `fixError` undefined / reason not rendered.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `work-items.ts` — in `WorkItemView`:
 
@@ -1019,10 +1021,10 @@ and in the row mapping: `fixError: (r.fixError ?? null) as string | null,`
 
 (Match the failed-scan line's styling classes if they differ — reuse whatever `scanStatusLine`'s failure branch uses for its error text.)
 
-- [ ] **Step 4: Run to verify pass** — same command as Step 2; then the full services-workspace suite.
+- [x] **Step 4: Run to verify pass** — same command as Step 2; then the full services-workspace suite.
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/dashboard/src/lib/work-items.ts packages/dashboard/src/lib/work-items.test.ts packages/dashboard/src/components/dashboard/services/services-workspace.tsx packages/dashboard/src/components/dashboard/services/services-workspace.test.tsx
@@ -1043,7 +1045,7 @@ git commit -m "feat(services): surface fix failures honestly — reason line + r
 - Consumes: `transcript` column (Task 2); domain types from `./types`; `InMemoryContainerStore` terminal handling (Task 1 added `fix_failed`).
 - Produces: `getStoredContainer(db, installationIds, id): Promise<IssueContainer | null>` — tenancy-scoped projection of a persisted row (real transcript, real state, honest neutral constants for fields the row does not carry, nothing fabricated as a finding). Resolution order in both routes becomes: review-projection → stored row → sample.
 
-- [ ] **Step 1: Write the failing tests** — `stored-container.test.ts`:
+- [x] **Step 1: Write the failing tests** — `stored-container.test.ts`:
 
 ```ts
 import { describe, it, expect, vi } from 'vitest'
@@ -1091,12 +1093,12 @@ describe('getStoredContainer', () => {
 })
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `pnpm --filter dashboard exec vitest run src/lib/issue-pipeline/stored-container.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `stored-container.ts`**
+- [x] **Step 3: Implement `stored-container.ts`**
 
 ```ts
 // Projection of a PERSISTED IssueContainer row (the fix worker's writes) into
@@ -1194,12 +1196,12 @@ const container =
 
 with `import { getStoredContainer } from "@/lib/issue-pipeline/stored-container";` — the stored row (real fix run) now streams its actual transcript and, at `ready`, passes `canApprove` in the approve route. (Read the approve route before editing: keep Eng2's post-merge ordering — store-save first, then the staged work-item hook — and verify its save path persists the approved state for stored rows via `PrismaContainerStore.save` on the same `issueContainer` table; if so nothing more is needed.)
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `pnpm --filter dashboard exec vitest run src/lib/issue-pipeline/ src/app/api`
 Expected: PASS (stream/approve suites keep passing — sample fallback intact for non-persisted ids).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/dashboard/src/lib/issue-pipeline/stored-container.ts packages/dashboard/src/lib/issue-pipeline/stored-container.test.ts "packages/dashboard/src/app/api/containers/[id]/stream/route.ts" "packages/dashboard/src/app/api/containers/[id]/approve/route.ts"
@@ -1210,10 +1212,10 @@ git commit -m "feat(dashboard): stream/approve resolve stored fix containers —
 
 ### Task 8: Full-suite verification + checkpoint report (no commit unless fixes needed)
 
-- [ ] **Step 1: Dashboard** — `pnpm --filter dashboard exec vitest run` → all green.
-- [ ] **Step 2: Webhook** — `pnpm --filter @arete/webhook exec vitest run` → all green; `pnpm --filter @arete/webhook exec tsc --noEmit` → clean.
-- [ ] **Step 3: Push the lane branch** — `git push origin stroland02/Engineer-4`.
-- [ ] **Step 4: Checkpoint report to the PM**, flagging integration prerequisites per the checkpoint-deps rule:
+- [x] **Step 1: Dashboard** — `pnpm --filter dashboard exec vitest run` → all green.
+- [x] **Step 2: Webhook** — `pnpm --filter @arete/webhook exec vitest run` → all green; `pnpm --filter @arete/webhook exec tsc --noEmit` → clean.
+- [x] **Step 3: Push the lane branch** — `git push origin stroland02/Engineer-4`.
+- [x] **Step 4: Checkpoint report to the PM**, flagging integration prerequisites per the checkpoint-deps rule:
   - Migration `add_container_transcript_work_item_fix_error` needs `prisma migrate deploy` + client regeneration on preview.
   - `ContainerState` gains `fix_failed`; `transcript` read path — **Eng2 ack required** (spec §8).
   - Worker process restart required (`pnpm worker` now also consumes `fix-workitem`).

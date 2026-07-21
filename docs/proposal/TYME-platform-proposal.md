@@ -618,3 +618,23 @@ Military decision-making framework applied to continuous software improvement:
 *Document prepared: 2026-07-09*
 *Status: Brainstorming phase — design doc and implementation planning pending*
 *Next step: Finalize design sections, write spec to `docs/superpowers/specs/`, transition to writing-plans skill*
+
+---
+
+## 15. As-Built Addendum — 2026-07-20 (architecture snapshot)
+
+*Appended at phase close (healing-loop cycle) to keep this proposal aligned with what is actually built. The original sections above are preserved as written on 2026-07-09; where they conflict, this addendum reflects reality.*
+
+**Status: the launch wedge is built and operating on localhost.** The platform is a pnpm monorepo of five packages plus a Python agents service:
+
+- **`@arete/db`** — Prisma 7.8/Postgres. Tenancy root: `Installation`; core models include `Repository`, `Review`, `ModelConnection` (BYO models, secrets encrypted at rest), `IssueContainer` (state, gates, target, pr, patch, findings, **transcript**), `WorkItem` (+ **fixError**), `ScanRun`, `ApprovalPrompt`, `AgentChatTurn`. Every read/write is scoped by `installationId`.
+- **`@arete/webhook`** — Express service: GitHub/GitLab/Stripe receivers, OAuth connectors, PR-review pipeline over BullMQ queues (`review-pr`/`review-pr-heavy`, `approval-exec`, **`fix-workitem`**), staging send (real octokit PRs), code-map indexing, auto-scan trigger, **fix worker** (incremental container-state persistence against the agents fix contract). Internal service-to-service surface behind a shared bearer token, fail-closed.
+- **`packages/agents`** — FastAPI/LangGraph: `/review` (six specialist dimensions + critic grounding), `/scan` (repo-wide, evidence-gated findings), `/chat`, approvals apply/resume, auto-resolver verification core; agents `/fix` (patch author + verification) is the in-flight Eng3 deliverable. All model calls run on the tenant's connected model (BYO; Ollama/local supported) — no model, no run.
+- **`dashboard`** — Next.js 16: Services workspace (work-item inbox → triage → live fix console → staged PR → Send), Agents (per-agent chat), Code Map v2, Connections (repo + AI models with detect/pull/test/disconnect), Overview; account-state contract (disconnected / connected_idle / active) as the single source of truth.
+- **`@arete/orchestration` / `@arete/topology` / `@arete/net-guard`** — the PM⇄specialist work-floor model (dispatch, QA loop, tiered comms), code-map layout, and SSRF guarding for all outbound probes.
+
+**The core loop as of this phase (healing loop v1):** connect repo + model → auto-scan fills the work-item inbox with evidence-backed findings → human clicks **Fix it** → a real fix run authors a patch on the tenant checkout, verifies it, and advances an IssueContainer through enforced state transitions (`detecting → fanning_out → verifying → composing → ready`) with a persisted transcript → human **Approve** (first gate) → human **Send PR** (second gate) → a real pull request containing the actual diff. Failures are terminal and honest (`fix_failed` + reason; the item returns to the inbox for retry). Nothing auto-sends; both gates are server-enforced.
+
+**Standing invariants (enforced in code and CI, not aspiration):** per-tenant isolation on every query; human-in-the-loop moat on both gates; anti-fabrication (findings require real file:line evidence, patches must verify before they are called fixed); secrets encrypted, never logged, never returned; BYO model for every LLM call.
+
+*Addendum author: Engineer-4 lane, at phase close. Roadmap sequencing lives in `docs/roadmap/` and the wave plans; per-cycle detail in `docs/status/`.*
