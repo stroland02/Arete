@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Dict
 
+import structlog
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from pydantic import BaseModel, ValidationError
@@ -24,7 +25,7 @@ from arete_agents.llm.ollama import (
 )
 from arete_agents.models.fix import FixRequest, FixResponse
 from arete_agents.models.pr import LLMConfig, PRContext, ScanRequest
-from arete_agents.observability import init_observability
+from arete_agents.observability import configure_structlog, init_observability
 from arete_agents.orchestrator import ReviewOrchestrator
 from arete_agents.remediation import RemediationGraph
 from arete_agents.scan import ScanUnavailableError, run_scan
@@ -36,8 +37,11 @@ from arete_agents.tools.executor import CommandExecutionError, get_command_execu
 # unset; never raises (telemetry must never take the app down). Replaces the
 # old unconditional hardcoded gRPC exporter to localhost:4317.
 init_observability()
+# AFTER init_observability (OTel LoggingHandler already on root), per the
+# bootstrap ordering contract documented in observability.py.
+configure_structlog()
 
-_logger = logging.getLogger(__name__)
+_logger = structlog.get_logger(__name__).bind(component="server")
 
 app = FastAPI()
 

@@ -12,9 +12,11 @@ import atexit
 import logging
 import os
 import re
+import sys
 import uuid
 from importlib import metadata as importlib_metadata
 
+import structlog
 from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
@@ -303,3 +305,99 @@ def init_observability() -> None:
             "observability init failed; continuing without telemetry",
             exc_info=True,
         )
+
+
+# --- structlog pipeline ----------------------------------------------------
+
+_STRUCTLOG_CONFIGURED = False
+
+
+class _LiveStderr:
+    """Forwards writes to whatever `sys.stderr` currently is, instead of
+    binding to one stream object at handler-construction time.
+
+    DEVIATION (documented): plain `logging.StreamHandler()` captures
+    `sys.stderr` once, at construction. That is fine in production (stderr
+    never changes underneath a running process) but breaks under pytest's
+    `capsys`, which swaps/closes `sys.stderr` per test — the console handler
+    survives across tests via configure_structlog()'s own idempotency, so a
+    handler built during one test would write to a closed stream in the
+    next, corrupting output. Resolving `sys.stderr` per write keeps identical
+    real-world behavior while staying correct under capsys.
+    """
+
+    def write(self, message: str) -> None:
+        sys.stderr.write(message)
+
+    def flush(self) -> None:
+        sys.stderr.flush()
+
+
+def censor_processor(logger, method_name, event_dict):
+    """§5 redaction at log-creation time. Runs BEFORE any renderer or the
+    stdlib bridge, so secrets never reach console, file, or the OTLP
+    LoggingHandler — every sink sees only the censored event_dict."""
+    for key in list(event_dict):
+        value = event_dict[key]
+        if is_blocked_key(key):
+            event_dict[key] = REDACTED
+        elif isinstance(value, str):
+            event_dict[key] = scrub_text(value)
+    return event_dict
+
+
+def add_trace_context(logger, method_name, event_dict):
+    """Stamp trace_id/span_id (spec §3: every log line carries trace_id when
+    in a span). The OTel LoggingHandler adds them to the OTLP record on its
+    own; this makes the console/file JSON carry them too."""
+    ctx = trace.get_current_span().get_span_context()
+    if ctx.is_valid:
+        event_dict["trace_id"] = format(ctx.trace_id, "032x")
+        event_dict["span_id"] = format(ctx.span_id, "016x")
+    return event_dict
+
+
+def configure_structlog() -> None:
+    """structlog -> stdlib ProcessorFormatter bridge -> root handlers.
+
+    ORDERING (load-bearing): call AFTER init_observability() — the OTel
+    LoggingHandler must already sit on the root logger; this function only
+    ADDS a console handler and never clears existing root handlers. Existing
+    logging.getLogger() call sites flow through foreign_pre_chain, so they are
+    censored and trace-stamped identically.
+    """
+    global _STRUCTLOG_CONFIGURED
+    if _STRUCTLOG_CONFIGURED:
+        return
+    _STRUCTLOG_CONFIGURED = True
+
+    shared_processors = [
+        structlog.contextvars.merge_contextvars,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        censor_processor,  # before ANY renderer/bridge (§5)
+        add_trace_context,
+        structlog.processors.TimeStamper(fmt="iso"),
+    ]
+
+    structlog.configure(
+        processors=shared_processors
+        + [structlog.stdlib.ProcessorFormatter.wrap_for_formatter],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=True,
+    )
+
+    formatter = structlog.stdlib.ProcessorFormatter(
+        foreign_pre_chain=shared_processors,
+        processors=[
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            structlog.processors.JSONRenderer(),
+        ],
+    )
+    console_handler = logging.StreamHandler(_LiveStderr())  # see _LiveStderr
+    console_handler.setFormatter(formatter)
+    root = logging.getLogger()
+    root.addHandler(console_handler)
+    if root.level > logging.INFO or root.level == logging.NOTSET:
+        root.setLevel(logging.INFO)
