@@ -72,6 +72,21 @@ def test_blocked_attribute_key_is_redacted_but_token_counts_survive():
     assert finished.attributes["gen_ai.usage.input_tokens"] == 123
 
 
+def test_array_attribute_values_are_scrubbed():
+    provider, exporter = _provider_with_scrubber()
+    tracer = provider.get_tracer("test")
+    with tracer.start_as_current_span("llm.generate") as span:
+        span.set_attribute(
+            "gen_ai.request.headers",
+            ["Bearer sk-EXTREMELYSECRET12345", "no secrets here"],
+        )
+    [finished] = exporter.get_finished_spans()
+    headers = finished.attributes["gen_ai.request.headers"]
+    assert "sk-EXTREMELYSECRET12345" not in "".join(headers)
+    assert REDACTED in headers[0]
+    assert headers[1] == "no secrets here"
+
+
 def test_exception_event_and_status_are_scrubbed():
     provider, exporter = _provider_with_scrubber()
     tracer = provider.get_tracer("test")

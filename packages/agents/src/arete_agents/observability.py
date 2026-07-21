@@ -109,6 +109,15 @@ class ScrubbingSpanProcessor(SpanProcessor):
             if key in _URL_ATTR_KEYS:
                 return value.split("?", 1)[0]
             return scrub_text(value)
+        if isinstance(value, (list, tuple)):
+            return tuple(
+                (
+                    (element.split("?", 1)[0] if key in _URL_ATTR_KEYS else scrub_text(element))
+                    if isinstance(element, str)
+                    else element
+                )
+                for element in value
+            )
         return value
 
     def shutdown(self) -> None:  # pragma: no cover
