@@ -8,26 +8,34 @@ import { deriveOverviewSetup } from "./overview-setup";
 
 describe("deriveOverviewSetup — the three-state matrix", () => {
   it("disconnected → next step is 'Connect a repository', not complete", () => {
-    const s = deriveOverviewSetup({ repoConnected: false, hasReviews: false });
+    const s = deriveOverviewSetup({ repoConnected: false, modelConnected: false, hasReviews: false });
     expect(s.setupComplete).toBe(false);
     expect(s.nextStep?.label).toBe("Connect a repository");
     expect(s.doneCount).toBe(1); // only "Create your Kuma account"
   });
 
-  it("connected_idle → repo step done, next step is 'Open a pull request', NEVER 'Connect a repository'", () => {
-    const s = deriveOverviewSetup({ repoConnected: true, hasReviews: false });
+  it("repo connected, no model → next step is 'Connect an AI model', NEVER 'Connect a repository'", () => {
+    const s = deriveOverviewSetup({ repoConnected: true, modelConnected: false, hasReviews: false });
     expect(s.setupComplete).toBe(false);
-    expect(s.nextStep?.label).toBe("Open a pull request");
+    expect(s.nextStep?.label).toBe("Connect an AI model");
     // The regression this guards: a connected repo must never prompt to connect one.
     expect(s.nextStep?.label).not.toBe("Connect a repository");
     expect(s.steps.find((x) => x.label === "Connect a repository")?.done).toBe(true);
     expect(s.doneCount).toBe(2);
   });
 
+  it("repo + model connected, no reviews → next step is 'Open a pull request'", () => {
+    const s = deriveOverviewSetup({ repoConnected: true, modelConnected: true, hasReviews: false });
+    expect(s.setupComplete).toBe(false);
+    expect(s.nextStep?.label).toBe("Open a pull request");
+    expect(s.steps.find((x) => x.label === "Connect an AI model")?.done).toBe(true);
+    expect(s.doneCount).toBe(3);
+  });
+
   it("active → setup complete, no next step", () => {
-    const s = deriveOverviewSetup({ repoConnected: true, hasReviews: true });
+    const s = deriveOverviewSetup({ repoConnected: true, modelConnected: true, hasReviews: true });
     expect(s.setupComplete).toBe(true);
     expect(s.nextStep).toBeUndefined();
-    expect(s.doneCount).toBe(4);
+    expect(s.doneCount).toBe(5);
   });
 });

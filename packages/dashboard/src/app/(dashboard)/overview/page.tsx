@@ -179,7 +179,9 @@ export default async function DashboardOverview({
                       <p className="mt-0.5 text-xs leading-5 text-content-muted">
                         {nextStep.label === "Connect a repository"
                           ? "Install the Kuma GitHub App on the repo you want reviewed. Every pull request is then reviewed automatically."
-                          : "Open a pull request on a connected repository — the six specialists review it and post verified findings back to the PR."}
+                          : nextStep.label === "Connect an AI model"
+                            ? "Connect the model Kuma runs reviews on — Claude Code recommended. Local · Ollama is the free default."
+                            : "Open a pull request on a connected repository — the six specialists review it and post verified findings back to the PR."}
                       </p>
                     </div>
                     {nextStep.label === "Connect a repository" && (
@@ -188,6 +190,15 @@ export default async function DashboardOverview({
                         className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-accent-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/90"
                       >
                         Connect a repository
+                        <IconArrowRight className="h-4 w-4" />
+                      </Link>
+                    )}
+                    {nextStep.label === "Connect an AI model" && (
+                      <Link
+                        href="/connections/ai-models"
+                        className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-accent-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/90"
+                      >
+                        Connect an AI model
                         <IconArrowRight className="h-4 w-4" />
                       </Link>
                     )}

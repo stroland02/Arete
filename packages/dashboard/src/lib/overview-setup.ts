@@ -24,11 +24,14 @@ export interface OverviewSetup {
 }
 
 export function deriveOverviewSetup(
-  state: Pick<AccountState, "repoConnected" | "hasReviews">,
+  state: Pick<AccountState, "repoConnected" | "modelConnected" | "hasReviews">,
 ): OverviewSetup {
   const steps: SetupStep[] = [
     { label: "Create your Kuma account", done: true },
     { label: "Connect a repository", done: state.repoConnected },
+    // Kuma can't review without a model — a real, account-state-backed step
+    // (modelConnected), never a fabricated checkmark. Claude Code recommended.
+    { label: "Connect an AI model", done: state.modelConnected },
     { label: "Open a pull request", done: state.hasReviews },
     { label: "Get your first verified review", done: state.hasReviews },
   ];
