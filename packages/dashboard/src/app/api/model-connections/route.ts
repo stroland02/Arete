@@ -60,17 +60,32 @@ export async function POST(req: NextRequest): Promise<Response> {
     }
   }
 
-  const apiKeyEncrypted = apiKey ? encryptCredentials({ apiKey }) : null;
   // Connecting a model (re)ACTIVATES it: the active model everywhere is the
   // newest ModelConnection (resolveActiveLlmForChat / resolveModelConnectionForReview,
-  // orderBy createdAt desc). Without bumping createdAt on re-connect, a user who
-  // connected provider B after A could never switch back to A — the upsert would
-  // update A's row in place and A would stay older. Bumping createdAt makes
-  // "Connect" mean "use this one now", so switching providers is a single click.
+  // orderBy createdAt desc). Bumping createdAt on re-connect makes "Connect" mean
+  // "use this one now", so switching providers is a single click.
+  //
+  // KEY SAFETY: only overwrite the stored (encrypted) key when a NEW key is
+  // provided. Re-connecting a saved api-key provider WITHOUT re-entering the key
+  // (e.g. to promote it) must PRESERVE the existing key — providers don't
+  // re-issue keys, so a null overwrite would be an unrecoverable loss.
+  const update: {
+    model: string;
+    baseUrl: string | null;
+    createdAt: Date;
+    apiKeyEncrypted?: string | null;
+  } = { model, baseUrl, createdAt: new Date() };
+  if (apiKey) update.apiKeyEncrypted = encryptCredentials({ apiKey });
   const row = await db.modelConnection.upsert({
     where: { installationId_provider: { installationId: target, provider } },
-    create: { installationId: target, provider, model, baseUrl, apiKeyEncrypted },
-    update: { model, baseUrl, apiKeyEncrypted, createdAt: new Date() },
+    create: {
+      installationId: target,
+      provider,
+      model,
+      baseUrl,
+      apiKeyEncrypted: apiKey ? encryptCredentials({ apiKey }) : null,
+    },
+    update,
   });
 
   // Auto-scan on connect (work-item inbox): connecting a model may complete the
