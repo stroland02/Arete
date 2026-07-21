@@ -18,6 +18,7 @@ export async function createServer(): Promise<express.Application> {
   const logApprovals = logger.child({ component: 'approvals' })
   const logScan = logger.child({ component: 'scan' })
   const logFix = logger.child({ component: 'fix' })
+  const logAlerting = logger.child({ component: 'alerting' })
   const { App } = await import('@octokit/app')
   const { createNodeMiddleware } = await import('@octokit/webhooks')
 
@@ -292,6 +293,26 @@ export async function createServer(): Promise<express.Application> {
       return
     }
     res.status(202).json({ started: true })
+  })
+
+  // Alertmanager receiver (healing-loop observability, Phase 2 Task 3). Same
+  // shared internal-token guard as /fix/trigger and the rest of the
+  // service-to-service surface — Alertmanager authenticates with the
+  // INTERNAL_API_TOKEN bearer via infra/alertmanager.yml's http_config. The
+  // handler (handleIncomingAlert) records/upserts Incident rows keyed by
+  // (installationId, fingerprint) and NEVER throws; this route additionally
+  // catches any unexpected rejection so a bug in the handler can never 500
+  // Alertmanager into a retry storm — the internal-token guard above is the
+  // ONLY non-2xx outcome on this path (task-3-brief.md).
+  server.post('/alerts/incoming', requireInternalToken, express.json(), async (req, res) => {
+    try {
+      const { handleIncomingAlert } = await import('./alerting/receiver.js')
+      const result = await handleIncomingAlert(req.body)
+      res.status(200).json(result)
+    } catch (err) {
+      logAlerting.error({ err }, 'failed to process incoming alert batch')
+      res.status(200).json({ created: 0, updated: 0 })
+    }
   })
 
   const { createModelConnectionTestHandler } = await import('./model-connections/test-handler.js')

@@ -107,6 +107,44 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    depends_on:
+      alertmanager:
+        condition: service_healthy
+
+  # Phase 2 Task 3 — receives firing/resolved alerts from Prometheus and posts
+  # them to the webhook service's token-guarded receiver (POST
+  # /alerts/incoming). See infra/alertmanager.yml for routing + auth detail.
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    # Compose materializes /run/secrets/internal_api_token from the host's
+    # INTERNAL_API_TOKEN env var (native `secrets:` construct below) — the
+    # real token is never written into the checked-in alertmanager.yml.
+    secrets:
+      - internal_api_token
+    ports:
+      - "9093:9093"  # UI / API (POST /api/v2/alerts for synthetic testing)
+    # The webhook service is NOT containerized (runs on the host via `pnpm
+    # dev`, :3001 per .env) — this lets the alertmanager container reach it.
+    # Docker Desktop resolves host.docker.internal natively; `host-gateway`
+    # makes the same hostname resolve on Linux Docker too.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9093/-/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+# Compose "secrets" sourced from an environment variable (Compose Spec, no
+# shell/envsubst hack needed): the value of INTERNAL_API_TOKEN (from the
+# shell env or the .env file docker compose auto-loads) is materialized as a
+# file at /run/secrets/internal_api_token inside any service that declares
+# it — exactly what alertmanager.yml's `credentials_file` expects.
+secrets:
+  internal_api_token:
+    environment: INTERNAL_API_TOKEN
 
 volumes:
   postgres_data:

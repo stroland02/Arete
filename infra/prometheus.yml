@@ -12,6 +12,13 @@ global:
 rule_files:
   - /etc/prometheus/rules/arete-alerts.yml
 
+# Phase 2 Task 3: hand firing/resolved alerts to Alertmanager, which owns
+# grouping/dedup/routing to the webhook receiver (infra/alertmanager.yml).
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
 scrape_configs:
   - job_name: 'otel-collector'
     static_configs:

@@ -3,7 +3,9 @@ export {
   SECRET_VALUE_PATTERNS,
   REDACTED,
   scrubText,
+  scrubLogValue,
   stripUrlQuery,
+  clearUrlQuery,
   PINO_REDACT_PATHS,
 } from './redaction.js'
 export { ScrubbingSpanProcessor } from './scrub-processor.js'

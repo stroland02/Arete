@@ -211,3 +211,71 @@ describe('POST /fix/trigger route wiring', () => {
     expect(driveFix).not.toHaveBeenCalled()
   })
 })
+
+// SECURITY (mutation test for Global Constraint 10 — a gate never observed
+// failing is not known to work): Alertmanager posts firing/resolved alerts to
+// this route. It sits behind the SAME internal-token middleware /fix/trigger
+// uses (server.ts requireInternalToken) — no second auth path. Alertmanager
+// retries on non-2xx, so a malformed payload must still 2xx (logged, not
+// persisted) while auth failure is the ONLY non-2xx outcome (task-3-brief.md).
+describe('POST /alerts/incoming route wiring', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.stubEnv('INTERNAL_API_TOKEN', 'test-internal-token')
+  })
+
+  async function buildWith(handleIncomingAlert: (body: unknown) => Promise<any>): Promise<Application> {
+    vi.doMock('@arete/db', () => ({ PrismaClient: vi.fn() }))
+    vi.doMock('./alerting/receiver.js', () => ({ handleIncomingAlert }))
+    const { createServer } = await import('./server.js')
+    return createServer()
+  }
+
+  const authed = (app: Application) =>
+    request(app).post('/alerts/incoming').set('Authorization', 'Bearer test-internal-token')
+
+  it('401s a request with NO internal token and writes no row (mutation test for the gate)', async () => {
+    const handleIncomingAlert = vi.fn()
+    const app = await buildWith(handleIncomingAlert)
+
+    const res = await request(app).post('/alerts/incoming').send({ alerts: [] })
+
+    expect(res.status).toBe(401)
+    expect(handleIncomingAlert).not.toHaveBeenCalled()
+  })
+
+  it('401s a request with a WRONG internal token', async () => {
+    const handleIncomingAlert = vi.fn()
+    const app = await buildWith(handleIncomingAlert)
+
+    const res = await request(app)
+      .post('/alerts/incoming')
+      .set('Authorization', 'Bearer not-the-right-token')
+      .send({ alerts: [] })
+
+    expect(res.status).toBe(401)
+    expect(handleIncomingAlert).not.toHaveBeenCalled()
+  })
+
+  it('200s and forwards the body to handleIncomingAlert for a correctly authed request', async () => {
+    const handleIncomingAlert = vi.fn().mockResolvedValue({ created: 1, updated: 0 })
+    const app = await buildWith(handleIncomingAlert)
+    const body = { alerts: [{ status: 'firing', labels: { alertname: 'X' } }] }
+
+    const res = await authed(app).send(body)
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ created: 1, updated: 0 })
+    expect(handleIncomingAlert).toHaveBeenCalledWith(body)
+  })
+
+  it('still 2xx when handleIncomingAlert unexpectedly rejects — never 500s Alertmanager into a retry loop', async () => {
+    const handleIncomingAlert = vi.fn().mockRejectedValue(new Error('unexpected'))
+    const app = await buildWith(handleIncomingAlert)
+
+    const res = await authed(app).send({ alerts: [] })
+
+    expect(res.status).toBeGreaterThanOrEqual(200)
+    expect(res.status).toBeLessThan(300)
+  })
+})
