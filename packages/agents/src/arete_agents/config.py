@@ -55,6 +55,15 @@ class Settings(BaseSettings):
     eval_judge_tier: Literal["opus", "sonnet", "haiku"] = "sonnet"
     eval_f1_threshold: float = 0.05
 
+    # Bounds the review LangGraph's fan-out (orchestrator.py's
+    # ReviewOrchestrator.run(), Send() per file x agent -- up to 6 agents per
+    # file, so an unbounded 20-file PR is ~120 concurrent provider calls).
+    # Passed as config={"max_concurrency": ...} to graph.invoke(), the same
+    # mechanism remediation.py:126 already uses. 8 is a sane starting default,
+    # not a tuned value -- tuning needs a real large PR against a real
+    # Anthropic key, which is out of scope here.
+    review_max_concurrency: int = 8
+
     # Base URL of the packages/webhook Node/Express service, reached FROM this
     # process only for the internal, token-guarded write-back surface
     # (POST /internal/memory -- Phase 2 Task 8, see tools/memory.py). Mirrors

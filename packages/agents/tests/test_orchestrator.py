@@ -963,3 +963,22 @@ def test_synthesize_reviews_applies_noise_decisions_from_state(sample_pr):
 
     comment = update["final_result"].file_reviews[0].comments[0]
     assert comment.noise_state == "SILENCED"
+
+
+def test_orchestrator_bounds_review_fanout_concurrency(sample_pr, cyclic_llm):
+    """The review graph's Send() fan-out is one LLM call per (file x agent)
+    with no bound today -- a 20-file PR is ~120 concurrent provider calls.
+    Task 9: graph.invoke must be called with config={"max_concurrency":
+    settings.review_max_concurrency}, the same mechanism remediation.py:126
+    already uses to bound its own graph.invoke."""
+    from arete_agents.config import get_settings
+    from arete_agents.orchestrator import ReviewOrchestrator
+
+    orchestrator = ReviewOrchestrator(llm=cyclic_llm)
+    orchestrator.graph = MagicMock(wraps=orchestrator.graph)
+
+    orchestrator.run(sample_pr)
+
+    orchestrator.graph.invoke.assert_called_once()
+    _, kwargs = orchestrator.graph.invoke.call_args
+    assert kwargs.get("config", {}).get("max_concurrency") == get_settings().review_max_concurrency
