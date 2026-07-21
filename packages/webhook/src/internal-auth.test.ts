@@ -69,13 +69,13 @@ describe('createInternalAuthMiddleware', () => {
   })
 
   it('reads the token per-request, not at construction time', () => {
-    let token: string | undefined
-    const mw = createInternalAuthMiddleware(() => token)
+    const state: { token: string | undefined } = { token: undefined }
+    const mw = createInternalAuthMiddleware(() => state.token)
     const res503 = fakeRes()
     mw(req('Bearer late'), res503, vi.fn())
     expect(res503.statusCode).toBe(503)
 
-    token = 'late'
+    state.token = 'late'
     const res = fakeRes()
     const next = vi.fn()
     mw(req('Bearer late'), res, next)

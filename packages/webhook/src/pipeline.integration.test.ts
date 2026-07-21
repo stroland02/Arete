@@ -216,14 +216,14 @@ async function buildApp(mocks: Mocks): Promise<Application> {
   vi.doMock('@octokit/app', () => {
     class App {
       webhooks: {
-        handlers: Map<string, Function[]>
-        on: (event: string | string[], handler: Function) => void
+        handlers: Map<string, ((...args: any[]) => any)[]>
+        on: (event: string | string[], handler: (...args: any[]) => any) => void
       }
       constructor(_opts: unknown) {
-        const handlers = new Map<string, Function[]>()
+        const handlers = new Map<string, ((...args: any[]) => any)[]>()
         this.webhooks = {
           handlers,
-          on(event: string | string[], handler: Function) {
+          on(event: string | string[], handler: (...args: any[]) => any) {
             for (const e of Array.isArray(event) ? event : [event]) {
               if (!handlers.has(e)) handlers.set(e, [])
               handlers.get(e)!.push(handler)
@@ -245,7 +245,7 @@ async function buildApp(mocks: Mocks): Promise<Application> {
           try {
             const payload = JSON.parse(raw)
             const event = req.headers['x-github-event']
-            const handlers: Function[] = webhooks.handlers.get(event) ?? []
+            const handlers: ((...args: any[]) => any)[] = webhooks.handlers.get(event) ?? []
             for (const handler of handlers) {
               await handler({ octokit: mocks.octokit, payload })
             }
