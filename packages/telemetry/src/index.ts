@@ -6,3 +6,4 @@ export {
   stripUrlQuery,
   PINO_REDACT_PATHS,
 } from './redaction.js'
+export { ScrubbingSpanProcessor } from './scrub-processor.js'
