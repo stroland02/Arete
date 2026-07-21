@@ -146,3 +146,78 @@ a design decision or a schema change rather than a patch:
   the same phase: an entry asserting a live cross-tenant leak that no longer
   exists misstates the security posture of shipped code, which is the same
   hazard as a report claiming a hole is closed when it is not.
+
+**Data pipeline + model harness efficiency (Phase 2 Tasks 12/13, 2026-07-21 —
+full report at `docs/roadmap/2026-07-21-phase-2-efficiency-review.md`)**
+
+Only one change was measured-and-justified this pass (`ReviewComment.reviewId`
+index, landed). Everything below was found but deliberately NOT fixed, because
+fixing it would have meant changing something without a measurement to justify
+it — each carries the evidence gathered so a later pass can measure and decide
+rather than guess.
+
+- **`ReviewComment` may still be missing indexes on `severity`, `category`, and
+  `noiseState`.** The `reviewId` index (landed) cut 25-66% off the four hottest
+  dashboard queries at a synthetic 750k-row/10-tenant scale, but that number is
+  the join-index's contribution entangled with whatever these per-column
+  filters/groupBys would add on their own — not isolated. Measure each
+  individually (`EXPLAIN ANALYZE` with/without a trial index, same dataset)
+  before adding any of them.
+- **`getTrendSeries`/`getDashboardsViewModel`'s review-row fetch has no `take`
+  limit** (`packages/dashboard/src/lib/queries.ts`) — fetches every
+  `Review.createdAt` a tenant has ever produced to bucket client-side. Fast
+  today (0.9-6ms at 30k seeded reviews, backed by `Review`'s existing
+  `(repositoryId, createdAt)` index) — the risk isn't Postgres query time, it's
+  unbounded row-count serialization into the Node process for an
+  installation with years of history. No fix without a measurement at that
+  scale, which doesn't exist yet.
+- **Review job retries duplicate the per-agent retry.**
+  `packages/webhook/src/worker.ts:94-113`'s `processGitHubPullRequest` re-throws
+  any `runReviewPipeline` failure, and `enqueueReviewJob`'s
+  `DEFAULT_JOB_OPTIONS` (`attempts: 3`, `queue.ts:152-157`) then re-runs the
+  **entire** multi-file, multi-agent review from scratch — on top of each
+  agent's own `with_retry(stop_after_attempt=2)` (`agents/base.py:191`). The
+  fix-drive queue does NOT have this problem: `driveFix` never throws on a
+  business failure (`fix/trigger.ts:167-168`), so its `attempts: 3` only fires
+  on a genuine infra exception. Not measured live (needs a real induced
+  transient provider failure mid-review to count actual duplicated API calls).
+  Likely fix, once measured: distinguish "some agents failed, review still
+  produced a partial result" (already resilient, should not retry the job)
+  from "the whole pipeline crashed for an infra reason" (should retry).
+- **Review's real LLM concurrency is unbounded per review, not bounded by
+  `REVIEW_QUEUE_CONCURRENCY=5`.** `orchestrator.py:353-381`'s LangGraph
+  `StateGraph` fans out via `Send` — one node per (file × agent) pair, no
+  `max_concurrency` on `graph.invoke`. A 20-file PR reviewed by 6 agents is
+  ~120 concurrent LLM calls for ONE review; five concurrent reviews (the
+  queue's own cap) is up to ~600 simultaneous provider calls. The likely real
+  bottleneck for review throughput is the provider's own rate limit, not the
+  `5`. Not measured (needs a real large PR + a real API key); measure actual
+  concurrent `gen_ai.*` spans per review once production volume exists.
+- **Fix-authoring tier for 3 of 6 dimensions (performance, quality,
+  test_coverage) is haiku** — deliberate (fix authoring reuses that dimension's
+  configured review tier, `fix_pipeline.py:312-313` + `llm/base.py:52-67`), not
+  an oversight, but unverified whether haiku is good enough at the harder
+  generative task of authoring a complete file replacement (vs. its original
+  job of critiquing a diff). No Anthropic key in this environment to measure
+  tier-quality difference. Before changing: build a small regression corpus of
+  known-fixable issues and measure haiku-vs-sonnet-authored patch pass rate —
+  a tier change alters output quality and needs a way to detect a regression.
+- **`MAX_TOOL_ROUNDS`/`MAX_PATCH_CHARS` don't gate the fix pipeline at all**
+  (they're review-path-only constants; `fix_pipeline.author_patch` has no tool
+  loop and never truncates the source diff) — a correction to how those
+  budgets get talked about, not a bug. The budgets that DO gate a fix drive
+  (`DEFAULT_LLM_TIMEOUT_SECONDS=60`, `DEFAULT_FIX_TIMEOUT_SECONDS=280`,
+  `max_tokens=4096`) were never approached in 10 synthetic Ollama-backed runs —
+  revisit once real production fix-drive telemetry exists (needs a real
+  Anthropic key somewhere real traffic flows).
+- **`gen_ai.provider.name` reports `"openai"` for Ollama-backed LangChain
+  calls** (confirmed via ClickHouse on this session's synthetic runs) — an
+  `opentelemetry-instrumentation-langchain` provider-detection artifact from
+  `ChatOllama`'s OpenAI-compatible client shape. Low-impact while production
+  traffic is Anthropic-backed, but any deployment that falls back to the local
+  Ollama safety net (`deployment_tier="local"`) would misattribute those calls'
+  cost/usage in any dashboard grouped by provider.
+- **ClickHouse TTLs are configured correctly (30d raw / 90d rollup,
+  `ttl_only_drop_parts=1`) but unverified live** — every row in this dev
+  ClickHouse is hours old, nowhere near the retention window. Revisit once
+  real aged data exists to confirm parts actually drop.

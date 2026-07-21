@@ -303,6 +303,17 @@ model ReviewComment {
 
   createdAt        DateTime @default(now())
   review           Review   @relation(fields: [reviewId], references: [id])
+
+  /// Added Phase 2 Task 12 (measured): this table carried ONLY its primary
+  /// key -- no index on the FK every dashboard read joins through (queries.ts
+  /// getDashboardViewModel/getDashboardsViewModel/getAgentActivity/
+  /// getFindingsByPath all join Review->ReviewComment on reviewId). At a
+  /// synthetic 75k-row seed, EXPLAIN ANALYZE showed Postgres sequential-
+  /// scanning the whole table for every one of those reads (33-72ms each;
+  /// see docs/roadmap/2026-07-21-phase-2-efficiency-review.md Task 12 for the
+  /// full before/after). A single index on the join column is the smallest
+  /// change that removes the seq scan from all of them at once.
+  @@index([reviewId])
 }
 
 model ApprovalPrompt {
