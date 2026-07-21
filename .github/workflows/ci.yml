@@ -170,6 +170,9 @@ jobs:
           - package: net-guard
             filter: "@arete/net-guard"
             commands: "typecheck test"
+          - package: telemetry
+            filter: "@arete/telemetry"
+            commands: "typecheck test"
           - package: db
             filter: "@arete/db"
             commands: "build lint"
