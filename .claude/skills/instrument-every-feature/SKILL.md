@@ -63,9 +63,7 @@ A green build says nothing about telemetry. Drive one span, one metric batch,
 and one log through the REAL bootstrap and verify each endpoint:
 
 ```bash
-# Collector lives in the default stack once Lane B's Task 11 promotes it;
-# until then it is in infra/docker-compose-otel.yml — use whichever exists:
-docker compose -f infra/docker-compose.yml up -d 2>/dev/null || docker compose -f infra/docker-compose-otel.yml up -d
+docker compose -f infra/docker-compose.yml up -d
 # exercise your code path, then check each signal independently:
 curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:4318/v1/traces  -H 'Content-Type: application/json' -d '{"resourceSpans":[]}'   # expect 200
 curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:4318/v1/metrics -H 'Content-Type: application/json' -d '{"resourceMetrics":[]}'  # expect 200

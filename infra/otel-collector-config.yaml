@@ -6,7 +6,20 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
+extensions:
+  # Backs the compose healthcheck (:13133/) — surfaces readiness/liveness
+  # without requiring curl/wget in the (minimal) contrib image.
+  health_check:
+    endpoint: 0.0.0.0:13133
+
 processors:
+  # Must run first in every pipeline: sheds load under memory pressure
+  # before the (potentially large) redaction/transform/batch work runs.
+  # Values per the clickhouseexporter/collector recommended defaults.
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 25
   # §5 redaction, collector-side (defense in depth behind the in-process
   # scrubbers). Allowlist mode OFF: allow_all_keys + key blocklist + value
   # patterns. Key patterns match whole segments so gen_ai.usage.input_tokens
@@ -50,7 +63,22 @@ exporters:
     create_schema: false
     traces_table_name: otel_traces
     logs_table_name: otel_logs
-    metrics_table_name: otel_metrics
+    # metrics_table_name (flat, deprecated) let the exporter derive
+    # sub-table names with its own fixed suffixes, which disagree with our
+    # owned DDL for exponential histograms (_exp_histogram here vs the
+    # exporter's default _exponential_histogram). Name every sub-table
+    # explicitly so create_schema: false always targets a real table.
+    metrics_tables:
+      gauge:
+        name: otel_metrics_gauge
+      sum:
+        name: otel_metrics_sum
+      summary:
+        name: otel_metrics_summary
+      histogram:
+        name: otel_metrics_histogram
+      exponential_histogram:
+        name: otel_metrics_exp_histogram
     timeout: 5s
     retry_on_failure:
       enabled: true
@@ -67,16 +95,17 @@ exporters:
     verbosity: basic
 
 service:
+  extensions: [health_check]
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [redaction, transform, batch]
+      processors: [memory_limiter, redaction, transform, batch]
       exporters: [clickhouse, otlp/jaeger]
     metrics:
       receivers: [otlp]
-      processors: [redaction, batch]
+      processors: [memory_limiter, redaction, batch]
       exporters: [clickhouse, prometheus]
     logs:
       receivers: [otlp]
-      processors: [redaction, transform, batch]
+      processors: [memory_limiter, redaction, transform, batch]
       exporters: [clickhouse]

@@ -58,11 +58,19 @@ services:
       - "4317:4317"  # OTLP gRPC in
       - "4318:4318"  # OTLP HTTP in (services default here)
       - "8889:8889"  # Prometheus scrape endpoint
+      - "13133:13133"  # health_check extension (see note below)
+    # No compose-level healthcheck here: otel/opentelemetry-collector-contrib
+    # is distroless (verified via `docker export` — the image contains only
+    # the otelcol-contrib binary, ca-certificates, and config; no /bin/sh,
+    # wget, curl, or nc), so there is no binary Docker can exec inside the
+    # container to probe the health_check extension's :13133 endpoint. The
+    # extension is enabled below anyway (standard practice) so the endpoint
+    # is reachable from the host / external tooling for manual/CI checks.
     depends_on:
       clickhouse:
         condition: service_healthy
       jaeger:
-        condition: service_started
+        condition: service_healthy
 
   # Jaeger v2 all-in-one (OTLP-native). v1 + the npm Jaeger exporter are
   # legacy; the collector exports OTLP to jaeger:4317 on the compose network.
@@ -70,6 +78,15 @@ services:
     image: jaegertracing/jaeger:2.13.0
     ports:
       - "16686:16686"  # UI
+    healthcheck:
+      # Jaeger v2 is itself collector-core based and ships its own
+      # health_check extension on :13133 (busybox/wget confirmed present
+      # in this image); "/status" is the extension's healthcheckv2 path,
+      # "/" 404s.
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/status"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   prometheus:
     image: prom/prometheus:v2.52.0
@@ -77,6 +94,11 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
     ports:
       - "9090:9090"  # UI
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_data:
