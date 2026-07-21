@@ -3,10 +3,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // handleIncomingAlert is the pure business-logic core behind POST
 // /alerts/incoming (route wiring + the auth-rejection mutation test live in
 // server.test.ts, matching the split already used for /fix/trigger). These
-// tests drive it against a fake prisma.incident store that mimics the real
+// tests drive it against a fake prisma store that mimics the real
 // (installationId, fingerprint) compound-unique semantics (Task 2's
 // @@unique([installationId, fingerprint])) so the idempotency, resolution,
-// scrubbing, and tenancy behavior can be asserted without a real Postgres.
+// scrubbing, and attribution behavior can be asserted without a real Postgres.
+//
+// Tenancy (review fix round 1, finding C1): the receiver NO LONGER reads
+// tenancy from the payload. Every alert is attributed to the configured
+// platform installation, so a spoofed `installationId` label is structurally
+// incapable of steering a row into a customer's tenant. The tests below are
+// the mutation tests for that gate (Global Constraint 10).
 
 interface FakeIncidentRow {
   id: string
@@ -16,7 +22,7 @@ interface FakeIncidentRow {
   severity: string
   status: string
   summary: string
-  payload: unknown
+  payload: any
   startsAt: Date
   resolvedAt: Date | null
   createdAt: Date
@@ -24,8 +30,11 @@ interface FakeIncidentRow {
   workItemId: string | null
 }
 
-function makeFakeIncidentStore() {
+const PLATFORM_ID = 'inst-platform'
+
+function makeFakeIncidentStore(knownInstallationIds: string[] = [PLATFORM_ID]) {
   const rows = new Map<string, FakeIncidentRow>()
+  const known = new Set(knownInstallationIds)
   let seq = 0
   const key = (installationId: string, fingerprint: string) => `${installationId}::${fingerprint}`
 
@@ -72,7 +81,19 @@ function makeFakeIncidentStore() {
       return created
     }),
   }
-  return { incident, rows }
+
+  // The receiver validates ARETE_PLATFORM_INSTALLATION_ID against a real
+  // Installation row before attributing anything to it (finding I6 — a
+  // misconfigured id must be detectable, not swallowed as a generic foreign
+  // key error inside the per-alert catch).
+  const installation = {
+    findUnique: vi.fn(async (args: any) => {
+      const id = args.where.id
+      return known.has(id) ? { id, owner: 'arete-platform', provider: 'github' } : null
+    }),
+  }
+
+  return { incident, installation, rows }
 }
 
 function baseAlert(overrides: Record<string, unknown> = {}) {
@@ -81,14 +102,13 @@ function baseAlert(overrides: Record<string, unknown> = {}) {
     labels: {
       alertname: 'AreteReviewErrorRate',
       severity: 'critical',
-      installationId: 'inst-a',
     },
     annotations: {
       summary: 'Arete review error rate above 10%',
       description: 'more than 10% of runs failed',
     },
     startsAt: '2026-07-21T00:00:00Z',
-    fingerprint: 'fp-1',
+    fingerprint: 'fp1',
     ...overrides,
   }
 }
@@ -126,56 +146,125 @@ async function loadReceiver(store: ReturnType<typeof makeFakeIncidentStore>) {
     update: vi.fn(async () => ({})),
   }
   const repository = { findFirst: vi.fn(async () => null) }
-  vi.doMock('../db.js', () => ({ prisma: { incident: store.incident, workItem, repository } }))
+  vi.doMock('../db.js', () => ({
+    prisma: {
+      incident: store.incident,
+      installation: store.installation,
+      workItem,
+      repository,
+    },
+  }))
   return import('./receiver.js')
 }
 
 describe('handleIncomingAlert', () => {
   beforeEach(() => {
     vi.resetModules()
-    delete process.env.ARETE_PLATFORM_INSTALLATION_ID
+    process.env.ARETE_PLATFORM_INSTALLATION_ID = PLATFORM_ID
   })
 
-  // Platform-alert attribution (user ruling 2026-07-21). The three rules that
-  // actually ship carry no installationId label — a tenant id can never be a
-  // metric dimension — so without this fallback the entire alerting chain
-  // would work for hand-labelled synthetic alerts only, and every real alert
-  // would be silently dropped.
-  describe('platform-wide alerts with no installationId label', () => {
-    it('attributes to the configured platform installation', async () => {
-      process.env.ARETE_PLATFORM_INSTALLATION_ID = 'inst-platform'
+  // ---------------------------------------------------------------------
+  // C1 — tenancy is never taken from the payload.
+  // ---------------------------------------------------------------------
+  describe('tenancy attribution (review finding C1)', () => {
+    it('attributes a platform alert to the configured platform installation', async () => {
       const store = makeFakeIncidentStore()
       const { handleIncomingAlert } = await loadReceiver(store)
 
-      const alert = baseAlert()
-      delete (alert.labels as Record<string, unknown>).installationId
-
-      expect(await handleIncomingAlert({ alerts: [alert] })).toEqual({ created: 1, updated: 0 })
-      expect([...store.rows.values()][0]).toMatchObject({ installationId: 'inst-platform' })
+      expect(await handleIncomingAlert({ alerts: [baseAlert()] })).toEqual({ created: 1, updated: 0 })
+      expect([...store.rows.values()][0]).toMatchObject({ installationId: PLATFORM_ID })
     })
 
-    it('never overrides an installationId the alert already carries', async () => {
-      process.env.ARETE_PLATFORM_INSTALLATION_ID = 'inst-platform'
-      const store = makeFakeIncidentStore()
+    it('IGNORES a spoofed installationId label — an attacker cannot steer the row into a tenant', async () => {
+      const store = makeFakeIncidentStore([PLATFORM_ID, 'inst-victim'])
       const { handleIncomingAlert } = await loadReceiver(store)
 
-      await handleIncomingAlert({ alerts: [baseAlert()] })
+      await handleIncomingAlert({
+        alerts: [
+          baseAlert({
+            labels: {
+              alertname: 'AreteReviewErrorRate',
+              severity: 'critical',
+              installationId: 'inst-victim',
+            },
+          }),
+        ],
+      })
 
-      // A future per-tenant rule must still attribute to its own tenant.
-      expect([...store.rows.values()][0]).toMatchObject({ installationId: 'inst-a' })
+      expect(store.rows.size).toBe(1)
+      const row = [...store.rows.values()][0]
+      expect(row.installationId).toBe(PLATFORM_ID)
+      expect(row.installationId).not.toBe('inst-victim')
+      expect(store.incident.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            installationId_fingerprint: { installationId: PLATFORM_ID, fingerprint: 'fp1' },
+          },
+        })
+      )
     })
 
-    it('still drops when no label and no configured platform installation', async () => {
+    it('collapses two differently-spoofed alerts sharing a fingerprint onto ONE platform row', async () => {
+      const store = makeFakeIncidentStore([PLATFORM_ID, 'inst-a', 'inst-b'])
+      const { handleIncomingAlert } = await loadReceiver(store)
+
+      await handleIncomingAlert({
+        alerts: [
+          baseAlert({
+            labels: {
+              alertname: 'AreteReviewErrorRate',
+              severity: 'critical',
+              installationId: 'inst-a',
+            },
+            fingerprint: 'fpshared',
+          }),
+        ],
+      })
+      await handleIncomingAlert({
+        alerts: [
+          baseAlert({
+            labels: {
+              alertname: 'AreteReviewErrorRate',
+              severity: 'critical',
+              installationId: 'inst-b',
+            },
+            fingerprint: 'fpshared',
+          }),
+        ],
+      })
+
+      expect(store.rows.size).toBe(1)
+      expect([...store.rows.values()][0].installationId).toBe(PLATFORM_ID)
+      // Neither spoofed tenant ever got a row of its own.
+      expect(
+        await store.incident.findUnique({
+          where: { installationId_fingerprint: { installationId: 'inst-a', fingerprint: 'fpshared' } },
+        })
+      ).toBeNull()
+      expect(
+        await store.incident.findUnique({
+          where: { installationId_fingerprint: { installationId: 'inst-b', fingerprint: 'fpshared' } },
+        })
+      ).toBeNull()
+    })
+
+    it('drops every alert when ARETE_PLATFORM_INSTALLATION_ID is unset — never invents an owner', async () => {
+      delete process.env.ARETE_PLATFORM_INSTALLATION_ID
       const store = makeFakeIncidentStore()
       const { handleIncomingAlert } = await loadReceiver(store)
 
-      const alert = baseAlert()
-      delete (alert.labels as Record<string, unknown>).installationId
-
-      // Dropping a platform alert is recoverable; filing it against an
-      // arbitrary customer is not. Unset env must not invent an owner.
-      expect(await handleIncomingAlert({ alerts: [alert] })).toEqual({ created: 0, updated: 0 })
+      expect(await handleIncomingAlert({ alerts: [baseAlert()] })).toEqual({ created: 0, updated: 0 })
       expect(store.rows.size).toBe(0)
+    })
+
+    it('drops every alert when the configured installation does not exist (finding I6)', async () => {
+      process.env.ARETE_PLATFORM_INSTALLATION_ID = 'inst-typo'
+      const store = makeFakeIncidentStore([PLATFORM_ID])
+      const { handleIncomingAlert } = await loadReceiver(store)
+
+      expect(await handleIncomingAlert({ alerts: [baseAlert()] })).toEqual({ created: 0, updated: 0 })
+      expect(store.rows.size).toBe(0)
+      expect(store.installation.findUnique).toHaveBeenCalled()
     })
   })
 
@@ -187,10 +276,9 @@ describe('handleIncomingAlert', () => {
 
     expect(result).toEqual({ created: 1, updated: 0 })
     expect(store.rows.size).toBe(1)
-    const row = [...store.rows.values()][0]
-    expect(row).toMatchObject({
-      installationId: 'inst-a',
-      fingerprint: 'fp-1',
+    expect([...store.rows.values()][0]).toMatchObject({
+      installationId: PLATFORM_ID,
+      fingerprint: 'fp1',
       alertName: 'AreteReviewErrorRate',
       severity: 'critical',
       status: 'firing',
@@ -223,12 +311,7 @@ describe('handleIncomingAlert', () => {
 
     await handleIncomingAlert({ alerts: [baseAlert()] })
     const resolved = await handleIncomingAlert({
-      alerts: [
-        baseAlert({
-          status: 'resolved',
-          endsAt: '2026-07-21T01:00:00Z',
-        }),
-      ],
+      alerts: [baseAlert({ status: 'resolved', endsAt: '2026-07-21T01:00:00Z' })],
     })
 
     expect(resolved).toEqual({ created: 0, updated: 1 })
@@ -238,64 +321,147 @@ describe('handleIncomingAlert', () => {
     expect(row.resolvedAt?.toISOString()).toBe('2026-07-21T01:00:00.000Z')
   })
 
-  it('stores an alert whose annotation contains a secret-shaped string scrubbed — the raw secret appears nowhere in the persisted row', async () => {
+  // ---------------------------------------------------------------------
+  // M7 — a resolved incident that re-fires opens a NEW cycle.
+  // ---------------------------------------------------------------------
+  it('a re-firing incident restarts startsAt and preserves the prior cycle (finding M7)', async () => {
     const store = makeFakeIncidentStore()
     const { handleIncomingAlert } = await loadReceiver(store)
-    const rawSecret = 'ghp_1234567890abcdef' // ghp_ + 16 chars — matches SECRET_VALUE_PATTERNS
 
+    await handleIncomingAlert({ alerts: [baseAlert()] })
     await handleIncomingAlert({
-      alerts: [
-        baseAlert({
-          annotations: {
-            summary: `Leaked token in logs: ${rawSecret}`,
-            description: `see also nested.deep.value: ${rawSecret}`,
-            nested: { deep: { value: `token=${rawSecret}` } },
-          },
-        }),
-      ],
+      alerts: [baseAlert({ status: 'resolved', endsAt: '2026-07-21T01:00:00Z' })],
     })
+    await handleIncomingAlert({ alerts: [baseAlert({ startsAt: '2026-07-21T05:00:00Z' })] })
 
     const row = [...store.rows.values()][0]
-    const serialized = JSON.stringify(row)
-    expect(serialized).not.toContain(rawSecret)
-    expect(row.summary).not.toContain(rawSecret)
-    // Prove the scrub reached the NESTED annotations object, not just top-level strings.
-    expect(JSON.stringify(row.payload)).not.toContain(rawSecret)
-    expect(JSON.stringify(row.payload)).toContain('[REDACTED]')
+    expect(row.status).toBe('firing')
+    expect(row.resolvedAt).toBeNull()
+    // The new cycle's own start, not the first cycle's.
+    expect(row.startsAt.toISOString()).toBe('2026-07-21T05:00:00.000Z')
+    // …and the closed cycle is not lost.
+    expect(row.payload.priorCycles).toEqual([
+      { startsAt: '2026-07-21T00:00:00.000Z', resolvedAt: '2026-07-21T01:00:00.000Z' },
+    ])
   })
 
-  it('an alert for installation A never produces a row readable under installation B', async () => {
-    const store = makeFakeIncidentStore()
-    const { handleIncomingAlert } = await loadReceiver(store)
+  // ---------------------------------------------------------------------
+  // I2 / I5 — every persisted field is scrubbed, not just payload/summary.
+  // ---------------------------------------------------------------------
+  describe('redaction (review findings I2, I5)', () => {
+    const rawSecret = 'ghp_1234567890abcdef' // ghp_ + 16 chars — SECRET_VALUE_PATTERNS
 
-    await handleIncomingAlert({
-      alerts: [baseAlert({ labels: { alertname: 'AreteReviewErrorRate', severity: 'critical', installationId: 'inst-a' }, fingerprint: 'fp-shared' })],
+    it('scrubs a secret out of the payload, the summary AND the scalar columns', async () => {
+      const store = makeFakeIncidentStore()
+      const { handleIncomingAlert } = await loadReceiver(store)
+
+      await handleIncomingAlert({
+        alerts: [
+          baseAlert({
+            labels: {
+              alertname: `AreteReviewErrorRate ${rawSecret}`,
+              severity: `critical ${rawSecret}`,
+            },
+            fingerprint: rawSecret,
+            annotations: {
+              summary: `Leaked token in logs: ${rawSecret}`,
+              description: `see also nested.deep.value: ${rawSecret}`,
+              nested: { deep: { value: `token=${rawSecret}` } },
+            },
+          }),
+        ],
+      })
+
+      const row = [...store.rows.values()][0]
+      // The whole row — every scalar column included — must be clean.
+      expect(JSON.stringify(row)).not.toContain(rawSecret)
+      expect(row.alertName).not.toContain(rawSecret)
+      expect(row.severity).not.toContain(rawSecret)
+      expect(row.fingerprint).not.toContain(rawSecret)
+      expect(row.summary).not.toContain(rawSecret)
+      // Prove the scrub reached the NESTED annotations object, not just top-level.
+      expect(JSON.stringify(row.payload)).toContain('[REDACTED]')
     })
 
-    // Same fingerprint, different installation — must land on its own row, and
-    // installation A's row must not be reachable under installation B's key.
-    const crossTenantLookup = await store.incident.findUnique({
-      where: { installationId_fingerprint: { installationId: 'inst-b', fingerprint: 'fp-shared' } },
-    })
-    expect(crossTenantLookup).toBeNull()
+    it('applies the REDACT_KEYS key blocklist to annotation keys (finding I5)', async () => {
+      const store = makeFakeIncidentStore()
+      const { handleIncomingAlert } = await loadReceiver(store)
 
-    await handleIncomingAlert({
-      alerts: [baseAlert({ labels: { alertname: 'AreteReviewErrorRate', severity: 'critical', installationId: 'inst-b' }, fingerprint: 'fp-shared' })],
+      await handleIncomingAlert({
+        alerts: [
+          baseAlert({
+            annotations: {
+              summary: 'boom',
+              password: 'hunter2',
+              authorization: 'Basic YWxhZGRpbjpvcGVuc2VzYW1l',
+              nested: { apiKey: 'not-a-known-shape-but-still-a-key' },
+            },
+          }),
+        ],
+      })
+
+      const serialized = JSON.stringify([...store.rows.values()][0])
+      expect(serialized).not.toContain('hunter2')
+      expect(serialized).not.toContain('YWxhZGRpbjpvcGVuc2VzYW1l')
+      expect(serialized).not.toContain('not-a-known-shape-but-still-a-key')
     })
 
-    expect(store.rows.size).toBe(2)
-    const rowA = await store.incident.findUnique({
-      where: { installationId_fingerprint: { installationId: 'inst-a', fingerprint: 'fp-shared' } },
+    it('strips URL query strings, including params the value patterns do not know (finding I5)', async () => {
+      const store = makeFakeIncidentStore()
+      const { handleIncomingAlert } = await loadReceiver(store)
+
+      await handleIncomingAlert({
+        alerts: [
+          baseAlert({
+            annotations: {
+              summary: 'https://example.test/y?password=topsecret',
+              runbook_url: 'https://example.test/runbook?password=topsecret&x=1',
+            },
+          }),
+        ],
+      })
+
+      const row = [...store.rows.values()][0]
+      expect(JSON.stringify(row)).not.toContain('topsecret')
+      expect(row.summary).not.toContain('topsecret')
     })
-    const rowB = await store.incident.findUnique({
-      where: { installationId_fingerprint: { installationId: 'inst-b', fingerprint: 'fp-shared' } },
-    })
-    expect(rowA).not.toBeNull()
-    expect(rowB).not.toBeNull()
-    expect(rowA!.id).not.toBe(rowB!.id)
   })
 
-  it('drops a malformed alert (missing installationId/alertname/fingerprint) without throwing and without persisting', async () => {
+  // ---------------------------------------------------------------------
+  // I3 — metric dimensions are a closed set (Global Constraint 1).
+  // ---------------------------------------------------------------------
+  describe('metric dimensions are a closed set (review finding I3)', () => {
+    it('buckets an unknown alertName and normalises an unknown severity', async () => {
+      const store = makeFakeIncidentStore()
+      const mod = await loadReceiver(store)
+
+      expect(mod.metricAlertName('AreteReviewErrorRate')).toBe('AreteReviewErrorRate')
+      expect(mod.metricAlertName('AreteReviewLatencyP95')).toBe('AreteReviewLatencyP95')
+      expect(mod.metricAlertName('AreteQueueFailureRate')).toBe('AreteQueueFailureRate')
+      expect(mod.metricAlertName('attacker-chosen-' + 'x'.repeat(50))).toBe('other')
+      expect(mod.metricAlertName('')).toBe('other')
+
+      expect(mod.normaliseSeverity('critical')).toBe('critical')
+      expect(mod.normaliseSeverity('CRITICAL')).toBe('critical')
+      expect(mod.normaliseSeverity('warning')).toBe('warning')
+      expect(mod.normaliseSeverity('info')).toBe('info')
+      expect(mod.normaliseSeverity('page-the-ceo')).toBe('warning')
+      expect(mod.normaliseSeverity(undefined)).toBe('warning')
+    })
+
+    it('persists a normalised severity, never attacker free text', async () => {
+      const store = makeFakeIncidentStore()
+      const { handleIncomingAlert } = await loadReceiver(store)
+
+      await handleIncomingAlert({
+        alerts: [baseAlert({ labels: { alertname: 'Whatever', severity: 'CRITICAL-ish 💥' } })],
+      })
+
+      expect([...store.rows.values()][0].severity).toBe('warning')
+    })
+  })
+
+  it('drops a malformed alert (missing alertname/fingerprint) without throwing and without persisting', async () => {
     const store = makeFakeIncidentStore()
     const { handleIncomingAlert } = await loadReceiver(store)
 
@@ -314,6 +480,9 @@ describe('handleIncomingAlert', () => {
     await expect(handleIncomingAlert(null)).resolves.toEqual({ created: 0, updated: 0 })
     await expect(handleIncomingAlert('not an object')).resolves.toEqual({ created: 0, updated: 0 })
     await expect(handleIncomingAlert({})).resolves.toEqual({ created: 0, updated: 0 })
-    await expect(handleIncomingAlert({ alerts: 'not-an-array' })).resolves.toEqual({ created: 0, updated: 0 })
+    await expect(handleIncomingAlert({ alerts: 'not-an-array' })).resolves.toEqual({
+      created: 0,
+      updated: 0,
+    })
   })
 })

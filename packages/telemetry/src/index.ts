@@ -4,6 +4,8 @@ export {
   REDACTED,
   scrubText,
   scrubLogValue,
+  scrubSinkText,
+  scrubSinkValue,
   stripUrlQuery,
   clearUrlQuery,
   PINO_REDACT_PATHS,

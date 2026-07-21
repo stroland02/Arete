@@ -124,7 +124,20 @@ services:
     secrets:
       - internal_api_token
     ports:
-      - "9093:9093"  # UI / API (POST /api/v2/alerts for synthetic testing)
+      # LOOPBACK ONLY — deliberate, do not widen (Phase 2 review finding C1).
+      # Alertmanager's /api/v2/alerts accepts UNAUTHENTICATED alert posts, and
+      # everything it accepts is forwarded to the webhook receiver and becomes
+      # an Incident — which, for `critical`, opens a fix run (Task 4). A bare
+      # "9093:9093" binds 0.0.0.0, so anyone who can reach this host could
+      # inject fabricated incidents (attacker-chosen `summary` text is
+      # rendered on the dashboard, packages/dashboard/src/lib/incidents.ts).
+      #
+      # Bound rather than removed: Prometheus reaches Alertmanager over the
+      # compose network (`alertmanager:9093` — infra/prometheus.yml), so the
+      # published port is only for the operator's own UI and for the synthetic
+      # `POST /api/v2/alerts` the plan's Task 3 Step 7 / Phase 2 DoD requires.
+      # 127.0.0.1 keeps both working while removing LAN/remote exposure.
+      - "127.0.0.1:9093:9093"  # UI / API (POST /api/v2/alerts for synthetic testing)
     # The webhook service is NOT containerized (runs on the host via `pnpm
     # dev`, :3001 per .env) — this lets the alertmanager container reach it.
     # Docker Desktop resolves host.docker.internal natively; `host-gateway`

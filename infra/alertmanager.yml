@@ -20,6 +20,14 @@
 # docker-compose.yml adds the matching `extra_hosts: host-gateway` entry so
 # this resolves on Linux Docker too, not just Docker Desktop.
 
+# TENANCY: the receiver does NOT read tenancy from anything in this pipeline.
+# Every alert forwarded from here is attributed to the single configured
+# platform installation (ARETE_PLATFORM_INSTALLATION_ID — see .env.example);
+# an `installationId` label on an alert is ignored entirely. Adding one here,
+# or to a Prometheus rule, will NOT route an incident to that tenant. Per-tenant
+# alerting must arrive as a trusted server-side mapping in the receiver, never
+# as a label on the wire (Phase 2 review finding C1).
+
 global:
   resolve_timeout: 5m
 

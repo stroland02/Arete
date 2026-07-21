@@ -120,6 +120,63 @@ export function scrubLogValue(
   return value
 }
 
+/** `authorization` -> `authorization`, `X-Api-Key`/`api_key`/`apiKey` -> `apikey`.
+ *  Case- and separator-insensitive so one blocklist entry covers every spelling
+ *  a header, label, or annotation key actually arrives in. */
+function normaliseKey(key: string): string {
+  return key.toLowerCase().replace(/[-_\s]/g, '')
+}
+
+const REDACT_KEY_SET: ReadonlySet<string> = new Set(REDACT_KEYS.map(normaliseKey))
+
+/** Scheme-qualified URL, e.g. `https://…`, `postgres://…`. Deliberately narrow:
+ *  `stripUrlQuery` cuts at the first `?`, which would maul ordinary prose. */
+const URL_LIKE = /^[a-z][a-z0-9+.-]*:\/\/\S+$/i
+
+/**
+ * String scrub for PERSISTENCE sinks (incident rows, memory rows — anything
+ * that outlives a log line). Strictly stronger than {@link scrubText}: it also
+ * drops the query string of URL-shaped values, because the value patterns only
+ * know a fixed list of key-ish query params (`key|api_key|apikey|token|
+ * access_token|client_secret`) and a URL can carry a credential under any name
+ * at all (`?password=…` was not matched — Phase 2 review finding I5).
+ */
+export function scrubSinkText(text: string): string {
+  return scrubText(URL_LIKE.test(text.trim()) ? stripUrlQuery(text.trim()) : text)
+}
+
+/**
+ * Deep scrub for PERSISTENCE sinks. {@link scrubLogValue} applies value
+ * patterns only — in the logging sink the key blocklist is applied separately,
+ * by pino's `redact.paths` ({@link PINO_REDACT_PATHS}). A non-pino sink that
+ * used `scrubLogValue` alone would therefore get only half of the canonical
+ * redaction: `{ password: 'hunter2' }` has no secret *shape* and survives.
+ *
+ * This applies BOTH halves plus {@link scrubSinkText}, so any sink can reach
+ * the full spec §5 posture through one canonical call. Input is expected to be
+ * JSON-ish (the alert-payload case); the output is always JSON-serializable.
+ */
+export function scrubSinkValue(
+  value: unknown,
+  seen: WeakMap<object, unknown> = new WeakMap()
+): unknown {
+  if (typeof value === 'string') return scrubSinkText(value)
+  if (Array.isArray(value)) return value.map((el) => scrubSinkValue(el, seen))
+  if (value && typeof value === 'object') {
+    if (seen.has(value)) return seen.get(value)
+    const out: Record<string, unknown> = {}
+    seen.set(value, out) // before recursing, so cycles land on the clone
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      out[key] = REDACT_KEY_SET.has(normaliseKey(key)) ? REDACTED : scrubSinkValue(val, seen)
+    }
+    return out
+  }
+  if (typeof value === 'number' || typeof value === 'boolean' || value === null) return value
+  // undefined / function / symbol / bigint — not JSON leaves; drop to null
+  // rather than emitting something a Json column cannot hold.
+  return null
+}
+
 /** pino redact.paths — key blocklist at top level, one wildcard level deep,
  *  and under req/res headers. `installationToken` is Areté-specific: PRContext
  *  carries a live GitHub App installation token (worker.ts buildCloneContext). */
