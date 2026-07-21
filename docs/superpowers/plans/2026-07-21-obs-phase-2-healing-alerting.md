@@ -476,6 +476,112 @@ needs rewriting. What is missing is **anything stopping a future change from bre
 
 ---
 
+---
+
+## Cross-cutting workstream (user directive, 2026-07-21)
+
+> "also make sure to review and maintain data pipeline optimization interfwcd intwgration with
+> front end , model deployment and harnessing for our workflows fo be efficient and work very
+> effectivly for their tasks."
+
+Read as three standing concerns, each given a task below. They run **after** Tasks 1–8 land, because
+each one measures or presents something those tasks create. Task 11 closes a genuine hole: as
+originally scoped, Phase 2 wrote `Incident` rows that no surface rendered.
+
+The Precedence ruling above governs all three — where these collide with an existing pipeline,
+workflow, or UI pattern, this work's convention wins.
+
+---
+
+### Task 11: Front-end integration — incidents, alerts, findings, confidence
+
+**Files:** Dashboard components + a read query. Survey `packages/dashboard/src/components/dashboard/`
+and follow the established patterns; do not invent a new layout language.
+
+**The hole:** no incident or alert surface exists today (grep of
+`packages/dashboard/src/components` finds no incident/alert UI). Tasks 3–4 create `Incident` rows and
+link them to WorkItems, and nothing shows them to a human. An alert that fires into a table nobody
+reads is not an alert.
+
+**Requirements:**
+- An incident surface: firing vs resolved, severity, `startsAt`, summary, and — when
+  `Incident.workItemId` is set — a link through to the fix run it opened. Look up by id; there is no
+  Prisma relation (matches the existing `WorkItem.containerId` convention).
+- Findings and confidence render on the **existing 0–1 scale** (scope decision above). Reuse the
+  established treatment in `services/status-board.tsx`, which already renders `confidence * 100` —
+  do not introduce a second visual language for the same quantity.
+- Tenancy: scoped by installation like every other dashboard read (`resolveSelectedInstallationIds`,
+  `queries.ts:14`).
+- Match the repo's existing design system. Per the Precedence ruling, where this work's presentation
+  model conflicts with an older pattern, this work governs — but that is a licence to override a
+  convention, not to restyle unrelated surfaces.
+
+- [ ] **Step 1:** Survey the existing dashboard patterns and state which you are following, and why.
+- [ ] **Step 2:** Write failing component tests — an incident list renders firing and resolved states distinctly; an incident with a linked WorkItem exposes the link; an incident from another installation never renders.
+- [ ] **Step 3:** Run — expect failure. Capture output.
+- [ ] **Step 4:** Implement the query and components.
+- [ ] **Step 5:** Run — expect PASS. Capture output.
+- [ ] **Step 6:** Verify against a real running dashboard with a seeded incident, not only in tests. Capture what you saw.
+- [ ] **Step 7:** `git commit -- packages/dashboard/src`
+
+---
+
+### Task 12: Data pipeline efficiency review
+
+**Deliverable:** a measurement-backed report plus only those fixes the measurements justify.
+**This task may not "optimize" anything it has not first measured.** Speculative optimization is how
+working pipelines acquire subtle bugs.
+
+**Scope:**
+- **Read path.** `queries.ts` is almost entirely Prisma; only `getAgentEventsPerMinute:781-815`
+  reaches ClickHouse. Check the hot queries for N+1 patterns, unbounded result sets, and missing
+  indexes. Note existing caps (`getAgentActivity` limit 60, `getFindingsByPath` cap 2000) and
+  whether they are the right shape.
+- **Write path.** Collector batching and memory limits (`infra/otel-collector-config.yaml`),
+  ClickHouse insert behavior, and whether the TTLs in `packages/db/clickhouse/` are actually
+  reclaiming.
+- **Queue path.** With Task 5 landed, whether `FIX_QUEUE_CONCURRENCY = 2` and
+  `REVIEW_QUEUE_CONCURRENCY = 5` are defensible under realistic load, and where the true bottleneck
+  sits (LLM latency almost certainly dominates — say so if the data shows it, rather than tuning a
+  queue that is not the constraint).
+
+- [ ] **Step 1:** Measure first — query timings, row counts, queue depth under load. Capture real numbers.
+- [ ] **Step 2:** Write the findings report with the numbers attached, ranked by measured impact.
+- [ ] **Step 3:** Fix only what the numbers justify; each fix carries a before/after measurement.
+- [ ] **Step 4:** File everything else to `docs/roadmap/backlog.md` with its measurement, so a later decision starts from data.
+- [ ] **Step 5:** Commit with a pathspec covering only what changed.
+
+---
+
+### Task 13: Model deployment + harness efficiency
+
+**Interpretation** (correct this if it misreads the directive): "model deployment and harnessing"
+means the right model tier reaches each task, and each agent's harness — prompt, tools, budgets,
+retries — is sized to its job rather than uniformly expensive.
+
+**What exists:** `llm/anthropic.py:7-29` maps tiers (`opus | sonnet | haiku`) to model IDs;
+`llm/base.py:52-58` maps each review role to a configured tier; critic roles are fixed-tier by
+design. BYO customer models resolve through `resolve-model-connection.ts`.
+
+**Questions to answer with evidence:**
+- Does the **fix/healing** path select a tier deliberately, or inherit a default? `fix_pipeline.py`
+  authors a patch in one LLM call — verify which tier it actually gets and whether that is the
+  intended one.
+- Are per-role tiers matched to task difficulty, or is an expensive tier doing mechanical work?
+  Phase 1's own token metrics (`gen_ai.client.token.usage`) can answer this — use them.
+- Are the budgets right? `MAX_TOOL_ROUNDS = 5` (`agents/base.py:14`), `MAX_PATCH_CHARS = 50000`,
+  `DEFAULT_LLM_TIMEOUT_SECONDS = 60`, `max_tokens` 4096/1024 (`llm/base.py:9-16`). Each should be
+  justified by observed behavior, not inherited.
+- Is retry behavior duplicating spend — retries inside `with_retry` on top of queue-level retries?
+
+- [ ] **Step 1:** Use the `debug-from-telemetry` skill to pull real token usage and duration per role and per tier from the Phase 1 metrics. Do not estimate from source reading alone.
+- [ ] **Step 2:** Report tier-vs-task fit with the numbers, and name any place an expensive tier is doing cheap work or a cheap tier is failing at hard work.
+- [ ] **Step 3:** Change only what the evidence supports. A tier change alters output quality — pair every one with a statement of what would detect a regression.
+- [ ] **Step 4:** File the rest to backlog with measurements.
+- [ ] **Step 5:** Commit with a pathspec.
+
+---
+
 ## Phase 2 exit criteria (DoD)
 
 - [ ] A **synthetic alert fired into the running stack** produces an `Incident` row, which opens a `WorkItem`, which runs the fix pipeline — end to end, observed, not unit-tested only.
