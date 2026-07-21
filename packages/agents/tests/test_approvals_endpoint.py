@@ -1,8 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import INTERNAL_HEADERS
-
 import arete_agents.server as server
 from arete_agents.remediation import RemediationGraph
 from arete_agents.tools.executor import (
@@ -10,6 +8,7 @@ from arete_agents.tools.executor import (
     CommandOutcome,
     MockCommandExecutor,
 )
+from tests.conftest import INTERNAL_HEADERS
 
 
 @pytest.fixture

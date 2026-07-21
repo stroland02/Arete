@@ -10,11 +10,10 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from tests.conftest import INTERNAL_HEADERS
-
 import arete_agents.llm.ollama as ollama
 from arete_agents.config import Settings
 from arete_agents.llm.base import ROLE_KEYS, get_llms_by_role
+from tests.conftest import INTERNAL_HEADERS
 
 
 def _tags_response(names):

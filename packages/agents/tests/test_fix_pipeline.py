@@ -13,11 +13,10 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from tests.conftest import INTERNAL_HEADERS
-
 from arete_agents.config import Settings
 from arete_agents.fix_pipeline import author_patch, run_fix
 from arete_agents.models.fix import FixItem, FixRepo, FixRequest, FixResponse
+from tests.conftest import INTERNAL_HEADERS
 
 
 def _checkout(tmp_path, installation_id=42, repo_slug="acme/shop"):

@@ -12,10 +12,9 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from tests.conftest import INTERNAL_HEADERS
-
 from arete_agents.models.pr import ScanRequest
 from arete_agents.scan import run_scan
+from tests.conftest import INTERNAL_HEADERS
 
 
 def _checkout(tmp_path, installation_id=42, repo_slug="acme/shop"):
