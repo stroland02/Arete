@@ -34,6 +34,12 @@ dev = [
 asyncio_mode = "auto"
 testpaths = ["tests"]
 
+[tool.ruff]
+# Ratchet (obs Phase 0, 2026-07-21): the codebase was written without E501
+# enforcement (212 violations at ruff's default 88). 120 keeps the rule
+# meaningful while matching reality; tracked in docs/roadmap/backlog.md.
+line-length = 120
+
 [tool.ruff.lint]
 select = ["E", "F", "I"]
 

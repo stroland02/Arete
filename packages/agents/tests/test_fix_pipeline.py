@@ -63,6 +63,7 @@ def _author_reply(files, summary="fixed it"):
     """A MagicMock LLM whose .invoke() returns the given files/summary as the
     author-stage JSON contract expects."""
     import json
+
     from langchain_core.messages import AIMessage
 
     llm = MagicMock()
@@ -77,7 +78,12 @@ def _run(tmp_path, llm, verify_result=True, **req_overrides):
     with patch("arete_agents.fix_pipeline.ensure_repo_checked_out", return_value=checkout), patch(
         "arete_agents.fix_pipeline.verify_resolved", return_value=verify_result
     ) as verify_mock:
-        result = run_fix(req, {"security": llm}, verify_settings=Settings(llm_provider="anthropic", anthropic_api_key="sk-test"), repo_root=tmp_path)
+        result = run_fix(
+            req,
+            {"security": llm},
+            verify_settings=Settings(llm_provider="anthropic", anthropic_api_key="sk-test"),
+            repo_root=tmp_path,
+        )
     return result, verify_mock
 
 

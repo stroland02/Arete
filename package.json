@@ -5,6 +5,9 @@
   "scripts": {
     "dev:webhook": "pnpm --filter @arete/webhook dev",
     "test:webhook": "pnpm --filter @arete/webhook test",
+    "test:ts": "pnpm -r --if-present --workspace-concurrency=1 run test",
+    "test:agents": "uv run --directory packages/agents --extra dev pytest tests/ --ignore=tests/test_e2e_smoke.py",
+    "test:all": "pnpm run test:ts && pnpm run test:agents",
     "infra:up": "docker compose -f infra/docker-compose.yml up -d",
     "infra:down": "docker compose -f infra/docker-compose.yml down",
     "db:migrate": "pnpm --filter @arete/db exec prisma migrate deploy",

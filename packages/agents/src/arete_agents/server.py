@@ -2,7 +2,11 @@ import logging
 from typing import Any, Dict
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
-from fastapi.responses import PlainTextResponse
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from pydantic import BaseModel, ValidationError
 
 from arete_agents.agents.chat import ChatAgent
@@ -11,35 +15,29 @@ from arete_agents.context_map.graph_export import GraphExportError, build_graph_
 from arete_agents.context_map.indexer import IndexerError, index_repository
 from arete_agents.context_map.repo_cache import RepoCacheError, ensure_repo_checked_out
 from arete_agents.context_map.ui import ContextMapUIError, get_or_start_ui
-from arete_agents.llm.ollama import (
-    DEFAULT_OLLAMA_BASE_URL,
-    DEFAULT_OLLAMA_MODEL,
-    ollama_unavailable_reason,
-)
+from arete_agents.fix_pipeline import run_fix
 from arete_agents.llm.base import (
     get_llms_by_role,
     get_llms_by_role_from_config,
     role_tiers,
 )
-
-_logger = logging.getLogger(__name__)
-from arete_agents.models.pr import LLMConfig, PRContext, ScanRequest
+from arete_agents.llm.ollama import (
+    DEFAULT_OLLAMA_BASE_URL,
+    DEFAULT_OLLAMA_MODEL,
+    ollama_unavailable_reason,
+)
 from arete_agents.models.fix import FixRequest, FixResponse
-from arete_agents.fix_pipeline import run_fix
+from arete_agents.models.pr import LLMConfig, PRContext, ScanRequest
 from arete_agents.orchestrator import ReviewOrchestrator
 from arete_agents.remediation import RemediationGraph
 from arete_agents.scan import ScanUnavailableError, run_scan
 from arete_agents.tools.executor import CommandExecutionError, get_command_executor
 
+_logger = logging.getLogger(__name__)
+
 app = FastAPI()
 
 # OpenTelemetry Auto-Instrumentation
-from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import SERVICE_NAME, Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-
 # Set up the tracer provider with service name
 resource = Resource(attributes={SERVICE_NAME: "arete-agents"})
 provider = TracerProvider(resource=resource)

@@ -1,6 +1,6 @@
 import { webhookFetch } from '@arete/net-guard'
 vi.mock('@arete/net-guard', () => ({ webhookFetch: vi.fn() }))
-const webhookFetchMock = vi.mocked(webhookFetch)
+const _webhookFetchMock = vi.mocked(webhookFetch)
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 describe('telemetry circuit breaker', () => {

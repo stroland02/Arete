@@ -203,9 +203,15 @@ function ModelProviderRow({
   // Reflect the PERSISTED selection: when this provider is saved, default the
   // model select to the stored model so reopening the row matches reality. The
   // section owns whether it's connected/active — this only seeds the dropdown.
-  useEffect(() => {
+  // Adjusted during render rather than in an effect (the "adjusting state when
+  // a prop changes" pattern — https://react.dev/learn/you-might-not-need-an-effect)
+  // so the dropdown never paints a stale value before snapping to the saved one.
+  const connectionKey = `${connection?.id ?? ""}:${connection?.model ?? ""}`;
+  const [prevConnectionKey, setPrevConnectionKey] = useState(connectionKey);
+  if (connectionKey !== prevConnectionKey) {
+    setPrevConnectionKey(connectionKey);
     if (connection) setModel(connection.model);
-  }, [connection?.id, connection?.model]);
+  }
 
   // Real pulled models take precedence, then the catalog's suggestions.
   const modelOptions =

@@ -126,9 +126,21 @@ export function CodeSourcePanel({
 }) {
   const [state, setState] = useState<SourceViewState>({ kind: "loading" });
 
+  // Reset to the loading skeleton the instant `path` or `findings` changes,
+  // rather than in the effect below — adjusting state during render (per
+  // https://react.dev/learn/you-might-not-need-an-effect) avoids painting a
+  // frame of the *previous* file's content under the new path before the
+  // effect gets a chance to run.
+  const [prevPath, setPrevPath] = useState(path);
+  const [prevFindings, setPrevFindings] = useState(findings);
+  if (path !== prevPath || findings !== prevFindings) {
+    setPrevPath(path);
+    setPrevFindings(findings);
+    setState({ kind: "loading" });
+  }
+
   useEffect(() => {
     let cancelled = false;
-    setState({ kind: "loading" });
     fetch(`/api/code-map/file?path=${encodeURIComponent(path)}`)
       .then(async (res) => {
         const body = (await res.json().catch(() => null)) as

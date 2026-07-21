@@ -1,10 +1,9 @@
 import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
-import sys
-import time
 import urllib.parse
 import webbrowser
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import parse_qs, urlparse
+
 
 class OAuthCallbackHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -18,7 +17,10 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header("Content-type", "text/html")
                 self.end_headers()
-                self.wfile.write(b"<html><body><h1>Authentication Successful!</h1><p>You can close this tab and return to the terminal.</p></body></html>")
+                self.wfile.write(
+                    b"<html><body><h1>Authentication Successful!</h1><p>You can close this tab "
+                    b"and return to the terminal.</p></body></html>"
+                )
                 
                 # Signal the server to stop
                 threading.Thread(target=self.server.shutdown, daemon=True).start()
@@ -26,7 +28,9 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
                 self.send_response(400)
                 self.send_header("Content-type", "text/html")
                 self.end_headers()
-                self.wfile.write(b"<html><body><h1>Authentication Failed!</h1><p>Missing authorization code.</p></body></html>")
+                self.wfile.write(
+                    b"<html><body><h1>Authentication Failed!</h1><p>Missing authorization code.</p></body></html>"
+                )
         else:
             self.send_response(404)
             self.end_headers()
@@ -50,13 +54,19 @@ def start_oauth_flow(name: str, manager) -> None:
     
     # Ideally, we would fetch the auth_endpoint from the MCP server, 
     # but we simulate it pointing to the target for now.
-    auth_url = f"{target_url}?client_id={client_id}&redirect_uri={redirect_uri}&response_type=code&state={state}&scope=mcp:read"
+    auth_url = (
+        f"{target_url}?client_id={client_id}&redirect_uri={redirect_uri}&response_type=code"
+        f"&state={state}&scope=mcp:read"
+    )
     
     print("\nOAuth flow started. Open this URL in your browser to authorize:")
     print(auth_url)
     print("\nAfter you approve, your browser redirects to a http://localhost:3118/callback?code=... page.")
     print("- If it loads fine, authentication completes automatically — just let me know.")
-    print("- If the page shows a connection error (common when nothing is listening on port 3118), copy the full URL from the address bar and paste it here. I'll finish the flow with it.\n")
+    print(
+        "- If the page shows a connection error (common when nothing is listening on port 3118), "
+        "copy the full URL from the address bar and paste it here. I'll finish the flow with it.\n"
+    )
     
     # Open browser automatically if possible
     try:
@@ -74,7 +84,7 @@ def start_oauth_flow(name: str, manager) -> None:
         server.serve_forever()
         
         if server.oauth_code:
-            print(f"Successfully received authorization code.")
+            print("Successfully received authorization code.")
             # In a real scenario, we'd exchange the code for a token here.
             # We'll simulate receiving a token.
             token = f"simulated_token_for_{server.oauth_code}"
@@ -82,7 +92,7 @@ def start_oauth_flow(name: str, manager) -> None:
             print(f"Authentication complete! {name} is now ready to use.")
         else:
             print("OAuth flow did not return a code.")
-    except Exception as e:
+    except Exception:
         print(f"Failed to start local server on port {port}. Please use manual fallback.")
         manual_url = input("Paste the redirected callback URL here: ")
         parsed = urlparse(manual_url)

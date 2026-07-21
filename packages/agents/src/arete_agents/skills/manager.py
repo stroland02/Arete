@@ -1,11 +1,11 @@
-import os
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List
 
 from .security import SecurityAssessor
+
 
 class SkillManager:
     def __init__(self, workspace_root: str = None):
@@ -56,7 +56,10 @@ class SkillManager:
                 
                 # Mock security assessment
                 assessment = self.security.assess_skill(skill_path)
-                print(f"{skill_name:<30} | {assessment['gen']:<10} | {str(assessment['socket'])+' alerts':<15} | {assessment['snyk']:<10}")
+                print(
+                    f"{skill_name:<30} | {assessment['gen']:<10} | "
+                    f"{str(assessment['socket'])+' alerts':<15} | {assessment['snyk']:<10}"
+                )
                 
                 # Install skill (copying for cross-platform compatibility instead of symlink for now)
                 target_path = self.agents_dir / skill_name

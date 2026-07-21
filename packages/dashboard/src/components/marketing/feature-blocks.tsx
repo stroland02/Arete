@@ -19,7 +19,7 @@ export function FeatureBlocks() {
             Expertise across the board.
           </h2>
           <p className="text-lg text-content-muted mb-8 leading-relaxed">
-            Kuma doesn't rely on a single generalist AI. We deploy 6 specialized agents, each fine-tuned for a specific domain—from security to performance. They review your PR in parallel to ensure nothing slips through the cracks.
+            Kuma doesn&apos;t rely on a single generalist AI. We deploy 6 specialized agents, each fine-tuned for a specific domain—from security to performance. They review your PR in parallel to ensure nothing slips through the cracks.
           </p>
           
           <div className="flex flex-col gap-4 border-y border-border-subtle py-6 mb-8">
@@ -63,7 +63,7 @@ export function FeatureBlocks() {
             The Core Orchestrator.
           </h2>
           <p className="text-lg text-content-muted mb-8 leading-relaxed">
-            Kuma isn't just a list of suggestions. The Synthesizer is a specialized neural router that takes the raw outputs from all six agents, cross-references them, and guarantees a mathematically sound pull request patch.
+            Kuma isn&apos;t just a list of suggestions. The Synthesizer is a specialized neural router that takes the raw outputs from all six agents, cross-references them, and guarantees a mathematically sound pull request patch.
           </p>
           
           <div className="flex flex-col gap-4 border-y border-border-subtle py-6 mb-8">

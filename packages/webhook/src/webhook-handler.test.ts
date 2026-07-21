@@ -214,11 +214,11 @@ describe('registerCheckRunWebhooks', () => {
   beforeEach(() => { vi.resetModules() })
 
   function makeApp() {
-    const handlers: Record<string, Function> = {}
+    const handlers: Record<string, (...args: any[]) => any> = {}
     return {
       app: {
         webhooks: {
-          on: (event: string, handler: Function) => { handlers[event] = handler },
+          on: (event: string, handler: (...args: any[]) => any) => { handlers[event] = handler },
         },
       },
       handlers,
