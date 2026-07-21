@@ -200,11 +200,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # `config --quiet` exits 0 even when a ${VAR} interpolation is
+      # undefined (it just warns on stderr and substitutes an empty
+      # string), so the exit code alone can't be trusted for that error
+      # class. Capture stderr and fail explicitly if the warning appears,
+      # while still propagating the command's own exit code first so
+      # syntax/schema/reference errors keep failing the step as before.
       - name: Validate default compose file
-        run: docker compose -f infra/docker-compose.yml config --quiet
+        run: |
+          OUTPUT=$(docker compose -f infra/docker-compose.yml config --quiet 2>&1 >/dev/null)
+          STATUS=$?
+          echo "$OUTPUT"
+          if [ "$STATUS" -ne 0 ]; then
+            exit "$STATUS"
+          fi
+          if echo "$OUTPUT" | grep -qi "variable is not set"; then
+            echo "::error::Undefined variable interpolation in infra/docker-compose.yml"
+            exit 1
+          fi
 
       - name: Validate otel compose file
-        run: docker compose -f infra/docker-compose-otel.yml config --quiet
+        run: |
+          OUTPUT=$(docker compose -f infra/docker-compose-otel.yml config --quiet 2>&1 >/dev/null)
+          STATUS=$?
+          echo "$OUTPUT"
+          if [ "$STATUS" -ne 0 ]; then
+            exit "$STATUS"
+          fi
+          if echo "$OUTPUT" | grep -qi "variable is not set"; then
+            echo "::error::Undefined variable interpolation in infra/docker-compose-otel.yml"
+            exit 1
+          fi
 
       # Must stay pinned to the same image tag infra uses. Task 11 of the
       # obs-lane-b plan bumps this to 0.156.0 when the config is rewritten.
