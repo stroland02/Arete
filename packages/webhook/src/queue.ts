@@ -18,6 +18,13 @@ export const REVIEW_QUEUE_NAME = 'review-pr'
 export const REVIEW_QUEUE_HEAVY_NAME = 'review-pr-heavy'
 export const REVIEW_QUEUE_CONCURRENCY = 5
 
+// Concurrency for the heavy lane's OWN Worker (worker.ts's startReviewWorkers
+// runs a separate consumer per lane — see the defect note there). Lower than
+// the fast lane's: a >50-file PR is a bigger diff pushed through the same
+// LLM review pipeline, so fewer of them should run at once even though they
+// have a dedicated queue.
+export const REVIEW_QUEUE_HEAVY_CONCURRENCY = 2
+
 // Separate queue for executing a human-approved infrastructure command
 // (POST /api/approvals/:id/execute). It is deliberately NOT the review queue:
 // applying an approved fix / resuming the paused agent run is a different unit
