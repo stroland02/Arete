@@ -35,6 +35,7 @@ from arete_agents.context_map.repo_cache import (
     RepoCacheError,
     ensure_repo_checked_out,
 )
+from arete_agents.fix_findings import FIX_FINDINGS_RUBRIC, from_fix_item, ground_findings, has_qualifying_finding
 from arete_agents.models.fix import (
     FixPatchFile,
     FixRequest,
@@ -67,7 +68,11 @@ def _numbered(path: str, content: str) -> str:
 
 _AUTHOR_SYSTEM_PROMPT = """You are the Areté fix author for the {dimension} dimension. You are given one \
 concrete issue/opportunity, real evidence from the repository, and the CURRENT full content of every \
-evidenced file. Author a real, complete fix.
+evidenced file. That evidence already passed a findings-first gate: its confidence and quotes were \
+verified against this exact checkout before you were ever invoked (see the rubric below) -- author your \
+fix as if it is real, but never invent additional "evidence" of your own that wasn't given to you.
+
+{rubric}
 
 Rules:
 - Every file you return must include its COMPLETE new content — never a diff, never a placeholder, \
@@ -94,7 +99,7 @@ def author_patch(llm: BaseChatModel, item: Any, sources: dict[str, str]) -> dict
     )
     briefing = "\n\n".join(_numbered(path, content) for path, content in sources.items())
     messages = [
-        SystemMessage(content=_AUTHOR_SYSTEM_PROMPT.format(dimension=item.dimension)),
+        SystemMessage(content=_AUTHOR_SYSTEM_PROMPT.format(dimension=item.dimension, rubric=FIX_FINDINGS_RUBRIC)),
         HumanMessage(
             content=(
                 f"Issue: {item.title}\n{item.detail}\n\nEvidence:\n{evidence_lines}\n\n"
@@ -211,6 +216,34 @@ def _run_fix_inner(
         return FixResponse(
             status="fix_failed",
             reason=f"could not check out {req.repo.full_name}: {exc}",
+            transcript=transcript,
+        )
+
+    # Findings-first gate (Phase 2 Task 7): author_patch must never run
+    # without at least one finding whose evidence is mechanically verified
+    # against THIS checkout and whose confidence clears the rubric's
+    # grounded bar. Fails closed with an honest fix_failed rather than
+    # letting a speculative or ungrounded item reach the author model.
+    findings_report = from_fix_item(req.item)
+    grounded_findings, finding_violations = ground_findings(findings_report, repo_dir)
+    if not has_qualifying_finding(grounded_findings):
+        reason_detail = "; ".join(finding_violations) or "no finding met the rubric's grounded-confidence bar (>= 0.4)"
+        _logger.warning(
+            "fix: no grounded findings for container %s (%s) — refusing to author a patch",
+            req.container_id,
+            reason_detail,
+        )
+        transcript.append(
+            TranscriptStep(
+                agent=req.item.dimension,
+                action="findings",
+                detail=reason_detail,
+                report=TranscriptReport(status="blocked", blockers=finding_violations or [reason_detail]),
+            )
+        )
+        return FixResponse(
+            status="fix_failed",
+            reason="no_grounded_findings",
             transcript=transcript,
         )
 
