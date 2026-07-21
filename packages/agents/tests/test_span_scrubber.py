@@ -35,6 +35,25 @@ def test_scrub_text_masks_secret_shapes():
     assert scrub_text("no secrets here") == "no secrets here"
 
 
+def test_scrub_text_covers_the_full_canonical_pattern_set():
+    """§5 parity gate: this lane must catch every shape the canonical set in
+    packages/telemetry/src/redaction.ts catches. Divergence here means a
+    secret one lane redacts sails through another (final-review finding I4)."""
+    # Provider key shapes beyond the original subset.
+    assert "glpat-FakeCanary123456789" not in scrub_text("gitlab glpat-FakeCanary123456789")
+    assert "whsec_FakeCanary1234567890" not in scrub_text("stripe whsec_FakeCanary1234567890")
+    # Full gh* family, not just ghp_/ghs_.
+    for prefix in ("ghp", "gho", "ghu", "ghs", "ghr"):
+        token = f"{prefix}_ABCDEFGHIJKLMNOP1234"
+        assert token not in scrub_text(f"token {token}"), prefix
+    # Key-ish query params beyond key=/api_key=, prefix preserved for debuggability.
+    for param in ("apikey", "token", "access_token", "client_secret"):
+        out = scrub_text(f"https://x.test/cb?{param}=SECRETVALUE123&keep=1")
+        assert "SECRETVALUE123" not in out, param
+        assert f"?{param}={REDACTED}" in out, param
+        assert "keep=1" in out, param
+
+
 def test_blocked_keys_match_segments_not_substrings():
     assert is_blocked_key("http.request.header.authorization")
     assert is_blocked_key("gemini_api_key")

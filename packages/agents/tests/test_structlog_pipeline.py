@@ -15,17 +15,28 @@ from arete_agents.observability import (
 
 
 def test_censor_blocks_keys_and_scrubs_values():
+    # Bearer payload is >=8 chars: the canonical §5 pattern set (mirrored from
+    # packages/telemetry/src/redaction.ts) requires that length so short human
+    # words after "bearer" aren't false-positived. Real tokens are far longer;
+    # see test_bearer_below_threshold_is_left_alone for the boundary.
     event = {
         "event": "llm call failed",
         "api_key": "sk-live1234567890",
-        "detail": "retry with Bearer abc.def",
+        "detail": "retry with Bearer abc.defghij",
         "input_tokens": 42,
     }
     out = censor_processor(None, "info", dict(event))
     assert out["api_key"] == REDACTED
-    assert "abc.def" not in out["detail"]
+    assert "abc.defghij" not in out["detail"]
     assert REDACTED in out["detail"]
     assert out["input_tokens"] == 42  # token counts survive (§5 cardinality)
+
+
+def test_bearer_below_threshold_is_left_alone():
+    """Pins the deliberate §5 threshold: <8 chars after "bearer" is prose, not
+    a credential. Documented so a future widening is a conscious choice."""
+    out = censor_processor(None, "info", {"detail": "retry with Bearer abc.def"})
+    assert out["detail"] == "retry with Bearer abc.def"
 
 
 def test_trace_context_stamped_when_in_span():

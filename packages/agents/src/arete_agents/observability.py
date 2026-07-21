@@ -61,13 +61,24 @@ _BLOCKED_KEY_RES: tuple[re.Pattern[str], ...] = tuple(
     for key in BLOCKLIST_KEYS
 )
 
-# Value patterns (§5): bearer tokens, sk-/ghs_/ghp_-style key shapes,
-# [?&]key= / [?&]api_key= in URLs.
+# Value patterns (§5) -- canonical set defined by packages/telemetry/src/
+# redaction.ts's SECRET_VALUE_PATTERNS (the documented policy; TS is the
+# superset, kept in parity here and in the collector's blocked_values):
+# bearer tokens, sk-/gh[pousr]_/glpat-/whsec_-style provider key shapes, and
+# key-ish URL query params (key, api_key, apikey, token, access_token,
+# client_secret).
 _VALUE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"(?i)\bbearer\s+[a-z0-9._~+/=\-]+"), REDACTED),
-    (re.compile(r"\bsk-[A-Za-z0-9_\-]{8,}\b"), REDACTED),
-    (re.compile(r"\bgh[ps]_[A-Za-z0-9]{16,}\b"), REDACTED),
-    (re.compile(r"(?i)([?&](?:api_)?key=)[^&#\s]+"), r"\1" + REDACTED),
+    (re.compile(r"(?i)\bbearer\s+[a-z0-9._~+/=\-]{8,}"), REDACTED),
+    (re.compile(r"\bsk-[A-Za-z0-9_\-]{10,}"), REDACTED),
+    (re.compile(r"\bgh[pousr]_[A-Za-z0-9]{16,}"), REDACTED),
+    (re.compile(r"\bglpat-[A-Za-z0-9_\-]{10,}"), REDACTED),
+    (re.compile(r"\bwhsec_[A-Za-z0-9]{10,}"), REDACTED),
+    (
+        re.compile(
+            r"(?i)([?&](?:key|api_key|apikey|token|access_token|client_secret)=)[^&#\s]+"
+        ),
+        r"\1" + REDACTED,
+    ),
 )
 
 # Query-string-bearing URL attributes: strip everything from the first "?".

@@ -28,11 +28,18 @@ processors:
     allow_all_keys: true
     blocked_key_patterns:
       - (?i).*(^|[^a-z0-9])(authorization|x-api-key|api_key|token|secret|password|cookie|set-cookie)([^a-z0-9]|$).*
+    # Canonical §5 value-shape set, mirrored from
+    # packages/telemetry/src/redaction.ts (the documented policy) and kept in
+    # parity with packages/agents/src/arete_agents/observability.py. A shape
+    # present in one layer and missing here is a hole: the dashboard lane has
+    # no in-process scrubber and reaches ClickHouse through this processor only.
     blocked_values:
-      - (?i)bearer\s+[a-z0-9._~+/=\-]+
-      - sk-[A-Za-z0-9_\-]{8,}
-      - gh[ps]_[A-Za-z0-9]{16,}
-      - (?i)[?&](api_)?key=[^&#\s]+
+      - (?i)bearer\s+[a-z0-9._~+/=\-]{8,}
+      - sk-[A-Za-z0-9_\-]{10,}
+      - gh[pousr]_[A-Za-z0-9]{16,}
+      - glpat-[A-Za-z0-9_\-]{10,}
+      - whsec_[A-Za-z0-9]{10,}
+      - (?i)[?&](key|api_key|apikey|token|access_token|client_secret)=[^&#\s]+
     summary: info
   # Surgical OTTL passes for the places redaction's attribute scan can't
   # reach: URL attributes lose their entire query string; status/body text
