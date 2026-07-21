@@ -11,12 +11,25 @@ describe('sendAgentChat', () => {
     const fetchMock = vi.fn(async (..._args: unknown[]) => new Response(JSON.stringify({ reply: 'Here is my analysis.' }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 
-    const reply = await sendAgentChat({ agent: security, message: 'why is this risky?' });
+    const result = await sendAgentChat({ agent: security, message: 'why is this risky?' });
 
-    expect(reply).toBe('Here is my analysis.');
+    expect(result).toEqual({ reply: 'Here is my analysis.' });
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toContain('/chat');
     expect(JSON.parse((init as any).body).user_reply).toBe('why is this risky?');
+  });
+
+  it('returns a classified provider error when the model call was rejected', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({ reply: null, error: { kind: 'credit_balance', message: 'out of credits' } }),
+        { status: 200 },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await sendAgentChat({ agent: security, message: 'hi' });
+    expect(result).toEqual({ error: { kind: 'credit_balance', message: 'out of credits' } });
   });
 
   it('throws when the upstream returns a non-OK status', async () => {

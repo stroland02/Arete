@@ -1,5 +1,6 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { IconBrandGithub, IconCircleCheck, IconAlertTriangle } from "@tabler/icons-react";
+import { IconBrandGithub, IconCircleCheck, IconAlertTriangle, IconChevronRight } from "@tabler/icons-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getInstallationBilling, resolveSelectedInstallationIds, FREE_TIER_REVIEW_LIMIT } from "@/lib/queries";
@@ -117,6 +118,31 @@ export default async function SettingsPage({
       <RevealItem>
         <Card>
           <CardHeader>
+            <CardTitle>Workspace</CardTitle>
+          </CardHeader>
+          <div className="divide-y divide-border-subtle">
+            <SettingLink
+              href="/connections"
+              label="Connections"
+              detail="Repositories, telemetry, and integrations"
+            />
+            <SettingLink
+              href="/connections/ai-models"
+              label="AI Models"
+              detail="The model Kuma runs reviews on"
+            />
+            <SettingLink
+              href="/history"
+              label="Review History"
+              detail="Every review Kuma has run"
+            />
+          </div>
+        </Card>
+      </RevealItem>
+
+      <RevealItem>
+        <Card>
+          <CardHeader>
             <CardTitle>GitHub</CardTitle>
             {githubLinked && <Badge variant="positive">Connected</Badge>}
           </CardHeader>
@@ -227,5 +253,22 @@ function SettingRow({ label, value, mono }: { label: string; value: string; mono
       <span className="text-sm text-content-muted">{label}</span>
       <span className={`text-sm text-content-secondary ${mono ? "font-mono" : ""}`}>{value}</span>
     </div>
+  );
+}
+
+/** A navigational row into a workspace surface that now lives under Settings
+ *  (Connections, AI Models, Review History). */
+function SettingLink({ href, label, detail }: { href: string; label: string; detail: string }) {
+  return (
+    <Link
+      href={href}
+      className="group flex items-center justify-between py-3 first:pt-0 last:pb-0 transition-colors"
+    >
+      <span className="flex flex-col">
+        <span className="text-sm font-medium text-content-primary group-hover:text-accent-primary">{label}</span>
+        <span className="text-xs text-content-muted">{detail}</span>
+      </span>
+      <IconChevronRight className="h-4 w-4 shrink-0 text-content-muted transition-transform group-hover:translate-x-0.5 group-hover:text-accent-primary" />
+    </Link>
   );
 }

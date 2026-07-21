@@ -41,11 +41,12 @@ def test_get_llms_by_role_ollama_shares_one_model_across_all_roles():
     assert llms["critic_opus"] is llms["critic_sonnet"]
 
 
-def test_get_llms_by_role_anthropic_still_tiers_opus_and_sonnet():
-    # Generalization must not regress the tiered providers.
+def test_get_llms_by_role_anthropic_tiers_across_haiku_sonnet_opus():
+    # Generalization must not regress the tiered providers. With the fast
+    # defaults, three tiers are in play: haiku + sonnet (roles) + opus (critic).
     s = Settings(llm_provider="anthropic", anthropic_api_key="sk-ant-test")
     llms = get_llms_by_role(s)
-    assert len({id(c) for c in llms.values()}) == 2  # opus + sonnet
+    assert len({id(c) for c in llms.values()}) == 3  # haiku + sonnet + opus(critic)
     assert "anthropic" in type(llms["security"]).__module__.lower()
 
 

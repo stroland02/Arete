@@ -1,6 +1,6 @@
 from langchain_openai import ChatOpenAI
 
-from arete_agents.llm.base import DEFAULT_LLM_TIMEOUT_SECONDS
+from arete_agents.llm.base import DEFAULT_LLM_TIMEOUT_SECONDS, DEFAULT_MAX_TOKENS
 
 # OpenRouter is OpenAI-API-compatible: the SAME client, pointed at a different
 # base URL. Any OpenAI-compatible gateway (OpenRouter, Azure OpenAI, a local
@@ -13,16 +13,19 @@ def build_openai_llm(
     model: str | None = None,
     api_key: str | None = None,
     base_url: str | None = None,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> ChatOpenAI:
     """Build an OpenAI (or OpenAI-compatible) chat client. ``base_url`` targets
     a compatible gateway such as OpenRouter; when omitted the OpenAI default
-    endpoint is used. Construction opens no connection — an invalid key or
-    unreachable endpoint only surfaces on the first call."""
+    endpoint is used. ``max_tokens`` bounds output (latency). Construction opens
+    no connection — an invalid key or unreachable endpoint only surfaces on the
+    first call."""
     kwargs: dict = {
         "model": model or DEFAULT_OPENAI_MODEL,
         "api_key": api_key,
         "temperature": 0.1,
         "timeout": DEFAULT_LLM_TIMEOUT_SECONDS,
+        "max_tokens": max_tokens,
     }
     if base_url:
         kwargs["base_url"] = base_url

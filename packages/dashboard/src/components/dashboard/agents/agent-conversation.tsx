@@ -94,6 +94,15 @@ export function AgentConversation({ agent, findings, findingCount, hasReviews, r
         body: JSON.stringify({ message: text, containerId }),
       });
       if (!res.ok) {
+        // A classified provider error (402) carries an actionable reason (out
+        // of credits, bad key, …) — surface it as a notice instead of the
+        // generic "service unavailable", so the user knows what to fix.
+        if (res.status === 402) {
+          const data = await res.json().catch(() => ({}));
+          const msg = typeof data.error === "string" ? data.error : "The AI model call failed.";
+          setTurns((t) => [...t, { role: "agent", text: msg }]);
+          return;
+        }
         setUnavailable(true);
         return;
       }

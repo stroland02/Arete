@@ -66,10 +66,25 @@ Only include the 'actions' array if you actually need to perform an action.
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_prompt),
         ]
-        
-        llm_with_retry = self._llm.with_retry(stop_after_attempt=2)
-        response = llm_with_retry.invoke(messages)
-        
+
+        # Invoke with an HONEST error path: a provider failure (out of credits,
+        # bad key, model not found) is classified and returned as a structured
+        # error the UI can show — never swallowed into a silent non-response.
+        # Only retryable failures (rate limit / timeout / transient 5xx) get a
+        # single retry; a 400 fails fast instead of tripling the wait.
+        from arete_agents.llm.errors import classify_provider_error
+
+        response = None
+        for attempt in range(2):
+            try:
+                response = self._llm.invoke(messages)
+                break
+            except Exception as exc:  # noqa: BLE001 — classified below
+                err = classify_provider_error(exc)
+                if err.retryable and attempt == 0:
+                    continue
+                return {"reply": None, "actions": [], "error": {"kind": err.kind, "message": err.message}}
+
         import json
         import re
         raw_str = response.content if isinstance(response.content, str) else ""

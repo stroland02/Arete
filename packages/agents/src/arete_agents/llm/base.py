@@ -8,6 +8,13 @@ from arete_agents.config import Settings
 # the call sites — is the practical substitute for a request-level deadline.
 DEFAULT_LLM_TIMEOUT_SECONDS = 60
 
+# Default output-token budget. Output generation dominates LLM latency, so a
+# tighter default than the provider maximum keeps interactive/review calls fast
+# without truncating real output (callers needing more pass max_tokens=...).
+DEFAULT_MAX_TOKENS = 4096
+# Interactive roles (chat) reply briefly — a small budget makes them snappy.
+CHAT_MAX_TOKENS = 1024
+
 
 def get_llm(settings: Settings) -> BaseChatModel:
     if settings.llm_provider == "gemini":
@@ -74,12 +81,13 @@ def build_llm(
     model: str | None = None,
     api_key: str | None = None,
     base_url: str | None = None,
-    tier: str = "opus",
+    tier: str = "sonnet",
+    max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> BaseChatModel:
     """Build a single chat client for ``provider``. ``model`` names an exact
     model (the per-request BYO path); when omitted, anthropic/gemini pick a
-    model from ``tier`` and ollama uses its configured default. Raises
-    ValueError on an unknown provider."""
+    model from ``tier`` and ollama uses its configured default. ``max_tokens``
+    bounds output (latency). Raises ValueError on an unknown provider."""
     if provider == "ollama":
         from arete_agents.llm.ollama import (
             DEFAULT_OLLAMA_BASE_URL,
@@ -93,11 +101,11 @@ def build_llm(
     if provider == "gemini":
         from arete_agents.llm.gemini import build_gemini_llm
 
-        return build_gemini_llm(api_key or "", tier, model=model)
+        return build_gemini_llm(api_key or "", tier, model=model, max_tokens=max_tokens)
     if provider == "anthropic":
         from arete_agents.llm.anthropic import build_anthropic_llm
 
-        return build_anthropic_llm(api_key or "", tier, model=model)
+        return build_anthropic_llm(api_key or "", tier, model=model, max_tokens=max_tokens)
     if provider in ("openai", "openrouter"):
         from arete_agents.llm.openai import OPENROUTER_BASE_URL, build_openai_llm
 
@@ -106,7 +114,9 @@ def build_llm(
         resolved_base = base_url or (
             OPENROUTER_BASE_URL if provider == "openrouter" else None
         )
-        return build_openai_llm(model=model, api_key=api_key, base_url=resolved_base)
+        return build_openai_llm(
+            model=model, api_key=api_key, base_url=resolved_base, max_tokens=max_tokens
+        )
     raise ValueError(f"Unknown LLM provider: {provider!r}")
 
 

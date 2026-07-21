@@ -23,8 +23,8 @@ const NAV_ITEMS = [
   { href: "/dashboards", label: "Dashboards" },
   { href: "/services", label: "Services" },
   { href: "/agents", label: "Agents" },
-  { href: "/connections", label: "Connections" },
-  { href: "/history", label: "Review History" },
+  // Connections and Review History now live under Settings (linked from the
+  // Settings page). Their routes still exist for those links + deep-links.
   { href: "/settings", label: "Settings" },
 ];
 

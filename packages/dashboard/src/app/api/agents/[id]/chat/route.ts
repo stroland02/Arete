@@ -83,7 +83,14 @@ export async function POST(
     // Run chat on the tenant's connected model (same resolution as reviews);
     // null → the agents service default. Never blocks the reply.
     const llm = await resolveActiveLlmForChat();
-    const reply = await sendAgentChat({ agent, message, llm });
+    const result = await sendAgentChat({ agent, message, llm });
+    // A classified provider error (out of credits, bad key, …) is surfaced as
+    // an honest, actionable message — not a silent non-response. 402 keeps it
+    // distinct from a transport 503 so the UI can style it as a notice.
+    if ("error" in result) {
+      return NextResponse.json({ error: result.error.message, kind: result.error.kind }, { status: 402 });
+    }
+    const reply = result.reply;
     void appendChatTurn(id, containerId, { role: "agent", text: reply || "(no response)" });
     return NextResponse.json({ reply });
   } catch (err) {

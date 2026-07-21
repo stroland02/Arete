@@ -36,22 +36,23 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://arete:arete@localhost:5432/arete"
     redis_url: str = "redis://localhost:6379"
 
-    # Per-role Claude model tier. "opus" (claude-opus-4-8) for nuanced-
-    # judgment roles; "sonnet" (claude-sonnet-5) for more mechanical/
-    # pattern-based roles. Each is individually overridable via env
-    # (e.g. SECURITY_TIER=sonnet).
-    security_tier: Literal["opus", "sonnet"] = "opus"
-    business_logic_tier: Literal["opus", "sonnet"] = "opus"
-    deployment_safety_tier: Literal["opus", "sonnet"] = "opus"
-    ci_tier: Literal["opus", "sonnet"] = "opus"
-    synthesizer_tier: Literal["opus", "sonnet"] = "opus"
-    performance_tier: Literal["opus", "sonnet"] = "sonnet"
-    quality_tier: Literal["opus", "sonnet"] = "sonnet"
-    test_coverage_tier: Literal["opus", "sonnet"] = "sonnet"
-    chat_tier: Literal["opus", "sonnet"] = "sonnet"
+    # Per-role Claude model tier. "opus" (claude-opus-4-8) = strongest/slowest,
+    # "sonnet" (claude-sonnet-5) = balanced, "haiku" (claude-haiku-4-5) =
+    # fast/low-latency. Defaults favour SPEED: judgment roles run on sonnet,
+    # mechanical/interactive roles on haiku; opus is opt-in per role. Each is
+    # individually overridable via env (e.g. SECURITY_TIER=opus).
+    security_tier: Literal["opus", "sonnet", "haiku"] = "sonnet"
+    business_logic_tier: Literal["opus", "sonnet", "haiku"] = "sonnet"
+    deployment_safety_tier: Literal["opus", "sonnet", "haiku"] = "sonnet"
+    synthesizer_tier: Literal["opus", "sonnet", "haiku"] = "sonnet"
+    ci_tier: Literal["opus", "sonnet", "haiku"] = "haiku"
+    performance_tier: Literal["opus", "sonnet", "haiku"] = "haiku"
+    quality_tier: Literal["opus", "sonnet", "haiku"] = "haiku"
+    test_coverage_tier: Literal["opus", "sonnet", "haiku"] = "haiku"
+    chat_tier: Literal["opus", "sonnet", "haiku"] = "haiku"
 
-    eval_finder_tier: Literal["opus", "sonnet"] = "opus"
-    eval_judge_tier: Literal["opus", "sonnet"] = "sonnet"
+    eval_finder_tier: Literal["opus", "sonnet", "haiku"] = "opus"
+    eval_judge_tier: Literal["opus", "sonnet", "haiku"] = "sonnet"
     eval_f1_threshold: float = 0.05
 
     @field_validator("gemini_api_key")

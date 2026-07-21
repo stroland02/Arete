@@ -62,9 +62,22 @@ describe('POST /api/agents/[id]/chat', () => {
 
   it('200 with the upstream reply on success', async () => {
     authMock.mockResolvedValue({ user: { id: 'u1' } });
-    sendAgentChatMock.mockResolvedValue('Here is my analysis.');
+    sendAgentChatMock.mockResolvedValue({ reply: 'Here is my analysis.' });
     const res = await POST(req({ message: 'hi' }), ctx('security'));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ reply: 'Here is my analysis.' });
+  });
+
+  it('402 with the provider error message when the model call is rejected', async () => {
+    authMock.mockResolvedValue({ user: { id: 'u1' } });
+    sendAgentChatMock.mockResolvedValue({
+      error: { kind: 'credit_balance', message: 'Your AI provider account is out of credits.' },
+    });
+    const res = await POST(req({ message: 'hi' }), ctx('security'));
+    expect(res.status).toBe(402);
+    expect(await res.json()).toEqual({
+      error: 'Your AI provider account is out of credits.',
+      kind: 'credit_balance',
+    });
   });
 });

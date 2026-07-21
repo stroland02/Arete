@@ -16,12 +16,14 @@ def test_tier_model_ids():
     assert _TIER_MODEL_IDS == {
         "opus": "claude-opus-4-8",
         "sonnet": "claude-sonnet-5",
+        "haiku": "claude-haiku-4-5",
     }
 
 
-def test_build_anthropic_llm_defaults_to_opus():
+def test_build_anthropic_llm_defaults_to_sonnet():
+    # Fast-by-default: an unspecified tier is the balanced sonnet, not opus.
     llm = build_anthropic_llm("sk-ant-test")
-    assert llm.model == "claude-opus-4-8"
+    assert llm.model == "claude-sonnet-5"
 
 
 def test_build_anthropic_llm_sonnet_tier():
@@ -29,18 +31,24 @@ def test_build_anthropic_llm_sonnet_tier():
     assert llm.model == "claude-sonnet-5"
 
 
+def test_build_anthropic_llm_haiku_tier():
+    llm = build_anthropic_llm("sk-ant-test", tier="haiku")
+    assert llm.model == "claude-haiku-4-5"
+
+
 def test_role_tiers_defaults_match_spec():
+    # Defaults favour speed: judgment roles on sonnet, mechanical/interactive on haiku.
     tiers = role_tiers(_settings())
     assert tiers == {
-        "security": "opus",
-        "performance": "sonnet",
-        "quality": "sonnet",
-        "test_coverage": "sonnet",
-        "deployment_safety": "opus",
-        "business_logic": "opus",
-        "ci_diagnostics": "opus",
-        "synthesizer": "opus",
-        "chat": "sonnet",
+        "security": "sonnet",
+        "performance": "haiku",
+        "quality": "haiku",
+        "test_coverage": "haiku",
+        "deployment_safety": "sonnet",
+        "business_logic": "sonnet",
+        "ci_diagnostics": "haiku",
+        "synthesizer": "sonnet",
+        "chat": "haiku",
         "critic_opus": "opus",
         "critic_sonnet": "sonnet",
     }
@@ -58,12 +66,14 @@ def test_get_llms_by_role_covers_every_role():
 
 def test_get_llms_by_role_shares_one_client_per_tier():
     llms = get_llms_by_role(_settings())
-    # All opus roles share one instance; all sonnet roles share another;
-    # the two tiers are distinct instances (only 2 clients built total).
-    assert llms["security"] is llms["business_logic"]  # both opus
-    assert llms["performance"] is llms["quality"]       # both sonnet
+    # Roles sharing a tier share one client instance; distinct tiers are
+    # distinct instances. With the fast defaults three tiers are in play —
+    # sonnet (judgment roles), haiku (mechanical roles), and opus (the fixed
+    # critic_opus) — so exactly 3 clients are built.
+    assert llms["security"] is llms["business_logic"]  # both sonnet
+    assert llms["performance"] is llms["quality"]       # both haiku
     assert llms["security"] is not llms["performance"]
-    assert len({id(c) for c in llms.values()}) == 2
+    assert len({id(c) for c in llms.values()}) == 3
 
 
 def test_get_llms_by_role_honors_provider():
@@ -119,6 +129,8 @@ def test_get_llms_by_role_always_builds_both_tiers_for_critic():
         security_tier="sonnet", business_logic_tier="sonnet",
         deployment_safety_tier="sonnet", ci_tier="sonnet",
         synthesizer_tier="sonnet", chat_tier="sonnet",
+        performance_tier="sonnet", quality_tier="sonnet",
+        test_coverage_tier="sonnet",
     ))
     assert llms["critic_opus"] is not llms["critic_sonnet"]
     assert len({id(c) for c in llms.values()}) == 2
