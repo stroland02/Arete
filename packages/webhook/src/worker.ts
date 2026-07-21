@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url'
 // under "moduleResolution": "nodenext", ioredis's default export can't be
 // used as both a value and a type, but its named `Redis` export can.
 import { Redis as IORedis } from 'ioredis'
+import { BullMQOtel } from 'bullmq-otel'
 import type { Octokit } from '@octokit/core'
 import type { PRContext } from './types.js'
 import { createApp, getInstallationOctokit, getInstallationToken } from './github-auth.js'
@@ -302,6 +303,7 @@ export function startReviewWorker(): Worker<ReviewJobData> {
     {
       connection,
       concurrency: REVIEW_QUEUE_CONCURRENCY,
+      telemetry: new BullMQOtel('arete-worker'),
     }
   )
 

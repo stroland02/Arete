@@ -68,3 +68,35 @@ describe('queue configuration', () => {
     expect(QueueMock).not.toHaveBeenCalled()
   })
 })
+
+describe('queue telemetry (bullmq-otel)', () => {
+  it('constructs every Queue with a BullMQOtel telemetry instance', async () => {
+    vi.resetModules()
+    const queueCtorOpts: any[] = []
+    vi.doMock('bullmq', () => ({
+      Queue: class {
+        constructor(_name: string, opts: unknown) {
+          queueCtorOpts.push(opts)
+        }
+        async add() { return { id: 'job-1' } }
+        async close() {}
+      },
+    }))
+    vi.doMock('ioredis', () => ({ Redis: class { quit = async () => {} } }))
+
+    const { getReviewQueue, getApprovalQueue } = await import('./queue.js')
+    getReviewQueue('fast')
+    getReviewQueue('heavy')
+    getApprovalQueue()
+
+    expect(queueCtorOpts).toHaveLength(3)
+    for (const opts of queueCtorOpts) {
+      expect(opts.telemetry).toBeDefined()
+      expect(opts.telemetry.constructor.name).toBe('BullMQOtel')
+    }
+
+    vi.doUnmock('bullmq')
+    vi.doUnmock('ioredis')
+    vi.resetModules()
+  })
+})

@@ -5,6 +5,7 @@ import { Queue, type JobsOptions } from 'bullmq'
 // be used as both a value and a type. ioredis also exports the same class as
 // a named `Redis` binding, which doesn't have that ambiguity.
 import { Redis as IORedis } from 'ioredis'
+import { BullMQOtel } from 'bullmq-otel'
 
 // Job queue for the review pipeline. The webhook handlers (webhook-handler.ts,
 // gitlab-handler.ts) only validate the incoming event and enqueue a job here —
@@ -92,19 +93,26 @@ let queueFast: Queue<ReviewJobData> | null = null
 let queueHeavy: Queue<ReviewJobData> | null = null
 let queueApproval: Queue<ApprovalExecutionJobData> | null = null
 
+// First-party BullMQ telemetry (spec §4): producer-side span on enqueue,
+// context propagated through Redis to the worker automatically.
+const bullmqTelemetry = new BullMQOtel('arete-webhook')
+
 export function getApprovalQueue(): Queue<ApprovalExecutionJobData> {
   if (!queueApproval) {
-    queueApproval = new Queue<ApprovalExecutionJobData>(APPROVAL_QUEUE_NAME, { connection: getConnection() })
+    queueApproval = new Queue<ApprovalExecutionJobData>(APPROVAL_QUEUE_NAME, {
+      connection: getConnection(),
+      telemetry: bullmqTelemetry,
+    })
   }
   return queueApproval
 }
 
 export function getReviewQueue(lane: 'fast' | 'heavy' = 'fast'): Queue<ReviewJobData> {
   if (lane === 'fast') {
-    if (!queueFast) queueFast = new Queue<ReviewJobData>(REVIEW_QUEUE_NAME, { connection: getConnection() })
+    if (!queueFast) queueFast = new Queue<ReviewJobData>(REVIEW_QUEUE_NAME, { connection: getConnection(), telemetry: bullmqTelemetry })
     return queueFast
   } else {
-    if (!queueHeavy) queueHeavy = new Queue<ReviewJobData>(REVIEW_QUEUE_HEAVY_NAME, { connection: getConnection() })
+    if (!queueHeavy) queueHeavy = new Queue<ReviewJobData>(REVIEW_QUEUE_HEAVY_NAME, { connection: getConnection(), telemetry: bullmqTelemetry })
     return queueHeavy
   }
 }
