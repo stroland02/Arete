@@ -127,22 +127,45 @@ function normaliseKey(key: string): string {
   return key.toLowerCase().replace(/[-_\s]/g, '')
 }
 
-const REDACT_KEY_SET: ReadonlySet<string> = new Set(REDACT_KEYS.map(normaliseKey))
+/** Areté-specific key names, beyond the frozen spec §5 `REDACT_KEYS`, that
+ *  {@link PINO_REDACT_PATHS} additionally redacts (see its own doc comment
+ *  for why each one is there). Hoisted to a shared constant so
+ *  `REDACT_KEY_SET` (the sink-side key set) and `PINO_REDACT_PATHS` compose
+ *  the SAME posture instead of drifting — `scrubSinkValue` previously
+ *  reached only `REDACT_KEYS`, so `installationToken` (a live GitHub App
+ *  installation token) passed through a persistence-sink write unredacted
+ *  (finding N3). `apiKey` is omitted: `normaliseKey` already collapses it to
+ *  `apikey`, which `REDACT_KEYS` covers. */
+const AGENT_EXTRA_REDACT_KEYS = ['privateKey', 'installationToken', 'webhookSecret'] as const
 
-/** Scheme-qualified URL, e.g. `https://…`, `postgres://…`. Deliberately narrow:
- *  `stripUrlQuery` cuts at the first `?`, which would maul ordinary prose. */
-const URL_LIKE = /^[a-z][a-z0-9+.-]*:\/\/\S+$/i
+const REDACT_KEY_SET: ReadonlySet<string> = new Set(
+  [...REDACT_KEYS, ...AGENT_EXTRA_REDACT_KEYS].map(normaliseKey)
+)
+
+/** Scheme-qualified URL, e.g. `https://…`, `postgres://…`. Matches a URL
+ *  substring anywhere in a larger string (not anchored), so prose with an
+ *  embedded URL ("see https://x.io/a?password=… for details") and markdown
+ *  links ("[link](https://x.io/a?password=…)") are found too — that shape,
+ *  not a bare whole-string URL, is the dominant one for alert summaries and
+ *  memory bodies (finding N1: the prior `^…\S+$`-anchored version only ever
+ *  matched when the ENTIRE trimmed value was a URL). The character class
+ *  excludes common textual/markdown delimiters (whitespace, quotes, angle
+ *  brackets, parens, brackets, backtick) so it stops at the URL's actual
+ *  boundary instead of swallowing trailing prose or markdown syntax. */
+const EMBEDDED_URL = /\b[a-z][a-z0-9+.-]*:\/\/[^\s<>"'()[\]`]+/gi
 
 /**
  * String scrub for PERSISTENCE sinks (incident rows, memory rows — anything
  * that outlives a log line). Strictly stronger than {@link scrubText}: it also
- * drops the query string of URL-shaped values, because the value patterns only
- * know a fixed list of key-ish query params (`key|api_key|apikey|token|
- * access_token|client_secret`) and a URL can carry a credential under any name
- * at all (`?password=…` was not matched — Phase 2 review finding I5).
+ * drops the query string of every URL-shaped SUBSTRING (whole-string URLs
+ * included — a bare URL is a one-URL-long substring of itself), because the
+ * value patterns only know a fixed list of key-ish query params (`key|
+ * api_key|apikey|token|access_token|client_secret`) and a URL can carry a
+ * credential under any name at all (`?password=…` was not matched — Phase 2
+ * review finding I5, and finding N1 for the embedded-in-prose case).
  */
 export function scrubSinkText(text: string): string {
-  return scrubText(URL_LIKE.test(text.trim()) ? stripUrlQuery(text.trim()) : text)
+  return scrubText(text.replace(EMBEDDED_URL, (url) => stripUrlQuery(url)))
 }
 
 /**
@@ -153,14 +176,40 @@ export function scrubSinkText(text: string): string {
  * redaction: `{ password: 'hunter2' }` has no secret *shape* and survives.
  *
  * This applies BOTH halves plus {@link scrubSinkText}, so any sink can reach
- * the full spec §5 posture through one canonical call. Input is expected to be
- * JSON-ish (the alert-payload case); the output is always JSON-serializable.
+ * the full spec §5 posture through one canonical call. The key half composes
+ * `REDACT_KEYS` WITH {@link AGENT_EXTRA_REDACT_KEYS} — matching
+ * {@link PINO_REDACT_PATHS} exactly — rather than `REDACT_KEYS` alone, so
+ * `installationToken`/`privateKey`/`webhookSecret` cannot pass through a
+ * persistence sink unredacted the way they never could through pino
+ * (finding N3; previously the docblock claimed this parity without the code
+ * actually composing it).
+ *
+ * Input is expected to be JSON-ish (the alert-payload case); the output is
+ * always JSON-serializable: `Date` becomes its ISO string and `Error` becomes
+ * a plain `{ name, message, stack, …ownProps }` object (both scrubbed) rather
+ * than falling into the generic object branch, where `Object.entries` on
+ * either yields nothing and silently reduces them to `{}` (finding N4,
+ * following {@link scrubLogValue}'s existing Error precedent in this same
+ * file — though that helper returns a real `Error` instance, which this one
+ * deliberately does not, to keep the "always JSON-serializable" contract:
+ * `JSON.stringify(new Error(...))` itself flattens to `{}`).
  */
 export function scrubSinkValue(
   value: unknown,
   seen: WeakMap<object, unknown> = new WeakMap()
 ): unknown {
   if (typeof value === 'string') return scrubSinkText(value)
+  if (value instanceof Date) return value.toISOString()
+  if (value instanceof Error) {
+    if (seen.has(value)) return seen.get(value)
+    const out: Record<string, unknown> = { name: value.name, message: scrubSinkText(value.message) }
+    seen.set(value, out) // before recursing, so cycles land on the clone
+    if (value.stack) out.stack = scrubSinkText(value.stack)
+    for (const key of Object.keys(value)) {
+      out[key] = scrubSinkValue((value as unknown as Record<string, unknown>)[key], seen)
+    }
+    return out
+  }
   if (Array.isArray(value)) return value.map((el) => scrubSinkValue(el, seen))
   if (value && typeof value === 'object') {
     if (seen.has(value)) return seen.get(value)
@@ -179,7 +228,11 @@ export function scrubSinkValue(
 
 /** pino redact.paths — key blocklist at top level, one wildcard level deep,
  *  and under req/res headers. `installationToken` is Areté-specific: PRContext
- *  carries a live GitHub App installation token (worker.ts buildCloneContext). */
+ *  carries a live GitHub App installation token (worker.ts buildCloneContext).
+ *  `privateKey` and `webhookSecret` are the other two Areté-specific names —
+ *  see {@link AGENT_EXTRA_REDACT_KEYS}, which this composes rather than
+ *  re-listing so the pino path and the sink path (`REDACT_KEY_SET`) cannot
+ *  drift apart again (finding N3). */
 export const PINO_REDACT_PATHS: string[] = [
   ...REDACT_KEYS.flatMap((k) => {
     const seg = /^[A-Za-z_$][\w$]*$/.test(k) ? `.${k}` : `["${k}"]`
@@ -187,7 +240,5 @@ export const PINO_REDACT_PATHS: string[] = [
     return [top, `*${seg}`, `req.headers${seg}`, `res.headers${seg}`, `headers${seg}`]
   }),
   'apiKey', '*.apiKey',
-  'privateKey', '*.privateKey',
-  'installationToken', '*.installationToken',
-  'webhookSecret', '*.webhookSecret',
+  ...AGENT_EXTRA_REDACT_KEYS.flatMap((k) => [k, `*.${k}`]),
 ]

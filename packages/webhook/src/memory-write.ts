@@ -161,28 +161,40 @@ async function saveInner(params: SaveMemoryParams): Promise<SaveMemoryResult> {
     return { ok: false, reason: 'invalid_input' }
   }
 
-  // Reject, never truncate (spec §3) — a silently-truncated rule can quietly
-  // change its own meaning.
-  if (body.length > MAX_MEMORY_BODY_CHARS) {
+  const rawTitle = (params.title && params.title.trim()) || body.slice(0, 80).trim() || 'Rule'
+
+  // REDACT FIRST, cap the REDACTED (stored) value (review finding N2). These
+  // used to be reject-never-truncate caps on the RAW input, on the theory
+  // that "what is bounded is what the caller actually sent." That theory was
+  // wrong: scrubbing can LENGTHEN a string (`?token=a` -> `?token=[REDACTED]`,
+  // 8 chars -> 17), so a raw-input cap does not bound what ends up in the
+  // database — a reviewer probe stored a 3,996-char raw body at 7,992 stored
+  // chars, ~2x the documented bound. The bound that actually matters is on
+  // the STORED string: `fetchProjectMemories` re-injects these rows into
+  // EVERY future review prompt for the repo (base.py), so it is the
+  // persisted size — a context-budget and cost concern, not just a storage
+  // one — that must be capped, not the size of whatever text the caller
+  // happened to type before redaction touched it. Scrubbing here (once) also
+  // means `saveInner` below persists these same strings directly instead of
+  // re-scrubbing at create time.
+  const scrubbedBody = scrubSinkText(body)
+  const scrubbedTitle = scrubSinkText(rawTitle)
+
+  if (scrubbedBody.length > MAX_MEMORY_BODY_CHARS) {
     return {
       ok: false,
       reason: 'body_too_long',
-      detail: `body is ${body.length} chars; max is ${MAX_MEMORY_BODY_CHARS}`,
+      detail: `body is ${scrubbedBody.length} chars after redaction; max is ${MAX_MEMORY_BODY_CHARS}`,
     }
   }
 
-  const title = (params.title && params.title.trim()) || body.slice(0, 80).trim() || 'Rule'
-
-  // The SAME reject-never-truncate rule on `title` (review finding B2). Both
-  // caps are enforced on the RAW input, before redaction, so what is bounded
-  // is what the caller actually sent — scrubbing can only shorten or lengthen
-  // a string, and a cap that moved with the scrubber's output would be a cap
-  // an attacker could steer.
-  if (title.length > MAX_MEMORY_TITLE_CHARS) {
+  // The SAME reject-never-truncate rule on `title` (review finding B2), now
+  // measured the same post-redaction way as `body` above.
+  if (scrubbedTitle.length > MAX_MEMORY_TITLE_CHARS) {
     return {
       ok: false,
       reason: 'title_too_long',
-      detail: `title is ${title.length} chars; max is ${MAX_MEMORY_TITLE_CHARS}`,
+      detail: `title is ${scrubbedTitle.length} chars after redaction; max is ${MAX_MEMORY_TITLE_CHARS}`,
     }
   }
 
@@ -228,16 +240,17 @@ async function saveInner(params: SaveMemoryParams): Promise<SaveMemoryResult> {
     // persistence sink whose contents fetchProjectMemories re-injects into
     // EVERY later review prompt for this repo (base.py). An unscrubbed secret
     // here is therefore amplified to the model provider on every subsequent
-    // review, not merely stored once. Both columns go through the canonical
-    // @arete/telemetry sink scrubber — the same call the sibling alerting sink
-    // makes for every persisted field (alerting/receiver.ts) — never a
-    // bespoke one.
+    // review, not merely stored once. Both columns went through the canonical
+    // @arete/telemetry sink scrubber above (the same call the sibling
+    // alerting sink makes for every persisted field, alerting/receiver.ts) —
+    // never a bespoke one — and are persisted as-is here: `scrubSinkText` is
+    // idempotent, so re-scrubbing at this point would be redundant, not safer.
     const created = await prisma.agentMemory.create({
       data: {
         repositoryId: repository.id,
         kind,
-        title: scrubSinkText(title),
-        body: scrubSinkText(body),
+        title: scrubbedTitle,
+        body: scrubbedBody,
       },
       select: { id: true },
     })

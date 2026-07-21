@@ -294,6 +294,64 @@ describe('saveAgentMemory', () => {
     expect(MAX_MEMORY_TITLE_CHARS).toBeLessThan(80_000)
   })
 
+  // Cap-on-stored-value mutation test (finding N2). The caps used to be
+  // measured on the RAW input, but redaction can LENGTHEN a string
+  // (`?token=a` -> `?token=[REDACTED]`, 8 chars -> 17). A reviewer probe
+  // built a 3,996-char raw body entirely of `?token=a` fragments -- under
+  // the (old) raw-length cap -- and it was accepted and stored at 7,992
+  // chars, ~2x the documented bound. AgentMemory rows are re-injected into
+  // EVERY future review prompt for the repo (fetchProjectMemories -> base.py),
+  // so the invariant worth enforcing is the size of what actually gets
+  // persisted and re-sent to the model, not the size of what the caller
+  // happened to type.
+  it('rejects a body whose post-redaction length exceeds the cap, even though the raw input is within it', async () => {
+    const store = makeFakeStore({ installations: [INST_A], repositories: [REPO_A] })
+    const { saveAgentMemory, MAX_MEMORY_BODY_CHARS } = await loadModule(store)
+
+    const unit = '?token=a ' // 9 raw chars; scrubs to '?token=[REDACTED] ' (18 chars)
+    const body = unit.repeat(444) // 444 * 9 = 3,996 raw chars -- the reviewer's exact probe
+    expect(body.length).toBe(3996)
+    expect(body.length).toBeLessThanOrEqual(MAX_MEMORY_BODY_CHARS)
+
+    const result = await saveAgentMemory(baseParams({ body }))
+
+    expect(result).toMatchObject({ ok: false, reason: 'body_too_long' })
+    expect(store.agentMemory.create).not.toHaveBeenCalled()
+    expect(store.memories).toHaveLength(0)
+  })
+
+  it('rejects a title whose post-redaction length exceeds the cap, even though the raw input is within it', async () => {
+    const store = makeFakeStore({ installations: [INST_A], repositories: [REPO_A] })
+    const { saveAgentMemory, MAX_MEMORY_TITLE_CHARS } = await loadModule(store)
+
+    const unit = '?token=a ' // 9 raw chars; scrubs to '?token=[REDACTED] ' (18 chars)
+    const title = unit.repeat(22) // 22 * 9 = 198 raw chars -- mirrors the reviewer's 198-char title probe
+    expect(title.length).toBe(198)
+    expect(title.length).toBeLessThanOrEqual(MAX_MEMORY_TITLE_CHARS)
+
+    const result = await saveAgentMemory(baseParams({ title }))
+
+    expect(result).toMatchObject({ ok: false, reason: 'title_too_long' })
+    expect(store.agentMemory.create).not.toHaveBeenCalled()
+    expect(store.memories).toHaveLength(0)
+  })
+
+  // Positive counterpart: the SAME redaction that lengthens the token-shaped
+  // body above can also SHORTEN one (`stripUrlQuery` drops the whole query
+  // string) -- confirming the cap tracks the stored value in both
+  // directions, not just catching the lengthening case.
+  it('accepts a body that redaction shortens under the cap even though a naive doubled-length estimate would not', async () => {
+    const store = makeFakeStore({ installations: [INST_A], repositories: [REPO_A] })
+    const { saveAgentMemory, MAX_MEMORY_BODY_CHARS } = await loadModule(store)
+
+    const longQuery = 'x'.repeat(MAX_MEMORY_BODY_CHARS - 20)
+    const body = `see https://example.com/a?password=${longQuery} for details`
+    const result = await saveAgentMemory(baseParams({ body }))
+
+    expect(result).toMatchObject({ ok: true })
+    expect(store.memories[0].body.length).toBeLessThanOrEqual(MAX_MEMORY_BODY_CHARS)
+  })
+
   it('accepts a title exactly at the cap (boundary)', async () => {
     const store = makeFakeStore({ installations: [INST_A], repositories: [REPO_A] })
     const { saveAgentMemory, MAX_MEMORY_TITLE_CHARS } = await loadModule(store)
