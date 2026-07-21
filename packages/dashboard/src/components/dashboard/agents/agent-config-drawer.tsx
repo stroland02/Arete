@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { IconCpu, IconX } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
@@ -151,7 +152,7 @@ function DrawerPanel({
           <p className="text-sm font-medium text-content-primary">Model</p>
           <p className="text-xs text-content-muted">The connected model this agent runs on.</p>
           {activeModel ? (
-            <a
+            <Link
               href="/connections/ai-models"
               title={`Running on ${activeModel.provider} · ${activeModel.model}`}
               className="inline-flex items-center gap-2 rounded-full border border-border-default bg-surface-2 py-1.5 pl-2.5 pr-3 text-sm font-medium text-content-primary transition-colors hover:border-border-strong"
@@ -159,15 +160,15 @@ function DrawerPanel({
               <IconCpu size={15} stroke={1.75} className="shrink-0 text-accent-primary" aria-hidden />
               <span className="max-w-[16rem] truncate font-mono text-[13px]">{activeModel.model}</span>
               <span className="text-xs font-normal text-content-muted">· {activeModel.provider}</span>
-            </a>
+            </Link>
           ) : (
-            <a
+            <Link
               href="/connections/ai-models"
               className="inline-flex items-center gap-2 rounded-full border border-dashed border-border-default bg-surface-2 py-1.5 pl-2.5 pr-3 text-sm font-medium text-content-muted transition-colors hover:border-border-strong"
             >
               <IconCpu size={15} stroke={1.75} className="shrink-0" aria-hidden />
               Connect a model
-            </a>
+            </Link>
           )}
         </div>
 

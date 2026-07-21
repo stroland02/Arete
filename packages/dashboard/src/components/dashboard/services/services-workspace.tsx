@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, type ReactNode } from "react";
+import { useState, useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
 import { SynthesizerConsole } from "../agents/synthesizer-console";
 import { StatusBoardLive } from "./status-board";
@@ -298,6 +298,27 @@ function shortWhen(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
+// No-op store for useHasMounted below: the "store" never changes, we only
+// care that useSyncExternalStore re-renders once client and server snapshots
+// diverge (i.e. once hydration completes).
+function subscribeNever() {
+  return () => {};
+}
+
+/**
+ * True once hydration has completed, false during SSR and the first client
+ * render. Implemented with useSyncExternalStore (not a state+effect pair) so
+ * the flip to `true` happens without an extra synchronous setState call
+ * inside an effect body — see https://react.dev/reference/react/useSyncExternalStore.
+ */
+function useHasMounted(): boolean {
+  return useSyncExternalStore(
+    subscribeNever,
+    () => true,
+    () => false,
+  );
+}
+
 /**
  * Embedded (full-bleed) triage workspace. When no services are connected,
  * the rail's "Connect your tools" list is still real and actionable — never
@@ -309,8 +330,7 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
   const isInView = useInView(containerRef, { margin: "-100px 0px -100px 0px" });
 
   // Guard against hydration: defer observer logic until after first client render
-  const [hasMounted, setHasMounted] = useState(false);
-  useEffect(() => { setHasMounted(true); }, []);
+  const hasMounted = useHasMounted();
 
   // Real mode: the authenticated /services page passes reviewGroups (even []),
   // switching the rail + center + right panel to real reviews. The marketing
@@ -376,7 +396,9 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
 
   useEffect(() => {
     if (isReplaying && selected) {
-      setReplayStep(0);
+      // replayStep is already 0 here: both places that flip isReplaying to
+      // true (handleSelectIssue below, and the scroll-into-view effect above)
+      // reset it in the same synchronous batch before this effect runs.
       const totalSteps = selected.timeline.length;
       const timers = selected.timeline.map((_, idx) => 
         setTimeout(() => setReplayStep(idx + 1), (idx + 1) * 700)
