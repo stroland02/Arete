@@ -9,15 +9,73 @@ into scope. Reprioritize only at phase boundaries or by explicit user decision.
 1. Lane A plan: `docs/superpowers/plans/2026-07-20-obs-lane-a-typescript.md` (16 tasks)
 2. Lane B plan: `docs/superpowers/plans/2026-07-20-obs-lane-b-python-infra.md` (16 tasks)
 
-## Next (Phase 2 — healing-agent upgrade + alerting; spec at Phase 1 close)
+## Next (Phase 2 — healing-agent upgrade + alerting; spec at Phase 1 close) — **SHIPPED 2026-07-21**
 
-- Findings-first gate + calibrated confidence rubrics in fix-engine tool descriptions
-- Budgets: runtime cap, wall-clock backstop, human-resume cap, idempotent terminate
-- Dispatch-before-ack for terminal actions (PR creation, resolution)
-- Typed memory store (feedback | terminology | infra | project)
-- Alert rules: error-rate AND p95 latency on `arete.review.duration` → incidents
-- Healing agent consumes own telemetry via internal query surface
-- Phase 1 retro action items (added at retro)
+Closed on `stroland02/obs-phase-2`. Evidence: [`.superpowers/sdd/phase-2-gate-report.md`](../../.superpowers/sdd/phase-2-gate-report.md).
+Retrospective: [`2026-07-21-phase-2-retrospective.md`](2026-07-21-phase-2-retrospective.md).
+
+- ~~Findings-first gate + calibrated confidence rubrics in fix-engine tool descriptions~~ — done, but
+  **rubrics live in the fix prompt, not tool descriptions**: the fix agent has no tool loop
+  (spec §3 "Phase 2 amendments"). Confidence stayed **0–1**, criteria adopted.
+- ~~Budgets: runtime cap, wall-clock backstop, human-resume cap, idempotent terminate~~ — done; the
+  real hole was that fix drives bypassed the queue entirely. Now BullMQ `fix-drive` at concurrency 2
+  + exponential cooldown (5 min → 1 h) at both entry points.
+- ~~Dispatch-before-ack for terminal actions~~ — already held; became an **audit + regression tests**.
+- ~~Typed memory store~~ — done: real tenant-guarded, size-capped, redacted write-back.
+- ~~Alert rules: error-rate AND p95 latency → incidents~~ — done, live end to end.
+- **Healing agent consumes own telemetry via internal query surface** — **NOT DONE → Phase 2b below.**
+- Phase 1 retro action items — carried into the Phase 2 retrospective.
+
+## Phase 2b (deferred from Phase 2, 2026-07-21)
+
+Ranked. The first item is a live security gap, not an enhancement.
+
+1. **Internal + MCP tokens have no expiry — spec §6 Phase 2 gate 2 is UNMET.**
+   `INTERNAL_API_TOKEN` is one static shared secret read from the environment per request
+   (`packages/webhook/src/internal-auth.ts:43`): no `exp`, no `iat`, no rotation, no revocation.
+   Probed — the middleware authenticates the identical token with the system clock set ten years
+   forward, and `tokenMatches(header, token)` takes no clock argument, so expiry is not merely
+   absent but **not expressible in the current code path**. A repo-wide grep of
+   `rotat|expir|issued_at|iat|exp` across the internal-auth surface returns zero matches.
+   Blast radius: it guards every write-and-spend route on both the webhook and agents services, and
+   is the credential the agents process presents when writing into a tenant's memory store.
+   The **MCP half is worse**: `mcp/manager.py` persists tokens as plaintext JSON in
+   `.agents/mcp_servers.json` with no expiry field in the schema and no file-mode hardening, and
+   `mcp/auth.py:90` never performs a code exchange — it fabricates `simulated_token_for_<code>`, so
+   there is no `expires_in` to store even if the schema had a slot. `mcp/client.py:51` presents the
+   value as `Bearer` indefinitely.
+   Not a patch: needs a credential-lifecycle design (rotation window, dual-token overlap so a
+   rotation cannot break in-flight service-to-service calls, and a decision on whether MCP grows a
+   real OAuth exchange or is removed until it does).
+   *For contrast, the credential that reaches a customer repo — the GitHub App installation token —
+   does expire (~1h, GitHub-enforced) and is minted fresh per fix drive.*
+2. **Telemetry-fed investigations** (the one unshipped spec §3 Phase 2 bullet). The healing agent
+   should read the incident's own trace/log context. Blocked on an internal query surface: today only
+   `getAgentEventsPerMinute` (`queries.ts:781-815`) reaches ClickHouse at all.
+3. **Give the fix pipeline a tool loop.** `fix_pipeline.py` makes one direct LLM call for a JSON
+   blob; tool-calling exists only on the review side. Until then, rubrics necessarily live in the
+   prompt, and spec §3's "tool descriptions ARE the prompt" cannot apply to healing.
+4. **Webhook-side fix failures are uncounted.** `no_repo` / `no_model` terminate before Python is
+   reached, so they never appear in `arete.fix.*` — a fix drive dying before dispatch is invisible in
+   the counters.
+5. **Memory row cap is check-then-create with no transaction, and nothing ever archives.** Two
+   concurrent writes can both pass the cap check; and since no path sets `status='archived'`, a repo
+   is permanently frozen at 20 memories once it fills.
+6. **Prose credentials still reach sinks** (`password: hunter2`) — no secret shape, and the key
+   blocklist binds to object keys, not words in a string. Catching it needs an amendment to the
+   frozen §5 pattern set with real false-positive risk on ordinary prose. The URL-embedded half of
+   this finding is already closed.
+7. **A second Prometheus rules file will need a compose/config edit.** `rule_files` deliberately
+   names the one file rather than globbing, because a glob also matches the `promtool` test file,
+   whose schema makes Prometheus reject the entire config.
+8. **`pipeline.integration.test.ts` is still flaky** — Phase 0's "fix or quarantine" exit criterion
+   was never met and survived two phases. Confirmed pre-existing via `git stash` against a pre-Task-6
+   tree. Phase 3 action 7 (audit prior phases' exit criteria) exists because of this.
+9. **Running containers drift from compose on security-relevant settings.** The Alertmanager
+   container was serving `0.0.0.0:9093` for hours after `docker-compose.yml` had been changed to
+   `127.0.0.1:9093` (the C1 remediation) — a container does not re-read its port mapping on restart,
+   it must be recreated. Third stale-infrastructure incident of the project. Worth a
+   `docker compose up -d` precondition on any verification that claims to test infra config.
 
 ## Later (Phase 3 — tenant telemetry platform; spec at Phase 2 close)
 
