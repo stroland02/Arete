@@ -6,34 +6,77 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
+processors:
+  # §5 redaction, collector-side (defense in depth behind the in-process
+  # scrubbers). Allowlist mode OFF: allow_all_keys + key blocklist + value
+  # patterns. Key patterns match whole segments so gen_ai.usage.input_tokens
+  # is never masked by "token".
+  redaction:
+    allow_all_keys: true
+    blocked_key_patterns:
+      - (?i).*(^|[^a-z0-9])(authorization|x-api-key|api_key|token|secret|password|cookie|set-cookie)([^a-z0-9]|$).*
+    blocked_values:
+      - (?i)bearer\s+[a-z0-9._~+/=\-]+
+      - sk-[A-Za-z0-9_\-]{8,}
+      - gh[ps]_[A-Za-z0-9]{16,}
+      - (?i)[?&](api_)?key=[^&#\s]+
+    summary: info
+  # Surgical OTTL passes for the places redaction's attribute scan can't
+  # reach: URL attributes lose their entire query string; status/body text
+  # loses key-in-URL shapes (the Superlog Gemini incident class).
+  transform:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - replace_pattern(attributes["url.full"], "\\?.*$", "")
+          - replace_pattern(attributes["http.url"], "\\?.*$", "")
+          - replace_pattern(status.message, "(?i)[?&](api_)?key=[^&#\\s]+", "?key=[REDACTED]")
+    log_statements:
+      - context: log
+        statements:
+          - replace_pattern(body.string, "(?i)bearer\\s+[a-z0-9._~+/=\\-]+", "[REDACTED]")
+          - replace_pattern(body.string, "(?i)[?&](api_)?key=[^&#\\s]+", "?key=[REDACTED]")
+  batch: {}
+
 exporters:
   clickhouse:
     endpoint: tcp://clickhouse:9000?dial_timeout=10s&compress=lz4
     database: superlog
     username: superlog
     password: superlog
-    ttl_days: 30
+    # We own the DDL (packages/db/clickhouse, TTLs included). The exporter
+    # must never race replicas creating TTL-less tables at startup.
+    create_schema: false
     traces_table_name: otel_traces
-
-  # Export metrics to Prometheus
+    logs_table_name: otel_logs
+    metrics_table_name: otel_metrics
+    timeout: 5s
+    retry_on_failure:
+      enabled: true
+  # Jaeger v2 speaks OTLP — the legacy jaeger exporter is gone.
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
   prometheus:
-    endpoint: "0.0.0.0:8889"
-    namespace: "arete"
-
-  # Logging exporter for debugging
-  logging:
-    verbosity: detailed
-
-processors:
-  batch:
+    endpoint: 0.0.0.0:8889
+    namespace: arete
+  # Debug exporter (the old `logging:` exporter was removed upstream).
+  debug:
+    verbosity: basic
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch]
-      exporters: [clickhouse, logging]
+      processors: [redaction, transform, batch]
+      exporters: [clickhouse, otlp/jaeger]
     metrics:
       receivers: [otlp]
-      processors: [batch]
-      exporters: [prometheus, logging]
+      processors: [redaction, batch]
+      exporters: [clickhouse, prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [redaction, transform, batch]
+      exporters: [clickhouse]
