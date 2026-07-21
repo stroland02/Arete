@@ -210,8 +210,34 @@ function makeRoutedFetchMock(overrides: { reviewResult?: any } = {}) {
  * the handlers the real server registered — HMAC validation is bypassed,
  * everything downstream is the real code path.
  */
-async function buildApp(mocks: Mocks): Promise<Application> {
+type BuildOverrides = {
+  /** When set, ./telemetry/fetch-telemetry-context.js resolves to this fixed value. */
+  telemetryContext?: unknown[]
+  /** When set, ./review-bridge.js runReviewPipeline is replaced by this mock. */
+  runReviewPipeline?: ReturnType<typeof vi.fn>
+}
+
+async function buildApp(mocks: Mocks, overrides: BuildOverrides = {}): Promise<Application> {
   vi.resetModules()
+
+  // EVERY module this file ever mocks is (re-)registered or explicitly
+  // un-mocked here, unconditionally — vi.resetModules() clears the module
+  // cache but not the doMock registry, so anything registered outside this
+  // function would leak into later tests and make the file order-dependent.
+  if (overrides.telemetryContext !== undefined) {
+    const telemetryContext = overrides.telemetryContext
+    vi.doMock('./telemetry/fetch-telemetry-context.js', () => ({
+      fetchTelemetryContext: vi.fn().mockResolvedValue(telemetryContext),
+    }))
+  } else {
+    vi.doUnmock('./telemetry/fetch-telemetry-context.js')
+  }
+  if (overrides.runReviewPipeline !== undefined) {
+    const runReviewPipeline = overrides.runReviewPipeline
+    vi.doMock('./review-bridge.js', () => ({ runReviewPipeline }))
+  } else {
+    vi.doUnmock('./review-bridge.js')
+  }
 
   vi.doMock('@octokit/app', () => {
     class App {
@@ -304,6 +330,8 @@ describe('pipeline integration: webhook -> queue -> worker -> review -> post', (
 
   afterEach(() => {
     vi.unstubAllGlobals()
+    vi.doUnmock('./telemetry/fetch-telemetry-context.js')
+    vi.doUnmock('./review-bridge.js')
     vi.resetModules()
   })
 
@@ -602,26 +630,18 @@ describe('pipeline integration: webhook -> queue -> worker -> review -> post', (
   })
 
   it('fetches telemetry context and includes it in the PRContext sent to the Python pipeline', async () => {
-    // Registered before buildApp: vi.resetModules() clears the module cache
-    // but not the doMock registry, so these survive and apply when worker.js
-    // is dynamically imported below. Keep this test LAST in the describe
-    // block — these two doMocks are not re-registered by buildApp, so they
-    // would leak into any test that ran after this one.
-    vi.doMock('./telemetry/fetch-telemetry-context.js', () => ({
-      fetchTelemetryContext: vi.fn().mockResolvedValue([
-        { provider: 'github_actions', source_ref: 'acme/api', summary_text: 'ok', metrics: {}, links: [], fetched_at: '2026-07-10T00:00:00Z' },
-      ]),
-    }))
-
     const runReviewPipelineMock = vi.fn().mockResolvedValue({
       pr_context: {}, file_reviews: [], overall_summary: 'ok', risk_level: 'low', total_comments: 0,
     })
-    vi.doMock('./review-bridge.js', () => ({ runReviewPipeline: runReviewPipelineMock }))
-
     // Reuses the shared boundary mocks (octokit via github-auth, @arete/db,
     // queue) that buildApp registers, then feeds job data straight into the
     // worker exactly like runCapturedJob does.
-    await buildApp(mocks)
+    await buildApp(mocks, {
+      telemetryContext: [
+        { provider: 'github_actions', source_ref: 'acme/api', summary_text: 'ok', metrics: {}, links: [], fetched_at: '2026-07-10T00:00:00Z' },
+      ],
+      runReviewPipeline: runReviewPipelineMock,
+    })
 
     const { processReviewJob } = await import('./worker.js')
     await processReviewJob({
@@ -639,9 +659,8 @@ describe('pipeline integration: webhook -> queue -> worker -> review -> post', (
     const runReviewPipelineMock = vi.fn().mockResolvedValue({
       pr_context: {}, file_reviews: [], overall_summary: 'ok', risk_level: 'low', total_comments: 0,
     })
-    vi.doMock('./review-bridge.js', () => ({ runReviewPipeline: runReviewPipelineMock }))
 
-    await buildApp(mocks)
+    await buildApp(mocks, { runReviewPipeline: runReviewPipelineMock })
     mocks.prisma.repositoryFindUnique.mockResolvedValue({ id: 'repo-uuid-1' })
     mocks.prisma.agentMemoryFindMany.mockResolvedValue([
       { body: 'Use tabs, not spaces.' },
