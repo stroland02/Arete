@@ -126,17 +126,33 @@ a design decision or a schema change rather than a patch:
   so the mechanism is there — what is missing is the policy (age out? evict
   least-recently-cited? let a human archive from the dashboard?) and a surface
   to apply it.
-- **`scrubSinkText` does not catch prose-shaped credentials.** The canonical
-  pattern set (`packages/telemetry/src/redaction.ts`) matches secret *shapes*
-  (`sk-*`, `gh?_*`, `Bearer …`, key-ish URL query params) and — via
-  `scrubSinkValue` — blocklisted object KEYS. A memory body containing
-  `password: hunter2` as free text has neither: no secret shape, and `password`
-  is a word in a string rather than a key in an object. Verified stored verbatim
-  after the redaction fix landed. Fixing this means amending the frozen §5
-  pattern set (a spec amendment, and one with real false-positive risk on prose
-  — "the password field is required" would be mangled), which is why it was not
-  done under a review-fix mandate. Applies to every sink equally, not just this
-  one.
+- ~~**`scrubSinkText`'s query-string stripping only fired when the ENTIRE
+  value was a bare URL.**~~ **CLOSED in `d0f4e1b`** — `URL_LIKE`
+  was anchored `^…\S+$`, so `see https://x.io/a?password=topsecret for
+  details` and `[link](https://x.io/a?password=topsecret)` both sailed
+  through unscrubbed even though the bare-URL case (`stripUrlQuery` applied
+  to a whole-string URL) already worked — and prose-with-an-embedded-URL is
+  the dominant shape for both alert summaries and memory bodies. Fixed by
+  matching URL substrings anywhere in the string (bounded by whitespace/
+  markdown/quote delimiters) instead of requiring the whole trimmed value to
+  be a URL. This needed no spec amendment: it applies the existing
+  `stripUrlQuery` primitive more broadly, it does not add a new pattern to
+  the frozen §5 set. Left here struck through rather than deleted, mirroring
+  the context-map entry below. This entry used to also cover prose
+  credentials with no URL at all (`password: hunter2`) — that genuinely
+  amendment-gated remainder is split out below so this entry no longer
+  misstates it as needing one.
+- **`scrubText`/`scrubSinkText` do not catch prose-shaped credentials that
+  have no secret *shape* and no URL to strip a query string from.** A memory
+  body containing `password: hunter2` as free text matches neither a
+  `SECRET_VALUE_PATTERNS` shape (`sk-*`, `gh?_*`, `Bearer …`, key-ish URL
+  query params) nor a blocklisted object KEY (`password` here is a word
+  inside a string, not a key), and there is no URL substring for the
+  query-stripping fix above to act on. Verified stored verbatim. Fixing this
+  DOES mean amending the frozen §5 pattern set (a spec amendment, and one
+  with real false-positive risk on prose — "the password field is required"
+  would be mangled), which is why it was not done under a review-fix
+  mandate. Applies to every sink equally, not just this one.
 - ~~**`GET /context-map/graph/{installation_id}` and `/context-map/ui-url/{id}`
   on the agents service remain unauthenticated.**~~ **CLOSED in `4fd64e8`** —
   both GETs are now behind the same fail-closed internal bearer as the POST
