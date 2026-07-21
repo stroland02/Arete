@@ -95,7 +95,11 @@ let queueApproval: Queue<ApprovalExecutionJobData> | null = null
 
 // First-party BullMQ telemetry (spec §4): producer-side span on enqueue,
 // context propagated through Redis to the worker automatically.
-const bullmqTelemetry = new BullMQOtel('arete-webhook')
+// NOTE (deviation from task-10-brief.md): the brief's `new BullMQOtel('arete-webhook')`
+// assumes a constructor(serviceName: string) — the installed bullmq-otel@2.0.0
+// constructor is `constructor(tracerOptions?: BullMQOtelOptions, version?: string)`,
+// so the service name is passed as `tracerName` instead.
+const bullmqTelemetry = new BullMQOtel({ tracerName: 'arete-webhook' })
 
 export function getApprovalQueue(): Queue<ApprovalExecutionJobData> {
   if (!queueApproval) {
