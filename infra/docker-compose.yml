@@ -118,11 +118,16 @@ services:
     image: prom/alertmanager:v0.27.0
     volumes:
       - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml
-    # Compose materializes /run/secrets/internal_api_token from the host's
-    # INTERNAL_API_TOKEN env var (native `secrets:` construct below) — the
-    # real token is never written into the checked-in alertmanager.yml.
+    # Compose materializes /run/secrets/alertmanager_ingest_token from the
+    # host's ALERTMANAGER_INGEST_TOKEN env var (native `secrets:` construct
+    # below) — the real token is never written into the checked-in
+    # alertmanager.yml. This is a DEDICATED static credential (Phase 3),
+    # separate from the signed INTERNAL_TOKEN_SIGNING_KEYS keyset our own
+    # three services use — Alertmanager can only present a fixed string, not
+    # mint a signed token, so /alerts/incoming (alertmanager-auth.ts) accepts
+    # only this value.
     secrets:
-      - internal_api_token
+      - alertmanager_ingest_token
     ports:
       # LOOPBACK ONLY — deliberate, do not widen (Phase 2 review finding C1).
       # Alertmanager's /api/v2/alerts accepts UNAUTHENTICATED alert posts, and
@@ -151,13 +156,16 @@ services:
       retries: 5
 
 # Compose "secrets" sourced from an environment variable (Compose Spec, no
-# shell/envsubst hack needed): the value of INTERNAL_API_TOKEN (from the
-# shell env or the .env file docker compose auto-loads) is materialized as a
-# file at /run/secrets/internal_api_token inside any service that declares
-# it — exactly what alertmanager.yml's `credentials_file` expects.
+# shell/envsubst hack needed): the value of ALERTMANAGER_INGEST_TOKEN (from
+# the shell env or the .env file docker compose auto-loads) is materialized
+# as a file at /run/secrets/alertmanager_ingest_token inside any service that
+# declares it — exactly what alertmanager.yml's `credentials_file` expects.
+# Phase 3: this is the dedicated static Alertmanager credential, distinct
+# from the signed INTERNAL_TOKEN_SIGNING_KEYS keyset (see .env.example) —
+# the retired INTERNAL_API_TOKEN this secret used to be sourced from is gone.
 secrets:
-  internal_api_token:
-    environment: INTERNAL_API_TOKEN
+  alertmanager_ingest_token:
+    environment: ALERTMANAGER_INGEST_TOKEN
 
 volumes:
   postgres_data:
