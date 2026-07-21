@@ -14,3 +14,4 @@ export {
   registerEsmHook,
   DURATION_HISTOGRAM_BOUNDARIES,
 } from './init.js'
+export { createLogger, type CreateLoggerOptions } from './logger.js'
