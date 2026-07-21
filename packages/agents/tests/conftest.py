@@ -23,6 +23,12 @@ INTERNAL_TEST_ACTIVE_KID = "test-kid"
 # keyset to read.
 os.environ.setdefault("INTERNAL_TOKEN_SIGNING_KEYS", json.dumps(INTERNAL_TEST_KEYS))
 os.environ.setdefault("INTERNAL_TOKEN_ACTIVE_KID", INTERNAL_TEST_ACTIVE_KID)
+# Collection-time mint below (INTERNAL_HEADERS) is a module-level constant that
+# must stay valid for the entire suite run, not just 120s (the production
+# default TTL) -- a suite that runs longer than that would see this token
+# expire mid-run and every auth'd-endpoint test start returning 401
+# (previously observed flakiness). Test-only; production TTL is untouched.
+os.environ.setdefault("INTERNAL_TOKEN_TTL_SECONDS", "86400")
 
 INTERNAL_HEADERS = {"Authorization": f"Bearer {mint_internal_token('arete-webhook')}"}
 

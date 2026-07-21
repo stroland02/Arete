@@ -215,6 +215,17 @@ def test_verify_returns_expired_past_the_ttl(keyset_env):
     assert result == VerifyResult(ok=False, reason="expired")
 
 
+def test_verify_returns_expired_exactly_at_the_leeway_boundary(keyset_env):
+    # jose (the TS side) expires when `now >= exp + tolerance`. At the exact
+    # boundary instant `now == exp + leeway`, a strict `>` check would ACCEPT
+    # here while TS REJECTS -- a cross-language parity bug. Pin `>=`.
+    now = 1_700_000_000
+    token = mint_internal_token("arete-webhook", now=now)  # exp = now + 120 (default TTL)
+    boundary = now + 120 + 5  # exp + _LEEWAY_SECONDS, exactly
+    result = verify_internal_token(f"Bearer {token}", now=boundary)
+    assert result == VerifyResult(ok=False, reason="expired")
+
+
 # wrong_audience -- a gap Task 1 (TS) flagged it could never reach, because
 # mintInternalToken always sets aud itself. Python can, by crafting the token
 # directly with PyJWT rather than going through mint_internal_token.
@@ -246,6 +257,11 @@ def vector():
 def vector_env(monkeypatch, vector):
     monkeypatch.setenv("INTERNAL_TOKEN_SIGNING_KEYS", json.dumps(vector["input"]["keys"]))
     monkeypatch.setenv("INTERNAL_TOKEN_ACTIVE_KID", vector["input"]["activeKid"])
+    # The fixture's exp is pinned to the default 120s TTL. conftest.py sets
+    # INTERNAL_TOKEN_TTL_SECONDS process-wide (86400s) so its own
+    # collection-time token outlives the suite -- scope it back out here so
+    # this vector reproduction isn't perturbed by that unrelated env var.
+    monkeypatch.delenv("INTERNAL_TOKEN_TTL_SECONDS", raising=False)
 
 
 def test_mint_reproduces_the_exact_fixture_token(vector, vector_env):

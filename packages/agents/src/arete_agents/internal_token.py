@@ -32,8 +32,6 @@ into a dict), so verification runs entirely through PyJWT's public API.
 """
 
 import base64
-import hashlib
-import hmac
 import json
 import os
 import re
@@ -41,6 +39,11 @@ import time
 from dataclasses import dataclass
 
 import jwt
+
+# The actual signer: PyJWT's own HMACAlgorithm primitive, so the docstring's
+# claim of "100% PyJWT" cryptography is literally true, not just aspirational
+# -- only the JSON envelope assembly (header/claims ordering) is hand-rolled.
+_HS256 = jwt.algorithms.HMACAlgorithm(jwt.algorithms.HMACAlgorithm.SHA256)
 
 INTERNAL_TOKEN_DEFAULT_TTL_SECONDS = 120
 
@@ -188,7 +191,7 @@ def mint_internal_token(iss: str, *, now: int | None = None) -> str:
     payload_b64 = _b64url(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
     signing_input = f"{header_b64}.{payload_b64}".encode("ascii")
 
-    signature = hmac.new(secret.encode("utf-8"), signing_input, hashlib.sha256).digest()
+    signature = _HS256.sign(signing_input, _HS256.prepare_key(secret))
 
     return f"{header_b64}.{payload_b64}.{_b64url(signature)}"
 
@@ -253,7 +256,10 @@ def verify_internal_token(authorization: str | None, *, now: int | None = None) 
 
     current = now if now is not None else int(time.time())
     exp = claims.get("exp")
-    if isinstance(exp, (int, float)) and current > exp + _LEEWAY_SECONDS:
+    # jose (the TS side) expires when `now >= exp + tolerance`; matching `>`
+    # here would ACCEPT at the exact boundary instant while TS REJECTS it --
+    # a cross-language parity bug. Use `>=` to match jose exactly.
+    if isinstance(exp, (int, float)) and current >= exp + _LEEWAY_SECONDS:
         return VerifyResult(ok=False, reason="expired")
 
     return VerifyResult(ok=True, iss=str(claims.get("iss")), kid=kid)
