@@ -40,7 +40,17 @@ export function createLogger(service: string, opts: CreateLoggerOptions = {}): p
     // module doc comment above and scrubLogValue's doc in redaction.ts.
     formatters: {
       log(mergeObject) {
-        return scrubLogValue(mergeObject) as Record<string, unknown>
+        // Fail CLOSED, and never throw. This runs inside the caller's
+        // `catch (err) { log.error(...) }`, so anything escaping here converts
+        // a handled error into an unhandled one and can fail a whole review
+        // (§3: telemetry must never take the app down). If scrubbing itself
+        // breaks we drop the payload rather than emit a possibly-unscrubbed
+        // one — a lost log line is recoverable, a leaked credential is not.
+        try {
+          return scrubLogValue(mergeObject) as Record<string, unknown>
+        } catch {
+          return { scrubError: 'log payload dropped: scrubbing failed' }
+        }
       },
     },
   }

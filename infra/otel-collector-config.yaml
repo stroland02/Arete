@@ -58,12 +58,27 @@ processors:
           - replace_pattern(attributes["http.target"], "\\?.*$", "")
           - replace_pattern(attributes["url.path"], "\\?.*$", "")
           - replace_pattern(attributes["url.query"], ".*", "")
-          - replace_pattern(status.message, "(?i)[?&](api_)?key=[^&#\\s]+", "?key=[REDACTED]")
+          # status.message and body.string are NOT reached by the redaction
+          # processor (it scans attributes only), so these OTTL passes are the
+          # whole defense for them — and for the dashboard lane, which has no
+          # in-process scrubber at all, the only one. Keep this set identical to
+          # blocked_values above; a shape missing here leaks a Next.js error
+          # message straight into otel_traces.StatusMessage.
+          - replace_pattern(status.message, "(?i)bearer\\s+[a-z0-9._~+/=\\-]{8,}", "[REDACTED]")
+          - replace_pattern(status.message, "sk-[A-Za-z0-9_\\-]{10,}", "[REDACTED]")
+          - replace_pattern(status.message, "gh[pousr]_[A-Za-z0-9]{16,}", "[REDACTED]")
+          - replace_pattern(status.message, "glpat-[A-Za-z0-9_\\-]{10,}", "[REDACTED]")
+          - replace_pattern(status.message, "whsec_[A-Za-z0-9]{10,}", "[REDACTED]")
+          - replace_pattern(status.message, "(?i)([?&](key|api_key|apikey|token|access_token|client_secret)=)[^&#\\s]+", "$$1[REDACTED]")
     log_statements:
       - context: log
         statements:
-          - replace_pattern(body.string, "(?i)bearer\\s+[a-z0-9._~+/=\\-]+", "[REDACTED]")
-          - replace_pattern(body.string, "(?i)[?&](api_)?key=[^&#\\s]+", "?key=[REDACTED]")
+          - replace_pattern(body.string, "(?i)bearer\\s+[a-z0-9._~+/=\\-]{8,}", "[REDACTED]")
+          - replace_pattern(body.string, "sk-[A-Za-z0-9_\\-]{10,}", "[REDACTED]")
+          - replace_pattern(body.string, "gh[pousr]_[A-Za-z0-9]{16,}", "[REDACTED]")
+          - replace_pattern(body.string, "glpat-[A-Za-z0-9_\\-]{10,}", "[REDACTED]")
+          - replace_pattern(body.string, "whsec_[A-Za-z0-9]{10,}", "[REDACTED]")
+          - replace_pattern(body.string, "(?i)([?&](key|api_key|apikey|token|access_token|client_secret)=)[^&#\\s]+", "$$1[REDACTED]")
   batch: {}
 
 exporters:

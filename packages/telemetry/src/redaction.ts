@@ -79,9 +79,18 @@ export function scrubLogValue(value: unknown, seen: WeakSet<object> = new WeakSe
   if (value instanceof Error) {
     if (seen.has(value)) return value
     seen.add(value)
-    const Ctor = (value.constructor as new (message?: string) => Error) ?? Error
-    const scrubbed = new Ctor(scrubText(value.message))
+    // Clone by prototype, never `new value.constructor(message)`: subclass
+    // constructors take their own argument shapes, and re-running one with a
+    // lone string throws or corrupts. @octokit/request-error does
+    // `if ("response" in options)` on arg 3 (TypeError on undefined);
+    // `new AggregateError(string)` reads the string as the errors iterable and
+    // splays it into characters. Either turns a logged error into a thrown one
+    // — violating the §3 "telemetry never takes the app down" invariant on the
+    // exact path where the log matters most.
+    const scrubbed = Object.create(Object.getPrototypeOf(value)) as Error
+    Object.assign(scrubbed, value)
     scrubbed.name = value.name
+    scrubbed.message = scrubText(value.message)
     if (value.stack) scrubbed.stack = scrubText(value.stack)
     for (const key of Object.keys(value)) {
       ;(scrubbed as unknown as Record<string, unknown>)[key] = scrubLogValue(
