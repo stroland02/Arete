@@ -132,3 +132,82 @@ describe('POST /api/approvals/:id/execute route wiring', () => {
     expect(res.body).toMatchObject({ error: 'approval_rejected' })
   })
 })
+
+// The defect being fixed: /fix/trigger used to run `void driveFix(...)`
+// inline on the webhook HTTP process — no queue, no concurrency cap. A burst
+// of triggers could fan out into unbounded repo checkouts + LLM calls on the
+// same process answering GitHub webhooks. These tests pin the replacement:
+// the route enqueues a fix-drive job and ACKs 202 immediately, and the drive
+// itself (driveFix) is NEVER invoked on this process.
+describe('POST /fix/trigger route wiring', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.stubEnv('INTERNAL_API_TOKEN', 'test-internal-token')
+  })
+
+  async function buildWith(enqueueFixDrive: (data: { workItemId: string }) => Promise<any>): Promise<{
+    app: Application
+    driveFix: ReturnType<typeof vi.fn>
+  }> {
+    vi.doMock('@arete/db', () => ({ PrismaClient: vi.fn() }))
+    const driveFix = vi.fn()
+    vi.doMock('./fix/trigger.js', () => ({
+      driveFix,
+      defaultFixTriggerDeps: vi.fn(),
+    }))
+    vi.doMock('./queue.js', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('./queue.js')>()
+      return { ...actual, enqueueFixDrive }
+    })
+    const { createServer } = await import('./server.js')
+    const app = await createServer()
+    return { app, driveFix }
+  }
+
+  const authed = (app: Application, path: string) =>
+    request(app).post(path).set('Authorization', 'Bearer test-internal-token')
+
+  it('401s without the internal bearer token and never enqueues', async () => {
+    const enqueueFixDrive = vi.fn()
+    const { app } = await buildWith(enqueueFixDrive)
+
+    const res = await request(app).post('/fix/trigger').send({ workItemId: 'wi-1' })
+
+    expect(res.status).toBe(401)
+    expect(enqueueFixDrive).not.toHaveBeenCalled()
+  })
+
+  it('400s when workItemId is missing, without enqueuing', async () => {
+    const enqueueFixDrive = vi.fn()
+    const { app } = await buildWith(enqueueFixDrive)
+
+    const res = await authed(app, '/fix/trigger').send({})
+
+    expect(res.status).toBe(400)
+    expect(enqueueFixDrive).not.toHaveBeenCalled()
+  })
+
+  it('enqueues a fix-drive job and ACKs 202 {started:true} WITHOUT running driveFix inline', async () => {
+    const enqueueFixDrive = vi.fn().mockResolvedValue({ id: 'job-1' })
+    const { app, driveFix } = await buildWith(enqueueFixDrive)
+
+    const res = await authed(app, '/fix/trigger').send({ workItemId: 'wi-1' })
+
+    expect(res.status).toBe(202)
+    expect(res.body).toEqual({ started: true })
+    expect(enqueueFixDrive).toHaveBeenCalledWith({ workItemId: 'wi-1' })
+    // The whole point of this task: the HTTP process enqueues, it does not drive.
+    expect(driveFix).not.toHaveBeenCalled()
+  })
+
+  it('returns 500 and does not ACK 202 when enqueueing itself fails', async () => {
+    const enqueueFixDrive = vi.fn().mockRejectedValue(new Error('redis unreachable'))
+    const { app, driveFix } = await buildWith(enqueueFixDrive)
+
+    const res = await authed(app, '/fix/trigger').send({ workItemId: 'wi-1' })
+
+    expect(res.status).toBe(500)
+    expect(res.body).not.toEqual({ started: true })
+    expect(driveFix).not.toHaveBeenCalled()
+  })
+})

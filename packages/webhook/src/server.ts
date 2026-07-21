@@ -268,22 +268,29 @@ export async function createServer(): Promise<express.Application> {
   // the dashboard's Auth.js session.
   // Internal fix trigger (healing loop). The dashboard's "Fix it" creates an
   // IssueContainer at `detecting` and fires this with the work item's id. The
-  // drive runs in the background (agents /fix authors + verifies a real patch,
-  // then the container advances to `ready` or `fix_failed`); we ACK 202 at once
-  // so the UI can open the live stream while the container fills in. Never
-  // blocks on the up-to-280s author run. Deps import lazily (db-free registration).
+  // drive itself now runs on the fix-drive BullMQ queue (bounded concurrency —
+  // see FIX_QUEUE_CONCURRENCY in queue.ts) instead of inline on this request:
+  // it used to be `void driveFix(...)` running straight on the webhook's HTTP
+  // process, with no queue and no concurrency cap, so a burst of triggers
+  // could fan out into unbounded repo checkouts + LLM calls on the same
+  // process that also answers GitHub webhooks. We still ACK 202 immediately
+  // after the enqueue (a fast Redis write, not the drive itself) — never after
+  // the drive — so the UI can open the live stream while the container fills
+  // in. Deps import lazily (db-free registration).
   server.post('/fix/trigger', requireInternalToken, express.json(), async (req, res) => {
     const workItemId = typeof req.body?.workItemId === 'string' ? req.body.workItemId : ''
     if (!workItemId) {
       res.status(400).json({ error: 'workItemId required' })
       return
     }
-    const { driveFix, defaultFixTriggerDeps } = await import('./fix/trigger.js')
-    // Fire-and-forget: the drive is long-running and self-persisting; a failure
-    // lands the container in fix_failed on its own (never rethrown here).
-    void driveFix(workItemId, defaultFixTriggerDeps(app)).catch((err) => {
-      logFix.error({ err, workItemId }, 'drive failed')
-    })
+    try {
+      const { enqueueFixDrive } = await import('./queue.js')
+      await enqueueFixDrive({ workItemId })
+    } catch (err) {
+      logFix.error({ err, workItemId }, 'failed to enqueue fix job')
+      res.status(500).json({ error: 'internal_error' })
+      return
+    }
     res.status(202).json({ started: true })
   })
 
