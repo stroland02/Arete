@@ -73,3 +73,39 @@ def test_executor_raise_is_retryable_not_latched():
     with pytest.raises(CommandExecutionError):
         g.apply_and_resume("appr-4", "rev", "cmd")  # retry re-runs
     assert ex.calls == ["cmd", "cmd"]  # attempted twice, never latched
+
+
+# ── Phase 2 Task 9: dispatch-before-ack regression pins ──────────────────────
+# The survey found this property already holds here: apply_and_resume is
+# interrupt-gated (nothing runs before a human resume) and idempotent per
+# approval_id (a redelivered/replayed job never re-applies, and a failed apply
+# is never silently reported or retried as a success). These two tests exist
+# to pin exactly that so a future change to the graph cannot invert it without
+# a test going red. See .superpowers/sdd/task-9-brief.md.
+
+
+def test_task9_failed_apply_is_never_reported_as_success():
+    """A non-zero exit must surface as applied=False, never as a fabricated
+    success — the equivalent, for this route, of "must not advance state to
+    approved/posted" in the dashboard routes."""
+    ex = MockCommandExecutor(outcome=_fail("permission denied"))
+    g = RemediationGraph(ex)
+    res = g.apply_and_resume("appr-task9-fail", "rev", "cmd")
+    assert res.applied is False
+    assert res.applied is not True  # explicit: never truthy on a failed apply
+
+
+def test_task9_raised_effect_never_latches_a_false_success():
+    """If the underlying effect (the command execution) throws rather than
+    returning non-zero, the graph must not catch-and-report success either —
+    the exception propagates, and no RemediationResult (success or otherwise)
+    is latched for this approval_id until a real outcome exists."""
+    ex = MockCommandExecutor(raises=CommandExecutionError("infra unreachable"))
+    g = RemediationGraph(ex)
+    with pytest.raises(CommandExecutionError):
+        g.apply_and_resume("appr-task9-raise", "rev", "cmd")
+
+    # No success (or any) result was latched by the failed attempt.
+    config = {"configurable": {"thread_id": "appr-task9-raise"}}
+    snap = g.graph.get_state(config)
+    assert snap.values.get("result") is None
