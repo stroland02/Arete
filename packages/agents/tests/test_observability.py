@@ -57,6 +57,29 @@ def test_genai_env_contract(monkeypatch):
     assert os.environ["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] == "false"
 
 
+def test_noop_when_sdk_disabled(monkeypatch):
+    _reset(monkeypatch)
+    monkeypatch.setenv("OTEL_SDK_DISABLED", "true")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318")
+    installed = []
+    monkeypatch.setattr(obs, "_init_providers", lambda endpoint: installed.append(endpoint))
+    obs.init_observability()  # must not raise
+    assert installed == []  # no providers, no exporters, no threads
+
+
+def test_content_capture_forced_off_for_traceloop_instrumentors(monkeypatch):
+    _reset(monkeypatch)
+    monkeypatch.delenv("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", raising=False)
+    monkeypatch.delenv("TRACELOOP_TRACE_CONTENT", raising=False)
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+    obs.init_observability()
+    # §5: prompt/completion content OFF for the Traceloop-lineage instrumentors
+    # (anthropic, langchain) too — they gate on TRACELOOP_TRACE_CONTENT, which
+    # defaults to "true" when unset, not the genai capture var above.
+    assert os.environ["TRACELOOP_TRACE_CONTENT"] == "false"
+    assert os.environ["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] == "false"
+
+
 def test_resource_attributes_follow_frozen_conventions(monkeypatch):
     monkeypatch.delenv("DEPLOYMENT_ENVIRONMENT", raising=False)
     attrs = obs._build_resource().attributes

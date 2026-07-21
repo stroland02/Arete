@@ -222,8 +222,12 @@ def _instrument_llm_layers() -> None:
       packages must NEVER be installed alongside the contrib ones (duplicate
       spans; review-blocking).
 
-    Content capture stays OFF (OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT
-    =false, set in init_observability): token counts and metadata only.
+    Content capture stays OFF for every layer: OTEL_INSTRUMENTATION_GENAI_
+    CAPTURE_MESSAGE_CONTENT=false covers the openai-v2/google-genai contrib
+    instrumentations; the Traceloop-lineage packages (anthropic, langchain)
+    instead gate on TRACELOOP_TRACE_CONTENT, which is also forced to "false"
+    in init_observability (it defaults to "true" when unset). Token counts
+    and metadata only, on every layer.
     Each hook is wrapped separately — a broken instrumentation loses that
     layer's spans, never the service.
     """
@@ -312,6 +316,8 @@ def init_observability() -> None:
     created in the serving process, never a parent that forks.
 
     Env contract (shared seam, .env.example):
+      OTEL_SDK_DISABLED             "true" -> graceful no-op (one INFO line),
+                                     checked first, same contract as the TS lane
       OTEL_EXPORTER_OTLP_ENDPOINT   unset -> graceful no-op (one INFO line)
       DEPLOYMENT_ENVIRONMENT        -> deployment.environment.name resource attr
     """
@@ -319,6 +325,12 @@ def init_observability() -> None:
     if _INITIALIZED:
         return
     _INITIALIZED = True
+
+    # Kill switch first (§ TS lane parity): OTEL_SDK_DISABLED === 'true' is the
+    # very first check on the TS side and no-ops before touching anything else.
+    if os.environ.get("OTEL_SDK_DISABLED") == "true":
+        _logger.info("OTEL_SDK_DISABLED is true; running without telemetry (no-op).")
+        return
 
     # gen_ai semconv opt-in + content capture OFF (§5) — set before any
     # instrumentation reads them, even in the no-op path so a later manual
@@ -329,6 +341,13 @@ def init_observability() -> None:
     os.environ.setdefault(
         "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "false"
     )
+    # The Traceloop-lineage instrumentors (anthropic, langchain) don't read the
+    # genai capture var above — they gate on TRACELOOP_TRACE_CONTENT, which
+    # defaults to "true" when unset (opentelemetry-instrumentation-*'s own
+    # utils.py: `os.getenv(TRACELOOP_TRACE_CONTENT) or "true"`). Force it off
+    # here so prompt/completion bodies stay OFF across both instrumentation
+    # lineages, not just openai-v2 + google-genai.
+    os.environ.setdefault("TRACELOOP_TRACE_CONTENT", "false")
 
     endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
     if not endpoint:
