@@ -29,6 +29,10 @@ export class ScrubbingSpanProcessor implements SpanProcessor {
         attrs[key] = REDACTED
         continue
       }
+      if (Array.isArray(value)) {
+        attrs[key] = value.map((el) => (typeof el === 'string' ? scrubText(el) : el))
+        continue
+      }
       if (typeof value !== 'string') continue
       if (URL_ATTRIBUTES.has(key)) {
         attrs[key] = stripUrlQuery(value)

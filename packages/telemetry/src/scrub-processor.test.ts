@@ -62,6 +62,29 @@ describe('ScrubbingSpanProcessor (canary scrub test — spec §6 gate 2)', () =>
     expect(attrs['arete.debug.note']).toContain('[REDACTED]')
   })
 
+  it('scrubs secret-shaped substrings inside string-array attribute values, leaving non-string elements untouched', () => {
+    const tracer = provider.getTracer('canary')
+    const span = tracer.startSpan('llm.generate')
+    span.setAttribute('arete.debug.notes', [`failed with Bearer ${CANARY}`, 'clean value'])
+    span.end()
+
+    const exported = exporter.getFinishedSpans()
+    expect(exported).toHaveLength(1)
+    const seen = new WeakSet<object>()
+    const serialized = JSON.stringify(exported, (_k, v) => {
+      if (typeof v === 'bigint') return v.toString()
+      if (typeof v === 'object' && v !== null) {
+        if (seen.has(v)) return undefined
+        seen.add(v)
+      }
+      return v
+    })
+    expect(serialized).not.toContain(CANARY)
+
+    const attrs = exported[0].attributes
+    expect(attrs['arete.debug.notes']).toEqual(['failed with [REDACTED]', 'clean value'])
+  })
+
   it('leaves clean spans untouched', () => {
     const tracer = provider.getTracer('canary')
     const span = tracer.startSpan('review.run')
