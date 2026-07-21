@@ -137,12 +137,12 @@ a design decision or a schema change rather than a patch:
   — "the password field is required" would be mangled), which is why it was not
   done under a review-fix mandate. Applies to every sink equally, not just this
   one.
-- **`GET /context-map/graph/{installation_id}` and `/context-map/ui-url/{id}` on
-  the agents service remain unauthenticated.** The POST surface was put behind
-  the shared internal bearer (review finding B4); these two GETs were left open
-  to keep that change to the write/spend surface. They take an installation id
-  straight from the path and return that tenant's code graph, so they are a
-  cross-tenant READ leak to anyone with network reach to port 8000. The callers
-  (`packages/dashboard/src/lib/context-map-client.ts`) already have
-  `INTERNAL_API_TOKEN`, so the fix is the same two-line pattern — it just needs
-  its own mutation test and a check for any other caller.
+- ~~**`GET /context-map/graph/{installation_id}` and `/context-map/ui-url/{id}`
+  on the agents service remain unauthenticated.**~~ **CLOSED in `4fd64e8`** —
+  both GETs are now behind the same fail-closed internal bearer as the POST
+  surface (401 unauthenticated, 503 unconfigured), verified by an adversarial
+  re-review that enumerated the live route table and probed every route. Left
+  here struck through rather than deleted because it was filed and fixed within
+  the same phase: an entry asserting a live cross-tenant leak that no longer
+  exists misstates the security posture of shipped code, which is the same
+  hazard as a report claiming a hole is closed when it is not.
