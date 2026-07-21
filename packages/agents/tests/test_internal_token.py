@@ -181,6 +181,26 @@ def test_verify_returns_unknown_kid_when_the_kid_was_revoked(monkeypatch, keyset
     assert result == VerifyResult(ok=False, reason="unknown_kid")
 
 
+def test_verify_returns_unknown_kid_when_the_kid_was_revoked_under_a_warm_settings_cache(
+    monkeypatch, keyset_env
+):
+    # Regression pin for the CI-only failure this hotfix addresses: warm the
+    # `@lru_cache`d get_settings() with the ORIGINAL keyset (mirrors CI, where
+    # ANTHROPIC_API_KEY is set so Settings() constructs successfully and
+    # get_settings() caches early) BEFORE revoking. If load_keyset() ever goes
+    # back to consulting Settings before a fresh os.environ read, this must
+    # fail exactly like the CI bug report did: a revoked key still honoured
+    # because the cached Settings object never saw the monkeypatched env.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "dummy-key")
+    get_settings()  # warm the cache with k1 still present
+    token = mint_internal_token("arete-webhook", now=1_700_000_000)
+    # Revoke: the kid the token was signed with no longer exists in the keyset.
+    monkeypatch.setenv("INTERNAL_TOKEN_SIGNING_KEYS", json.dumps({"k2": "b" * 48}))
+    monkeypatch.setenv("INTERNAL_TOKEN_ACTIVE_KID", "k2")
+    result = verify_internal_token(f"Bearer {token}", now=1_700_000_050)
+    assert result == VerifyResult(ok=False, reason="unknown_kid")
+
+
 def test_verify_accepts_a_token_signed_by_a_non_active_kid_still_present(monkeypatch, keyset_env):
     token = mint_internal_token("arete-webhook", now=1_700_000_000)  # signed with k1
     # Rotation window: k1 still present in the keyset, but no longer active.

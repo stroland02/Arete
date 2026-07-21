@@ -122,28 +122,42 @@ def load_keyset() -> InternalTokenKeyset | None:
 
 
 def _read_keyset_env() -> tuple[str, str]:
-    """Settings first (so `.env` is honoured), bare-environment fallback (so
-    a keyless boot can still REJECT) -- the identical ladder
-    internal_auth.py's retired `configured_token()` used for the single
-    static secret, now extended to the two keyset env vars. Settings()
-    eagerly validates the LLM provider key, so an LLM-misconfigured process
-    must still be able to load (and just as importantly, still be able to
-    REJECT on) its own internal-token keyset.
+    """Bare-environment FIRST, Settings fallback only when the env var is
+    absent (so `.env`-only local dev -- no process env, only pydantic-settings'
+    own `.env` load -- still works). This is cache-immune by construction:
+    `os.environ` is read fresh on every call, so an env-based key
+    rotation/revocation takes effect immediately, in the very next
+    verify_internal_token() call, in a long-running process.
+
+    Settings-first (the previous order) was wrong: get_settings() is
+    `@lru_cache`d, so once a process has constructed a Settings object the
+    keyset it captured is frozen for the rest of that process's life --
+    exactly the state a revocation must be able to invalidate. A test's
+    `monkeypatch.setenv` changes `os.environ`, not the cached Settings
+    instance, so under a warm cache the stale keys kept being honoured. This
+    was invisible locally (no ANTHROPIC_API_KEY -> Settings() raises ->
+    the code fell through to a bare os.environ read anyway) and only surfaced
+    where Settings can construct successfully (CI, or any real deployment
+    with a configured LLM provider key) -- i.e. everywhere it actually
+    matters. Falling back to get_settings() when the env var is unset keeps
+    `.env`-only configuration (pydantic-settings reads `.env` regardless of
+    the real process environment) working; Settings() itself may still raise
+    (e.g. LLM provider key unset), which is caught the same as before.
     """
+    raw_keys = os.environ.get("INTERNAL_TOKEN_SIGNING_KEYS", "")
+    active_kid = os.environ.get("INTERNAL_TOKEN_ACTIVE_KID", "")
+    if raw_keys:
+        return raw_keys, active_kid
+
     try:
         from arete_agents.config import get_settings
 
         settings = get_settings()
         raw_keys = settings.internal_token_signing_keys
         active_kid = settings.internal_token_active_kid
-        if raw_keys:
-            return raw_keys, active_kid
     except Exception:
         pass
-    return (
-        os.environ.get("INTERNAL_TOKEN_SIGNING_KEYS", ""),
-        os.environ.get("INTERNAL_TOKEN_ACTIVE_KID", ""),
-    )
+    return raw_keys, active_kid
 
 
 def _resolve_ttl_seconds() -> int:
