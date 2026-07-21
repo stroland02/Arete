@@ -5,6 +5,17 @@ import { computeFixCooldown, FIX_COOLDOWN_BASE_SECONDS, FIX_COOLDOWN_MAX_SECONDS
 // math — see this module's header comment for why the implementation is
 // duplicated rather than imported across the dashboard/webhook boundary.
 describe('computeFixCooldown', () => {
+  // Drift guard — the other half of the pair in
+  // packages/webhook/src/fix/cooldown.test.ts. Every other assertion in both
+  // files is written relative to the constants, so a one-sided edit to the
+  // backoff would leave both suites green while this route advertised a
+  // Retry-After the queue consumer does not honour. Change these values in
+  // both files, in the same commit, or not at all.
+  it('pins the backoff policy shared with the webhook copy', () => {
+    expect(FIX_COOLDOWN_BASE_SECONDS).toBe(300);
+    expect(FIX_COOLDOWN_MAX_SECONDS).toBe(3600);
+  });
+
   it('allows when there is no prior failure', () => {
     expect(computeFixCooldown(0, null)).toEqual({ allowed: true });
   });

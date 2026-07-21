@@ -7,6 +7,20 @@ import {
 } from './cooldown.js'
 
 describe('computeFixCooldown', () => {
+  // Drift guard. This policy is deliberately duplicated in
+  // packages/dashboard/src/lib/fix-cooldown.ts (the two packages are separate
+  // deployables and neither exports a library surface to the other), so the
+  // ONLY thing keeping the two enforcement points in agreement is that both
+  // pin the same literals. Every other assertion here is written relative to
+  // the constants, so without this test a one-sided edit would leave both
+  // suites green while the dashboard advertised a Retry-After the queue
+  // consumer does not honour. If you change these values, change them in the
+  // sibling file and its test in the same commit.
+  it('pins the backoff policy shared with the dashboard copy', () => {
+    expect(FIX_COOLDOWN_BASE_SECONDS).toBe(300)
+    expect(FIX_COOLDOWN_MAX_SECONDS).toBe(3600)
+  })
+
   it('allows when there is no prior failure (count 0, no timestamp)', () => {
     expect(computeFixCooldown(0, null)).toEqual({ allowed: true })
   })
