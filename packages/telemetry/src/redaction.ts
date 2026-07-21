@@ -60,6 +60,50 @@ export function clearUrlQuery(_value: string): string {
   return ''
 }
 
+/**
+ * Recursively scrub every string value in a plain-object/array tree with
+ * {@link scrubText}. Used by the pino `formatters.log` hook (logger.ts) so
+ * secret-shaped substrings inside free-text fields (e.g. `err.message`) are
+ * masked — `redact.paths` only zeroes out specific KEY paths, it never
+ * inspects the text of a value.
+ *
+ * Error instances are special-cased: pino's own `err`-key serializer runs
+ * AFTER `formatters.log`, on whatever object we return, and only produces
+ * its usual `{type, message, stack}` shape when the value is still a real
+ * Error — so this rebuilds one (same constructor/name, scrubbed
+ * message/stack, other own enumerable props scrubbed too) instead of
+ * flattening it to a plain object.
+ */
+export function scrubLogValue(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
+  if (typeof value === 'string') return scrubText(value)
+  if (value instanceof Error) {
+    if (seen.has(value)) return value
+    seen.add(value)
+    const Ctor = (value.constructor as new (message?: string) => Error) ?? Error
+    const scrubbed = new Ctor(scrubText(value.message))
+    scrubbed.name = value.name
+    if (value.stack) scrubbed.stack = scrubText(value.stack)
+    for (const key of Object.keys(value)) {
+      ;(scrubbed as unknown as Record<string, unknown>)[key] = scrubLogValue(
+        (value as unknown as Record<string, unknown>)[key],
+        seen
+      )
+    }
+    return scrubbed
+  }
+  if (Array.isArray(value)) return value.map((el) => scrubLogValue(el, seen))
+  if (value && typeof value === 'object') {
+    if (seen.has(value)) return value
+    seen.add(value)
+    const out: Record<string, unknown> = {}
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      out[key] = scrubLogValue(val, seen)
+    }
+    return out
+  }
+  return value
+}
+
 /** pino redact.paths — key blocklist at top level, one wildcard level deep,
  *  and under req/res headers. `installationToken` is Areté-specific: PRContext
  *  carries a live GitHub App installation token (worker.ts buildCloneContext). */

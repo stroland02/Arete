@@ -4,7 +4,7 @@
 // `import { pino }` only resolves to the inner CJS-destructure shim, which
 // lacks these type members (tsc TS2694 under this repo's pino@10.3.1 types).
 import pino from 'pino'
-import { PINO_REDACT_PATHS, REDACTED } from './redaction.js'
+import { PINO_REDACT_PATHS, REDACTED, scrubLogValue } from './redaction.js'
 
 export interface CreateLoggerOptions {
   level?: string
@@ -15,7 +15,13 @@ export interface CreateLoggerOptions {
 /**
  * Structured logger factory (spec §3: "Real libraries: pino"). Redaction is
  * applied at log-creation time — secrets never reach ANY sink (console, file,
- * or the OTLP bridge). trace_id/span_id stamping + OTLP log shipping are
+ * or the OTLP bridge). Two layers, matching the Python censor_processor's
+ * key+value scrubbing (§5 parity): pino's own `redact.paths` blanks
+ * blocklisted KEY paths outright; `formatters.log` (below) additionally
+ * pattern-scrubs secret-SHAPED substrings out of every string value (and
+ * `err.message`/`err.stack`) so a stray `sk-ant-…` embedded in free text —
+ * not just a blocklisted key — never reaches a sink. trace_id/span_id
+ * stamping + OTLP log shipping are
  * added transparently by @opentelemetry/instrumentation-pino when
  * initTelemetry() ran in this process; without it this is a plain JSON
  * console logger (telemetry-off degradation, never a crash).
@@ -30,6 +36,13 @@ export function createLogger(service: string, opts: CreateLoggerOptions = {}): p
     base: { service },
     redact: { paths: [...PINO_REDACT_PATHS], censor: REDACTED },
     timestamp: pino.stdTimeFunctions.isoTime,
+    // Runs before pino's own `err` serializer and before `redact` — see the
+    // module doc comment above and scrubLogValue's doc in redaction.ts.
+    formatters: {
+      log(mergeObject) {
+        return scrubLogValue(mergeObject) as Record<string, unknown>
+      },
+    },
   }
   return opts.destination ? pino(options, opts.destination) : pino(options)
 }

@@ -34,6 +34,19 @@ describe('createLogger (canary scrub — log sink, spec §6 gate 2)', () => {
     expect(line.authorization).toBe('[REDACTED]')
   })
 
+  it('redacts secret-shaped substrings embedded in a value, not just blocklisted keys (err.message)', () => {
+    const { stream, lines } = collect()
+    const log = createLogger('webhook', { destination: stream })
+    const err = new Error('call failed: key sk-ant-CANARY123 rejected')
+    log.error({ err, note: `also embedded here: sk-ant-CANARY123` }, 'request failed')
+    const [line] = lines()
+    const raw = JSON.stringify(line)
+    expect(raw).not.toContain('sk-ant-CANARY123')
+    expect(raw).toContain('[REDACTED]')
+    expect((line.err as { message: string }).message).toContain('[REDACTED]')
+    expect(line.note).toContain('[REDACTED]')
+  })
+
   it('stamps service and passes structured component through child()', () => {
     const { stream, lines } = collect()
     const log = createLogger('webhook', { destination: stream }).child({ component: 'worker' })
