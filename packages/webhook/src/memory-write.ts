@@ -84,7 +84,13 @@ export type SaveMemoryResult =
   | { ok: false; reason: SaveMemoryReason; detail?: string }
 
 export async function saveAgentMemory(params: SaveMemoryParams): Promise<SaveMemoryResult> {
-  return tracer.startActiveSpan('memory.write', async (span) => {
+  // The callback's return type is annotated, not inferred. Without it, tsc
+  // widens the union across the try/catch arms to `{ ok: boolean; reason:
+  // string }`, which is not assignable to SaveMemoryResult — and the whole
+  // point of that discriminated union is that `ok: false` always carries a
+  // known SaveMemoryReason, so a caller can never mistake a failure for a
+  // success.
+  return tracer.startActiveSpan('memory.write', async (span): Promise<SaveMemoryResult> => {
     try {
       const result = await saveInner(params)
       memoryWritesMetric().add(1, { outcome: result.ok ? 'saved' : result.reason })
