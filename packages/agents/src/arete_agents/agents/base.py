@@ -182,7 +182,9 @@ If no issues found, return empty comments array."""
         ]
 
         mcp_tools = get_mcp_tools_for_agent(self.agent_name)
-        mcp_tools.extend(get_native_action_tools())
+        mcp_tools.extend(
+            get_native_action_tools(pr_context.installation_id, pr_context.repo)
+        )
         mcp_tools.extend(context_map_tools)
 
         llm_with_tools = self._llm.bind_tools(mcp_tools) if mcp_tools else self._llm

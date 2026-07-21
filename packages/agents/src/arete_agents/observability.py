@@ -226,6 +226,7 @@ def _histogram_views() -> list[View]:
             "gen_ai.client.operation.duration",
             "arete.review.duration",
             "arete.agent.duration",
+            "arete.fix.duration",
         )
     ]
 

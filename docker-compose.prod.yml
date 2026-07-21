@@ -76,6 +76,15 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       DATABASE_URL: postgresql://arete:arete@postgres:5432/arete
       REDIS_URL: redis://redis:6379
+      # Phase 2 Task 8: add_project_memory posts back to the webhook's
+      # token-guarded POST /internal/memory (arete_agents/tools/memory.py).
+      # Without these two the tool cannot persist anything and reports an
+      # honest failure on every call -- the feature is inert (review finding
+      # B5). The SAME token also guards this service's own POST surface
+      # (arete_agents/internal_auth.py), fail-closed 503 when unset, so it is
+      # required in BOTH directions.
+      WEBHOOK_SERVICE_URL: http://webhook:3000
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
     ports:
       - "8000:8000"
     volumes:
@@ -106,6 +115,10 @@ services:
       GITLAB_URL: ${GITLAB_URL:-https://gitlab.com}
       PYTHON_SERVICE_URL: http://agents:8000
       DATABASE_URL: postgresql://arete:arete@postgres:5432/arete
+      # Guards this service's own /internal/* surface (internal-auth.ts) AND
+      # is presented outbound to the agents service's guarded POST endpoints
+      # (internalAuthHeaders()). Unset == both directions fail closed with 503.
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
       PORT: "3000"
     ports:
       - "3000:3000"
@@ -144,6 +157,9 @@ services:
     environment:
       DATABASE_URL: postgresql://arete:arete@postgres:5432/arete
       NODE_ENV: production
+      # Presented to the agents service's guarded /chat (agent-chat.ts).
+      PYTHON_SERVICE_URL: http://agents:8000
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
     ports:
       - "3001:3001"
     depends_on:

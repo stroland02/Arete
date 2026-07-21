@@ -9,15 +9,73 @@ into scope. Reprioritize only at phase boundaries or by explicit user decision.
 1. Lane A plan: `docs/superpowers/plans/2026-07-20-obs-lane-a-typescript.md` (16 tasks)
 2. Lane B plan: `docs/superpowers/plans/2026-07-20-obs-lane-b-python-infra.md` (16 tasks)
 
-## Next (Phase 2 — healing-agent upgrade + alerting; spec at Phase 1 close)
+## Next (Phase 2 — healing-agent upgrade + alerting; spec at Phase 1 close) — **SHIPPED 2026-07-21**
 
-- Findings-first gate + calibrated confidence rubrics in fix-engine tool descriptions
-- Budgets: runtime cap, wall-clock backstop, human-resume cap, idempotent terminate
-- Dispatch-before-ack for terminal actions (PR creation, resolution)
-- Typed memory store (feedback | terminology | infra | project)
-- Alert rules: error-rate AND p95 latency on `arete.review.duration` → incidents
-- Healing agent consumes own telemetry via internal query surface
-- Phase 1 retro action items (added at retro)
+Closed on `stroland02/obs-phase-2`. Evidence: [`.superpowers/sdd/phase-2-gate-report.md`](../../.superpowers/sdd/phase-2-gate-report.md).
+Retrospective: [`2026-07-21-phase-2-retrospective.md`](2026-07-21-phase-2-retrospective.md).
+
+- ~~Findings-first gate + calibrated confidence rubrics in fix-engine tool descriptions~~ — done, but
+  **rubrics live in the fix prompt, not tool descriptions**: the fix agent has no tool loop
+  (spec §3 "Phase 2 amendments"). Confidence stayed **0–1**, criteria adopted.
+- ~~Budgets: runtime cap, wall-clock backstop, human-resume cap, idempotent terminate~~ — done; the
+  real hole was that fix drives bypassed the queue entirely. Now BullMQ `fix-drive` at concurrency 2
+  + exponential cooldown (5 min → 1 h) at both entry points.
+- ~~Dispatch-before-ack for terminal actions~~ — already held; became an **audit + regression tests**.
+- ~~Typed memory store~~ — done: real tenant-guarded, size-capped, redacted write-back.
+- ~~Alert rules: error-rate AND p95 latency → incidents~~ — done, live end to end.
+- **Healing agent consumes own telemetry via internal query surface** — **NOT DONE → Phase 2b below.**
+- Phase 1 retro action items — carried into the Phase 2 retrospective.
+
+## Phase 2b (deferred from Phase 2, 2026-07-21)
+
+Ranked. The first item is a live security gap, not an enhancement.
+
+1. **Internal + MCP tokens have no expiry — spec §6 Phase 2 gate 2 is UNMET.**
+   `INTERNAL_API_TOKEN` is one static shared secret read from the environment per request
+   (`packages/webhook/src/internal-auth.ts:43`): no `exp`, no `iat`, no rotation, no revocation.
+   Probed — the middleware authenticates the identical token with the system clock set ten years
+   forward, and `tokenMatches(header, token)` takes no clock argument, so expiry is not merely
+   absent but **not expressible in the current code path**. A repo-wide grep of
+   `rotat|expir|issued_at|iat|exp` across the internal-auth surface returns zero matches.
+   Blast radius: it guards every write-and-spend route on both the webhook and agents services, and
+   is the credential the agents process presents when writing into a tenant's memory store.
+   The **MCP half is worse**: `mcp/manager.py` persists tokens as plaintext JSON in
+   `.agents/mcp_servers.json` with no expiry field in the schema and no file-mode hardening, and
+   `mcp/auth.py:90` never performs a code exchange — it fabricates `simulated_token_for_<code>`, so
+   there is no `expires_in` to store even if the schema had a slot. `mcp/client.py:51` presents the
+   value as `Bearer` indefinitely.
+   Not a patch: needs a credential-lifecycle design (rotation window, dual-token overlap so a
+   rotation cannot break in-flight service-to-service calls, and a decision on whether MCP grows a
+   real OAuth exchange or is removed until it does).
+   *For contrast, the credential that reaches a customer repo — the GitHub App installation token —
+   does expire (~1h, GitHub-enforced) and is minted fresh per fix drive.*
+2. **Telemetry-fed investigations** (the one unshipped spec §3 Phase 2 bullet). The healing agent
+   should read the incident's own trace/log context. Blocked on an internal query surface: today only
+   `getAgentEventsPerMinute` (`queries.ts:781-815`) reaches ClickHouse at all.
+3. **Give the fix pipeline a tool loop.** `fix_pipeline.py` makes one direct LLM call for a JSON
+   blob; tool-calling exists only on the review side. Until then, rubrics necessarily live in the
+   prompt, and spec §3's "tool descriptions ARE the prompt" cannot apply to healing.
+4. **Webhook-side fix failures are uncounted.** `no_repo` / `no_model` terminate before Python is
+   reached, so they never appear in `arete.fix.*` — a fix drive dying before dispatch is invisible in
+   the counters.
+5. **Memory row cap is check-then-create with no transaction, and nothing ever archives.** Two
+   concurrent writes can both pass the cap check; and since no path sets `status='archived'`, a repo
+   is permanently frozen at 20 memories once it fills.
+6. **Prose credentials still reach sinks** (`password: hunter2`) — no secret shape, and the key
+   blocklist binds to object keys, not words in a string. Catching it needs an amendment to the
+   frozen §5 pattern set with real false-positive risk on ordinary prose. The URL-embedded half of
+   this finding is already closed.
+7. **A second Prometheus rules file will need a compose/config edit.** `rule_files` deliberately
+   names the one file rather than globbing, because a glob also matches the `promtool` test file,
+   whose schema makes Prometheus reject the entire config.
+8. **`pipeline.integration.test.ts` is still flaky** — Phase 0's "fix or quarantine" exit criterion
+   was never met and survived two phases. Confirmed pre-existing via `git stash` against a pre-Task-6
+   tree. Phase 3 action 7 (audit prior phases' exit criteria) exists because of this.
+9. **Running containers drift from compose on security-relevant settings.** The Alertmanager
+   container was serving `0.0.0.0:9093` for hours after `docker-compose.yml` had been changed to
+   `127.0.0.1:9093` (the C1 remediation) — a container does not re-read its port mapping on restart,
+   it must be recreated. Third stale-infrastructure incident of the project. Worth a
+   `docker compose up -d` precondition on any verification that claims to test infra config.
 
 ## Later (Phase 3 — tenant telemetry platform; spec at Phase 2 close)
 
@@ -104,3 +162,136 @@ leak, missing CI gate) were fixed on the phase branch before merge.
 - Spec §6 gate 4 (egress compliance): nothing on the branch routes exporter egress through
   `@arete/net-guard`. Either the gate is satisfied because exporters only talk to a loopback
   collector — state that explicitly — or it is unmet and needs an owner.
+
+**Agent memory sink (Phase 2 Task 8 — from fix round 1 of the adversarial review, 2026-07-21)**
+
+Everything blocking was fixed in that round. These are the reviewer-verified
+leftovers, kept here with their evidence rather than fixed, because each needs
+a design decision or a schema change rather than a patch:
+
+- **Row cap is check-then-create, with no transaction and no DB constraint.**
+  `memory-write.ts` counts active rows and then creates, so N concurrent writes
+  for one repo can all observe `count == 19` and all insert — a repo can exceed
+  `MAX_MEMORIES_PER_REPO` (20). Not exploitable for unbounded growth (each racer
+  still inserts exactly one row, so the overshoot is bounded by concurrency),
+  but the cap is advisory rather than enforced. Correct fix is a serializable
+  transaction or a DB-level constraint/trigger, not a wider read.
+- **No eviction path: nothing in the repo ever sets `status='archived'`.** The
+  read cap (`fetchProjectMemories`, 20 most recent) and the write cap are the
+  same number, so once a repo reaches 20 ACTIVE rows every subsequent write
+  returns `cap_exceeded` forever and the memory set is frozen at whatever it
+  first learned. `status` exists and is honoured by both the count and the read,
+  so the mechanism is there — what is missing is the policy (age out? evict
+  least-recently-cited? let a human archive from the dashboard?) and a surface
+  to apply it.
+- ~~**`scrubSinkText`'s query-string stripping only fired when the ENTIRE
+  value was a bare URL.**~~ **CLOSED in `d0f4e1b`** — `URL_LIKE`
+  was anchored `^…\S+$`, so `see https://x.io/a?password=topsecret for
+  details` and `[link](https://x.io/a?password=topsecret)` both sailed
+  through unscrubbed even though the bare-URL case (`stripUrlQuery` applied
+  to a whole-string URL) already worked — and prose-with-an-embedded-URL is
+  the dominant shape for both alert summaries and memory bodies. Fixed by
+  matching URL substrings anywhere in the string (bounded by whitespace/
+  markdown/quote delimiters) instead of requiring the whole trimmed value to
+  be a URL. This needed no spec amendment: it applies the existing
+  `stripUrlQuery` primitive more broadly, it does not add a new pattern to
+  the frozen §5 set. Left here struck through rather than deleted, mirroring
+  the context-map entry below. This entry used to also cover prose
+  credentials with no URL at all (`password: hunter2`) — that genuinely
+  amendment-gated remainder is split out below so this entry no longer
+  misstates it as needing one.
+- **`scrubText`/`scrubSinkText` do not catch prose-shaped credentials that
+  have no secret *shape* and no URL to strip a query string from.** A memory
+  body containing `password: hunter2` as free text matches neither a
+  `SECRET_VALUE_PATTERNS` shape (`sk-*`, `gh?_*`, `Bearer …`, key-ish URL
+  query params) nor a blocklisted object KEY (`password` here is a word
+  inside a string, not a key), and there is no URL substring for the
+  query-stripping fix above to act on. Verified stored verbatim. Fixing this
+  DOES mean amending the frozen §5 pattern set (a spec amendment, and one
+  with real false-positive risk on prose — "the password field is required"
+  would be mangled), which is why it was not done under a review-fix
+  mandate. Applies to every sink equally, not just this one.
+- ~~**`GET /context-map/graph/{installation_id}` and `/context-map/ui-url/{id}`
+  on the agents service remain unauthenticated.**~~ **CLOSED in `4fd64e8`** —
+  both GETs are now behind the same fail-closed internal bearer as the POST
+  surface (401 unauthenticated, 503 unconfigured), verified by an adversarial
+  re-review that enumerated the live route table and probed every route. Left
+  here struck through rather than deleted because it was filed and fixed within
+  the same phase: an entry asserting a live cross-tenant leak that no longer
+  exists misstates the security posture of shipped code, which is the same
+  hazard as a report claiming a hole is closed when it is not.
+
+**Data pipeline + model harness efficiency (Phase 2 Tasks 12/13, 2026-07-21 —
+full report at `docs/roadmap/2026-07-21-phase-2-efficiency-review.md`)**
+
+Only one change was measured-and-justified this pass (`ReviewComment.reviewId`
+index, landed). Everything below was found but deliberately NOT fixed, because
+fixing it would have meant changing something without a measurement to justify
+it — each carries the evidence gathered so a later pass can measure and decide
+rather than guess.
+
+- **`ReviewComment` may still be missing indexes on `severity`, `category`, and
+  `noiseState`.** The `reviewId` index (landed) cut 25-66% off the four hottest
+  dashboard queries at a synthetic 750k-row/10-tenant scale, but that number is
+  the join-index's contribution entangled with whatever these per-column
+  filters/groupBys would add on their own — not isolated. Measure each
+  individually (`EXPLAIN ANALYZE` with/without a trial index, same dataset)
+  before adding any of them.
+- **`getTrendSeries`/`getDashboardsViewModel`'s review-row fetch has no `take`
+  limit** (`packages/dashboard/src/lib/queries.ts`) — fetches every
+  `Review.createdAt` a tenant has ever produced to bucket client-side. Fast
+  today (0.9-6ms at 30k seeded reviews, backed by `Review`'s existing
+  `(repositoryId, createdAt)` index) — the risk isn't Postgres query time, it's
+  unbounded row-count serialization into the Node process for an
+  installation with years of history. No fix without a measurement at that
+  scale, which doesn't exist yet.
+- **Review job retries duplicate the per-agent retry.**
+  `packages/webhook/src/worker.ts:94-113`'s `processGitHubPullRequest` re-throws
+  any `runReviewPipeline` failure, and `enqueueReviewJob`'s
+  `DEFAULT_JOB_OPTIONS` (`attempts: 3`, `queue.ts:152-157`) then re-runs the
+  **entire** multi-file, multi-agent review from scratch — on top of each
+  agent's own `with_retry(stop_after_attempt=2)` (`agents/base.py:191`). The
+  fix-drive queue does NOT have this problem: `driveFix` never throws on a
+  business failure (`fix/trigger.ts:167-168`), so its `attempts: 3` only fires
+  on a genuine infra exception. Not measured live (needs a real induced
+  transient provider failure mid-review to count actual duplicated API calls).
+  Likely fix, once measured: distinguish "some agents failed, review still
+  produced a partial result" (already resilient, should not retry the job)
+  from "the whole pipeline crashed for an infra reason" (should retry).
+- **Review's real LLM concurrency is unbounded per review, not bounded by
+  `REVIEW_QUEUE_CONCURRENCY=5`.** `orchestrator.py:353-381`'s LangGraph
+  `StateGraph` fans out via `Send` — one node per (file × agent) pair, no
+  `max_concurrency` on `graph.invoke`. A 20-file PR reviewed by 6 agents is
+  ~120 concurrent LLM calls for ONE review; five concurrent reviews (the
+  queue's own cap) is up to ~600 simultaneous provider calls. The likely real
+  bottleneck for review throughput is the provider's own rate limit, not the
+  `5`. Not measured (needs a real large PR + a real API key); measure actual
+  concurrent `gen_ai.*` spans per review once production volume exists.
+- **Fix-authoring tier for 3 of 6 dimensions (performance, quality,
+  test_coverage) is haiku** — deliberate (fix authoring reuses that dimension's
+  configured review tier, `fix_pipeline.py:312-313` + `llm/base.py:52-67`), not
+  an oversight, but unverified whether haiku is good enough at the harder
+  generative task of authoring a complete file replacement (vs. its original
+  job of critiquing a diff). No Anthropic key in this environment to measure
+  tier-quality difference. Before changing: build a small regression corpus of
+  known-fixable issues and measure haiku-vs-sonnet-authored patch pass rate —
+  a tier change alters output quality and needs a way to detect a regression.
+- **`MAX_TOOL_ROUNDS`/`MAX_PATCH_CHARS` don't gate the fix pipeline at all**
+  (they're review-path-only constants; `fix_pipeline.author_patch` has no tool
+  loop and never truncates the source diff) — a correction to how those
+  budgets get talked about, not a bug. The budgets that DO gate a fix drive
+  (`DEFAULT_LLM_TIMEOUT_SECONDS=60`, `DEFAULT_FIX_TIMEOUT_SECONDS=280`,
+  `max_tokens=4096`) were never approached in 10 synthetic Ollama-backed runs —
+  revisit once real production fix-drive telemetry exists (needs a real
+  Anthropic key somewhere real traffic flows).
+- **`gen_ai.provider.name` reports `"openai"` for Ollama-backed LangChain
+  calls** (confirmed via ClickHouse on this session's synthetic runs) — an
+  `opentelemetry-instrumentation-langchain` provider-detection artifact from
+  `ChatOllama`'s OpenAI-compatible client shape. Low-impact while production
+  traffic is Anthropic-backed, but any deployment that falls back to the local
+  Ollama safety net (`deployment_tier="local"`) would misattribute those calls'
+  cost/usage in any dashboard grouped by provider.
+- **ClickHouse TTLs are configured correctly (30d raw / 90d rollup,
+  `ttl_only_drop_parts=1`) but unverified live** — every row in this dev
+  ClickHouse is hours old, nowhere near the retention window. Revisit once
+  real aged data exists to confirm parts actually drop.

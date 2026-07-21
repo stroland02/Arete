@@ -10,6 +10,8 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
+from tests.conftest import INTERNAL_HEADERS
+
 
 def _min_pr(**extra):
     body = {
@@ -48,7 +50,7 @@ def test_review_builds_from_per_request_config():
     ), patch.object(
         server, "ollama_unavailable_reason", return_value=None
     ):
-        client = TestClient(server.app)
+        client = TestClient(server.app, headers=INTERNAL_HEADERS)
         resp = client.post(
             "/review",
             json=_min_pr(
@@ -85,7 +87,7 @@ def test_review_falls_back_to_global_without_config():
     ) as from_config, patch.object(
         server, "ollama_unavailable_reason", return_value=None
     ):
-        client = TestClient(server.app)
+        client = TestClient(server.app, headers=INTERNAL_HEADERS)
         resp = client.post("/review", json=_min_pr())
     global_run = global_orch.run
 
@@ -101,7 +103,7 @@ def test_review_rejects_unknown_provider_with_400():
         raise ValueError("Unknown LLM provider: 'openai'")
 
     with patch.object(server, "get_llms_by_role_from_config", side_effect=boom):
-        client = TestClient(server.app)
+        client = TestClient(server.app, headers=INTERNAL_HEADERS)
         resp = client.post("/review", json=_min_pr(llm={"provider": "openai"}))
 
     assert resp.status_code == 400
@@ -125,7 +127,7 @@ def test_review_config_accepts_snake_case_aliases():
     with patch.object(
         server, "get_llms_by_role_from_config", side_effect=fake_from_config
     ), patch.object(server, "ReviewOrchestrator", return_value=fake_orch):
-        client = TestClient(server.app)
+        client = TestClient(server.app, headers=INTERNAL_HEADERS)
         resp = client.post(
             "/review",
             json=_min_pr(

@@ -1,0 +1,53 @@
+# Areté observability Phase 2 — Alertmanager routing (Task 3).
+#
+# Alertmanager owns grouping, dedup, inhibition, and repeat intervals — logic
+# that looks trivial and is not (task-3-brief.md). It hands every
+# firing/resolved alert to the webhook service's token-guarded receiver
+# (POST /alerts/incoming — packages/webhook/src/alerting/receiver.ts), which
+# upserts an Incident keyed on (installationId, fingerprint).
+#
+# Auth: the same INTERNAL_API_TOKEN shared bearer already used for
+# /fix/trigger and the rest of the service-to-service surface
+# (packages/webhook/src/internal-auth.ts). It is injected via
+# `credentials_file`, NOT a literal value in this checked-in file — Compose
+# (infra/docker-compose.yml) materializes /run/secrets/internal_api_token
+# from the host's INTERNAL_API_TOKEN env var via its native `secrets:`
+# construct, so the real token never has to be committed to this repo.
+#
+# host.docker.internal: the webhook service is NOT containerized (it runs
+# locally via `pnpm dev` on :3001, per .env's WEBHOOK_SERVICE_URL) — this is
+# how the alertmanager CONTAINER reaches the webhook process on the host.
+# docker-compose.yml adds the matching `extra_hosts: host-gateway` entry so
+# this resolves on Linux Docker too, not just Docker Desktop.
+
+# TENANCY: the receiver does NOT read tenancy from anything in this pipeline.
+# Every alert forwarded from here is attributed to the single configured
+# platform installation (ARETE_PLATFORM_INSTALLATION_ID — see .env.example);
+# an `installationId` label on an alert is ignored entirely. Adding one here,
+# or to a Prometheus rule, will NOT route an incident to that tenant. Per-tenant
+# alerting must arrive as a trusted server-side mapping in the receiver, never
+# as a label on the wire (Phase 2 review finding C1).
+
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: 'webhook-receiver'
+  group_by: ['alertname']
+  group_wait: 30s
+  group_interval: 5m
+  # Alertmanager does not resend an unchanged firing alert before this
+  # elapses — 15m is long enough that a live run genuinely re-delivers the
+  # same alert and exercises the receiver's upsert idempotency path
+  # (task-3-brief.md test 4), rather than every delivery in a manual test
+  # coincidentally looking like a "first" one.
+  repeat_interval: 15m
+
+receivers:
+  - name: 'webhook-receiver'
+    webhook_configs:
+      - url: 'http://host.docker.internal:3001/alerts/incoming'
+        send_resolved: true
+        http_config:
+          authorization:
+            credentials_file: /run/secrets/internal_api_token

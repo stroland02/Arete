@@ -2,7 +2,7 @@ import logging
 from typing import Any, Dict
 
 import structlog
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from pydantic import BaseModel, ValidationError
 
@@ -13,6 +13,7 @@ from arete_agents.context_map.indexer import IndexerError, index_repository
 from arete_agents.context_map.repo_cache import RepoCacheError, ensure_repo_checked_out
 from arete_agents.context_map.ui import ContextMapUIError, get_or_start_ui
 from arete_agents.fix_pipeline import run_fix
+from arete_agents.internal_auth import require_internal_token
 from arete_agents.llm.base import (
     get_llms_by_role,
     get_llms_by_role_from_config,
@@ -124,8 +125,31 @@ def _get_chat_agent() -> ChatAgent:
 # Needs no LLM, so eager construction is safe on a keyless boot.
 _remediation = RemediationGraph(get_command_executor())
 
+# Service-to-service surface guard (review finding B4; spec section 6 gate 4).
+# Every POST below is called ONLY by our own server-side processes
+# (packages/webhook's review-bridge / scan-trigger / fix-trigger / chat-handler
+# / approval-worker / context-map-index, and packages/dashboard's agent-chat),
+# each of which already holds INTERNAL_API_TOKEN. They all spend money, mutate
+# state, or -- in /review and /chat's case -- can induce an add_project_memory
+# write into a CALLER-NAMED tenant using this process's own credential. The
+# hop is therefore authenticated with the same shared bearer and the same
+# fail-closed posture the webhook uses (internal_auth.py).
+#
+# GET /health is deliberately NOT behind this guard; see internal_auth.py.
+#
+# The read-only GET /context-map/ui-url/{id} and /context-map/graph/{id}
+# routes WERE left open here (review finding B4 covered only the write/spend
+# POST surface above) -- but they take an installation id straight from the
+# URL path and return that tenant's code graph, so leaving them open is a
+# cross-tenant READ leak to anyone with network reach to this port. Their
+# only caller (packages/dashboard/src/lib/context-map-client.ts, called
+# server-side from the overview/map pages) already holds INTERNAL_API_TOKEN,
+# so they get the same guard below (spec section 6 gate 4; see
+# docs/roadmap/backlog.md for the original finding).
+_INTERNAL = [Depends(require_internal_token)]
 
-@app.post("/review")
+
+@app.post("/review", dependencies=_INTERNAL)
 def review(pr: PRContext):
     # Per-request BYO model: when the caller supplies pr.llm, build the review's
     # LLM clients from THAT config (get_llms_by_role_from_config) — a fresh
@@ -167,7 +191,7 @@ def review(pr: PRContext):
     return _get_orchestrator().run(pr)
 
 
-@app.post("/scan")
+@app.post("/scan", dependencies=_INTERNAL)
 def scan(req: ScanRequest):
     """Repo-wide discovery scan (work-item inbox). Mirrors /review's structure
     exactly: per-request BYO `llm` block builds fresh clients via
@@ -217,7 +241,7 @@ def scan(req: ScanRequest):
     return _execute(get_llms_by_role(settings))
 
 
-@app.post("/fix")
+@app.post("/fix", dependencies=_INTERNAL)
 def fix(req: FixRequest) -> FixResponse:
     """POST /fix — author a real file patch for one work item's evidence,
     verified by auto_resolver's core, an honest fix_failed when it can't
@@ -270,7 +294,7 @@ class ApplyApprovalRequest(BaseModel):
     command: str
 
 
-@app.post("/approvals/apply")
+@app.post("/approvals/apply", dependencies=_INTERNAL)
 def apply_approval(req: ApplyApprovalRequest):
     """Apply an operator-approved infrastructure command and resume the run.
     Driven by the approval-exec worker after a human approved the ApprovalPrompt.
@@ -293,7 +317,7 @@ def apply_approval(req: ApplyApprovalRequest):
     }
 
 
-@app.post("/chat")
+@app.post("/chat", dependencies=_INTERNAL)
 def chat(payload: Dict[str, Any]):
     # Per-request BYO model (mirrors /review): when the caller includes an `llm`
     # block, this reply runs on THAT model — the tenant's connected model — not
@@ -321,7 +345,7 @@ def chat(payload: Dict[str, Any]):
     return _get_chat_agent().reply(payload)
 
 
-@app.get("/context-map/ui-url/{installation_id}")
+@app.get("/context-map/ui-url/{installation_id}", dependencies=_INTERNAL)
 def context_map_ui_url(installation_id: int):
     try:
         url = get_or_start_ui(installation_id)
@@ -330,7 +354,7 @@ def context_map_ui_url(installation_id: int):
         return {"available": False, "url": None, "reason": str(exc)}
 
 
-@app.get("/context-map/graph/{installation_id}")
+@app.get("/context-map/graph/{installation_id}", dependencies=_INTERNAL)
 def context_map_graph(installation_id: int):
     """Return the normalized code-graph JSON (GraphExport) for an installation's
     indexed repo, for the dashboard's Sensorium map. Mirrors the /context-map/
@@ -383,7 +407,7 @@ def _index_installation_repo(req: IndexRequest) -> None:
         )
 
 
-@app.post("/context-map/index")
+@app.post("/context-map/index", dependencies=_INTERNAL)
 def context_map_index(req: IndexRequest, background: BackgroundTasks):
     """Trigger a code-map build for one repo. Returns immediately and does the
     clone+index in the background so the calling webhook handler stays fast;

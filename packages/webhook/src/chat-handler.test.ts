@@ -129,6 +129,143 @@ describe('handleReviewCommentEvent', () => {
   })
 })
 
+// TENANCY mutation tests for the chat-side memory sink (review finding B6).
+// This path created AgentMemory rows via
+// `prisma.repository.findFirst({ where: { fullName } })` with NO
+// installationId scoping and no size or row cap — so two installations with
+// identically-named repos collide and the FIRST matching row wins, letting a
+// chat reply in one tenant write a memory into another tenant's repo. Those
+// rows are re-injected into that tenant's future review prompts
+// (fetchProjectMemories -> base.py), so this is the same amplification the
+// new /internal/memory endpoint was built to contain. Both sinks must now go
+// through the ONE guarded write path, memory-write.ts::saveAgentMemory.
+function mockTenantAwarePrisma(opts: {
+  installations: Array<{ id: string; externalId: number; subscriptionStatus?: string; usageCount?: number }>
+  repositories: Array<{ id: string; installationId: string; fullName: string }>
+}) {
+  const created: any[] = []
+  const findFirst = vi.fn(async (args: any) => {
+    const where = args?.where ?? {}
+    return (
+      opts.repositories.find(
+        (r) =>
+          r.fullName === where.fullName &&
+          (where.installationId === undefined || r.installationId === where.installationId)
+      ) ?? null
+    )
+  })
+  vi.doMock('@arete/db', () => {
+    const PrismaClient = vi.fn()
+    PrismaClient.prototype.installation = {
+      findUnique: vi.fn(async (args: any) => {
+        const externalId = args?.where?.provider_externalId?.externalId
+        return (
+          opts.installations.find((i) => i.externalId === externalId) ?? null
+        )
+      }),
+    }
+    PrismaClient.prototype.repository = { findFirst }
+    PrismaClient.prototype.agentMemory = {
+      count: vi.fn().mockResolvedValue(0),
+      create: vi.fn(async (args: any) => {
+        created.push(args.data)
+        return { id: `mem-${created.length}` }
+      }),
+    }
+    return { PrismaClient }
+  })
+  return { created, findFirst }
+}
+
+function chatFetchReturning(actions: any[]) {
+  return vi.fn().mockResolvedValue({
+    ok: true,
+    json: vi.fn().mockResolvedValue({ reply: 'ok', actions }),
+  })
+}
+
+describe('handleReviewCommentEvent memory actions', () => {
+  const originalFetch = global.fetch
+
+  beforeEach(() => { vi.resetModules() })
+  afterEach(() => {
+    global.fetch = originalFetch
+    vi.unstubAllGlobals()
+  })
+
+  const INST_A = { id: 'inst-a', externalId: 777, subscriptionStatus: 'trialing', usageCount: 5 }
+  const INST_B = { id: 'inst-b', externalId: 888, subscriptionStatus: 'trialing', usageCount: 5 }
+  // Same fullName under two different installations — the collision the
+  // unscoped findFirst could not tell apart. Installation B's row is listed
+  // FIRST so an unscoped `findFirst({ fullName })` picks the victim's.
+  const REPO_B = { id: 'repo-b', installationId: INST_B.id, fullName: 'acme/api' }
+  const REPO_A = { id: 'repo-a', installationId: INST_A.id, fullName: 'acme/api' }
+
+  it('never writes a memory into another installation\'s identically-named repo', async () => {
+    const { created } = mockTenantAwarePrisma({
+      installations: [INST_A, INST_B],
+      repositories: [REPO_B, REPO_A],
+    })
+    vi.stubGlobal('fetch', chatFetchReturning([
+      { type: 'save_memory', kind: 'terminology', title: 'T', body: 'Use tabs.' },
+    ]))
+    const { octokit } = makeOctokit({ userType: 'Bot', body: 'Areté: consider X' })
+
+    const { handleReviewCommentEvent } = await import('./chat-handler.js')
+    await handleReviewCommentEvent(
+      octokit as any,
+      makePayload({ in_reply_to_id: 41, installation: { id: INST_A.externalId } }) as any
+    )
+
+    expect(created).toHaveLength(1)
+    expect(created[0].repositoryId).toBe(REPO_A.id)
+    expect(created.some((d) => d.repositoryId === REPO_B.id)).toBe(false)
+  })
+
+  it('writes nothing at all when the webhook payload carries no installation', async () => {
+    const { created } = mockTenantAwarePrisma({
+      installations: [INST_A, INST_B],
+      repositories: [REPO_B, REPO_A],
+    })
+    vi.stubGlobal('fetch', chatFetchReturning([
+      { type: 'save_memory', kind: 'terminology', title: 'T', body: 'Use tabs.' },
+    ]))
+    const { octokit } = makeOctokit({ userType: 'Bot', body: 'Areté: consider X' })
+
+    const { handleReviewCommentEvent } = await import('./chat-handler.js')
+    await handleReviewCommentEvent(
+      octokit as any,
+      makePayload({ in_reply_to_id: 41 }) as any
+    )
+
+    // Unscoped, this found REPO_B by fullName alone and wrote into it with no
+    // tenant identity present at all.
+    expect(created).toHaveLength(0)
+  })
+
+  it('scrubs and size-caps chat-authored memories to the same standard as the endpoint', async () => {
+    const { created } = mockTenantAwarePrisma({
+      installations: [INST_A],
+      repositories: [REPO_A],
+    })
+    vi.stubGlobal('fetch', chatFetchReturning([
+      { type: 'save_memory', kind: 'terminology', title: 'T', body: 'key is ghp_CCCCCCCCCCCCCCCCCCCC' },
+      { type: 'save_memory', kind: 'terminology', title: 'T2', body: 'x'.repeat(80_000) },
+    ]))
+    const { octokit } = makeOctokit({ userType: 'Bot', body: 'Areté: consider X' })
+
+    const { handleReviewCommentEvent } = await import('./chat-handler.js')
+    await handleReviewCommentEvent(
+      octokit as any,
+      makePayload({ in_reply_to_id: 41, installation: { id: INST_A.externalId } }) as any
+    )
+
+    expect(created).toHaveLength(1) // the 80,000-char body was rejected, not stored
+    expect(created[0].body).not.toContain('ghp_CCCCCCCCCCCCCCCCCCCC')
+    expect(created[0].body).toContain('[REDACTED]')
+  })
+})
+
 describe('runChatPipeline', () => {
   const originalFetch = global.fetch
 

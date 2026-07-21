@@ -22,11 +22,15 @@ import difflib
 import json
 import logging
 import re
+import time
 from pathlib import Path
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
+from opentelemetry import context as otel_context
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 from arete_agents.auto_resolver import OpenComment, verify_resolved
 from arete_agents.config import Settings
@@ -35,6 +39,7 @@ from arete_agents.context_map.repo_cache import (
     RepoCacheError,
     ensure_repo_checked_out,
 )
+from arete_agents.fix_findings import FIX_FINDINGS_RUBRIC, from_fix_item, ground_findings, has_qualifying_finding
 from arete_agents.models.fix import (
     FixPatchFile,
     FixRequest,
@@ -43,6 +48,7 @@ from arete_agents.models.fix import (
     TranscriptReport,
     TranscriptStep,
 )
+from arete_agents.observability import get_meter, get_tracer
 
 _logger = logging.getLogger(__name__)
 
@@ -67,7 +73,11 @@ def _numbered(path: str, content: str) -> str:
 
 _AUTHOR_SYSTEM_PROMPT = """You are the Areté fix author for the {dimension} dimension. You are given one \
 concrete issue/opportunity, real evidence from the repository, and the CURRENT full content of every \
-evidenced file. Author a real, complete fix.
+evidenced file. That evidence already passed a findings-first gate: its confidence and quotes were \
+verified against this exact checkout before you were ever invoked (see the rubric below) -- author your \
+fix as if it is real, but never invent additional "evidence" of your own that wasn't given to you.
+
+{rubric}
 
 Rules:
 - Every file you return must include its COMPLETE new content — never a diff, never a placeholder, \
@@ -94,7 +104,7 @@ def author_patch(llm: BaseChatModel, item: Any, sources: dict[str, str]) -> dict
     )
     briefing = "\n\n".join(_numbered(path, content) for path, content in sources.items())
     messages = [
-        SystemMessage(content=_AUTHOR_SYSTEM_PROMPT.format(dimension=item.dimension)),
+        SystemMessage(content=_AUTHOR_SYSTEM_PROMPT.format(dimension=item.dimension, rubric=FIX_FINDINGS_RUBRIC)),
         HumanMessage(
             content=(
                 f"Issue: {item.title}\n{item.detail}\n\nEvidence:\n{evidence_lines}\n\n"
@@ -191,78 +201,174 @@ def _settings_for_verification(llm_cfg: Any, fallback: Settings) -> Settings:
     return fallback
 
 
-def _run_fix_inner(
+def _record_fix_metrics(outcome: str, stage: str, duration_seconds: float | None = None) -> None:
+    """Emits the arete.fix.* metrics (obs spec §5 namespace) with CLOSED,
+    low-cardinality dimensions only -- outcome and stage. Never a repo name,
+    container/item id, or installation id (Global Constraint 1: those are
+    span attributes only, set by the callers of this function, never metric
+    dimensions).
+
+    Telemetry must never take a fix run down (Global Constraint 3): any
+    failure here -- a broken meter, a bad attribute type -- is logged and
+    swallowed, never re-raised, so it can never turn a real FixResponse into
+    an exception.
+    """
+    try:
+        meter = get_meter(__name__)
+        meter.create_counter(
+            "arete.fix.runs", description="Fix pipeline runs by outcome and terminal stage"
+        ).add(1, {"outcome": outcome, "stage": stage})
+        if duration_seconds is not None:
+            meter.create_histogram(
+                "arete.fix.duration", unit="s", description="End-to-end fix drive duration"
+            ).record(duration_seconds, {"outcome": outcome})
+    except Exception:
+        _logger.warning("fix: metrics recording failed; continuing", exc_info=True)
+
+
+def _drive_fix_stages(
     req: FixRequest,
     llms: dict[str, BaseChatModel],
     verify_settings: Settings,
     repo_root: Path,
-) -> FixResponse:
+    tracer: trace.Tracer,
+) -> tuple[FixResponse, str]:
+    """The real checkout -> findings -> evidence -> author -> ground ->
+    verify sequence, run entirely inside the caller's active `fix.run` span
+    (see _run_fix_inner) so every stage below nests under it automatically
+    via OTel's context-based parenting -- no explicit parent wiring needed.
+
+    Returns (response, terminal_stage). `terminal_stage` is a closed,
+    low-cardinality tag (checkout|findings|author|ground_files|verify|
+    complete) for _record_fix_metrics -- never a repo name or any per-run id.
+    """
     transcript: list[TranscriptStep] = []
 
-    try:
-        repo_dir = ensure_repo_checked_out(
-            _clone_url(req.repo.full_name),
-            req.repo.token,
-            req.installation_id,
-            req.repo.full_name,
-            root=repo_root,
-        )
-    except RepoCacheError as exc:
-        return FixResponse(
-            status="fix_failed",
-            reason=f"could not check out {req.repo.full_name}: {exc}",
-            transcript=transcript,
-        )
+    with tracer.start_as_current_span("fix.checkout") as span:
+        try:
+            repo_dir = ensure_repo_checked_out(
+                _clone_url(req.repo.full_name),
+                req.repo.token,
+                req.installation_id,
+                req.repo.full_name,
+                root=repo_root,
+            )
+        except RepoCacheError as exc:
+            span.record_exception(exc)
+            span.set_status(Status(StatusCode.ERROR, "checkout failed"))
+            return (
+                FixResponse(
+                    status="fix_failed",
+                    reason=f"could not check out {req.repo.full_name}: {exc}",
+                    transcript=transcript,
+                ),
+                "checkout",
+            )
 
-    sources: dict[str, str] = {}
-    for ref in req.item.evidence:
-        target = repo_dir / ref.path
-        if target.is_file() and ref.path not in sources:
-            try:
-                sources[ref.path] = target.read_text(encoding="utf-8", errors="replace")
-            except OSError as exc:
-                _logger.warning("fix: could not read evidence file %s: %s", ref.path, exc)
+    # Findings-first gate (Phase 2 Task 7): author_patch must never run
+    # without at least one finding whose evidence is mechanically verified
+    # against THIS checkout and whose confidence clears the rubric's
+    # grounded bar. Fails closed with an honest fix_failed rather than
+    # letting a speculative or ungrounded item reach the author model.
+    with tracer.start_as_current_span("fix.findings") as span:
+        findings_report = from_fix_item(req.item)
+        grounded_findings, finding_violations = ground_findings(findings_report, repo_dir)
+        span.set_attribute("arete.fix.findings.grounded_count", len(grounded_findings))
+        span.set_attribute("arete.fix.findings.violation_count", len(finding_violations))
+        if not has_qualifying_finding(grounded_findings):
+            reason_detail = (
+                "; ".join(finding_violations) or "no finding met the rubric's grounded-confidence bar (>= 0.4)"
+            )
+            span.set_status(Status(StatusCode.ERROR, "no_grounded_findings"))
+            _logger.warning(
+                "fix: no grounded findings for container %s (%s) — refusing to author a patch",
+                req.container_id,
+                reason_detail,
+            )
+            transcript.append(
+                TranscriptStep(
+                    agent=req.item.dimension,
+                    action="findings",
+                    detail=reason_detail,
+                    report=TranscriptReport(status="blocked", blockers=finding_violations or [reason_detail]),
+                )
+            )
+            return (
+                FixResponse(status="fix_failed", reason="no_grounded_findings", transcript=transcript),
+                "findings",
+            )
+
+    with tracer.start_as_current_span("fix.evidence") as span:
+        sources: dict[str, str] = {}
+        for ref in req.item.evidence:
+            target = repo_dir / ref.path
+            if target.is_file() and ref.path not in sources:
+                try:
+                    sources[ref.path] = target.read_text(encoding="utf-8", errors="replace")
+                except OSError as exc:
+                    _logger.warning("fix: could not read evidence file %s: %s", ref.path, exc)
+        span.set_attribute("arete.fix.evidence.file_count", len(sources))
 
     fallback_llm = next(iter(llms.values()), None)
     author_llm = llms.get(req.item.dimension, fallback_llm)
     if author_llm is None:
-        return FixResponse(
-            status="fix_failed",
-            reason="no LLM client available to author a fix",
-            transcript=transcript,
+        return (
+            FixResponse(
+                status="fix_failed", reason="no LLM client available to author a fix", transcript=transcript
+            ),
+            "author",
         )
 
-    authored = author_patch(author_llm, req.item, sources)
-    if not authored["files"]:
-        transcript.append(
-            TranscriptStep(
-                agent=req.item.dimension,
-                action="author",
-                detail=authored["summary"] or "no fix was produced",
-                report=TranscriptReport(status="blocked", blockers=[authored["summary"] or "no fix produced"]),
+    with tracer.start_as_current_span("fix.author") as span:
+        # The LLM call inside author_patch (llm.with_retry().invoke()) is the
+        # exact same BaseChatModel invocation shape agents/base.py's
+        # review_file() uses -- it rides the SAME service-wide gen_ai
+        # instrumentations installed once in observability.py
+        # (_instrument_llm_layers), so it gets gen_ai.* attributes (provider,
+        # model, token usage) automatically, nested under this span, with no
+        # extra manual instrumentation required here.
+        authored = author_patch(author_llm, req.item, sources)
+        span.set_attribute("arete.fix.author.file_count", len(authored["files"]))
+        if not authored["files"]:
+            span.set_status(Status(StatusCode.ERROR, "no fix produced"))
+            transcript.append(
+                TranscriptStep(
+                    agent=req.item.dimension,
+                    action="author",
+                    detail=authored["summary"] or "no fix was produced",
+                    report=TranscriptReport(status="blocked", blockers=[authored["summary"] or "no fix produced"]),
+                )
             )
-        )
-        return FixResponse(
-            status="fix_failed",
-            reason=authored["summary"] or "the author model could not produce a fix",
-            transcript=transcript,
-        )
+            return (
+                FixResponse(
+                    status="fix_failed",
+                    reason=authored["summary"] or "the author model could not produce a fix",
+                    transcript=transcript,
+                ),
+                "author",
+            )
 
-    files, violations = _ground_files(authored["files"], repo_dir)
-    if violations:
-        transcript.append(
-            TranscriptStep(
-                agent=req.item.dimension,
-                action="author",
-                detail="authored patch failed the grounding gate",
-                report=TranscriptReport(status="blocked", blockers=violations),
+    with tracer.start_as_current_span("fix.ground_files") as span:
+        files, violations = _ground_files(authored["files"], repo_dir)
+        span.set_attribute("arete.fix.ground_files.violation_count", len(violations))
+        if violations:
+            span.set_status(Status(StatusCode.ERROR, "grounding violation"))
+            transcript.append(
+                TranscriptStep(
+                    agent=req.item.dimension,
+                    action="author",
+                    detail="authored patch failed the grounding gate",
+                    report=TranscriptReport(status="blocked", blockers=violations),
+                )
             )
-        )
-        return FixResponse(
-            status="fix_failed",
-            reason="authored patch failed grounding: " + "; ".join(violations),
-            transcript=transcript,
-        )
+            return (
+                FixResponse(
+                    status="fix_failed",
+                    reason="authored patch failed grounding: " + "; ".join(violations),
+                    transcript=transcript,
+                ),
+                "ground_files",
+            )
 
     transcript.append(
         TranscriptStep(
@@ -273,30 +379,36 @@ def _run_fix_inner(
         )
     )
 
-    diff = _unified_diff(repo_dir, files)
-    comment = OpenComment(
-        id=req.container_id,
-        pr_number=0,
-        body=f"{req.item.title}\n{req.item.detail}",
-        line=req.item.evidence[0].line if req.item.evidence else 0,
-    )
-    verified = verify_resolved(verify_settings, comment, diff)
+    with tracer.start_as_current_span("fix.verify") as span:
+        diff = _unified_diff(repo_dir, files)
+        comment = OpenComment(
+            id=req.container_id,
+            pr_number=0,
+            body=f"{req.item.title}\n{req.item.detail}",
+            line=req.item.evidence[0].line if req.item.evidence else 0,
+        )
+        verified = verify_resolved(verify_settings, comment, diff)
+        span.set_attribute("arete.fix.verify.verified", verified)
 
-    if not verified:
-        transcript.append(
-            TranscriptStep(
-                agent="auto_resolver",
-                action="verify",
-                detail="the authored diff could not be confirmed to resolve the reported issue",
-                report=TranscriptReport(status="blocked", blockers=["verification failed"]),
+        if not verified:
+            span.set_status(Status(StatusCode.ERROR, "unverified"))
+            transcript.append(
+                TranscriptStep(
+                    agent="auto_resolver",
+                    action="verify",
+                    detail="the authored diff could not be confirmed to resolve the reported issue",
+                    report=TranscriptReport(status="blocked", blockers=["verification failed"]),
+                )
             )
-        )
-        return FixResponse(
-            status="fix_failed",
-            reason="authored a patch but could not verify it actually resolves the issue",
-            transcript=transcript,
-            verification=FixVerification(verdict="unverified", checks=["auto_resolver.verify_resolved"]),
-        )
+            return (
+                FixResponse(
+                    status="fix_failed",
+                    reason="authored a patch but could not verify it actually resolves the issue",
+                    transcript=transcript,
+                    verification=FixVerification(verdict="unverified", checks=["auto_resolver.verify_resolved"]),
+                ),
+                "verify",
+            )
 
     transcript.append(
         TranscriptStep(
@@ -315,12 +427,52 @@ def _run_fix_inner(
         )
     )
 
-    return FixResponse(
-        status="fixed",
-        patch=files,
-        transcript=transcript,
-        verification=FixVerification(verdict="verified", checks=["auto_resolver.verify_resolved"]),
+    return (
+        FixResponse(
+            status="fixed",
+            patch=files,
+            transcript=transcript,
+            verification=FixVerification(verdict="verified", checks=["auto_resolver.verify_resolved"]),
+        ),
+        "complete",
     )
+
+
+def _run_fix_inner(
+    req: FixRequest,
+    llms: dict[str, BaseChatModel],
+    verify_settings: Settings,
+    repo_root: Path,
+) -> FixResponse:
+    """`fix.run` root span (obs spec §5, FROZEN span naming tree -- same
+    pattern as `review.run`/`scan.run`/`chat.turn`): wraps the whole
+    checkout -> author -> verify sequence so every stage in
+    _drive_fix_stages nests under it, and emits the terminal arete.fix.*
+    metrics exactly once per run. Repo/container/installation identifiers go
+    on THIS span's attributes only -- never on the metrics (Global
+    Constraint 1)."""
+    tracer = get_tracer(__name__)
+    started = time.monotonic()
+
+    with tracer.start_as_current_span(
+        "fix.run",
+        attributes={
+            "arete.container.id": req.container_id,
+            "arete.repo.full_name": req.repo.full_name,
+            "arete.installation.id": req.installation_id,
+            "arete.fix.dimension": req.item.dimension,
+        },
+    ) as run_span:
+        response, stage = _drive_fix_stages(req, llms, verify_settings, repo_root, tracer)
+        outcome = "fixed" if response.status == "fixed" else "fix_failed"
+        run_span.set_attribute("arete.fix.outcome", outcome)
+        run_span.set_attribute("arete.fix.stage", stage)
+        if outcome == "fix_failed":
+            run_span.set_status(Status(StatusCode.ERROR, response.reason or "fix_failed"))
+
+        _record_fix_metrics(outcome, stage, time.monotonic() - started)
+
+        return response
 
 
 def run_fix(
@@ -336,10 +488,30 @@ def run_fix(
     caller having to rely solely on its own HTTP-level abort."""
     settings = _settings_for_verification(req.llm, verify_settings or Settings(llm_provider="ollama"))
 
+    # Trace continuity (obs spec §5): OTel's active-span context lives in a
+    # contextvar, and concurrent.futures.ThreadPoolExecutor does NOT
+    # propagate contextvars into its worker threads -- each worker thread
+    # starts with a fresh, empty Context. Left alone, the fix.run span
+    # created inside _run_fix_inner (which runs on the pool's worker thread)
+    # would start a brand-new orphan trace instead of joining whatever trace
+    # the caller (the FastAPI request span for this /fix call, itself a
+    # child of the webhook-side drive) already started. Capture the calling
+    # thread's context here and re-attach it inside the worker before
+    # running _run_fix_inner.
+    parent_ctx = otel_context.get_current()
+
+    def _run_with_parent_context() -> FixResponse:
+        token = otel_context.attach(parent_ctx)
+        try:
+            return _run_fix_inner(req, llms, settings, repo_root)
+        finally:
+            otel_context.detach(token)
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(_run_fix_inner, req, llms, settings, repo_root)
+        future = pool.submit(_run_with_parent_context)
         try:
             return future.result(timeout=timeout_seconds)
         except concurrent.futures.TimeoutError:
             _logger.warning("fix: timed out after %ss for container %s", timeout_seconds, req.container_id)
+            _record_fix_metrics("fix_failed", "timeout")
             return FixResponse(status="fix_failed", reason="timeout")

@@ -2,7 +2,7 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 from arete_agents.grounding import valid_lines_for_patch
-from arete_agents.tools.memory import add_project_memory
+from arete_agents.tools.memory import build_memory_tool
 
 _FIX_BRANCH_PREFIX = "arete/fix-"
 
@@ -130,11 +130,17 @@ def request_infrastructure_approval(command: str, reason: str) -> str:
         f"Reason: {req.reason}. Execution occurs only after approval."
     )
 
-def get_native_action_tools():
+def get_native_action_tools(installation_id: int | None = None, repo_full_name: str | None = None):
+    """installation_id/repo_full_name bind add_project_memory to THIS review's
+    own tenant (Phase 2 Task 8) -- exactly like context_map/tools.py's
+    get_context_map_tools(installation_id) binds the codebase-memory project.
+    Never sourced from an LLM-supplied argument; a CLI/local run with neither
+    still gets a working tool object, just one that always reports it has no
+    repository context (see tools/memory.py)."""
     return [
         propose_pr,
         ask_human,
-        add_project_memory,
+        build_memory_tool(installation_id, repo_full_name),
         silence_as_noise,
         place_under_observation,
         request_infrastructure_approval,

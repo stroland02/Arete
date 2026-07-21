@@ -6,6 +6,7 @@ import {
   type LlmConfig,
 } from './resolve-model-connection.js'
 import { logger } from './logger.js'
+import { internalAuthHeaders } from './internal-auth.js'
 
 const log = logger.child({ component: 'review-bridge' })
 
@@ -50,7 +51,7 @@ export async function runReviewPipeline(
     const res = await fetch(`${baseUrl}/review`, {
       method: 'POST',
       body: JSON.stringify(prContext),
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...internalAuthHeaders() },
       signal: controller.signal
     })
 

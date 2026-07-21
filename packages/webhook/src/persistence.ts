@@ -7,7 +7,9 @@ import { logger } from './logger.js'
 
 const log = logger.child({ component: 'persistence' })
 
-const MAX_PROJECT_MEMORIES = 20
+// Exported: memory-write.ts (Phase 2 Task 8) reuses this as its write-side
+// row cap so the read cap (below) and the write cap can never drift apart.
+export const MAX_PROJECT_MEMORIES = 20
 
 export interface ReviewExistsParams {
   provider: ScmProvider

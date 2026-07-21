@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 import arete_agents.llm.ollama as ollama
 from arete_agents.config import Settings
 from arete_agents.llm.base import ROLE_KEYS, get_llms_by_role
+from tests.conftest import INTERNAL_HEADERS
 
 
 def _tags_response(names):
@@ -77,7 +78,7 @@ def test_review_returns_503_when_ollama_unavailable():
         server, "ollama_unavailable_reason",
         return_value="Ollama model 'qwen2.5-coder' is not pulled. Run: ollama pull qwen2.5-coder",
     ), patch.object(server, "get_llms_by_role_from_config") as from_config:
-        client = TestClient(server.app)
+        client = TestClient(server.app, headers=INTERNAL_HEADERS)
         resp = client.post("/review", json=_min_pr(llm={"provider": "ollama"}))
 
     assert resp.status_code == 503
@@ -94,7 +95,7 @@ def test_review_proceeds_when_ollama_available():
     with patch.object(server, "ollama_unavailable_reason", return_value=None), patch.object(
         server, "get_llms_by_role_from_config", return_value={"security": MagicMock()}
     ), patch.object(server, "ReviewOrchestrator", return_value=fake_orch):
-        client = TestClient(server.app)
+        client = TestClient(server.app, headers=INTERNAL_HEADERS)
         resp = client.post("/review", json=_min_pr(llm={"provider": "ollama", "model": "qwen2.5-coder"}))
 
     assert resp.status_code == 200

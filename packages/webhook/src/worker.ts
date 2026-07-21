@@ -14,6 +14,7 @@ import { fetchTelemetryContext } from './telemetry/fetch-telemetry-context.js'
 import { fetchGitLabMRContext } from './gitlab-fetcher.js'
 import { runReviewPipeline } from './review-bridge.js'
 import { startApprovalWorker } from './approval-worker.js'
+import { startFixWorker } from './fix/queue-consumer.js'
 import { postReview } from './comment-poster.js'
 import { postGitLabReview, type DiffRefs } from './gitlab-comment-poster.js'
 import { persistReview, persistTelemetrySnapshots, fetchProjectMemories } from './persistence.js'
@@ -23,6 +24,7 @@ import { runWithReviewSpan, withChildSpan, recordQueueJob } from './observabilit
 import {
   REVIEW_QUEUE_NAME,
   REVIEW_QUEUE_CONCURRENCY,
+  FIX_QUEUE_CONCURRENCY,
   type ReviewJobData,
   type GitHubPullRequestJobData,
   type GitHubCheckRunJobData,
@@ -346,4 +348,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   // agents /approvals/apply). Same process, separate queue/isolation.
   log.info('Areté approval-exec worker starting')
   startApprovalWorker()
+  // Also consume the fix-drive queue (healing loop, POST /fix/trigger). Same
+  // process, separate queue/isolation — a backlog of fix drives can never
+  // delay a review or an operator-approved remediation, and vice-versa.
+  log.info({ concurrency: FIX_QUEUE_CONCURRENCY }, 'Areté fix-drive worker starting')
+  startFixWorker()
 }

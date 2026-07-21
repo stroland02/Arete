@@ -25,6 +25,15 @@ export const REVIEW_QUEUE_CONCURRENCY = 5
 // never delay an operator-approved remediation (and vice-versa).
 export const APPROVAL_QUEUE_NAME = 'approval-exec'
 
+// Queue for the healing-loop fix drive (POST /fix/trigger). Before this, the
+// route ran `void driveFix(...)` inline on the webhook's HTTP request process
+// — no queue, no concurrency cap, so a burst of triggers could fan out into
+// unbounded repo checkouts + LLM calls on the same process answering GitHub
+// webhooks. Concurrency is lower than review's: a fix drive does a full repo
+// checkout on top of the LLM call.
+export const FIX_QUEUE_NAME = 'fix-drive'
+export const FIX_QUEUE_CONCURRENCY = 2
+
 export interface GitHubPullRequestJobData {
   provider: 'github'
   kind: 'pull_request'
@@ -76,6 +85,14 @@ export interface ApprovalExecutionJobData {
   command: string
 }
 
+/** Payload for a fix-drive job. Deliberately just the id — driveFix (fix/
+ *  trigger.ts) re-reads the WorkItem, its container, the tenant's repo, and
+ *  its model connection fresh from the DB rather than trusting stale data
+ *  carried on the job across a possible retry/requeue. */
+export interface FixDriveJobData {
+  workItemId: string
+}
+
 function redisUrl(): string {
   return process.env.REDIS_URL ?? 'redis://localhost:6379'
 }
@@ -92,6 +109,7 @@ function getConnection(): IORedis {
 let queueFast: Queue<ReviewJobData> | null = null
 let queueHeavy: Queue<ReviewJobData> | null = null
 let queueApproval: Queue<ApprovalExecutionJobData> | null = null
+let queueFix: Queue<FixDriveJobData> | null = null
 
 // First-party BullMQ telemetry (spec §4): producer-side span on enqueue,
 // context propagated through Redis to the worker automatically.
@@ -109,6 +127,16 @@ export function getApprovalQueue(): Queue<ApprovalExecutionJobData> {
     })
   }
   return queueApproval
+}
+
+export function getFixQueue(): Queue<FixDriveJobData> {
+  if (!queueFix) {
+    queueFix = new Queue<FixDriveJobData>(FIX_QUEUE_NAME, {
+      connection: getConnection(),
+      telemetry: bullmqTelemetry,
+    })
+  }
+  return queueFix
 }
 
 export function getReviewQueue(lane: 'fast' | 'heavy' = 'fast'): Queue<ReviewJobData> {
@@ -140,14 +168,27 @@ export async function enqueueApprovalExecution(data: ApprovalExecutionJobData) {
   return getApprovalQueue().add(APPROVAL_QUEUE_NAME, data, DEFAULT_JOB_OPTIONS)
 }
 
+/** Enqueues a fix drive (POST /fix/trigger). Same durable retry/backoff policy
+ *  as review and approval jobs. Note: driveFix's own contract (fix/trigger.ts)
+ *  is that it never rejects on a business failure — every failure path lands
+ *  the container in `fix_failed` and the WorkItem back in `open` on its own —
+ *  so `attempts` here only ever fires on a genuine infra exception (e.g. a DB
+ *  read failing before any container write), not on a "the fix didn't work"
+ *  outcome. See queue-consumer.ts's header comment for the full analysis. */
+export async function enqueueFixDrive(data: FixDriveJobData) {
+  return getFixQueue().add(FIX_QUEUE_NAME, data, DEFAULT_JOB_OPTIONS)
+}
+
 /** For graceful shutdown and test cleanup. */
 export async function closeReviewQueue(): Promise<void> {
   await queueFast?.close()
   await queueHeavy?.close()
   await queueApproval?.close()
+  await queueFix?.close()
   await connection?.quit()
   queueFast = null
   queueHeavy = null
   queueApproval = null
+  queueFix = null
   connection = null
 }

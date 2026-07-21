@@ -11,12 +11,14 @@ import { db } from "@/lib/db";
 import { getDashboardViewModel, getDashboardsViewModel, resolveSelectedInstallationIds } from "@/lib/queries";
 import { getSensoriumViewModel } from "@/lib/sensorium";
 import { getAccountState } from "@/lib/account-state";
+import { getIncidents } from "@/lib/incidents";
 import { deriveOverviewSetup } from "@/lib/overview-setup";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 import { ActivityList } from "@/components/dashboard/activity-list";
 import { AgentsAtWorkStrip } from "@/components/dashboard/agents-at-work-strip";
 import { SensoriumMap } from "@/components/dashboard/sensorium-map";
 import { DashboardsWorkspace } from "@/components/dashboard/dashboards/dashboards-workspace";
+import { IncidentList } from "@/components/dashboard/incidents/incident-list";
 
 // This page reads the session and queries Prisma scoped to it on every
 // request — it must never be statically prerendered (that would either fail
@@ -57,6 +59,9 @@ export default async function DashboardOverview({
   // from the view-model below and is shown only when it actually exists.
   const accountState = await getAccountState(db, installationIds);
   const connected = accountState.repoConnected;
+  // Alerts Kuma's own monitoring fired (Prometheus → Alertmanager → the
+  // receiver), tenant-scoped exactly like every query above.
+  const incidents = await getIncidents(db, installationIds);
   const { totalPrs, criticalBugs, recentReviews, latestReviews, commentsByCategory } = viewModel.hasAccess
     ? viewModel
     : { totalPrs: 0, criticalBugs: 0, recentReviews: 0, latestReviews: [], commentsByCategory: [] };
@@ -263,6 +268,23 @@ export default async function DashboardOverview({
               icon={<IconShieldCheck className="h-5 w-5 text-accent-success" stroke={1.75} />}
             >
               All clear — no critical findings in your recent reviews.
+            </StatePanel>
+          )}
+        </RevealItem>
+
+        {/* Incidents — alerts opened by Kuma's own monitoring (Prometheus →
+            Alertmanager → the receiver), each linking through to the fix run
+            it opened once one exists. Honest empty state when monitoring
+            hasn't fired anything. */}
+        <RevealItem className="space-y-3">
+          <SectionLabel>Incidents</SectionLabel>
+          {incidents.length > 0 ? (
+            <div className="overflow-hidden rounded-2xl border border-border-default bg-surface-1">
+              <IncidentList incidents={incidents} />
+            </div>
+          ) : (
+            <StatePanel>
+              No incidents — Kuma will open one automatically if its own monitoring fires an alert.
             </StatePanel>
           )}
         </RevealItem>

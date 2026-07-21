@@ -99,6 +99,7 @@ services:
     image: prom/prometheus:v2.52.0
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus-rules:/etc/prometheus/rules
     ports:
       - "9090:9090"  # UI
     healthcheck:
@@ -106,6 +107,57 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    depends_on:
+      alertmanager:
+        condition: service_healthy
+
+  # Phase 2 Task 3 — receives firing/resolved alerts from Prometheus and posts
+  # them to the webhook service's token-guarded receiver (POST
+  # /alerts/incoming). See infra/alertmanager.yml for routing + auth detail.
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    # Compose materializes /run/secrets/internal_api_token from the host's
+    # INTERNAL_API_TOKEN env var (native `secrets:` construct below) — the
+    # real token is never written into the checked-in alertmanager.yml.
+    secrets:
+      - internal_api_token
+    ports:
+      # LOOPBACK ONLY — deliberate, do not widen (Phase 2 review finding C1).
+      # Alertmanager's /api/v2/alerts accepts UNAUTHENTICATED alert posts, and
+      # everything it accepts is forwarded to the webhook receiver and becomes
+      # an Incident — which, for `critical`, opens a fix run (Task 4). A bare
+      # "9093:9093" binds 0.0.0.0, so anyone who can reach this host could
+      # inject fabricated incidents (attacker-chosen `summary` text is
+      # rendered on the dashboard, packages/dashboard/src/lib/incidents.ts).
+      #
+      # Bound rather than removed: Prometheus reaches Alertmanager over the
+      # compose network (`alertmanager:9093` — infra/prometheus.yml), so the
+      # published port is only for the operator's own UI and for the synthetic
+      # `POST /api/v2/alerts` the plan's Task 3 Step 7 / Phase 2 DoD requires.
+      # 127.0.0.1 keeps both working while removing LAN/remote exposure.
+      - "127.0.0.1:9093:9093"  # UI / API (POST /api/v2/alerts for synthetic testing)
+    # The webhook service is NOT containerized (runs on the host via `pnpm
+    # dev`, :3001 per .env) — this lets the alertmanager container reach it.
+    # Docker Desktop resolves host.docker.internal natively; `host-gateway`
+    # makes the same hostname resolve on Linux Docker too.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9093/-/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+# Compose "secrets" sourced from an environment variable (Compose Spec, no
+# shell/envsubst hack needed): the value of INTERNAL_API_TOKEN (from the
+# shell env or the .env file docker compose auto-loads) is materialized as a
+# file at /run/secrets/internal_api_token inside any service that declares
+# it — exactly what alertmanager.yml's `credentials_file` expects.
+secrets:
+  internal_api_token:
+    environment: INTERNAL_API_TOKEN
 
 volumes:
   postgres_data:
