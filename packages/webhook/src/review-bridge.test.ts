@@ -30,6 +30,30 @@ describe('runReviewPipeline', () => {
     expect(result.risk_level).toBe('low')
   })
 
+  // Outbound half of review finding B4. The agents service's POST /review is
+  // now behind the shared internal bearer with a fail-closed 503
+  // (arete_agents/internal_auth.py); this process is one of its callers and
+  // must actually put the credential on the wire, or every review 401s.
+  it('sends the internal bearer token to the agents service', async () => {
+    vi.stubEnv('INTERNAL_API_TOKEN', 's3cret')
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue(MOCK_RESULT),
+    })
+    global.fetch = fetchMock as any
+
+    const { runReviewPipeline } = await import('./review-bridge.js')
+    await runReviewPipeline({ repo: 'x/y', pr_number: 1, title: 'T', description: '', files: [] })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/review'),
+      expect.objectContaining({
+        headers: expect.objectContaining({ authorization: 'Bearer s3cret' }),
+      })
+    )
+    vi.unstubAllEnvs()
+  })
+
   it('throws when Python process exits non-zero', async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,

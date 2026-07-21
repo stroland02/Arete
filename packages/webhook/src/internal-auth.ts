@@ -10,6 +10,23 @@
 import { timingSafeEqual } from 'node:crypto'
 import type { NextFunction, Request, Response } from 'express'
 
+/**
+ * OUTBOUND counterpart: the header this process presents when it calls a
+ * SIBLING service's internal surface — today the agents service, whose POST
+ * endpoints (/review, /scan, /fix, /chat, /approvals/apply,
+ * /context-map/index) are behind the same shared bearer with the same
+ * fail-closed posture (packages/agents/src/arete_agents/internal_auth.py,
+ * review finding B4). Mirrors packages/dashboard/src/lib/internal-auth.ts.
+ *
+ * Returns {} when unconfigured rather than throwing: the callee is the one
+ * that fails closed, and a caller that invented its own failure mode here
+ * would just be a second, divergent place to get the posture wrong.
+ */
+export function internalAuthHeaders(): Record<string, string> {
+  const token = process.env.INTERNAL_API_TOKEN
+  return token ? { authorization: `Bearer ${token}` } : {}
+}
+
 /** Constant-time check of an Authorization header against the shared token. */
 export function tokenMatches(header: string | undefined, token: string): boolean {
   if (!header) return false

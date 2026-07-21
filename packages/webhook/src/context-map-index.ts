@@ -3,6 +3,7 @@ import { getInstallationToken } from './github-auth.js'
 import { getServiceConfig } from './config.js'
 import type { BackfillRepo } from './backfill.js'
 import { logger } from './logger.js'
+import { internalAuthHeaders } from './internal-auth.js'
 
 const log = logger.child({ component: 'context-map' })
 
@@ -42,7 +43,7 @@ export async function triggerContextMapIndex(
     try {
       await fetch(`${baseUrl}/context-map/index`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...internalAuthHeaders() },
         body: JSON.stringify({
           installation_id: installationId,
           repo_slug: repo.full_name,

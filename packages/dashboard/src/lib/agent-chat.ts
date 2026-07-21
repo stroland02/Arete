@@ -1,5 +1,6 @@
 import type { Agent } from "@/components/dashboard/agents/agent-catalog";
 import type { LlmBlock } from "@/lib/model-connections-api";
+import { internalAuthHeaders } from "@/lib/internal-auth";
 
 // Mirrors packages/webhook/src/config.ts's PYTHON_SERVICE_URL default. The
 // dashboard reaches the same FastAPI agents service the webhook does. Server
@@ -46,7 +47,11 @@ export async function sendAgentChat({
     };
     const res = await fetch(`${PYTHON_SERVICE_URL}/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      // The agents service's POST surface is behind the shared internal bearer
+      // with a fail-closed 503 (arete_agents/internal_auth.py, review finding
+      // B4) — the same posture the webhook's own /internal/* already has, and
+      // the same token this module's sibling already sends the other way.
+      headers: { "Content-Type": "application/json", ...internalAuthHeaders() },
       body: JSON.stringify(context),
       signal: controller.signal,
     });

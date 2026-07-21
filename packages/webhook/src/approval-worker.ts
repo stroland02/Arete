@@ -5,6 +5,7 @@ import { getServiceConfig } from './config.js'
 import { APPROVAL_QUEUE_NAME, type ApprovalExecutionJobData } from './queue.js'
 import { recordQueueJob } from './observability.js'
 import { logger } from './logger.js'
+import { internalAuthHeaders } from './internal-auth.js'
 
 const log = logger.child({ component: 'approval-worker' })
 
@@ -51,7 +52,7 @@ export async function applyApproval(
   try {
     const res = await doFetch(`${baseUrl}/approvals/apply`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...internalAuthHeaders() },
       body: JSON.stringify({
         approvalId: data.approvalId,
         reviewId: data.reviewId,

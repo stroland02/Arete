@@ -22,6 +22,7 @@ import {
   type LlmConfig,
 } from '../resolve-model-connection.js'
 import { logger } from '../logger.js'
+import { internalAuthHeaders } from '../internal-auth.js'
 
 const log = logger.child({ component: 'scan' })
 
@@ -221,7 +222,7 @@ export function defaultScanTriggerDeps(): ScanTriggerDeps {
       const { getServiceConfig } = await import('../config.js')
       const res = await fetch(`${getServiceConfig().pythonServiceUrl}/scan`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...internalAuthHeaders() },
         body: JSON.stringify(body),
       })
       if (!res.ok) {
