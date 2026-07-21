@@ -18,9 +18,13 @@ a way to name a different repo.
 
 Honest failure (the defect being removed): every path below returns a
 string starting with "Failed to save" on anything other than a real
-persisted row -- a transport error, a non-2xx response, or missing
+persisted row -- a transport error, a rejected response, or missing
 installation/repo context. It must never return the "Successfully saved"
-string without an actual 200/201 from the webhook.
+string without the endpoint's ACTUAL success shape: HTTP 201 with a JSON
+body carrying ``ok: true``. A bare status-code check is not enough (review
+finding B3) -- a proxy error page or a login redirect answering 200 is not
+a persisted row, and treating it as one is the very defect this module
+replaced.
 """
 
 import logging
@@ -97,6 +101,11 @@ def build_memory_tool(
             )
 
         effective_kind = kind if kind in _ALLOWED_KINDS else "project"
+        # Client-side convenience only. The webhook enforces its own title cap
+        # server-side (MAX_MEMORY_TITLE_CHARS, memory-write.ts) and REJECTS an
+        # oversized title rather than truncating it -- this 80-char slice used
+        # to be the only bound that existed, which made the cap trivially
+        # bypassable by any caller that wasn't this function (review finding B2).
         title = note.strip()[:80] or "Rule"
 
         settings = get_settings()
@@ -121,11 +130,31 @@ def build_memory_tool(
             logger.error(f"add_project_memory transport failure: {exc}")
             return f"Failed to save memory: could not reach the persistence service ({exc})."
 
-        if response.status_code in (200, 201):
-            return f"Successfully saved {effective_kind} memory: '{note}'"
+        # SUCCESS IS THE ENDPOINT'S SUCCESS, not a status code that merely
+        # looks agreeable (review finding B3). The endpoint's contract is
+        # exactly `201 {"ok": true, "id": ...}` (server.ts's /internal/memory);
+        # anything else -- a 200 from a proxy error page or a login redirect, a
+        # 201 with `ok: false`, a 201 whose body is not JSON at all -- means no
+        # row was persisted. Accepting a bare 2xx reintroduced the ORIGINAL
+        # defect of this task one layer out: a probe server returning
+        # `200 text/html` produced "Successfully saved project memory" with
+        # nothing written.
+        body = None
+        if response.status_code == 201:
+            try:
+                body = response.json()
+            except Exception:
+                body = None
+            if isinstance(body, dict) and body.get("ok") is True:
+                return f"Successfully saved {effective_kind} memory: '{note}'"
 
         try:
-            detail = response.json().get("reason", response.text)
+            payload_json = response.json()
+            detail = (
+                payload_json.get("reason", response.text)
+                if isinstance(payload_json, dict)
+                else response.text
+            )
         except Exception:
             detail = response.text
         logger.error(

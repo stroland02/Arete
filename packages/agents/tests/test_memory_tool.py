@@ -7,7 +7,10 @@ failure string. It must NEVER return the "Successfully saved" string unless
 the webhook actually reported success.
 """
 
+import json
 import socket
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import httpx
 import pytest
@@ -211,6 +214,146 @@ def test_real_transport_failure_returns_honest_failure_never_the_success_string(
 
     assert "Failed to save" in result
     assert "Successfully saved" not in result
+
+
+# ---------------------------------------------------------------------------
+# Real-HTTP tests (review finding B3 + the "_default_post is never exercised"
+# and "no test asserts the Authorization header is actually sent" gaps).
+#
+# B3: the tool inferred success from a bare status code -- `status_code in
+# (200, 201)`, with the response body never inspected. The real endpoint
+# returns 201 {"ok": true, "id": ...}. A server answering `200 text/html`
+# (a proxy error page, a login redirect, a misrouted request) therefore
+# produced "Successfully saved project memory" with nothing persisted: the
+# ORIGINAL DEFECT this whole task existed to remove, reintroduced one layer
+# out. Success now requires 201 AND a JSON body with ok === true.
+#
+# These drive the REAL `_default_post` against a REAL local HTTP server, so
+# the actual httpx call, the actual URL construction, and the actual headers
+# are exercised -- not a fake `post` fn.
+# ---------------------------------------------------------------------------
+
+
+class _CannedHandler(BaseHTTPRequestHandler):
+    """Answers every POST with the class-level canned response and records the
+    request for assertions."""
+
+    status = 201
+    content_type = "application/json"
+    payload = b'{"ok": true, "id": "mem-1"}'
+    seen: list[dict] = []
+
+    def do_POST(self):  # noqa: N802 (BaseHTTPRequestHandler's API)
+        length = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(length) if length else b""
+        type(self).seen.append(
+            {
+                "path": self.path,
+                "headers": dict(self.headers),
+                "body": json.loads(raw) if raw else None,
+            }
+        )
+        self.send_response(self.status)
+        self.send_header("Content-Type", self.content_type)
+        self.send_header("Content-Length", str(len(self.payload)))
+        self.end_headers()
+        self.wfile.write(self.payload)
+
+    def log_message(self, *args):  # silence the default stderr access log
+        pass
+
+
+@pytest.fixture
+def canned_server(monkeypatch):
+    """Start a real HTTP server and point Settings.webhook_service_url at it,
+    so `_default_post` (the production code path) is what actually runs."""
+
+    def _start(*, status: int, content_type: str, payload: bytes, token: str = "test-token"):
+        handler = type(
+            "Handler",
+            (_CannedHandler,),
+            {"status": status, "content_type": content_type, "payload": payload, "seen": []},
+        )
+        server = HTTPServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        started.append((server, thread))
+        monkeypatch.setenv("WEBHOOK_SERVICE_URL", f"http://127.0.0.1:{server.server_port}")
+        monkeypatch.setenv("INTERNAL_API_TOKEN", token)
+        get_settings.cache_clear()
+        return handler
+
+    started: list = []
+    yield _start
+    for server, thread in started:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_bare_http_200_html_is_not_reported_as_success(canned_server):
+    """THE B3 probe, verbatim: a server that answers 200 text/html persisted
+    nothing, yet the tool said 'Successfully saved project memory'."""
+    canned_server(status=200, content_type="text/html", payload=b"<html>hello</html>")
+    tool = build_memory_tool(1, "owner/repo")  # real _default_post
+
+    result = tool.invoke({"note": "Always use Redis for caching.", "kind": "infra"})
+
+    assert "Successfully saved" not in result
+    assert "Failed to save" in result
+
+
+def test_http_200_with_ok_true_json_is_still_not_success(canned_server):
+    """The endpoint's success contract is 201. A 200 -- even a well-formed
+    one -- is not the endpoint answering; treating it as success is how a
+    proxy or a redirect gets mistaken for a persisted row."""
+    canned_server(status=200, content_type="application/json", payload=b'{"ok": true, "id": "x"}')
+    tool = build_memory_tool(1, "owner/repo")
+
+    result = tool.invoke({"note": "n", "kind": "project"})
+
+    assert "Successfully saved" not in result
+
+
+def test_201_without_ok_true_is_not_reported_as_success(canned_server):
+    canned_server(status=201, content_type="application/json", payload=b'{"ok": false, "reason": "cap_exceeded"}')
+    tool = build_memory_tool(1, "owner/repo")
+
+    result = tool.invoke({"note": "n", "kind": "project"})
+
+    assert "Successfully saved" not in result
+    assert "Failed to save" in result
+
+
+def test_201_with_a_non_json_body_is_not_reported_as_success(canned_server):
+    canned_server(status=201, content_type="text/html", payload=b"created")
+    tool = build_memory_tool(1, "owner/repo")
+
+    result = tool.invoke({"note": "n", "kind": "project"})
+
+    assert "Successfully saved" not in result
+
+
+def test_real_201_ok_true_over_real_http_reports_success_and_sends_the_bearer(canned_server):
+    """The one genuine success shape -- and the only test that proves the
+    Authorization header is actually PUT ON THE WIRE by `_default_post`
+    (previously only Content-Type was asserted, against a fake poster)."""
+    handler = canned_server(
+        status=201, content_type="application/json", payload=b'{"ok": true, "id": "mem-7"}',
+        token="s3cret-token",
+    )
+    tool = build_memory_tool(42, "owner/repo")
+
+    result = tool.invoke({"note": "Use tabs, not spaces.", "kind": "terminology"})
+
+    assert "Successfully saved" in result
+    assert len(handler.seen) == 1
+    request = handler.seen[0]
+    assert request["path"] == "/internal/memory"
+    assert request["headers"]["Authorization"] == "Bearer s3cret-token"
+    assert request["headers"]["Content-Type"] == "application/json"
+    assert request["body"]["installationId"] == 42
+    assert request["body"]["repoFullName"] == "owner/repo"
 
 
 def test_real_transport_failure_is_a_genuine_httpx_error():
