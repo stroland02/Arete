@@ -28,7 +28,7 @@ manual/PM/cross-lane confirmation. It does not certify the whole product.
 - **Test suites green** earlier this session on these branches: webhook 61 files / 367 tests; dashboard 71 files / 395 tests (read the *Test Files* line, not just Tests).
 - **Guard live in the running system:** webhook `:3001` healthy; `POST /scan/trigger` **without** a token → **401**. The security control is not just coded, it is enforced by the running service.
 - **Dashboard `:3000` healthy** (`/api/auth/providers` 200).
-- **Google OAuth 400 fixed:** root cause was unset `AUTH_URL`, so `redirect_uri` followed the browser host; captured authorize URL proved the happy path (`http://localhost:3000/api/auth/callback/google`) is accepted by Google. Pinned via `AUTH_URL` + `AUTH_TRUST_HOST` in the *served* `.env.local`; verified post-restart that the emitted `redirect_uri` is now stable.
+- **Google OAuth 400 diagnosed + fix applied (final confirmation owed to a browser click):** root cause was unset `AUTH_URL`, so `redirect_uri` followed the browser host; captured authorize URL proved the happy path (`http://localhost:3000/api/auth/callback/google`) is accepted by Google. `AUTH_URL` + `AUTH_TRUST_HOST` added to the *served* `Kuma/Arete` (and preview) `.env.local`. **Honest caveat:** my scripted server restart FAILED (exit 127); a supervisor respawned the dashboard (PID 10484) after the env edit, so the change is *likely* loaded, but I could not cleanly isolate that `AUTH_URL` (not just the always-fine `localhost` host) is in effect. Definitive confirmation = click "Continue with Google" at `http://localhost:3000`.
 
 ## 3. NOT verified — requires manual / PM / cross-lane confirmation
 
