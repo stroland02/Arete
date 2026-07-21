@@ -94,10 +94,14 @@ async function processGitHubPullRequest(octokit: Octokit, installationToken: str
   let result: ReviewResult
   try {
     result = await runReviewPipeline(prContext)
-    await withChildSpan('review.publish', () => postReview(octokit, owner, repo, prNumber, result))
   } catch (err) {
-    // Without this, a failure here (Python pipeline error, GitHub API error, etc.)
-    // leaves the check run stuck "in_progress" forever on the PR.
+    // No usable result at all: Python pipeline error, network failure, or
+    // timeout (see review-bridge.ts — it either resolves a ReviewResult or
+    // throws, there is no partial-result-then-throw case). Without this
+    // check-run update, a failure here leaves the check run stuck
+    // "in_progress" forever on the PR. Re-throwing is correct here: BullMQ's
+    // attempts:3 (queue.ts) exists precisely to retry a genuine infra crash
+    // that produced nothing.
     await (octokit as any).rest.checks.update({
       owner,
       repo,
@@ -110,6 +114,33 @@ async function processGitHubPullRequest(octokit: Octokit, installationToken: str
       },
     })
     throw err
+  }
+
+  try {
+    await withChildSpan('review.publish', () => postReview(octokit, owner, repo, prNumber, result))
+  } catch (err) {
+    // The pipeline DID produce a usable result here (findings/summary exist
+    // -- runReviewPipeline resolved) — only publishing it to GitHub failed.
+    // Re-throwing would make BullMQ redo the ENTIRE files x agents review
+    // (on top of the per-agent retry already inside the Python service) just
+    // to retry a GitHub API call: the double-retry this task removes.
+    // Record the degraded outcome on the check run and return normally
+    // (not throw) so this job is NOT retried. attempts:3 stays reserved for
+    // the no-result crash above — this is not a silent failure, the check
+    // run still surfaces "failure" to the PR author.
+    log.error({ err }, 'Failed to post review (pipeline produced a usable result)')
+    await (octokit as any).rest.checks.update({
+      owner,
+      repo,
+      check_run_id: checkRunId,
+      status: 'completed',
+      conclusion: 'failure',
+      output: {
+        title: 'Review Post Failed',
+        summary: `Areté completed the review but failed to post it to GitHub: ${err instanceof Error ? err.message : String(err)}`,
+      },
+    })
+    return
   }
 
   await (octokit as any).rest.checks.update({
