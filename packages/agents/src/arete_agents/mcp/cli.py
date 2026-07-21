@@ -1,8 +1,10 @@
 import argparse
 import sys
 from typing import List
-from .manager import MCPManager
+
 from .auth import start_oauth_flow
+from .manager import MCPManager
+
 
 def handle_mcp_cli(args: List[str]) -> None:
     parser = argparse.ArgumentParser(prog="arete-agents mcp", description="Manage MCP servers for Areté")
@@ -11,7 +13,14 @@ def handle_mcp_cli(args: List[str]) -> None:
     # Add command
     add_parser = subparsers.add_parser("add", help="Add an MCP server")
     add_parser.add_argument("--transport", default="http", choices=["http", "stdio"], help="Transport type")
-    add_parser.add_argument("--agents", default="all", help="Comma-separated list of agents to attach these tools to (e.g. 'SecurityAgent,PerformanceAgent'). Default is 'all'.")
+    add_parser.add_argument(
+        "--agents",
+        default="all",
+        help=(
+            "Comma-separated list of agents to attach these tools to "
+            "(e.g. 'SecurityAgent,PerformanceAgent'). Default is 'all'."
+        ),
+    )
     add_parser.add_argument("name", help="Name of the MCP server")
     add_parser.add_argument("url_or_cmd", help="URL for HTTP transport, or Command for stdio transport")
     

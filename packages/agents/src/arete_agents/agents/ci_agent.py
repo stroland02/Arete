@@ -29,7 +29,10 @@ Focus solely on issues that directly contributed to the CI failure."""
         messages = [
             SystemMessage(content="You are an expert CI log analyzer."),
             HumanMessage(
-                content=f"Does this chunk of CI logs contain the failure reason? If yes, extract it. If no, say 'NO_ERROR'.\n\nLogs:\n{chunk}"
+                content=(
+                    "Does this chunk of CI logs contain the failure reason? If yes, extract it. "
+                    f"If no, say 'NO_ERROR'.\n\nLogs:\n{chunk}"
+                )
             )
         ]
         response = self._llm.with_retry(stop_after_attempt=2).invoke(messages)

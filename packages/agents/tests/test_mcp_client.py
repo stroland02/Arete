@@ -1,4 +1,3 @@
-import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -70,8 +69,12 @@ def test_call_tool_sync_invokes_session_call_tool():
 
 def test_wrap_server_tools_filters_by_allowlist():
     mcp_client._sessions["srv"] = MagicMock()
-    good = MagicMock(); good.name = "search_graph"; good.description = "search the graph"
-    bad = MagicMock(); bad.name = "index_repository"; bad.description = "index the repo"
+    good = MagicMock()
+    good.name = "search_graph"
+    good.description = "search the graph"
+    bad = MagicMock()
+    bad.name = "index_repository"
+    bad.description = "index the repo"
     mcp_client._tool_definitions["srv"] = [good, bad]
 
     tools = mcp_client.wrap_server_tools("srv", frozenset({"search_graph"}))

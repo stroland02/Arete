@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 
 class MCPManager:
     def __init__(self, workspace_root: str = None):
@@ -25,7 +26,10 @@ class MCPManager:
         config = self._load_config()
         
         if name in config:
-            print(f"The {name} MCP server was already added — that's why the command errored. It's registered and connecting, but shows 'Needs authentication'.\n")
+            print(
+                f"The {name} MCP server was already added — that's why the command errored. "
+                "It's registered and connecting, but shows 'Needs authentication'.\n"
+            )
             print("To finish setup, authenticate it. You can either:")
             print(f"- Run the auth flow yourself in this session with: arete-agents mcp auth {name}\n")
             

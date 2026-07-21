@@ -1,6 +1,5 @@
-from unittest.mock import MagicMock, patch
-
 import json
+from unittest.mock import MagicMock, patch
 
 from arete_agents.config import Settings
 from arete_agents.eval.__main__ import build_finder_llm, main

@@ -2,6 +2,7 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 from arete_agents.grounding import valid_lines_for_patch
+from arete_agents.tools.memory import add_project_memory
 
 _FIX_BRANCH_PREFIX = "arete/fix-"
 
@@ -15,7 +16,14 @@ class ProposePRInput(BaseModel):
     patch_content: str = Field(description="A unified diff string containing the code fix.")
 
 @tool("propose_pr", args_schema=ProposePRInput)
-def propose_pr(repo_full_name: str, title: str, body: str, branch_name: str, base_branch: str, patch_content: str) -> str:
+def propose_pr(
+    repo_full_name: str,
+    title: str,
+    body: str,
+    branch_name: str,
+    base_branch: str,
+    patch_content: str,
+) -> str:
     """
     Propose a code fix for a defect with REAL user or business impact, as a unified-diff patch you authored.
     Your patch_content MUST be a real, grounded unified diff (with @@ hunk headers) against the file(s) you
@@ -62,12 +70,12 @@ def ask_human(question: str) -> str:
     # Simulate suspension of state
     return f"Paused run. Sent human prompt: '{question}'. Resuming..."
 
-from arete_agents.tools.memory import add_project_memory
-
 
 class SilenceAsNoiseInput(BaseModel):
     issue_id: str = Field(description="The unique identifier of the issue/comment.")
-    reason: str = Field(description="Full text explanation of why this is considered noise (e.g., intended framework behavior).")
+    reason: str = Field(
+        description="Full text explanation of why this is considered noise (e.g., intended framework behavior)."
+    )
 
 @tool("silence_as_noise", args_schema=SilenceAsNoiseInput)
 def silence_as_noise(issue_id: str, reason: str) -> str:
@@ -93,8 +101,14 @@ def place_under_observation(issue_id: str, escalate_on: str, threshold: int, rea
     return f"Issue {issue_id} placed under observation. Escalate if {escalate_on} >= {threshold}. Reason: {reason}"
 
 class RequestInfrastructureApprovalInput(BaseModel):
-    command: str = Field(description="The exact CLI command (e.g., AWS CLI, kubectl) that must be executed to remediate the issue.")
-    reason: str = Field(description="Clear explanation of why this infrastructure change is necessary, to be read by the approving human.")
+    command: str = Field(
+        description="The exact CLI command (e.g., AWS CLI, kubectl) that must be executed to remediate the issue."
+    )
+    reason: str = Field(
+        description=(
+            "Clear explanation of why this infrastructure change is necessary, to be read by the approving human."
+        )
+    )
 
 @tool("request_infrastructure_approval", args_schema=RequestInfrastructureApprovalInput)
 def request_infrastructure_approval(command: str, reason: str) -> str:
@@ -117,4 +131,11 @@ def request_infrastructure_approval(command: str, reason: str) -> str:
     )
 
 def get_native_action_tools():
-    return [propose_pr, ask_human, add_project_memory, silence_as_noise, place_under_observation, request_infrastructure_approval]
+    return [
+        propose_pr,
+        ask_human,
+        add_project_memory,
+        silence_as_noise,
+        place_under_observation,
+        request_infrastructure_approval,
+    ]

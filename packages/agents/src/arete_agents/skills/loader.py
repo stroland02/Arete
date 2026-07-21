@@ -1,6 +1,6 @@
-import os
 from pathlib import Path
 from typing import List
+
 
 def load_installed_skills(workspace_root: str = None) -> List[str]:
     """
@@ -22,7 +22,7 @@ def load_installed_skills(workspace_root: str = None) -> List[str]:
                     content = skill_file.read_text(encoding="utf-8")
                     # Optionally parse YAML frontmatter here, but for now we just take the content.
                     skills.append(f"Skill: {entry.name}\n{content}")
-                except Exception as e:
+                except Exception:
                     pass
     
     return skills
