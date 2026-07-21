@@ -231,6 +231,9 @@ importers:
       '@arete/db':
         specifier: workspace:*
         version: link:../db
+      '@arete/internal-token':
+        specifier: workspace:*
+        version: link:../internal-token
       '@arete/net-guard':
         specifier: workspace:*
         version: link:../net-guard

@@ -163,13 +163,21 @@ export async function createServer(): Promise<express.Application> {
   // Service-to-service surface guard: /internal/*, /scan/trigger,
   // /staging/send and /api/approvals/:id/execute are called only by our own
   // services (the dashboard proxies after session-scoping the tenant), so the
-  // hop itself requires the shared bearer token (INTERNAL_API_TOKEN).
-  // Fail-closed 503 when unconfigured. Public receivers (GitHub/Stripe/GitLab
-  // webhooks) and the browser-facing OAuth routes are deliberately NOT behind
-  // this guard.
+  // hop itself requires a short-lived signed internal token (minted by
+  // @arete/internal-token's mintInternalToken, verified by
+  // verifyInternalToken — see internal-auth.ts). Fail-closed 503 when the
+  // keyset is unconfigured. Public receivers (GitHub/Stripe/GitLab webhooks)
+  // and the browser-facing OAuth routes are deliberately NOT behind this
+  // guard.
   const { createInternalAuthMiddleware } = await import('./internal-auth.js')
   const requireInternalToken = createInternalAuthMiddleware()
   server.use('/internal', requireInternalToken)
+
+  // Alertmanager cannot mint a signed internal token — it presents a fixed
+  // static credential via its `credentials_file` http_config — so
+  // /alerts/incoming uses the dedicated static guard (alertmanager-auth.ts),
+  // NOT the signed verifier used by every other route on this surface.
+  const { requireAlertmanagerToken } = await import('./alertmanager-auth.js')
 
   // Infrastructure Approvals Endpoint
   // Receives clicks from the dashboard when a human approves an LLM's
@@ -304,16 +312,17 @@ export async function createServer(): Promise<express.Application> {
     res.status(202).json({ started: true })
   })
 
-  // Alertmanager receiver (healing-loop observability, Phase 2 Task 3). Same
-  // shared internal-token guard as /fix/trigger and the rest of the
-  // service-to-service surface — Alertmanager authenticates with the
-  // INTERNAL_API_TOKEN bearer via infra/alertmanager.yml's http_config. The
+  // Alertmanager receiver (healing-loop observability, Phase 2 Task 3). Uses
+  // the DEDICATED static guard (requireAlertmanagerToken), not the signed
+  // internal-token verifier used by the rest of this surface — Alertmanager
+  // authenticates with the static ALERTMANAGER_INGEST_TOKEN bearer via
+  // infra/alertmanager.yml's http_config, and cannot mint a JWT. The
   // handler (handleIncomingAlert) records/upserts Incident rows keyed by
   // (installationId, fingerprint) and NEVER throws; this route additionally
   // catches any unexpected rejection so a bug in the handler can never 500
-  // Alertmanager into a retry storm — the internal-token guard above is the
-  // ONLY non-2xx outcome on this path (task-3-brief.md).
-  server.post('/alerts/incoming', requireInternalToken, express.json(), async (req, res) => {
+  // Alertmanager into a retry storm — the auth guard above is the ONLY
+  // non-2xx outcome on this path (task-3-brief.md).
+  server.post('/alerts/incoming', requireAlertmanagerToken, express.json(), async (req, res) => {
     try {
       const { handleIncomingAlert } = await import('./alerting/receiver.js')
       const result = await handleIncomingAlert(req.body)

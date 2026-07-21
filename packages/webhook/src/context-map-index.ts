@@ -43,7 +43,7 @@ export async function triggerContextMapIndex(
     try {
       await fetch(`${baseUrl}/context-map/index`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', ...internalAuthHeaders() },
+        headers: { 'content-type': 'application/json', ...(await internalAuthHeaders()) },
         body: JSON.stringify({
           installation_id: installationId,
           repo_slug: repo.full_name,

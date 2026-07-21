@@ -52,7 +52,7 @@ export async function applyApproval(
   try {
     const res = await doFetch(`${baseUrl}/approvals/apply`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', ...internalAuthHeaders() },
+      headers: { 'content-type': 'application/json', ...(await internalAuthHeaders()) },
       body: JSON.stringify({
         approvalId: data.approvalId,
         reviewId: data.reviewId,

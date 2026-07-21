@@ -424,7 +424,7 @@ export function defaultFixTriggerDeps(app: App): FixTriggerDeps {
       const { getServiceConfig } = await import('../config.js')
       const res = await fetch(`${getServiceConfig().pythonServiceUrl}/fix`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...internalAuthHeaders() },
+        headers: { 'Content-Type': 'application/json', ...(await internalAuthHeaders()) },
         body: JSON.stringify(body),
       })
       if (!res.ok) {
