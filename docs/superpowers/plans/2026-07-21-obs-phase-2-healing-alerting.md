@@ -582,6 +582,41 @@ design. BYO customer models resolve through `resolve-model-connection.ts`.
 
 ---
 
+### Task 14: Instrument the fix path — the `fix.run` span tree
+
+**Added 2026-07-21, discovered by Task 7.** `fix_pipeline.py` has **no span or metric
+instrumentation at all**. Spec §5 freezes `fix.run` as part of the span naming tree
+(`scan.run, fix.run, chat.turn ← same pattern`), and Phase 1 instrumented the review path but never
+came back for the healing path. **This must land before Tasks 12–13**, which otherwise have nothing
+to measure on the pipeline Phase 2 exists to improve.
+
+**Files:** `packages/agents/src/arete_agents/fix_pipeline.py`, and the webhook-side drive
+(`packages/webhook/src/fix/trigger.ts`) if its spans are likewise missing — check before assuming.
+
+**Requirements:**
+- `fix.run` root span covering a fix drive, with child spans for the real stages that already exist
+  in `_run_fix_inner`: checkout, evidence read, findings grounding (Task 7), patch authoring,
+  `_ground_files`, and verification.
+- The LLM call in `author_patch` must carry `gen_ai.*` attributes consistent with the review path,
+  so token usage and cost are attributable to healing runs (Task 13 depends on this).
+- Metrics per spec §5's namespace with **closed dimensions only** (Global Constraint 1): outcome and
+  stage, never repo names, item ids, or installation ids.
+- Follow `packages/agents/src/arete_agents/observability.py` and the existing review-path
+  instrumentation for conventions. Use the `instrument-every-feature` skill.
+- Telemetry must never take the run down (Global Constraint 3) — a broken span must not fail a fix.
+- Trace continuity: the span must join the trace started by the webhook-side drive, not open an
+  orphan. Verify in Jaeger.
+
+- [ ] **Step 1:** Survey how the review path is instrumented; state the conventions you are matching.
+- [ ] **Step 2:** Write a failing test asserting a `fix.run` span with the expected children is emitted for a fix drive (in-memory span exporter — follow the existing test pattern).
+- [ ] **Step 3:** Run — expect failure. Capture output.
+- [ ] **Step 4:** Implement.
+- [ ] **Step 5:** Run the full agents suite — expect PASS. Capture output.
+- [ ] **Step 6:** Verify in Jaeger that a real fix drive produces one connected trace from the webhook hop through to the LLM call. Capture what you saw. If you cannot run the stack, say so — do not claim it.
+- [ ] **Step 7:** `git commit -- packages/agents/src/arete_agents packages/agents/tests`
+
+---
+
 ## Phase 2 exit criteria (DoD)
 
 - [ ] A **synthetic alert fired into the running stack** produces an `Incident` row, which opens a `WorkItem`, which runs the fix pipeline — end to end, observed, not unit-tested only.
