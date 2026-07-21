@@ -31,7 +31,7 @@ import { Redis as IORedis } from 'ioredis'
 import { BullMQOtel } from 'bullmq-otel'
 import { createApp } from '../github-auth.js'
 import { FIX_QUEUE_NAME, FIX_QUEUE_CONCURRENCY, type FixDriveJobData } from '../queue.js'
-import { recordQueueJob } from '../observability.js'
+import { recordQueueJob, recordFixCooldownDrop } from '../observability.js'
 import { logger } from '../logger.js'
 import { driveFix, defaultFixTriggerDeps, type FixTriggerDeps, type FixDriveResult } from './trigger.js'
 import { checkFixCooldown, defaultCooldownDeps, type FixCooldownResult } from './cooldown.js'
@@ -70,6 +70,10 @@ export async function processFixJob(
       { workItemId: data.workItemId, retryAfterSeconds: cooldown.retryAfterSeconds },
       'Fix job dropped — cooldown active',
     )
+    // A dropped job never calls driveFix, so it would otherwise be a silent
+    // gap under the BullMQ consumer span: no fix.run, no record of why
+    // nothing happened. Record it as its own lightweight span instead.
+    recordFixCooldownDrop(data.workItemId, cooldown.retryAfterSeconds ?? 0)
     return { ok: false, reason: 'cooldown', retryAfterSeconds: cooldown.retryAfterSeconds }
   }
 
