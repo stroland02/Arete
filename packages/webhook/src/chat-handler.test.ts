@@ -12,6 +12,10 @@ function mockPrisma(installation: any = null) {
     PrismaClient.prototype.agentMemory = {
       create: vi.fn().mockResolvedValue({}),
     }
+    // saveAgentMemory does its count/archive/create in one serializable
+    // transaction; without this the call falls through to the REAL client and
+    // the write silently never lands.
+    PrismaClient.prototype.$transaction = vi.fn(async (fn: any) => fn(PrismaClient.prototype))
     return { PrismaClient }
   })
 }
@@ -167,11 +171,14 @@ function mockTenantAwarePrisma(opts: {
     PrismaClient.prototype.repository = { findFirst }
     PrismaClient.prototype.agentMemory = {
       count: vi.fn().mockResolvedValue(0),
+      // Below the cap, so the FIFO archive branch never runs here and
+      // findMany/updateMany are not needed for this sink's assertions.
       create: vi.fn(async (args: any) => {
         created.push(args.data)
         return { id: `mem-${created.length}` }
       }),
     }
+    PrismaClient.prototype.$transaction = vi.fn(async (fn: any) => fn(PrismaClient.prototype))
     return { PrismaClient }
   })
   return { created, findFirst }

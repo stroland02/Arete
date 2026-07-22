@@ -218,21 +218,31 @@ Everything blocking was fixed in that round. These are the reviewer-verified
 leftovers, kept here with their evidence rather than fixed, because each needs
 a design decision or a schema change rather than a patch:
 
-- **Row cap is check-then-create, with no transaction and no DB constraint.**
-  `memory-write.ts` counts active rows and then creates, so N concurrent writes
-  for one repo can all observe `count == 19` and all insert — a repo can exceed
-  `MAX_MEMORIES_PER_REPO` (20). Not exploitable for unbounded growth (each racer
-  still inserts exactly one row, so the overshoot is bounded by concurrency),
-  but the cap is advisory rather than enforced. Correct fix is a serializable
-  transaction or a DB-level constraint/trigger, not a wider read.
-- **No eviction path: nothing in the repo ever sets `status='archived'`.** The
-  read cap (`fetchProjectMemories`, 20 most recent) and the write cap are the
-  same number, so once a repo reaches 20 ACTIVE rows every subsequent write
-  returns `cap_exceeded` forever and the memory set is frozen at whatever it
-  first learned. `status` exists and is honoured by both the count and the read,
-  so the mechanism is there — what is missing is the policy (age out? evict
-  least-recently-cited? let a human archive from the dashboard?) and a surface
-  to apply it.
+- ~~**Row cap is check-then-create, with no transaction and no DB constraint.**~~
+  **CLOSED 2026-07-22** — `memory-write.ts` counted active rows and then
+  created, so N concurrent writes for one repo could all observe `count == 19`
+  and all insert; the cap was advisory rather than enforced. The count, the
+  archive and the create now run in ONE `prisma.$transaction` at
+  `isolationLevel: 'Serializable'`, which is the "serializable transaction"
+  option this entry called for. A repo that is already over the cap (from the
+  old racy path) is drained back to it on the next write rather than staying
+  permanently over.
+- ~~**No eviction path: nothing in the repo ever sets `status='archived'`.**~~
+  **CLOSED 2026-07-22** — this was the "silently stops learning" defect: the
+  read cap (`fetchProjectMemories`, 20 most recent) and the write cap were the
+  same number, so once a repo reached 20 ACTIVE rows every subsequent write
+  returned `cap_exceeded` **forever** and the memory set froze at whatever it
+  first learned. **Policy chosen (user decision): archive the OLDEST (FIFO).**
+  At the cap, the oldest active row flips to `status='archived'` — retained,
+  never deleted — to make room for the new one. Deliberately not LRU: that
+  needs a `lastCitedAt` column and read-path instrumentation (a schema change in
+  the shared `@arete/db` lane), and it can layer on later without undoing this.
+  FIFO needed **no schema change** and is exactly what the read path already
+  implies, since it only ever surfaces the 20 most recent — so this makes
+  storage agree with what the model actually sees rather than inventing a new
+  policy. Evictions are logged (`archived` count + cap) and set an
+  `arete.memory.archived` span attribute; a memory leaving the active set is
+  never silent.
 - ~~**`scrubSinkText`'s query-string stripping only fired when the ENTIRE
   value was a bare URL.**~~ **CLOSED in `d0f4e1b`** — `URL_LIKE`
   was anchored `^…\S+$`, so `see https://x.io/a?password=topsecret for
