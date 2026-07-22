@@ -237,3 +237,102 @@ the tenancy gate a **DB fact** instead of a string coincidence.
 index, or model is altered, so it cannot conflict with a concurrent `@arete/db` change that adds
 different models. **`ARETE_PLATFORM_INSTALLATION_ID` keeps working as a fallback** while no row is
 flagged, so existing deployments and local envs do not go dark on merge.
+
+---
+
+### `ridley` (W2, overview-revamp) cross-lane claim — `telemetry-queries.ts` (Engineer B's file) (declared 2026-07-22)
+
+**Cross-lane declaration per coordination rule 4 + the explicit instruction in
+`docs/superpowers/specs/2026-07-22-telemetry-tenancy-contract.md` §7: *"(Engineer B's file — declare in
+`.claude/ade-coordination.md` before editing.)"*** The `ridley` worktree (branch
+`stroland02/overview-revamp`, W2) is completing **adoption-checklist items 2 and 3** of that contract.
+
+**Why (the defect being closed):** `packages/dashboard/src/lib/telemetry-queries.ts`'s header asserts
+that *"tenant isolation is the non-negotiable invariant of every query here: each read filters
+`superlog.project_id IN (installationIds)`"*. That claim is **false today**. Per contract §1,
+`superlog.project_id` is `ARETE_SELF_PROJECT_ID` — an optional **self-dogfooding tag** naming which
+installation may view *Kuma's own* telemetry. Nothing ingests customer telemetry until Phase 3
+(`docs/roadmap/2026-07-15-superlog-phased-roadmap.md`), so the filter provides **partitioning, not access
+control**, while the comment reads as security. Per contract §3 the access decision must be
+`isPlatformInstallation(db, installationIds)` **first, before any ClickHouse query**, and the
+`project_id` filter stays only as a partitioning convenience. Contract §4 additionally forbids letting the
+access outcome masquerade as a data outcome — so "not the platform installation" gets its own state and
+must never be reported as today's `unavailable` (which means *the telemetry backend could not be reached*).
+
+**Files claimed by this worktree:**
+- **dashboard (primary lane, Engineer B's file):**
+  `packages/dashboard/src/lib/telemetry-queries.ts` — gate every exported read on
+  `isPlatformInstallation` before issuing SQL (threading the Prisma client in as the first argument, the
+  `lib/` convention `errors.ts`/`incidents.ts` already use); rewrite the module header to state what
+  `project_id` actually is and cite the contract; add `access: 'granted' | 'denied'` to `IncidentSignals`
+  so access-denied is distinguishable from a backend outage.
+  `packages/dashboard/src/lib/telemetry-queries.clickhouse.test.ts` — the module's existing test file,
+  extended with the gate cases (non-platform ⇒ denied **and ClickHouse never queried**; platform ⇒ the
+  three reads run as before; backend error ⇒ `unavailable` still true and distinct from denied).
+- **dashboard caller (Signals panel only):**
+  `packages/dashboard/src/app/(dashboard)/incidents/[id]/page.tsx` — pass `db` to `getIncidentSignals`
+  and render the access-denied state honestly. **Surgical:** only the Signals rendering changes; the
+  "Connected errors" section, trace links and every other panel in that file are untouched.
+- **docs:** `.env.example` (~L199-221) — `ARETE_PLATFORM_INSTALLATION_ID` documented as a **transitional
+  fallback** now that `Installation.isPlatform` is authoritative, plus a new documented
+  `ARETE_SELF_PROJECT_ID` block stating it must match the flagged platform installation.
+
+**Explicitly NOT touched** (another agent is concurrently editing them): `packages/webhook/src/alerting/receiver.ts`
+and anything under `packages/db`. This lane is additive at the type level (`IncidentSignals` gains a field;
+the three per-signal readers gain a `db` parameter and a `| null` denial), and `telemetry-queries.ts` has
+exactly one production caller, so the blast radius is that caller plus its tests.
+
+---
+
+### `ridley` (W2, overview-revamp) cross-lane claim — `packages/webhook/src/alerting/receiver.ts` + the shared resolver in `packages/db` (declared 2026-07-22)
+
+**Cross-lane declaration per coordination rule 4 + the rule "declare cross-package changes in the ledger
+before editing".** The `ridley` worktree (branch `stroland02/overview-revamp`, W2) is completing
+**adoption-checklist item 1** of `docs/superpowers/specs/2026-07-22-telemetry-tenancy-contract.md` §7 in
+**Engineer A's lane** (`@arete/webhook` alerting + `@arete/db`).
+
+**Why (the defect being closed):** contract §2 makes the platform installation a **database fact**
+(`Installation.isPlatform`), and the dashboard half already obeys it via
+`packages/dashboard/src/lib/platform-installation.ts`. The **webhook half still trusts the env string**:
+`receiver.ts::resolvePlatformInstallationId()` reads `ARETE_PLATFORM_INSTALLATION_ID` and files EVERY
+incoming Alertmanager alert against whatever installation it names. Its header even asserts *"There is no
+`platform` flag on the Installation model to enforce this"* — **that sentence is now false** and is being
+corrected. Until it is, a mistyped or stale env var silently files platform incidents (and, via Task 4
+routing, opens fix runs) **inside a customer's tenant** — the exact failure the flag exists to prevent, and
+the same defect the dashboard side just closed. Two halves of one boundary must not disagree.
+
+**Design decision — one implementation, not two mirrors (contract §2: "one resolver, one truth").** The
+resolver moves **down** into `@arete/db`, which is already a `workspace:*` dependency of BOTH
+`@arete/dashboard` and `@arete/webhook` and whose README already declares it the package that "owns the
+schema … and exports [it] for both `@arete/webhook` and `@arete/dashboard`". "Who is the platform
+installation" is a *fact about a row*, so `@arete/db` is its structural home. This is deliberately **not**
+the `error-fingerprint.ts`/`fingerprint.ts` mirroring precedent: a mirror is acceptable for a pure hash, but
+for a **security gate** two copies are two places to drift, and drift here is a tenant leak.
+
+**Files claimed by this worktree:**
+- **db (additive — one new module, one re-export line; no generated file, model, or migration touched):**
+  `packages/db/src/platform-installation.ts` (**new** — the single implementation, moved verbatim from the
+  dashboard module with an injectable log sink so a pino-based service can keep structured logs),
+  `packages/db/src/index.ts` (one added `export *`).
+- **webhook (primary lane):** `packages/webhook/src/alerting/receiver.ts` — `resolvePlatformInstallationId()`
+  now asks the shared resolver for the id (flag first, env only as the transitional fallback) and keeps its
+  own existence/owner verification (finding I6) and its "ALL incoming alerts are filed against this
+  installation" safety log; the false "no platform flag exists" header paragraph is rewritten.
+  `packages/webhook/src/alerting/receiver.test.ts` — extended with the fail-closed matrix.
+- **dashboard (delegation only, no caller changes):**
+  `packages/dashboard/src/lib/platform-installation.ts` — becomes a thin re-export of the `@arete/db`
+  implementation, **keeping every exported name and signature** so `errors.ts`, `telemetry-queries.ts` and
+  their tests are untouched. `packages/dashboard/src/lib/platform-installation.test.ts` is unchanged and is
+  now the shared implementation's fail-closed suite (zero / one / many flagged rows, env fallback, DB
+  throw), asserted a second time from the webhook side against the same inputs.
+
+**Why this is safe/additive:** nothing is removed. The dashboard's public surface is byte-identical
+(same names, same signatures, same log strings, same `console` default sink). The webhook's drop-the-batch
+contract is unchanged — unset/unresolvable/ambiguous all still log and DROP every alert, because "losing a
+platform alert is recoverable, filing it against an arbitrary customer is not". **`ARETE_PLATFORM_INSTALLATION_ID`
+keeps working unchanged while no row is flagged**, so no deployment starts dropping alerts on upgrade.
+
+**Explicitly NOT touched** (another agent is concurrently editing them):
+`packages/dashboard/src/lib/telemetry-queries.ts` and `.env.example`. No `packages/db` schema, migration,
+or generated client file is modified by this entry — only `src/platform-installation.ts` (new) and the
+single `export *` line in `src/index.ts`.

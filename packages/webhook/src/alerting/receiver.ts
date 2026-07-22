@@ -28,11 +28,25 @@
 // tenancy authority — so a fabricated alert could file an incident (and, once
 // Task 4 landed, OPEN A FIX RUN) against any customer, with attacker-chosen
 // summary text rendered in that customer's dashboard. Every alert is now
-// attributed to the single configured platform installation
-// (ARETE_PLATFORM_INSTALLATION_ID) and `labels.installationId` is ignored
-// entirely — it survives only as inert, scrubbed data inside `payload`.
+// attributed to the ONE platform installation and `labels.installationId` is
+// ignored entirely — it survives only as inert, scrubbed data inside `payload`.
 // This makes tenant spoofing structurally impossible rather than merely
 // validated, which is what Global Constraint 4 demands.
+//
+// WHICH installation that is used to be `ARETE_PLATFORM_INSTALLATION_ID`, and
+// this header used to say "There is no `platform` flag on the Installation
+// model to enforce this". THAT IS NO LONGER TRUE. `Installation.isPlatform`
+// exists (packages/db/prisma/schema.prisma) and is the source of truth per
+// docs/superpowers/specs/2026-07-22-telemetry-tenancy-contract.md §2. The env
+// var closed only half the defect: it made the tenant un-spoofable BY THE
+// CALLER while leaving it a string an operator can mistype into a customer's
+// id — after which every platform incident, and every fix run Task 4 opens from
+// one, lands in that customer's account. Resolution now goes through the ONE
+// shared resolver, `@arete/db`'s platform-installation module, which the
+// dashboard's telemetry gates use too; the env var survives only as a
+// transitional fallback while no row carries the flag, so existing deployments
+// do not go dark on upgrade. Both halves of the boundary now fail closed the
+// same way, from the same code.
 //
 // All three shipped rules (AreteReviewErrorRate, AreteReviewLatencyP95,
 // AreteQueueFailureRate) are platform-wide and carry no tenant label, so
@@ -44,7 +58,10 @@
 
 import { trace, metrics, SpanStatusCode, type Counter } from '@opentelemetry/api'
 import { scrubSinkText, scrubSinkValue } from '@arete/telemetry'
-import { Prisma } from '@arete/db'
+import {
+  Prisma,
+  resolvePlatformInstallationId as resolvePlatformInstallationIdFromDb,
+} from '@arete/db'
 import { prisma } from '../db.js'
 import { logger } from '../logger.js'
 import { routeIncidentToFix, defaultRouteIncidentDeps } from './incident.js'
@@ -156,40 +173,76 @@ function parseDate(v: unknown, fallback: Date): Date {
   return Number.isNaN(d.getTime()) ? fallback : d
 }
 
+/** Where `@arete/db`'s platform-installation diagnostics go. The shared module
+ *  defaults to `console` (right for the Next.js dashboard); a bare console line
+ *  here would bypass pino entirely, so the ambiguous-flag and migrate-off-the-
+ *  env-var notices are adapted into this service's structured stream. */
+const platformInstallationLog = {
+  warn: (message: string) => log.warn({}, message),
+  error: (message: string) => log.error({}, message),
+}
+
 /**
  * Resolve the ONE installation every incoming alert is attributed to
  * (finding C1). Returns null — meaning "drop the batch" — when the platform
- * installation is not configured or does not exist.
+ * installation is not resolvable.
  *
- * ARETE_PLATFORM_INSTALLATION_ID must name a DEDICATED platform-owned
- * `Installation` row, never a customer's. There is no "platform" flag on the
- * model to enforce that mechanically, so misconfiguration is made DETECTABLE
- * instead (finding I6): an id that resolves to no row drops every alert with
- * an explicit error rather than surfacing as a generic foreign-key failure
- * inside the per-alert catch, and the owner of the resolved row is logged
- * once so an operator can see whose account alerts are being filed against.
+ * WHO DECIDES. Not this function: `@arete/db`'s `resolvePlatformInstallationId`
+ * does, and the dashboard's telemetry gates ask the same one (contract §2, "one
+ * resolver, one truth"). It answers from `Installation.isPlatform` — a database
+ * fact, a deliberate and auditable single act — and falls back to
+ * `ARETE_PLATFORM_INSTALLATION_ID` ONLY while no row carries the flag, logging
+ * a migrate-to-the-flag notice when it does. That fallback is why upgrading a
+ * deployment that has not flagged a row yet does not start silently dropping
+ * every alert.
+ *
+ * FAIL CLOSED, three ways, all landing on "drop the batch":
+ *   * no flagged row and no env fallback — nobody is the platform;
+ *   * MORE than one flagged row — a misconfiguration the shared resolver
+ *     refuses to settle by picking one, and says so loudly;
+ *   * a database error while resolving — degraded must mean "record nothing".
+ * Losing a platform alert is recoverable (Alertmanager re-sends a still-firing
+ * alert every repeat interval — infra/alertmanager.yml); filing it against an
+ * arbitrary customer, where Task 4 routing then opens a fix run in their
+ * account, is not.
+ *
+ * The resolved id is still verified against a real `Installation` row here
+ * (finding I6). The shared resolver deliberately does not do that — its other
+ * caller only ever COMPARES the id against ids the reader is already authorized
+ * for, so an unresolvable value simply matches nobody. This caller WRITES rows
+ * under it, so a stale flag or a mistyped env var must drop the batch with an
+ * explicit error rather than surface as a generic foreign-key failure inside the
+ * per-alert catch. The lookup also yields the owner for the attribution warning
+ * below, so an operator can see whose account alerts are being filed against —
+ * it is memoised, so that line is logged once per resolved id, not per batch.
  */
 let verifiedPlatformInstallationId: string | null = null
 async function resolvePlatformInstallationId(): Promise<string | null> {
-  const configured = process.env.ARETE_PLATFORM_INSTALLATION_ID
-  if (!isNonEmptyString(configured)) {
+  // Asked per batch rather than memoised with the verification below: the flag
+  // is a live database fact, so flagging (or un-flagging) a row must take
+  // effect without a restart. It is one indexed read of at most two rows.
+  const resolved = await resolvePlatformInstallationIdFromDb(prisma, {
+    log: platformInstallationLog,
+  })
+  if (!isNonEmptyString(resolved)) {
     log.error(
       {},
-      'ARETE_PLATFORM_INSTALLATION_ID is not set — dropping every incoming alert. ' +
-        'Alerting is inert until it names the platform-owned Installation (see .env.example).'
+      'no platform installation could be resolved — dropping every incoming alert. ' +
+        'Alerting is inert until exactly one Installation row has isPlatform=true ' +
+        '(or, transitionally, ARETE_PLATFORM_INSTALLATION_ID names one — see .env.example).'
     )
     return null
   }
-  if (verifiedPlatformInstallationId === configured) return configured
+  if (verifiedPlatformInstallationId === resolved) return resolved
   try {
     const installation = await prisma.installation.findUnique({
-      where: { id: configured },
+      where: { id: resolved },
       select: { id: true, owner: true },
     })
     if (!installation) {
       log.error(
-        { configuredInstallationId: configured },
-        'ARETE_PLATFORM_INSTALLATION_ID does not match any Installation — dropping every incoming alert'
+        { configuredInstallationId: resolved },
+        'the resolved platform installation id matches no Installation — dropping every incoming alert'
       )
       return null
     }
@@ -201,7 +254,7 @@ async function resolvePlatformInstallationId(): Promise<string | null> {
     )
     return installation.id
   } catch (err) {
-    log.error({ err }, 'failed to verify ARETE_PLATFORM_INSTALLATION_ID — dropping alert batch')
+    log.error({ err }, 'failed to verify the resolved platform installation — dropping alert batch')
     return null
   }
 }
@@ -221,10 +274,11 @@ export async function handleIncomingAlert(body: unknown): Promise<HandleAlertRes
       const alerts = Array.isArray(payload.alerts) ? (payload.alerts as unknown[]) : []
       span.setAttribute('arete.alerts.count', alerts.length)
 
-      // Attribution is resolved ONCE per batch, from configuration only, and
-      // recorded on the span so an operator can see which tenant an incident
-      // landed in and WHY (finding M9). Installation ids are span attributes,
-      // never metric dimensions (Global Constraint 1).
+      // Attribution is resolved ONCE per batch, from the platform-installation
+      // fact (never from the payload), and recorded on the span so an operator
+      // can see which tenant an incident landed in and WHY (finding M9).
+      // Installation ids are span attributes, never metric dimensions (Global
+      // Constraint 1).
       const installationId = await resolvePlatformInstallationId()
       span.setAttribute(
         'arete.alert.attribution_source',

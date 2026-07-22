@@ -94,12 +94,22 @@ and new exceptions occur — as `events_per_minute` already demonstrated (0 → 
 
 ## 7. Adoption checklist
 
-- [ ] `Installation.isPlatform` + migration (`migrate deploy`; never `db push` — shared Postgres).
-- [ ] `platform-installation.ts` resolver + fail-closed tests, env fallback logged as transitional.
-- [ ] `lib/errors.ts` consumes the resolver instead of the env string.
-- [ ] `lib/telemetry-queries.ts` gates on `isPlatformInstallation` before its `project_id` filter, and its
-      header stops describing that filter as tenant isolation. *(Engineer B's file — declare in
-      `.claude/ade-coordination.md` before editing.)*
-- [ ] `ARETE_SELF_PROJECT_ID` / platform-installation divergence reported rather than silently tolerated.
+- [x] `Installation.isPlatform` + migration (`migrate deploy`; never `db push` — shared Postgres).
+      `20260722210000_add_installation_is_platform`.
+- [x] Resolver + fail-closed tests, env fallback logged as transitional. Lives in **`@arete/db`
+      (`packages/db/src/platform-installation.ts`)**, not the dashboard: both the dashboard and the webhook
+      must obey it, and two copies of a fail-closed security rule are two places to drift. The dashboard's
+      `lib/platform-installation.ts` is now a thin re-export.
+- [x] `lib/errors.ts` consumes the resolver instead of the env string.
+- [x] `lib/telemetry-queries.ts` gates on `isPlatformInstallation` before its `project_id` filter, and its
+      header no longer describes that filter as tenant isolation. Its raw SQL bodies are now private and the
+      exported wrappers gate first, so "gate before query" is structural rather than a convention.
+      Access-denied is a distinct state from backend-unavailable (§4) — a denied read never contacts
+      ClickHouse and therefore cannot claim an outage.
+- [x] `packages/webhook/src/alerting/receiver.ts` resolves the platform installation from the flag. Its
+      drop-the-batch contract on unresolvable/ambiguous is preserved exactly — an alert filed against an
+      arbitrary tenant is worse than an alert lost.
+- [x] `ARETE_SELF_PROJECT_ID` / platform-installation divergence reported rather than silently tolerated;
+      both vars re-documented in `.env.example` as transitional/partitioning.
 - [ ] Backlog: emit-time `superlog.issue_fingerprint` stamping, using §5's normalizer.
 - [ ] Amend §3 when Phase 3 tenant ingest lands.
