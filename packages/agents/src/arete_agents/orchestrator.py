@@ -2,6 +2,7 @@ import json
 import logging
 import operator
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Annotated, Literal, TypedDict
 
@@ -25,7 +26,19 @@ from arete_agents.grounding import has_quoted_evidence, valid_lines_for_patch
 from arete_agents.llm.base import ROLE_KEYS
 from arete_agents.models.pr import FileChange, PRContext
 from arete_agents.models.review import AgentStatus, FileReview, NoiseDecision, ReviewResult
+from arete_agents.observability import get_meter
 from arete_agents.verdict import decide_verdict
+
+# §5 arete.agent.duration — per-agent single-file review latency. A View already
+# registers its boundaries (observability._histogram_views) but nothing recorded
+# it until now. Module-scope create is safe: get_meter returns a ProxyMeter that
+# binds when the provider is installed. Dimensions are the closed low-cardinality
+# sets agent.role + outcome only (never pr_number/file_path — span attrs only).
+_AGENT_DURATION = get_meter(__name__).create_histogram(
+    "arete.agent.duration",
+    unit="s",
+    description="Per-agent single-file review duration",
+)
 
 _SEVERITY_WEIGHT = {"error": 3, "warning": 2, "info": 1}
 
@@ -392,11 +405,11 @@ class ReviewOrchestrator:
         agent_name = state["agent_name"]
 
         with tracer.start_as_current_span(
-            f"agent_review:{agent_name}",
+            "agent.review",
             attributes={
                 "pr_number": pr.pr_number,
                 "file_path": file.path,
-                "agent_name": agent_name,
+                "agent.role": agent_name,
             }
         ) as span:
             agent = None
@@ -419,9 +432,14 @@ class ReviewOrchestrator:
                     "agent_failures": 1,
                 }
 
+            start = time.perf_counter()
             try:
                 result = agent.review_file(file, pr)
                 span.set_attribute("comment_count", len(result.comments))
+                _AGENT_DURATION.record(
+                    time.perf_counter() - start,
+                    {"agent.role": agent_name, "outcome": "ok"},
+                )
                 return {
                     "raw_reviews": [result],
                     "noise_decisions": result.noise_decisions,
@@ -435,6 +453,10 @@ class ReviewOrchestrator:
                 }
             except Exception as exc:
                 span.record_exception(exc)
+                _AGENT_DURATION.record(
+                    time.perf_counter() - start,
+                    {"agent.role": agent_name, "outcome": "error"},
+                )
                 return {
                     "raw_reviews": [FileReview(
                         path=file.path,
@@ -455,7 +477,7 @@ class ReviewOrchestrator:
         raw_reviews = state.get("raw_reviews", [])
         
         with tracer.start_as_current_span(
-            "synthesize_reviews",
+            "review.synthesize",
             attributes={
                 "pr_number": pr.pr_number,
                 "raw_review_count": len(raw_reviews)
