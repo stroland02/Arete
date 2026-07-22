@@ -2087,7 +2087,7 @@ git commit -m "docs(skills): instrument-every-feature policy-as-code + telemetry
 **Files:**
 - No source changes. Output: verification evidence pasted into the phase PR body (per §8 DoD). If any check fails, fix in the owning task's files and re-run — do not close with red evidence.
 
-- [ ] **Step 1: Full gates** (all must exit 0):
+- [x] **Step 1: Full gates** (all must exit 0):
 
 ```powershell
 pnpm install --frozen-lockfile
@@ -2098,9 +2098,9 @@ pnpm test:all                              # every TS package + Python agents
 pnpm --filter @arete/webhook build
 ```
 
-- [ ] **Step 2: Flake re-check** — the Task 4 seeded shuffle matrix (seeds 1, 2, 3) on `pipeline.integration.test.ts`: three green runs.
+- [x] **Step 2: Flake re-check** — the Task 4 seeded shuffle matrix (seeds 1, 2, 3) on `pipeline.integration.test.ts`: three green runs.
 
-- [ ] **Step 3: Boot the local collector stack** (Agent B may have promoted it into the default compose by now; either file works — the endpoint contract is the same):
+- [x] **Step 3: Boot the local collector stack** (Agent B may have promoted it into the default compose by now; either file works — the endpoint contract is the same):
 
 ```powershell
 # After Lane B's Task 11 the collector is in the default stack; before it,
@@ -2110,7 +2110,7 @@ docker compose -f $compose up -d
 docker compose -f $compose ps   # collector must be Up with 4318 mapped
 ```
 
-- [ ] **Step 4: Endpoint contract check (per signal, BEFORE app traffic)** — status code AND partial-success body for each endpoint:
+- [x] **Step 4: Endpoint contract check (per signal, BEFORE app traffic)** — status code AND partial-success body for each endpoint:
 
 ```powershell
 curl.exe -s -w "`ntraces_status=%{http_code}`n"  -X POST http://localhost:4318/v1/traces  -H "Content-Type: application/json" -d "{\"resourceSpans\":[]}"
@@ -2120,7 +2120,7 @@ curl.exe -s -w "`nlogs_status=%{http_code}`n"    -X POST http://localhost:4318/v
 
 Expected per line: body `{}` (or a `partialSuccess` object with **no** `rejectedSpans`/`rejectedDataPoints`/`rejectedLogRecords`) and `*_status=200`. A non-empty rejected count is a FAIL even at 200 — record the payload either way.
 
-- [ ] **Step 5: Drive real signals through the real bootstrap.** Terminal A: start infra + webhook + worker (`pnpm infra:up`, then `pnpm --filter @arete/webhook start` and `pnpm --filter @arete/webhook start:worker` with the dev env from `.env`). Terminal B:
+- [x] **Step 5: Drive real signals through the real bootstrap.** Terminal A: start infra + webhook + worker (`pnpm infra:up`, then `pnpm --filter @arete/webhook start` and `pnpm --filter @arete/webhook start:worker` with the dev env from `.env`). Terminal B:
 
 ```powershell
 # 1 span + 1 log minimum: the health hit produces an Express server span and a pino log
@@ -2135,7 +2135,7 @@ curl.exe -s http://localhost:3001/api/health
 
 Evidence to record: (a) the SSE client prints `event: connected` then the published JSON line; (b) Jaeger (http://localhost:16686) lists services `arete-webhook` (+ `arete-worker` after a review job) and shows the `review.run` tree with `review.context.build`/`review.publish` children after processing one job; (c) one exported log record carries `trace_id` (query the collector's logs pipeline or ClickHouse `otel_logs` if Agent B's DDL landed); (d) metrics: after ≥1 job, `arete.review.runs` and `arete.queue.jobs` visible in the collector's Prometheus endpoint or debug exporter with ONLY `outcome`/`trigger`/`queue` dims.
 
-- [ ] **Step 6: Canary gate re-run (spec §6 gate 2):**
+- [x] **Step 6: Canary gate re-run (spec §6 gate 2):**
 
 ```powershell
 pnpm --filter @arete/telemetry test

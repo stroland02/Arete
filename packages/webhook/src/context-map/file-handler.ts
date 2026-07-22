@@ -6,6 +6,9 @@
 
 import type { RequestHandler } from 'express'
 import { fetchRepoFileContent, type FileContentResult } from './file-content.js'
+import { logger } from '../logger.js'
+
+const log = logger.child({ component: 'context-map' })
 
 type Runner = (args: { externalInstallationId: number; path: string }) => Promise<FileContentResult>
 
@@ -27,7 +30,7 @@ export function createContextMapFileHandler(run: Runner = fetchRepoFileContent):
       res.status(200).json(await run({ externalInstallationId, path: rawPath }))
     } catch (err) {
       // fetchRepoFileContent never throws, but guard the adapter regardless.
-      console.error('[context-map] file handler failed', err)
+      log.error({ err }, 'file handler failed')
       res.status(200).json({ ok: false, reason: 'unavailable' })
     }
   }

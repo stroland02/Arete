@@ -7,12 +7,19 @@ import { buildOAuthAuthorizeUrl } from './oauth/build-authorize-url.js'
 import { handleOAuthCallback } from './oauth/oauth-callback-handler.js'
 import type { StagingSendDeps } from './staging/send.js'
 import type { StagingOctokit } from './staging/stage-pr.js'
+import { logger } from './logger.js'
 
 // @octokit/app and @octokit/webhooks are pure ESM (import-only "exports" maps);
 // this package compiles to CJS, so they must be loaded via dynamic import(),
 // which tsx/esbuild preserves as a native import at runtime.
 export async function createServer(): Promise<express.Application> {
   const config = getConfig()
+  const log = logger.child({ component: 'server' })
+  const logApprovals = logger.child({ component: 'approvals' })
+  const logScan = logger.child({ component: 'scan' })
+  const logFix = logger.child({ component: 'fix' })
+  const logAlerting = logger.child({ component: 'alerting' })
+  const logMemory = logger.child({ component: 'memory' })
   const { App } = await import('@octokit/app')
   const { createNodeMiddleware } = await import('@octokit/webhooks')
 
@@ -26,10 +33,10 @@ export async function createServer(): Promise<express.Application> {
     try {
       await handlePullRequestEvent(octokit as any, payload as any)
     } catch (err) {
-      console.error('[server] Error handling pull_request event:', err)
+      log.error({ err }, 'Error handling pull_request event')
     }
   })
-  
+
   const { registerCheckRunWebhooks } = await import('./webhook-handler.js')
   registerCheckRunWebhooks(app)
 
@@ -39,7 +46,7 @@ export async function createServer(): Promise<express.Application> {
     try {
       await handleReviewCommentEvent(octokit as any, payload as any)
     } catch (err) {
-      console.error('[server] Error handling pull_request_review_comment event:', err)
+      log.error({ err }, 'Error handling pull_request_review_comment event')
     }
   })
 
@@ -63,7 +70,7 @@ export async function createServer(): Promise<express.Application> {
         owner,
       })
     } catch (err) {
-      console.error('[server] Error handling installation event:', err)
+      log.error({ err }, 'Error handling installation event')
     }
 
     // Backfill the repos' EXISTING open PRs so past work becomes visible
@@ -80,7 +87,7 @@ export async function createServer(): Promise<express.Application> {
       const repos = (payload as any).repositories ?? []
       await backfillInstallationPRs(octokit as any, payload.installation.id, repos)
     } catch (err) {
-      console.error('[server] Error backfilling PRs for installation:', err)
+      log.error({ err }, 'Error backfilling PRs for installation')
     }
 
     // Build the Sensorium code map right away, so the dashboard's code map is
@@ -92,7 +99,7 @@ export async function createServer(): Promise<express.Application> {
       const { triggerContextMapIndex } = await import('./context-map-index.js')
       await triggerContextMapIndex(app, payload.installation.id, repos)
     } catch (err) {
-      console.error('[server] Error triggering code-map index on install:', err)
+      log.error({ err }, 'Error triggering code-map index on install')
     }
 
     // Auto-scan on connect (work-item inbox): fire-and-forget — the trigger
@@ -103,7 +110,7 @@ export async function createServer(): Promise<express.Application> {
     if (installationUuid) {
       import('./scan/trigger.js')
         .then(({ maybeStartScan }) => maybeStartScan(installationUuid!))
-        .catch((err) => console.error('[server] Error auto-triggering scan on install:', err))
+        .catch((err) => log.error({ err }, 'Error auto-triggering scan on install'))
     }
   })
 
@@ -122,15 +129,23 @@ export async function createServer(): Promise<express.Application> {
       const { triggerContextMapIndex } = await import('./context-map-index.js')
       await triggerContextMapIndex(app, payload.installation.id, payload.repositories_added as any)
     } catch (err) {
-      console.error('[server] Error handling installation_repositories event:', err)
+      log.error({ err }, 'Error handling installation_repositories event')
     }
   })
 
   const server = express()
-  
+
   // Pre-auth Poison Message Guard: Drop empty/malformed payloads instantly
   // before they consume DB reads or queue resources.
+  // EXCEPT /alerts/incoming: Alertmanager treats any 4xx as PERMANENT and
+  // drops the notification rather than retrying, so on that path a malformed
+  // body must be logged and answered 2xx — auth failure is the only non-2xx
+  // outcome (Task 3 requirement; review finding I4).
   server.use((req, res, next) => {
+    if (req.path === '/alerts/incoming') {
+      next()
+      return
+    }
     const contentLength = req.headers['content-length']
     if (contentLength !== undefined && /^\s*0+\s*$/.test(contentLength)) {
       res.status(400).send('empty request body; no records to ingest')
@@ -141,20 +156,28 @@ export async function createServer(): Promise<express.Application> {
 
   // Stripe webhook needs raw body
   server.post('/stripe-webhook', express.raw({ type: 'application/json' }), handleStripeWebhook)
-  
+
   // GitLab webhook needs JSON body
   server.post('/gitlab-webhook', express.json(), handleGitLabWebhook)
-  
+
   // Service-to-service surface guard: /internal/*, /scan/trigger,
   // /staging/send and /api/approvals/:id/execute are called only by our own
   // services (the dashboard proxies after session-scoping the tenant), so the
-  // hop itself requires the shared bearer token (INTERNAL_API_TOKEN).
-  // Fail-closed 503 when unconfigured. Public receivers (GitHub/Stripe/GitLab
-  // webhooks) and the browser-facing OAuth routes are deliberately NOT behind
-  // this guard.
+  // hop itself requires a short-lived signed internal token (minted by
+  // @arete/internal-token's mintInternalToken, verified by
+  // verifyInternalToken — see internal-auth.ts). Fail-closed 503 when the
+  // keyset is unconfigured. Public receivers (GitHub/Stripe/GitLab webhooks)
+  // and the browser-facing OAuth routes are deliberately NOT behind this
+  // guard.
   const { createInternalAuthMiddleware } = await import('./internal-auth.js')
   const requireInternalToken = createInternalAuthMiddleware()
   server.use('/internal', requireInternalToken)
+
+  // Alertmanager cannot mint a signed internal token — it presents a fixed
+  // static credential via its `credentials_file` http_config — so
+  // /alerts/incoming uses the dedicated static guard (alertmanager-auth.ts),
+  // NOT the signed verifier used by every other route on this surface.
+  const { requireAlertmanagerToken } = await import('./alertmanager-auth.js')
 
   // Infrastructure Approvals Endpoint
   // Receives clicks from the dashboard when a human approves an LLM's
@@ -195,11 +218,11 @@ export async function createServer(): Promise<express.Application> {
           return
       }
     } catch (err) {
-      console.error(`[approvals] Failed to execute approval ${id}:`, err)
+      logApprovals.error({ err, approvalId: id }, 'Failed to execute approval')
       res.status(500).json({ error: 'internal_error', id })
     }
   })
-  
+
   // PR-staging send seam (internal). The dashboard's "Post PR" action calls this
   // with two internal uuids; we resolve the tenant to an installation Octokit,
   // load the approved container slice, and run the gate-enforced, idempotent
@@ -249,7 +272,7 @@ export async function createServer(): Promise<express.Application> {
       else if (result.reason === 'already_running') res.status(409).json(result)
       else res.status(200).json(result)
     } catch (err) {
-      console.error('[scan] trigger route failed:', err)
+      logScan.error({ err }, 'trigger route failed')
       res.status(500).json({ error: 'internal_error' })
     }
   })
@@ -263,23 +286,51 @@ export async function createServer(): Promise<express.Application> {
   // the dashboard's Auth.js session.
   // Internal fix trigger (healing loop). The dashboard's "Fix it" creates an
   // IssueContainer at `detecting` and fires this with the work item's id. The
-  // drive runs in the background (agents /fix authors + verifies a real patch,
-  // then the container advances to `ready` or `fix_failed`); we ACK 202 at once
-  // so the UI can open the live stream while the container fills in. Never
-  // blocks on the up-to-280s author run. Deps import lazily (db-free registration).
+  // drive itself now runs on the fix-drive BullMQ queue (bounded concurrency —
+  // see FIX_QUEUE_CONCURRENCY in queue.ts) instead of inline on this request:
+  // it used to be `void driveFix(...)` running straight on the webhook's HTTP
+  // process, with no queue and no concurrency cap, so a burst of triggers
+  // could fan out into unbounded repo checkouts + LLM calls on the same
+  // process that also answers GitHub webhooks. We still ACK 202 immediately
+  // after the enqueue (a fast Redis write, not the drive itself) — never after
+  // the drive — so the UI can open the live stream while the container fills
+  // in. Deps import lazily (db-free registration).
   server.post('/fix/trigger', requireInternalToken, express.json(), async (req, res) => {
     const workItemId = typeof req.body?.workItemId === 'string' ? req.body.workItemId : ''
     if (!workItemId) {
       res.status(400).json({ error: 'workItemId required' })
       return
     }
-    const { driveFix, defaultFixTriggerDeps } = await import('./fix/trigger.js')
-    // Fire-and-forget: the drive is long-running and self-persisting; a failure
-    // lands the container in fix_failed on its own (never rethrown here).
-    void driveFix(workItemId, defaultFixTriggerDeps(app)).catch((err) => {
-      console.error(`[fix] drive failed for work item ${workItemId}:`, err)
-    })
+    try {
+      const { enqueueFixDrive } = await import('./queue.js')
+      await enqueueFixDrive({ workItemId })
+    } catch (err) {
+      logFix.error({ err, workItemId }, 'failed to enqueue fix job')
+      res.status(500).json({ error: 'internal_error' })
+      return
+    }
     res.status(202).json({ started: true })
+  })
+
+  // Alertmanager receiver (healing-loop observability, Phase 2 Task 3). Uses
+  // the DEDICATED static guard (requireAlertmanagerToken), not the signed
+  // internal-token verifier used by the rest of this surface — Alertmanager
+  // authenticates with the static ALERTMANAGER_INGEST_TOKEN bearer via
+  // infra/alertmanager.yml's http_config, and cannot mint a JWT. The
+  // handler (handleIncomingAlert) records/upserts Incident rows keyed by
+  // (installationId, fingerprint) and NEVER throws; this route additionally
+  // catches any unexpected rejection so a bug in the handler can never 500
+  // Alertmanager into a retry storm — the auth guard above is the ONLY
+  // non-2xx outcome on this path (task-3-brief.md).
+  server.post('/alerts/incoming', requireAlertmanagerToken, express.json(), async (req, res) => {
+    try {
+      const { handleIncomingAlert } = await import('./alerting/receiver.js')
+      const result = await handleIncomingAlert(req.body)
+      res.status(200).json(result)
+    } catch (err) {
+      logAlerting.error({ err }, 'failed to process incoming alert batch')
+      res.status(200).json({ created: 0, updated: 0 })
+    }
   })
 
   const { createModelConnectionTestHandler } = await import('./model-connections/test-handler.js')
@@ -295,6 +346,51 @@ export async function createServer(): Promise<express.Application> {
   // path is additionally validated (isSafeRepoPath) before any GitHub call.
   const { createContextMapFileHandler } = await import('./context-map/file-handler.js')
   server.get('/internal/context-map/file', createContextMapFileHandler())
+
+  // Internal memory write-back (Phase 2 Task 8). Closes the
+  // add_project_memory stub in
+  // packages/agents/src/arete_agents/tools/memory.py — before this route
+  // existed, that tool logged and returned a hardcoded success string
+  // without persisting anything. Reuses the SAME `/internal` prefix guard
+  // as /internal/model-connections/test and /internal/context-map/file
+  // above (requireInternalToken, mounted once at the top of this function) —
+  // no second auth path. The tenant guard (repo scoped to the caller's own
+  // installation) and the size caps live in memory-write.ts; this route only
+  // maps its result to a status code and must be honest: 2xx ONLY on an
+  // actually-persisted row, never on a rejection.
+  server.post('/internal/memory', express.json(), async (req, res) => {
+    const body = (req.body ?? {}) as Record<string, unknown>
+    const installationExternalId = typeof body.installationId === 'number' ? body.installationId : NaN
+    const repoFullName = typeof body.repoFullName === 'string' ? body.repoFullName : ''
+    const memoryBody = typeof body.body === 'string' ? body.body : ''
+    const kind = typeof body.kind === 'string' ? body.kind : undefined
+    const title = typeof body.title === 'string' ? body.title : undefined
+
+    try {
+      const { saveAgentMemory } = await import('./memory-write.js')
+      const result = await saveAgentMemory({
+        installationExternalId,
+        repoFullName,
+        kind,
+        title,
+        body: memoryBody,
+      })
+      if (result.ok) {
+        res.status(201).json({ ok: true, id: result.id })
+        return
+      }
+      // repo_not_found deliberately maps to 404 whether the repo genuinely
+      // doesn't exist or belongs to a different installation — the tenant
+      // guard must never let a caller distinguish "wrong tenant" from
+      // "doesn't exist" (memory-write.ts module header).
+      const status =
+        result.reason === 'repo_not_found' ? 404 : result.reason === 'internal_error' ? 500 : 400
+      res.status(status).json({ ok: false, reason: result.reason, detail: result.detail })
+    } catch (err) {
+      logMemory.error({ err }, 'failed to save agent memory')
+      res.status(500).json({ ok: false, reason: 'internal_error' })
+    }
+  })
 
   // NOTE: the model-connection *management* API (/api/model-connections — GET list,
   // PUT upsert, DELETE, POST .../test) is deliberately NOT mounted here for the same
@@ -339,6 +435,36 @@ export async function createServer(): Promise<express.Application> {
   server.get('/oauth/:provider/callback', handleOAuthCallback)
 
   server.get('/health', (_req, res) => res.json({ status: 'ok' }))
+
+  // Error middleware (4-arity — Express identifies it by arity, so the unused
+  // `_next` parameter is load-bearing). MUST be registered last.
+  //
+  // `express.json()` runs as ROUTE middleware, so a body-parse failure never
+  // reaches the route handler's own try/catch: body-parser 1.20.6 emits a
+  // SyntaxError (status 400) for malformed JSON and a PayloadTooLargeError
+  // (status 413) over the 100kb default, and express 4.22.2's default error
+  // handler answers those statuses. On /alerts/incoming that is a silent data
+  // loss bug: Alertmanager treats 4xx as PERMANENT and drops the notification
+  // instead of retrying, so a truncated or oversized batch disappears with no
+  // incident row and no retry (review finding I4). Log it and answer 2xx —
+  // auth failure (401/503 from requireInternalToken, which runs BEFORE the
+  // parser) stays the only non-2xx outcome on this path.
+  //
+  // Every other route keeps Express's default behaviour: `next(err)`.
+  server.use(
+    (err: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+      if (req.path === '/alerts/incoming' && !res.headersSent) {
+        const e = err as { type?: string; status?: number; message?: string }
+        logAlerting.error(
+          { err, parseErrorType: e?.type, parseErrorStatus: e?.status },
+          'malformed or oversized alert body — answering 2xx so Alertmanager does not drop the notification'
+        )
+        res.status(200).json({ created: 0, updated: 0 })
+        return
+      }
+      _next(err)
+    }
+  )
 
   return server
 }

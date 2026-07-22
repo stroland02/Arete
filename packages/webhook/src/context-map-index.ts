@@ -2,6 +2,10 @@ import type { App } from '@octokit/app'
 import { getInstallationToken } from './github-auth.js'
 import { getServiceConfig } from './config.js'
 import type { BackfillRepo } from './backfill.js'
+import { logger } from './logger.js'
+import { internalAuthHeaders } from './internal-auth.js'
+
+const log = logger.child({ component: 'context-map' })
 
 /**
  * Kick off a code-map (Sensorium) build for each repo the moment the Kuma app
@@ -26,9 +30,9 @@ export async function triggerContextMapIndex(
   try {
     token = await getInstallationToken(app, installationId)
   } catch (err) {
-    console.error(
-      `[context-map] Could not mint installation token for ${installationId} — skipping index-on-connect:`,
-      err,
+    log.error(
+      { err, installationId },
+      'Could not mint installation token — skipping index-on-connect',
     )
     return
   }
@@ -39,7 +43,7 @@ export async function triggerContextMapIndex(
     try {
       await fetch(`${baseUrl}/context-map/index`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...(await internalAuthHeaders()) },
         body: JSON.stringify({
           installation_id: installationId,
           repo_slug: repo.full_name,
@@ -47,9 +51,9 @@ export async function triggerContextMapIndex(
           installation_token: token,
         }),
       })
-      console.log(`[context-map] Requested code-map index for ${repo.full_name} on connect`)
+      log.info({ repo: repo.full_name }, 'Requested code-map index on connect')
     } catch (err) {
-      console.error(`[context-map] Failed to request index for ${repo.full_name}:`, err)
+      log.error({ err, repo: repo.full_name }, 'Failed to request index')
     }
   }
 }

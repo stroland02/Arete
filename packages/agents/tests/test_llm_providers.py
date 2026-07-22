@@ -18,12 +18,17 @@ from arete_agents.llm.base import (
 
 
 def test_build_ollama_llm_uses_model_and_base_url():
+    from langchain_openai import ChatOpenAI
+
     from arete_agents.llm.ollama import build_ollama_llm
 
     llm = build_ollama_llm("qwen2.5-coder", "http://localhost:11434")
-    assert "ollama" in type(llm).__module__.lower()
-    assert llm.model == "qwen2.5-coder"
-    assert llm.base_url == "http://localhost:11434"
+    # ChatOpenAI against Ollama's OpenAI-compatible /v1 endpoint — this is
+    # what lets the openai-v2 genai instrumentation cover Ollama calls (no
+    # Ollama-native instrumentation exists; see llm/ollama.py docstring).
+    assert isinstance(llm, ChatOpenAI)
+    assert llm.model_name == "qwen2.5-coder"
+    assert str(llm.openai_api_base).rstrip("/") == "http://localhost:11434/v1"
 
 
 def test_get_llms_by_role_ollama_shares_one_model_across_all_roles():
@@ -37,7 +42,9 @@ def test_get_llms_by_role_ollama_shares_one_model_across_all_roles():
     # Single-model provider: ONE client shared by every role, both critics
     # included (critic-fallback ruling) — no opus/sonnet split.
     assert len({id(c) for c in llms.values()}) == 1
-    assert "ollama" in type(llms["security"]).__module__.lower()
+    # Ollama rides the openai-v2 hook (ChatOpenAI on /v1) — see
+    # test_build_ollama_llm_uses_model_and_base_url for why.
+    assert "openai" in type(llms["security"]).__module__.lower()
     assert llms["critic_opus"] is llms["critic_sonnet"]
 
 
@@ -56,8 +63,8 @@ def test_from_config_ollama_builds_from_passed_config_not_settings():
     )
     assert set(llms) == set(ROLE_KEYS)
     assert len({id(c) for c in llms.values()}) == 1  # one BYO model, all roles
-    assert llms["security"].model == "llama3"
-    assert llms["security"].base_url == "http://host:11434"
+    assert llms["security"].model_name == "llama3"
+    assert str(llms["security"].openai_api_base).rstrip("/") == "http://host:11434/v1"
 
 
 def test_from_config_anthropic_uses_passed_key_and_model():

@@ -10,6 +10,10 @@
 // the internal endpoint; this module additionally validates the repo path so a
 // crafted path can never probe outside the repo tree.
 
+import { logger } from '../logger.js'
+
+const log = logger.child({ component: 'context-map' })
+
 export type FileContentResult =
   | { ok: true; path: string; text: string; truncated: boolean }
   | { ok: false; reason: 'invalid_path' | 'not_found' | 'binary' | 'too_large' | 'unavailable' }
@@ -72,7 +76,7 @@ export async function fetchRepoFileContent(
   } catch (err) {
     // Fail soft: a GitHub hiccup renders an honest "unavailable" panel state,
     // never a 500 out of the map.
-    console.error('[context-map] file content fetch failed', err)
+    log.error({ err }, 'file content fetch failed')
     return { ok: false, reason: 'unavailable' }
   }
 }

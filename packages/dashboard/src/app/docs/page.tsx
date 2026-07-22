@@ -137,7 +137,7 @@ export default function DocsPage() {
             lead="Every review happens in the open. You watch the agents think, in real time, instead of trusting a black box."
           >
             <p>
-              The Glass Box is Kuma's core UX principle: a review is not a verdict handed down from
+              The Glass Box is Kuma&apos;s core UX principle: a review is not a verdict handed down from
               nowhere. As the specialists dispatch, report, verify, and compose, each step streams
               to your screen live over the Synthesizer console. You see which agent is looking at
               what, what it found, how confident it is, and how the synthesizer weighs it.
@@ -221,7 +221,7 @@ export default function DocsPage() {
             lead="Agents talk like a well-run team: structured status, escalation before things get worse, one board everyone reads."
           >
             <p>
-              Kuma's agents coordinate using a communication discipline borrowed from operational-
+              Kuma&apos;s agents coordinate using a communication discipline borrowed from operational-
               excellence practice. Every specialist reports a structured status — its dimension, its
               state, a one-line summary, its real confidence, and anything blocking it — instead of
               noisy chatter. A deterministic escalation ladder decides what rolls up: a low-confidence
@@ -242,7 +242,7 @@ export default function DocsPage() {
             lead="Reviews cite what actually happened in production, not just what the diff looks like."
           >
             <p>
-              Connect your telemetry and Kuma's reviews gain real-world grounding — the difference
+              Connect your telemetry and Kuma&apos;s reviews gain real-world grounding — the difference
               between &ldquo;this function looks risky&rdquo; and &ldquo;this endpoint failed six
               times this week.&rdquo; Available connectors include GitHub Actions (CI health),
               PostHog (product usage), Sentry (error and incident history), and Vercel (deploy health
@@ -260,7 +260,7 @@ export default function DocsPage() {
           >
             <p>
               When Kuma connects to a repository it builds a code map — a navigable graph of the
-              project's structure that the review agents query to understand how a change ripples
+              project&apos;s structure that the review agents query to understand how a change ripples
               through the codebase. The map is built on connect and loads without any model key, so
               your overview shows a real picture of the repo from the first moment, not a placeholder.
             </p>
@@ -281,7 +281,7 @@ export default function DocsPage() {
                 empty state. Confidence and status always reflect a real run — never a display value.
               </TrustItem>
               <TrustItem title="Tenant isolation">
-                Every query is scoped to your installation. One customer can never see another's
+                Every query is scoped to your installation. One customer can never see another&apos;s
                 repositories, connections, or reviews.
               </TrustItem>
               <TrustItem title="Secrets stay secret">

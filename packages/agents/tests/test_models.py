@@ -201,7 +201,7 @@ def test_review_result_grounding_counters_default_to_zero():
 
 
 def test_pr_context_accepts_repo_conventions_field():
-    from arete_agents.models.pr import FileChange, PRContext
+    from arete_agents.models.pr import PRContext
 
     pr = PRContext.model_validate({
         "repo": "acme/api", "pr_number": 1, "title": "t", "description": "d",

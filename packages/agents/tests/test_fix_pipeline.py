@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from arete_agents.config import Settings
 from arete_agents.fix_pipeline import author_patch, run_fix
 from arete_agents.models.fix import FixItem, FixRepo, FixRequest, FixResponse
+from tests.conftest import INTERNAL_HEADERS
 
 
 def _checkout(tmp_path, installation_id=42, repo_slug="acme/shop"):
@@ -63,6 +64,7 @@ def _author_reply(files, summary="fixed it"):
     """A MagicMock LLM whose .invoke() returns the given files/summary as the
     author-stage JSON contract expects."""
     import json
+
     from langchain_core.messages import AIMessage
 
     llm = MagicMock()
@@ -77,7 +79,12 @@ def _run(tmp_path, llm, verify_result=True, **req_overrides):
     with patch("arete_agents.fix_pipeline.ensure_repo_checked_out", return_value=checkout), patch(
         "arete_agents.fix_pipeline.verify_resolved", return_value=verify_result
     ) as verify_mock:
-        result = run_fix(req, {"security": llm}, verify_settings=Settings(llm_provider="anthropic", anthropic_api_key="sk-test"), repo_root=tmp_path)
+        result = run_fix(
+            req,
+            {"security": llm},
+            verify_settings=Settings(llm_provider="anthropic", anthropic_api_key="sk-test"),
+            repo_root=tmp_path,
+        )
     return result, verify_mock
 
 
@@ -235,7 +242,7 @@ def test_fix_endpoint_builds_clients_from_llm_block_and_returns_200():
     with patch.object(server, "get_llms_by_role_from_config", side_effect=fake_from_config), patch.object(
         server, "run_fix", return_value=fake_response
     ) as run_mock, patch.object(server, "ollama_unavailable_reason", return_value=None):
-        client = TestClient(server.app)
+        client = TestClient(server.app, headers=INTERNAL_HEADERS)
         resp = client.post(
             "/fix",
             json={
@@ -271,7 +278,7 @@ def test_fix_endpoint_ollama_unavailable_is_honest_fix_failed_not_503():
     with patch.object(server, "ollama_unavailable_reason", return_value=hint), patch.object(
         server, "run_fix"
     ) as run_mock:
-        client = TestClient(server.app)
+        client = TestClient(server.app, headers=INTERNAL_HEADERS)
         resp = client.post(
             "/fix",
             json={

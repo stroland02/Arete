@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 
 from arete_agents.models.pr import ScanRequest
 from arete_agents.scan import run_scan
+from tests.conftest import INTERNAL_HEADERS
 
 
 def _checkout(tmp_path, installation_id=42, repo_slug="acme/shop"):
@@ -118,7 +119,7 @@ def test_scan_endpoint_builds_clients_from_llm_block():
     ), patch.object(server, "run_scan", return_value=fake_response) as run_mock, patch.object(
         server, "ollama_unavailable_reason", return_value=None
     ):
-        client = TestClient(server.app)
+        client = TestClient(server.app, headers=INTERNAL_HEADERS)
         resp = client.post(
             "/scan",
             json={
@@ -149,7 +150,7 @@ def test_scan_endpoint_503s_when_ollama_unavailable():
     with patch.object(
         server, "ollama_unavailable_reason", return_value=hint
     ), patch.object(server, "run_scan") as run_mock:
-        client = TestClient(server.app)
+        client = TestClient(server.app, headers=INTERNAL_HEADERS)
         resp = client.post(
             "/scan",
             json={

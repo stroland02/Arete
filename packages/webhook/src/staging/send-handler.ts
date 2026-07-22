@@ -7,6 +7,9 @@
 
 import type { RequestHandler } from 'express'
 import { runStagingSend, type StagingSendDeps, type StagingSendResult } from './send.js'
+import { logger } from '../logger.js'
+
+const log = logger.child({ component: 'staging' })
 
 type Runner = (
   deps: StagingSendDeps,
@@ -59,9 +62,9 @@ export function createStagingSendHandler(
             data: { state: 'posted' },
           })
         } catch (err) {
-          console.error(
-            `[staging] work-item posted hook failed for container ${containerId} (non-fatal):`,
-            err,
+          log.error(
+            { err, containerId },
+            'work-item posted hook failed (non-fatal)',
           )
         }
       }
@@ -70,7 +73,7 @@ export function createStagingSendHandler(
     } catch (err) {
       // runStagingSend already converts expected errors to { outcome: 'failed' };
       // this only guards against a programming error in the seam itself.
-      console.error('[staging] Unhandled error in /staging/send:', err)
+      log.error({ err }, 'Unhandled error in /staging/send')
       res.status(500).json({ outcome: 'failed', detail: 'internal_error' })
     }
   }

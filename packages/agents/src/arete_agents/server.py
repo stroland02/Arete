@@ -1,8 +1,9 @@
 import logging
 from typing import Any, Dict
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException
-from fastapi.responses import PlainTextResponse
+import structlog
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from pydantic import BaseModel, ValidationError
 
 from arete_agents.agents.chat import ChatAgent
@@ -11,45 +12,54 @@ from arete_agents.context_map.graph_export import GraphExportError, build_graph_
 from arete_agents.context_map.indexer import IndexerError, index_repository
 from arete_agents.context_map.repo_cache import RepoCacheError, ensure_repo_checked_out
 from arete_agents.context_map.ui import ContextMapUIError, get_or_start_ui
-from arete_agents.llm.ollama import (
-    DEFAULT_OLLAMA_BASE_URL,
-    DEFAULT_OLLAMA_MODEL,
-    ollama_unavailable_reason,
-)
+from arete_agents.fix_pipeline import run_fix
+from arete_agents.internal_auth import require_internal_token
 from arete_agents.llm.base import (
     get_llms_by_role,
     get_llms_by_role_from_config,
     role_tiers,
 )
-
-_logger = logging.getLogger(__name__)
-from arete_agents.models.pr import LLMConfig, PRContext, ScanRequest
+from arete_agents.llm.ollama import (
+    DEFAULT_OLLAMA_BASE_URL,
+    DEFAULT_OLLAMA_MODEL,
+    ollama_unavailable_reason,
+)
 from arete_agents.models.fix import FixRequest, FixResponse
-from arete_agents.fix_pipeline import run_fix
+from arete_agents.models.pr import LLMConfig, PRContext, ScanRequest
+from arete_agents.observability import configure_structlog, init_observability
 from arete_agents.orchestrator import ReviewOrchestrator
 from arete_agents.remediation import RemediationGraph
 from arete_agents.scan import ScanUnavailableError, run_scan
 from arete_agents.tools.executor import CommandExecutionError, get_command_executor
 
+# Telemetry bootstrap. Import time == inside the uvicorn worker process
+# (`uvicorn arete_agents.server:app`) — exporter threads must live in the
+# serving process. No-ops (one INFO line) when OTEL_EXPORTER_OTLP_ENDPOINT is
+# unset; never raises (telemetry must never take the app down). Replaces the
+# old unconditional hardcoded gRPC exporter to localhost:4317.
+init_observability()
+# AFTER init_observability (OTel LoggingHandler already on root), per the
+# bootstrap ordering contract documented in observability.py.
+configure_structlog()
+
+_logger = structlog.get_logger(__name__).bind(component="server")
+
 app = FastAPI()
 
-# OpenTelemetry Auto-Instrumentation
-from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import SERVICE_NAME, Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
+# /health is excluded from tracing (spec §3): a container healthcheck on a
+# 5s interval would otherwise dominate span volume for zero information.
+try:
+    FastAPIInstrumentor.instrument_app(app, excluded_urls="health")
+except Exception:
+    _logger.warning("FastAPI instrumentation failed; serving untraced", exc_info=True)
 
-# Set up the tracer provider with service name
-resource = Resource(attributes={SERVICE_NAME: "arete-agents"})
-provider = TracerProvider(resource=resource)
 
-# Export traces to the OTel Collector in the infra stack
-# The infra docker-compose sets up the collector at localhost:4317
-otlp_exporter = OTLPSpanExporter(endpoint="http://localhost:4317", insecure=True)
-processor = BatchSpanProcessor(otlp_exporter)
-provider.add_span_processor(processor)
-trace.set_tracer_provider(provider)
+@app.get("/health")
+def health() -> dict[str, str]:
+    """Liveness probe for compose healthchecks and LB checks. Excluded from
+    tracing via excluded_urls above; must stay dependency-free (no DB, no
+    LLM) so it answers even on a keyless boot."""
+    return {"status": "ok"}
 
 # LLM-backed singletons are built LAZILY, on the first /review or /chat call.
 # LangGraph graph compilation is expensive (one orchestrator + one chat agent
@@ -115,8 +125,33 @@ def _get_chat_agent() -> ChatAgent:
 # Needs no LLM, so eager construction is safe on a keyless boot.
 _remediation = RemediationGraph(get_command_executor())
 
+# Service-to-service surface guard (review finding B4; spec section 6 gate 4).
+# Every POST below is called ONLY by our own server-side processes
+# (packages/webhook's review-bridge / scan-trigger / fix-trigger / chat-handler
+# / approval-worker / context-map-index, and packages/dashboard's agent-chat),
+# each of which mints its own short-lived internal token (obs Phase 3 Task 4 --
+# arete_agents/internal_token.py, the Python counterpart of
+# @arete/internal-token). They all spend money, mutate state, or -- in
+# /review and /chat's case -- can induce an add_project_memory write into a
+# CALLER-NAMED tenant using this process's own credential. The hop is
+# therefore authenticated with the same signed-token scheme and the same
+# fail-closed posture the webhook uses (internal_auth.py).
+#
+# GET /health is deliberately NOT behind this guard; see internal_auth.py.
+#
+# The read-only GET /context-map/ui-url/{id} and /context-map/graph/{id}
+# routes WERE left open here (review finding B4 covered only the write/spend
+# POST surface above) -- but they take an installation id straight from the
+# URL path and return that tenant's code graph, so leaving them open is a
+# cross-tenant READ leak to anyone with network reach to this port. Their
+# only caller (packages/dashboard/src/lib/context-map-client.ts, called
+# server-side from the overview/map pages) mints its own internal token the
+# same way, so they get the same guard below (spec section 6 gate 4; see
+# docs/roadmap/backlog.md for the original finding).
+_INTERNAL = [Depends(require_internal_token)]
 
-@app.post("/review")
+
+@app.post("/review", dependencies=_INTERNAL)
 def review(pr: PRContext):
     # Per-request BYO model: when the caller supplies pr.llm, build the review's
     # LLM clients from THAT config (get_llms_by_role_from_config) — a fresh
@@ -158,7 +193,7 @@ def review(pr: PRContext):
     return _get_orchestrator().run(pr)
 
 
-@app.post("/scan")
+@app.post("/scan", dependencies=_INTERNAL)
 def scan(req: ScanRequest):
     """Repo-wide discovery scan (work-item inbox). Mirrors /review's structure
     exactly: per-request BYO `llm` block builds fresh clients via
@@ -208,7 +243,7 @@ def scan(req: ScanRequest):
     return _execute(get_llms_by_role(settings))
 
 
-@app.post("/fix")
+@app.post("/fix", dependencies=_INTERNAL)
 def fix(req: FixRequest) -> FixResponse:
     """POST /fix — author a real file patch for one work item's evidence,
     verified by auto_resolver's core, an honest fix_failed when it can't
@@ -261,7 +296,7 @@ class ApplyApprovalRequest(BaseModel):
     command: str
 
 
-@app.post("/approvals/apply")
+@app.post("/approvals/apply", dependencies=_INTERNAL)
 def apply_approval(req: ApplyApprovalRequest):
     """Apply an operator-approved infrastructure command and resume the run.
     Driven by the approval-exec worker after a human approved the ApprovalPrompt.
@@ -284,7 +319,7 @@ def apply_approval(req: ApplyApprovalRequest):
     }
 
 
-@app.post("/chat")
+@app.post("/chat", dependencies=_INTERNAL)
 def chat(payload: Dict[str, Any]):
     # Per-request BYO model (mirrors /review): when the caller includes an `llm`
     # block, this reply runs on THAT model — the tenant's connected model — not
@@ -312,7 +347,7 @@ def chat(payload: Dict[str, Any]):
     return _get_chat_agent().reply(payload)
 
 
-@app.get("/context-map/ui-url/{installation_id}")
+@app.get("/context-map/ui-url/{installation_id}", dependencies=_INTERNAL)
 def context_map_ui_url(installation_id: int):
     try:
         url = get_or_start_ui(installation_id)
@@ -321,7 +356,7 @@ def context_map_ui_url(installation_id: int):
         return {"available": False, "url": None, "reason": str(exc)}
 
 
-@app.get("/context-map/graph/{installation_id}")
+@app.get("/context-map/graph/{installation_id}", dependencies=_INTERNAL)
 def context_map_graph(installation_id: int):
     """Return the normalized code-graph JSON (GraphExport) for an installation's
     indexed repo, for the dashboard's Sensorium map. Mirrors the /context-map/
@@ -374,7 +409,7 @@ def _index_installation_repo(req: IndexRequest) -> None:
         )
 
 
-@app.post("/context-map/index")
+@app.post("/context-map/index", dependencies=_INTERNAL)
 def context_map_index(req: IndexRequest, background: BackgroundTasks):
     """Trigger a code-map build for one repo. Returns immediately and does the
     clone+index in the background so the calling webhook handler stays fast;

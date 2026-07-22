@@ -18,6 +18,7 @@ from arete_agents.agents.performance import PerformanceAgent
 from arete_agents.agents.quality import QualityAgent
 from arete_agents.agents.security import SecurityAgent
 from arete_agents.agents.test_coverage import TestCoverageAgent
+from arete_agents.config import get_settings
 from arete_agents.context_map import ensure_indexed
 from arete_agents.critic import CriticAgent
 from arete_agents.grounding import has_quoted_evidence, valid_lines_for_patch
@@ -141,11 +142,21 @@ class SynthesizerAgent:
 Your task is to merge raw code reviews from multiple specialist agents into one verified, high-signal review.
 1. Read the raw comments provided.
 2. Remove duplicates and resolve contradictions.
-3. VERIFY every remaining comment against the diff content quoted inside it and the other raw reviews. A comment is well-grounded only if it references an actual line, symbol, or pattern visible in the review material. DROP any comment that is low-confidence, speculative, vague, or hallucinated (e.g. it names a variable or function that does not appear anywhere in the reviewed diff content) — do NOT include dropped comments in the output. Count how many you dropped and report it as "dropped_count".
-4. NEVER include a ```suggestion code block unless you can verify the suggested replacement actually addresses the diff shown: it must reference real variable/function names that appear in the diff content and match the surrounding code's indentation. If a suggestion cannot be verified, strip the ```suggestion block and keep only the prose explanation (or drop the whole comment if nothing verifiable remains).
+3. VERIFY every remaining comment against the diff content quoted inside it and the other raw \
+reviews. A comment is well-grounded only if it references an actual line, symbol, or pattern visible \
+in the review material. DROP any comment that is low-confidence, speculative, vague, or hallucinated \
+(e.g. it names a variable or function that does not appear anywhere in the reviewed diff content) — \
+do NOT include dropped comments in the output. Count how many you dropped and report it as "dropped_count".
+4. NEVER include a ```suggestion code block unless you can verify the suggested replacement actually \
+addresses the diff shown: it must reference real variable/function names that appear in the diff \
+content and match the surrounding code's indentation. If a suggestion cannot be verified, strip the \
+```suggestion block and keep only the prose explanation (or drop the whole comment if nothing \
+verifiable remains).
 5. Group the finalized comments by file.
 6. Provide a summarized string for each file.
-7. Provide an overall summary. You may optionally include a ```mermaid diagram in it, but ONLY if this PR's changes are complex enough (multi-component data/control flow) that a diagram genuinely aids understanding — for simple or small PRs, omit it.
+7. Provide an overall summary. You may optionally include a ```mermaid diagram in it, but ONLY if \
+this PR's changes are complex enough (multi-component data/control flow) that a diagram genuinely \
+aids understanding — for simple or small PRs, omit it.
 8. Calculate risk level ("low", "medium", "high", "critical") based on severity.
 
 Return ONLY valid JSON with this exact structure:
@@ -171,13 +182,19 @@ Return ONLY valid JSON with this exact structure:
 }"""
 
         if pr.custom_rules:
-            system_prompt += "\n\nCRITICAL: The user has defined custom Standard Operating Procedures (SOP) rules for this repository in .arete.yml. You MUST ensure the final output strictly obeys these rules:\n"
+            system_prompt += (
+                "\n\nCRITICAL: The user has defined custom Standard Operating Procedures (SOP) rules "
+                "for this repository in .arete.yml. You MUST ensure the final output strictly obeys these rules:\n"
+            )
             system_prompt += "\n".join(f"- {rule}" for rule in pr.custom_rules)
 
         from arete_agents.skills.loader import load_installed_skills
         installed_skills = load_installed_skills()
         if installed_skills:
-            system_prompt += "\n\nYou are also equipped with the following skills and global instructions. Adhere to them strictly when synthesizing reviews:\n"
+            system_prompt += (
+                "\n\nYou are also equipped with the following skills and global instructions. "
+                "Adhere to them strictly when synthesizing reviews:\n"
+            )
             system_prompt += "\n\n---\n\n".join(installed_skills)
 
         raw_reviews_json = [fr.model_dump() for fr in raw_reviews]
@@ -352,7 +369,12 @@ class ReviewOrchestrator:
             else:
                 for file in pr.files:
                     for agent in self._agents:
-                        sends.append(Send("execute_agent_review", ReviewTaskState(pr=pr, file=file, agent_name=agent.agent_name)))
+                        sends.append(
+                            Send(
+                                "execute_agent_review",
+                                ReviewTaskState(pr=pr, file=file, agent_name=agent.agent_name),
+                            )
+                        )
             return sends
 
         workflow.add_conditional_edges(START, route, ["execute_agent_review", "synthesize_reviews"])
@@ -631,7 +653,16 @@ class ReviewOrchestrator:
             )
 
         try:
-            state = self.graph.invoke({"pr": pr})
+            # Bounds simultaneous provider calls across the (files x agents)
+            # Send() fan-out in _build_graph -- unbounded, a 20-file PR is
+            # ~120 concurrent calls. Same mechanism remediation.py:126 uses;
+            # value is a sane default (Task 9), not yet tuned against a real
+            # large PR + real Anthropic key.
+            settings = get_settings()
+            state = self.graph.invoke(
+                {"pr": pr},
+                config={"max_concurrency": settings.review_max_concurrency},
+            )
             return state["final_result"]
         except Exception as exc:
             logging.warning(f"LangGraph orchestration failed: {exc}. Falling back to blind merge.")

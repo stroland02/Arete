@@ -1,16 +1,32 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { internalAuthHeaders } from './internal-auth';
+import { verifyInternalToken } from '@arete/internal-token';
 
-afterEach(() => vi.unstubAllEnvs());
+const KEYS = JSON.stringify({ k1: 'a'.repeat(48) });
+
+beforeEach(() => {
+  process.env.INTERNAL_TOKEN_SIGNING_KEYS = KEYS;
+  process.env.INTERNAL_TOKEN_ACTIVE_KID = 'k1';
+});
+
+afterEach(() => {
+  delete process.env.INTERNAL_TOKEN_SIGNING_KEYS;
+  delete process.env.INTERNAL_TOKEN_ACTIVE_KID;
+});
 
 describe('internalAuthHeaders', () => {
-  it('returns a bearer Authorization header when INTERNAL_API_TOKEN is set', () => {
-    vi.stubEnv('INTERNAL_API_TOKEN', 's3cret');
-    expect(internalAuthHeaders()).toEqual({ authorization: 'Bearer s3cret' });
+  it('returns a bearer Authorization header carrying a signed dashboard token that the shared verifier accepts', async () => {
+    const headers = await internalAuthHeaders();
+    expect(Object.keys(headers)).toEqual(['authorization']);
+    const match = /^Bearer (.+)$/.exec(headers.authorization);
+    expect(match).not.toBeNull();
+
+    const result = await verifyInternalToken(headers.authorization);
+    expect(result).toMatchObject({ ok: true, iss: 'arete-dashboard' });
   });
 
-  it('returns no headers when the token is unset (webhook fails closed, not us)', () => {
-    vi.stubEnv('INTERNAL_API_TOKEN', '');
-    expect(internalAuthHeaders()).toEqual({});
+  it('returns no headers when the keyset is unconfigured (fail-closed elsewhere, not us)', async () => {
+    delete process.env.INTERNAL_TOKEN_SIGNING_KEYS;
+    expect(await internalAuthHeaders()).toEqual({});
   });
 });

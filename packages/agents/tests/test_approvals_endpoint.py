@@ -8,11 +8,12 @@ from arete_agents.tools.executor import (
     CommandOutcome,
     MockCommandExecutor,
 )
+from tests.conftest import INTERNAL_HEADERS
 
 
 @pytest.fixture
 def client():
-    return TestClient(server.app)
+    return TestClient(server.app, headers=INTERNAL_HEADERS)
 
 
 def _use(monkeypatch, executor):

@@ -784,25 +784,30 @@ export async function getAgentEventsPerMinute(
 ): Promise<AgentEventData[]> {
   if (installationIds.length === 0) return [];
 
-  // project_id maps to installationId in Areté's schema adaptation
-  const inClause = installationIds.map(id => `'${id}'`).join(', ');
-  
+  // project_id maps to installationId in Areté's schema adaptation.
+  // Server-side bound parameters ({name: Type} + query_params) — never string
+  // interpolation: installation ids are caller-influenced and this read path
+  // becomes hot once the promoted collector writes otel_* (obs spec §3 Phase 0).
   const result = await clickhouse.query({
     query: `
       SELECT
         minute,
         sum(c) as count
       FROM superlog.events_per_minute
-      WHERE project_id IN (${inClause})
+      WHERE project_id IN ({installationIds: Array(String)})
       GROUP BY minute
       ORDER BY minute DESC
-      LIMIT ${limitMinutes}
+      LIMIT {limitMinutes: UInt32}
     `,
+    query_params: {
+      installationIds,
+      limitMinutes: Math.max(1, Math.floor(limitMinutes)),
+    },
     format: 'JSONEachRow',
   });
 
-  const rows: any[] = await result.json();
-  
+  const rows: Array<{ minute: string; count: string }> = await result.json();
+
   return rows.map(r => ({
     minute: new Date(r.minute),
     count: Number(r.count),

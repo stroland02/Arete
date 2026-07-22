@@ -21,6 +21,10 @@ import {
   defaultResolveModelDeps,
   type LlmConfig,
 } from '../resolve-model-connection.js'
+import { logger } from '../logger.js'
+import { internalAuthHeaders } from '../internal-auth.js'
+
+const log = logger.child({ component: 'scan' })
 
 export interface ScanFindingBody {
   kind: 'issue' | 'opportunity'
@@ -181,7 +185,7 @@ export async function maybeStartScan(
         data: { status: 'failed', error: message, finishedAt: new Date() },
       })
     } catch (updateErr) {
-      console.error('[scan-trigger] failed to record ScanRun failure:', updateErr)
+      log.error({ err: updateErr }, 'failed to record ScanRun failure')
     }
   }
 
@@ -218,7 +222,7 @@ export function defaultScanTriggerDeps(): ScanTriggerDeps {
       const { getServiceConfig } = await import('../config.js')
       const res = await fetch(`${getServiceConfig().pythonServiceUrl}/scan`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await internalAuthHeaders()) },
         body: JSON.stringify(body),
       })
       if (!res.ok) {

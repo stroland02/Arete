@@ -12,6 +12,9 @@ import { getCachedTelemetry, setCachedTelemetry } from './cache.js'
 import { recordTelemetryFailure, recordTelemetrySuccess, isTelemetryCircuitOpen } from './circuit-breaker.js'
 import { getValidOAuthAccessToken } from '../oauth/get-valid-oauth-token.js'
 import { prisma } from '../db.js'
+import { logger } from '../logger.js'
+
+const log = logger.child({ component: 'telemetry-context' })
 
 function sourceRefFor(owner: string, repo: string, connector: TelemetryConnectorConfig): string {
   if (connector.provider === 'github_actions') return `${owner}/${repo}`
@@ -105,7 +108,7 @@ async function fetchOneConnector(
   if (result.status === 'error') {
     // Provider name only — never the raw error, which could carry
     // credential-adjacent details (URLs, headers) from the connectors.
-    console.warn(`[telemetry] ${connector.provider} connector failed for ${sourceRef}; review proceeds without it`)
+    log.warn({ provider: connector.provider, sourceRef }, 'connector failed; review proceeds without it')
     recordTelemetryFailure(connector.provider)
     return null
   }

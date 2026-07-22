@@ -1,0 +1,43 @@
+{
+  "name": "@arete/telemetry",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./logger": { "types": "./dist/logger.d.ts", "default": "./dist/logger.js" }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "pnpm run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/auto-instrumentations-node": "^0.78.0",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.220.0",
+    "@opentelemetry/exporter-metrics-otlp-http": "^0.220.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.220.0",
+    "@opentelemetry/instrumentation-pino": "^0.66.0",
+    "@opentelemetry/resources": "^2.9.0",
+    "@opentelemetry/sdk-logs": "^0.220.0",
+    "@opentelemetry/sdk-metrics": "^2.9.0",
+    "@opentelemetry/sdk-node": "^0.220.0",
+    "@opentelemetry/sdk-trace-node": "^2.9.0",
+    "@opentelemetry/semantic-conventions": "^1.43.0",
+    "import-in-the-middle": "^1.14.0",
+    "pino": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.9"
+  }
+}
