@@ -28,12 +28,30 @@
 // (installationExternalId, repoFullName) pair to a repositoryId outside that
 // installation's own rows.
 //
-// Size cap (spec §3 "size-capped"): body length and total ACTIVE rows per
-// repository are both capped. A breach is REJECTED with a clear reason, never
-// silently truncated. The row cap reuses persistence.ts's MAX_PROJECT_MEMORIES
-// so the write cap and the read cap (fetchProjectMemories, which takes the 20
-// most recent) can never drift apart — there is no point ever storing more
-// active rows than the read path will ever surface.
+// Size cap (spec §3 "size-capped"): body and title length are capped, and a
+// breach is REJECTED with a clear reason, never silently truncated.
+//
+// Row cap — FIFO, not a wall. Total ACTIVE rows per repository are capped at
+// persistence.ts's MAX_PROJECT_MEMORIES, shared with the read path
+// (fetchProjectMemories, which takes the 20 most recent) so write and read can
+// never drift apart. When a repo is AT the cap, the OLDEST active row is
+// ARCHIVED (`status: 'archived'` — retained, never deleted) to make room for
+// the new one.
+//
+// This used to be a hard `cap_exceeded` rejection, and that was the defect:
+// nothing in the entire codebase ever set `status='archived'`, so a repo that
+// reached 20 active rows stopped learning PERMANENTLY — its memory set froze at
+// whatever it happened to know first, and every later write failed forever,
+// silently, for the life of the repo. Archiving the oldest is exactly what the
+// read path already implies (it only ever surfaces the 20 most recent), so this
+// makes storage agree with what the model actually sees rather than inventing a
+// new policy.
+//
+// The count, the archive and the create run in ONE serializable transaction.
+// The cap used to be check-then-create with no transaction and no DB
+// constraint, so N concurrent writes for one repo could all observe
+// `count == 19` and all insert — the cap was advisory. Serializable makes it
+// enforced.
 //
 // Honest failure (the defect being removed): every failure path returns
 // `{ ok: false, reason }`, including an unexpected DB rejection — this
@@ -200,7 +218,6 @@ async function saveInner(params: SaveMemoryParams): Promise<SaveMemoryResult> {
 
   let installation: { id: string } | null
   let repository: { id: string } | null
-  let activeCount: number
   try {
     installation = await prisma.installation.findUnique({
       where: { provider_externalId: { provider: 'github', externalId: installationExternalId } },
@@ -216,20 +233,22 @@ async function saveInner(params: SaveMemoryParams): Promise<SaveMemoryResult> {
       select: { id: true },
     })
     if (!repository) return { ok: false, reason: 'repo_not_found' }
-
-    activeCount = await prisma.agentMemory.count({
-      where: { repositoryId: repository.id, status: 'active' },
-    })
   } catch (err) {
     log.error({ err }, 'failed to resolve tenant for agent memory write')
     return { ok: false, reason: 'internal_error' }
   }
 
-  if (activeCount >= MAX_MEMORIES_PER_REPO) {
+  const repositoryId = repository.id
+
+  // Misconfiguration guard, and the ONLY surviving `cap_exceeded` case. With a
+  // cap below 1 there is no room to archive INTO — storing one row would mean
+  // archiving the entire set to hold it — so the write is honestly refused
+  // rather than silently destroying every memory the repo has.
+  if (MAX_MEMORIES_PER_REPO < 1) {
     return {
       ok: false,
       reason: 'cap_exceeded',
-      detail: `repository already has ${activeCount} active memories (max ${MAX_MEMORIES_PER_REPO})`,
+      detail: `memory cap is configured to ${MAX_MEMORIES_PER_REPO}; no memory can be stored`,
     }
   }
 
@@ -245,15 +264,64 @@ async function saveInner(params: SaveMemoryParams): Promise<SaveMemoryResult> {
     // alerting sink makes for every persisted field, alerting/receiver.ts) —
     // never a bespoke one — and are persisted as-is here: `scrubSinkText` is
     // idempotent, so re-scrubbing at this point would be redundant, not safer.
-    const created = await prisma.agentMemory.create({
-      data: {
-        repositoryId: repository.id,
-        kind,
-        title: scrubbedTitle,
-        body: scrubbedBody,
+    //
+    // Count → archive-oldest → create, in ONE serializable transaction. All
+    // three must be atomic: counting outside the transaction is exactly the
+    // check-then-create race that made the cap advisory, and archiving outside
+    // it could retire a memory for a write that then fails.
+    const { created, archived } = await prisma.$transaction(
+      async (tx) => {
+        const activeCount = await tx.agentMemory.count({
+          where: { repositoryId, status: 'active' },
+        })
+
+        // How many must retire so this row fits WITHIN the cap, not at it.
+        // Normally 0 or 1; >1 only if a pre-existing overshoot (from the old
+        // racy path) is being drained, which this quietly repairs.
+        const mustArchive = activeCount - MAX_MEMORIES_PER_REPO + 1
+        let archivedCount = 0
+        if (mustArchive > 0) {
+          const oldest = await tx.agentMemory.findMany({
+            where: { repositoryId, status: 'active' },
+            orderBy: { createdAt: 'asc' },
+            take: mustArchive,
+            select: { id: true },
+          })
+          if (oldest.length > 0) {
+            const result = await tx.agentMemory.updateMany({
+              where: { id: { in: oldest.map((m) => m.id) } },
+              // ARCHIVED, never deleted: the row stays queryable for anyone who
+              // later wants to see what this repo used to know.
+              data: { status: 'archived' },
+            })
+            archivedCount = result.count
+          }
+        }
+
+        const row = await tx.agentMemory.create({
+          data: {
+            repositoryId,
+            kind,
+            title: scrubbedTitle,
+            body: scrubbedBody,
+          },
+          select: { id: true },
+        })
+        return { created: row, archived: archivedCount }
       },
-      select: { id: true },
-    })
+      { isolationLevel: 'Serializable' },
+    )
+
+    if (archived > 0) {
+      // Never a silent eviction: a memory leaving the active set is a real
+      // change to what the model will see on every future review of this repo.
+      log.info(
+        { repositoryId, archived, cap: MAX_MEMORIES_PER_REPO },
+        'archived oldest agent memories to make room for a new one',
+      )
+      trace.getActiveSpan()?.setAttribute('arete.memory.archived', archived)
+    }
+
     return { ok: true, id: created.id }
   } catch (err) {
     // The exact failure mode the stub used to hide: a real write failure
