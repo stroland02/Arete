@@ -25,6 +25,11 @@ import {
 import { logger } from '../logger.js'
 import { internalAuthHeaders } from '../internal-auth.js'
 import { runWithFixSpan, withChildSpan } from '../observability.js'
+import {
+  collectFixSignals,
+  defaultSignalReader,
+  type FixIncidentSignals,
+} from './incident-signals.js'
 
 const log = logger.child({ component: 'fix' })
 
@@ -68,6 +73,16 @@ export interface FixRequestBody {
     confidence: number
     evidence: { path: string; line: number; excerpt?: string | null }[]
   }
+  /**
+   * Runtime context from the incident that opened this work item, when one did.
+   *
+   * OPTIONAL ON THE WIRE, IN BOTH DIRECTIONS. Most work items are scan-born and
+   * have no incident behind them, so omitting it is the normal case and not a
+   * degraded one — a request without `signals` is byte-identical to what this
+   * caller sent before. That also lets a webhook and an agents service at
+   * different versions interoperate unchanged during a rollout.
+   */
+  signals?: FixIncidentSignals | null
   llm: LlmConfig
 }
 
@@ -118,6 +133,13 @@ export interface FixTriggerDeps {
   resolveModel(externalInstallationId: number): Promise<LlmConfig | undefined>
   mintToken(externalInstallationId: number): Promise<string>
   fetchFix(body: FixRequestBody): Promise<FixResponseBody>
+  /** Resolves the incident context for a work item, or null when no incident
+   *  opened it. Injected rather than imported so a fix-drive test does not need
+   *  a ClickHouse fake to exercise the paths that have nothing to do with it. */
+  collectSignals(params: {
+    workItemId: string
+    installationId: string
+  }): Promise<FixIncidentSignals | null>
 }
 
 interface SynthStepJson {
@@ -316,6 +338,23 @@ async function driveFixInner(
     ? (item.evidence as { path: string; line: number; excerpt?: string | null }[])
     : []
 
+  // Runtime context for an alert-born work item: the error spans, logs and
+  // exceptions around the incident that opened it. Null for a scan-born item,
+  // which is most of them — see fix/incident-signals.ts. Its own child span,
+  // beside fix.resolve, so a slow telemetry read is attributable rather than
+  // hiding inside the agents call. Never throws; a telemetry outage degrades
+  // the fix to the evidence it already had.
+  const signals = await withChildSpan('fix.signals.collect', () =>
+    deps.collectSignals({ workItemId: item.id, installationId: item.installationId })
+  )
+  if (signals) {
+    span.setAttribute('arete.fix.signals.availability', signals.availability)
+    span.setAttribute(
+      'arete.fix.signals.count',
+      signals.spans.length + signals.logs.length + signals.exceptions.length
+    )
+  }
+
   let resp: FixResponseBody
   try {
     // The HTTP call into agents' /fix. No explicit HTTP-client span here —
@@ -336,6 +375,7 @@ async function driveFixInner(
           confidence: item.confidence,
           evidence,
         },
+        signals,
         llm,
       })
     )
@@ -413,6 +453,20 @@ export function defaultFixTriggerDeps(app: App): FixTriggerDeps {
         findUnique: delegate('issueContainer', 'findUnique'),
         update: delegate('issueContainer', 'update'),
       },
+    },
+    // Same lazy-import seam as the delegates above: the incident lookup and the
+    // platform gate both need the real Prisma client, which route registration
+    // must not pull in.
+    collectSignals: async (params) => {
+      const { prisma } = await import('../db.js')
+      return collectFixSignals(
+        {
+          prisma: prisma as unknown as Parameters<typeof collectFixSignals>[0]['prisma'],
+          db: prisma as never,
+          getSignals: defaultSignalReader,
+        },
+        params
+      )
     },
     resolveModel: (externalId) =>
       resolveModelConnectionForReview(externalId, defaultResolveModelDeps()),

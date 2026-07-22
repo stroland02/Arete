@@ -40,6 +40,7 @@ from arete_agents.context_map.repo_cache import (
     ensure_repo_checked_out,
 )
 from arete_agents.fix_findings import FIX_FINDINGS_RUBRIC, from_fix_item, ground_findings, has_qualifying_finding
+from arete_agents.fix_signals import render_signals
 from arete_agents.models.fix import (
     FixPatchFile,
     FixRequest,
@@ -94,20 +95,33 @@ Return ONLY valid JSON (no prose, no code fences):
 }}"""
 
 
-def author_patch(llm: BaseChatModel, item: Any, sources: dict[str, str]) -> dict:
+def author_patch(
+    llm: BaseChatModel, item: Any, sources: dict[str, str], signals: Any = None
+) -> dict:
     """One author pass. Fails closed: any error or unparseable output is
     reported as "no fix produced" (empty files), never fabricated. `item` is
     the FixItem; kept loosely typed here to avoid a model->pipeline import
-    cycle with models/fix.py's own use of this module."""
+    cycle with models/fix.py's own use of this module.
+
+    `signals` is the incident's runtime context (FixSignals) when an alert
+    opened this work item, else None — most work items are scan-born and have
+    none, so it defaults to None and the prompt is byte-identical to before.
+    """
     evidence_lines = "\n".join(
         f"- {e.path}:{e.line}" + (f" — {e.excerpt}" if e.excerpt else "") for e in item.evidence
     )
     briefing = "\n\n".join(_numbered(path, content) for path, content in sources.items())
+    # Runtime context goes BEFORE the file contents: what actually failed at
+    # runtime should frame how the author reads the code, rather than arriving
+    # as an afterthought once it has already formed a theory from the source.
+    signal_section = render_signals(signals)
+    signal_block = f"{signal_section}\n\n" if signal_section else ""
     messages = [
         SystemMessage(content=_AUTHOR_SYSTEM_PROMPT.format(dimension=item.dimension, rubric=FIX_FINDINGS_RUBRIC)),
         HumanMessage(
             content=(
                 f"Issue: {item.title}\n{item.detail}\n\nEvidence:\n{evidence_lines}\n\n"
+                f"{signal_block}"
                 f"Current file contents (line-numbered):\n\n{briefing}"
             )
         ),
@@ -327,7 +341,7 @@ def _drive_fix_stages(
         # (_instrument_llm_layers), so it gets gen_ai.* attributes (provider,
         # model, token usage) automatically, nested under this span, with no
         # extra manual instrumentation required here.
-        authored = author_patch(author_llm, req.item, sources)
+        authored = author_patch(author_llm, req.item, sources, req.signals)
         span.set_attribute("arete.fix.author.file_count", len(authored["files"]))
         if not authored["files"]:
             span.set_status(Status(StatusCode.ERROR, "no fix produced"))
