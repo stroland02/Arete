@@ -753,8 +753,13 @@ describe('pipeline integration: webhook -> queue -> worker -> review -> post', (
     // retry". processGitHubCheckRun ran the pre-fix shared try/catch, so a
     // publish-only failure re-ran the whole CI-diagnosis LLM pipeline. These
     // pin the same two-branch behavior for check_run.
+    // `as const` on the discriminants keeps them as literal types ('github' /
+    // 'check_run') so this object is assignable to the ReviewJobData union when
+    // passed to processReviewJob; a bare const would widen them to `string`
+    // (TS2345). The existing inline pull_request jobs avoid this by being
+    // contextually typed at the call site.
     const checkRunJob = {
-      provider: 'github', kind: 'check_run', owner: 'acme', repo: 'api',
+      provider: 'github' as const, kind: 'check_run' as const, owner: 'acme', repo: 'api',
       repositoryExternalId: 1, fullName: 'acme/api', installationId: 42,
       prNumber: 1, headSha: 'abc', ciLogs: 'build failed: TypeError at foo.ts:3',
     }
