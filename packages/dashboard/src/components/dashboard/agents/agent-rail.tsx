@@ -1,9 +1,12 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { AGENTS, type Agent } from "./agent-catalog";
 import { cn } from "@/lib/utils";
 import { IconSettings, IconCpu } from "@tabler/icons-react";
+import { WorkItemInboxSection } from "@/components/dashboard/services/work-item-inbox";
 import type { ActiveModelConnection } from "@/lib/model-connections-map";
+import type { InboxView } from "@/lib/work-items";
 
 export interface AgentRailProps {
   agents?: Agent[];
@@ -16,6 +19,14 @@ export interface AgentRailProps {
   /** The connected model all agents run on — shown once in the footer, replacing
       the old per-agent hardcoded Opus/Sonnet tier badges. */
   activeModel?: ActiveModelConnection | null;
+  /**
+   * The live work-item inbox — what the agents are currently working on. Null on
+   * a fresh/unconnected account (nothing to scan yet), in which case the section
+   * is omitted rather than shown empty. Selecting an item deep-links to /services
+   * where the item can be acted on; the Agents page provides visibility, not a
+   * second copy of the action surface.
+   */
+  inbox?: InboxView | null;
 }
 
 /**
@@ -34,7 +45,9 @@ export function AgentRail({
   onSelect,
   onConfigure,
   activeModel = null,
+  inbox = null,
 }: AgentRailProps) {
+  const router = useRouter();
   return (
     <section className="flex min-h-0 flex-1 flex-col" aria-label="Agents rail">
       <header className="flex h-10 shrink-0 items-center justify-between border-b border-border-subtle px-3">
@@ -120,6 +133,22 @@ export function AgentRail({
           );
         })}
       </ul>
+
+      {/* What the agents are working on — the live work inbox, bounded so it
+          never crowds out the agents list on a short viewport. Selecting an
+          item hands off to /services (focused on its container when there is
+          one) to act on it. */}
+      {inbox && (
+        <div className="max-h-[45%] shrink-0 overflow-y-auto border-t border-border-subtle">
+          <WorkItemInboxSection
+            inbox={inbox}
+            activeItemId={null}
+            onSelect={(item) =>
+              router.push(item.containerId ? `/services?container=${encodeURIComponent(item.containerId)}` : "/services")
+            }
+          />
+        </div>
+      )}
 
       <footer className="shrink-0 space-y-1.5 border-t border-border-subtle px-3 py-2">
         {activeModel ? (

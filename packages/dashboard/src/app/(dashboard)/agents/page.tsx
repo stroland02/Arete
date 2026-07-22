@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getDashboardViewModel, resolveSelectedInstallationIds, getAgentActivity } from "@/lib/queries";
 import { getActiveModelConnection } from "@/lib/model-connections-api";
+import { getWorkItemInbox } from "@/lib/work-items";
 import { AgentsWorkspace } from "@/components/dashboard/agents/agents-workspace";
 
 // Same rationale as the overview: this page reads the session and queries
@@ -56,6 +57,11 @@ export default async function AgentsPage({
   // hardcoded Opus/Sonnet tier badges). Null when nothing is connected.
   const activeModel = await getActiveModelConnection();
 
+  // What the agents are working on right now, surfaced in the rail. Null on an
+  // unconnected account (nothing to scan) so the section is omitted, not empty.
+  // Same tenant scoping as every other query on this page.
+  const inbox = viewModel.hasAccess ? await getWorkItemInbox(db, installationIds) : null;
+
   return (
     <AgentsWorkspace
       findingCountById={Object.fromEntries(
@@ -67,6 +73,7 @@ export default async function AgentsPage({
       connected={viewModel.hasAccess}
       modelConnected={modelConnected}
       activeModel={activeModel}
+      inbox={inbox}
       containerId={container ?? null}
       latestReview={
         latest

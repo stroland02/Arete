@@ -8,6 +8,7 @@ import { PrPanel } from "./pr-panel";
 import { AgentConfigDrawer } from "./agent-config-drawer";
 import type { AgentActivityFinding } from "@/lib/queries";
 import type { ActiveModelConnection } from "@/lib/model-connections-map";
+import type { InboxView } from "@/lib/work-items";
 
 export interface AgentsWorkspaceProps {
   findingCountById: Record<string, number>;
@@ -35,6 +36,9 @@ export interface AgentsWorkspaceProps {
   /** The connected model every agent runs on (dynamic; replaces the old
       hardcoded Opus/Sonnet tier). Null when no model is connected. */
   activeModel?: ActiveModelConnection | null;
+  /** The live work-item inbox surfaced in the rail — what the agents are
+      working on right now. Null on a fresh/unconnected account. */
+  inbox?: InboxView | null;
 }
 
 /**
@@ -53,6 +57,7 @@ export function AgentsWorkspace({
   connected = false,
   modelConnected = false,
   activeModel = null,
+  inbox = null,
 }: AgentsWorkspaceProps) {
   const [selectedAgentId, setSelectedAgentId] = useState<string>(AGENTS[0].id);
   const [configAgentId, setConfigAgentId] = useState<string | null>(null);
@@ -75,6 +80,7 @@ export function AgentsWorkspace({
           onSelect={setSelectedAgentId}
           onConfigure={setConfigAgentId}
           activeModel={activeModel}
+          inbox={inbox}
         />
         <AgentConversation
           key={`${selectedAgent.id}:${containerId ?? "general"}`}
