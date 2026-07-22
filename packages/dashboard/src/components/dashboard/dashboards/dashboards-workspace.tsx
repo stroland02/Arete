@@ -50,14 +50,14 @@ export function DashboardsWorkspace({ model, accountState }: { model: Dashboards
 
   // Skeleton + banner derive from the resolver's lifecycle stage — never ad-hoc
   // hasAccess/totalPrs. The telemetry tab keys on its own connection type
-  // (telemetry sources), which the account-state contract does not cover.
-  // Disconnected shows NO banner: the skeletons alone carry the shape, and the
-  // Overview setup card above owns the connect-a-repository CTA.
+  // (telemetry sources) and shows NO banner: TelemetryConnectCards below is the
+  // connect CTA. Disconnected also shows NO banner — the skeletons alone carry
+  // the shape, and the Overview setup card above owns the connect CTAs.
   let skeleton: boolean;
   let banner: BannerVariant | null;
   if (tab === "telemetry") {
     skeleton = data.telemetry.length === 0;
-    banner = skeleton ? "connect-service" : null;
+    banner = null;
   } else {
     skeleton = !accountState.hasReviews;
     banner = accountState.stage === "connected_idle" ? "awaiting-review" : null;
