@@ -32,3 +32,8 @@ Thumbs.db
 
 # Prisma generated client (rebuilt by @arete/db prepare script)
 packages/db/src/generated/
+
+# Coverage reports (advisory; regenerated on demand)
+coverage/
+.coverage
+*.lcov

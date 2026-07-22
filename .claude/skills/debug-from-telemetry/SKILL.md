@@ -27,7 +27,7 @@ these names are what the code emits today, not what the spec aspires to):
 |---|---|
 | `arete-webhook` | HTTP server spans; `add review-pr` (bullmq producer) |
 | `arete-worker` | `process review-pr` (bullmq consumer) → `review.run` (root of a review) → `review.context.build`, `review.publish` |
-| `arete-agents` | FastAPI server spans; `agent_review:{agent_name}`, `synthesize_reviews`; LLM spans named by the gen_ai contrib instrumentations (e.g. `chat {model}`) |
+| `arete-agents` | FastAPI server spans; `agent.review` (attr `agent.role`), `review.synthesize`; LLM spans named by the gen_ai contrib instrumentations (e.g. `chat {model}`) |
 | `arete-dashboard` | Next.js server spans |
 
 A whole review is ONE trace spanning webhook → worker → agents: context
