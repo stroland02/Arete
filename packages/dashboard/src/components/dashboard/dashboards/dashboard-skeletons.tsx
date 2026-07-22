@@ -23,10 +23,30 @@ export function Shimmer({ className, style }: { className?: string; style?: CSSP
   );
 }
 
+/**
+ * Reflective sweep for skeletons whose shape is drawn (charts, bar rows) rather
+ * than composed of Shimmer blocks. Overlay it on a `relative overflow-hidden`
+ * parent so every loading card reads as loading, not as a static empty state.
+ */
+export function ShimmerSweep() {
+  const reduce = useReducedMotion();
+  if (reduce) return null;
+  return (
+    <motion.div
+      aria-hidden
+      className="pointer-events-none absolute inset-0"
+      style={{ background: "linear-gradient(90deg, transparent, color-mix(in srgb, var(--color-content-primary) 6%, transparent), transparent)" }}
+      initial={{ x: "-100%" }}
+      animate={{ x: "100%" }}
+      transition={{ repeat: Infinity, duration: 2.1, ease: "easeInOut" }}
+    />
+  );
+}
+
 /** Empty line-chart frame: axes + dashed gridlines + faint dashed ghost curve. */
 export function TimeseriesSkeleton() {
   return (
-    <div className="grid h-44 grid-cols-[30px_1fr] gap-2" aria-label="chart preview">
+    <div className="relative grid h-44 grid-cols-[30px_1fr] gap-2 overflow-hidden" aria-label="chart preview">
       <div className="flex flex-col justify-between py-0.5 pb-[18px]">
         {[0, 1, 2, 3].map((i) => (
           <div key={i} className="h-[7px] w-[22px] rounded bg-surface-2" />
@@ -54,6 +74,7 @@ export function TimeseriesSkeleton() {
           ))}
         </div>
       </div>
+      <ShimmerSweep />
     </div>
   );
 }
@@ -63,27 +84,30 @@ export function BarsSkeleton({ rows = 4 }: { rows?: number }) {
   const widths = [82, 61, 44, 29, 55, 38];
   const labels = [34, 28, 40, 24, 44, 30];
   return (
-    <ul className="space-y-4" aria-label="breakdown preview">
-      {Array.from({ length: rows }).map((_, i) => (
-        <li key={i} className="flex flex-col gap-1.5">
-          <div className="flex justify-between">
-            <div className="h-[9px] rounded bg-surface-2" style={{ width: `${labels[i % labels.length]}%` }} />
-            <div className="h-[9px] w-3.5 rounded bg-surface-2" />
-          </div>
-          <div className="relative h-2 overflow-hidden rounded-full bg-surface-2">
-            <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${widths[i % widths.length]}%`, background: "color-mix(in srgb, var(--color-accent-primary) 16%, transparent)" }} />
-          </div>
-        </li>
-      ))}
-    </ul>
+    <div className="relative overflow-hidden">
+      <ul className="space-y-4" aria-label="breakdown preview">
+        {Array.from({ length: rows }).map((_, i) => (
+          <li key={i} className="flex flex-col gap-1.5">
+            <div className="flex justify-between">
+              <div className="h-[9px] rounded bg-surface-2" style={{ width: `${labels[i % labels.length]}%` }} />
+              <div className="h-[9px] w-3.5 rounded bg-surface-2" />
+            </div>
+            <div className="relative h-2 overflow-hidden rounded-full bg-surface-2">
+              <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${widths[i % widths.length]}%`, background: "color-mix(in srgb, var(--color-accent-primary) 16%, transparent)" }} />
+            </div>
+          </li>
+        ))}
+      </ul>
+      <ShimmerSweep />
+    </div>
   );
 }
 
-/** Metric-tile body ghost: icon block + label + value shimmer. */
+/** Metric-tile body ghost: label + value shimmer. No ghost icon block — the
+ *  icon badge belongs to loaded data, so nothing stands in for it while empty. */
 export function MetricSkeleton() {
   return (
-    <div className="flex min-h-[128px] flex-col gap-4">
-      <div className="h-[42px] w-[42px] rounded-[13px] border border-border-subtle bg-surface-2" />
+    <div className="flex min-h-[70px] flex-col gap-4">
       <div className="space-y-2">
         <Shimmer className="h-[11px] w-[58%]" />
         <Shimmer className="h-[30px] w-[42%] rounded-lg" />

@@ -98,6 +98,16 @@ async function main() {
     process.env.ALERTMANAGER_INGEST_TOKEN = "dev-local-alertmanager-token-not-prod";
     log("infra", "ALERTMANAGER_INGEST_TOKEN unset — using a dev-only default (not for production)");
   }
+  // Self-dogfooding: tag Areté's own telemetry with the dev installation's
+  // project_id so the dashboard (which scopes reads to that installation) can
+  // see our own services' spans/logs — e.g. the Incident Signals panel. The
+  // child services inherit this env. Dev-only; a real deployment leaves it
+  // unset (internal telemetry stays untenanted) unless it deliberately routes
+  // self-telemetry to a dedicated internal tenant.
+  if (!process.env.ARETE_SELF_PROJECT_ID) {
+    process.env.ARETE_SELF_PROJECT_ID = "11111111-1111-4111-8111-111111111111";
+    log("infra", "ARETE_SELF_PROJECT_ID unset — tagging self-telemetry with the dev installation id");
+  }
   log("infra", "bringing up postgres/redis/clickhouse…");
   await run("docker", [...COMPOSE, "up", "-d"]);
   await waitPostgres();

@@ -21,10 +21,14 @@ export interface MetricWidgetProps {
 export function MetricWidget({ label, value, icon, change, positive, trend, skeleton }: MetricWidgetProps) {
   return (
     <Card className="flex h-full flex-col gap-4">
-      <div className="flex items-start justify-between">
-        {icon ? <div className="rounded-2xl border border-border-default bg-content-primary/5 p-3">{icon}</div> : <span />}
-        {!skeleton && change && <Badge variant={positive ? "positive" : "negative"}>{change}</Badge>}
-      </div>
+      {/* The icon badge belongs to the loaded tile — while the skeleton shows,
+          the header collapses rather than parking an empty square on the card. */}
+      {!skeleton && (icon || change) && (
+        <div className="flex items-start justify-between">
+          {icon ? <div className="rounded-2xl border border-border-default bg-content-primary/5 p-3">{icon}</div> : <span />}
+          {change && <Badge variant={positive ? "positive" : "negative"}>{change}</Badge>}
+        </div>
+      )}
       {skeleton ? (
         <div className="flex flex-1 flex-col gap-3">
           <p className="text-sm font-medium text-content-muted">{label}</p>

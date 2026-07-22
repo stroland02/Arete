@@ -18,6 +18,20 @@ describe('buildResource (§5 resource attributes)', () => {
     expect(resource.attributes['deployment.environment.name']).toBe('production')
     vi.unstubAllEnvs()
   })
+
+  it('leaves superlog.project_id unset when ARETE_SELF_PROJECT_ID is unset', () => {
+    vi.stubEnv('ARETE_SELF_PROJECT_ID', '')
+    const resource = buildResource('arete-worker', '0.1.0')
+    expect(resource.attributes['superlog.project_id']).toBeUndefined()
+    vi.unstubAllEnvs()
+  })
+
+  it('stamps superlog.project_id for self-dogfooding when ARETE_SELF_PROJECT_ID is set', () => {
+    vi.stubEnv('ARETE_SELF_PROJECT_ID', '11111111-1111-4111-8111-111111111111')
+    const resource = buildResource('arete-worker', '0.1.0')
+    expect(resource.attributes['superlog.project_id']).toBe('11111111-1111-4111-8111-111111111111')
+    vi.unstubAllEnvs()
+  })
 })
 
 describe('initTelemetry (never crashes the app — spec §3)', () => {

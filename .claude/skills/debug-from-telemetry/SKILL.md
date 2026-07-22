@@ -41,7 +41,9 @@ failure anywhere in the chain):
     SELECT ServiceName, TraceId, SpanName, StatusCode, StatusMessage,
            Duration / 1e9 AS seconds
     FROM superlog.otel_traces
-    WHERE StatusCode = 'STATUS_CODE_ERROR'
+    -- The exporter stores the short status name ('Error'), not the proto enum
+    -- ('STATUS_CODE_ERROR'); match both to be exporter-config-agnostic.
+    WHERE StatusCode IN ('Error', 'STATUS_CODE_ERROR')
     ORDER BY Timestamp DESC LIMIT 20;
 
 **All logs for one trace** (every structured log line carries trace_id):
