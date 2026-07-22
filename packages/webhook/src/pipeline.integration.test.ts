@@ -333,13 +333,20 @@ describe('pipeline integration: webhook -> queue -> worker -> review -> post', (
     vi.doUnmock('./telemetry/fetch-telemetry-context.js')
     vi.doUnmock('./review-bridge.js')
     vi.resetModules()
-    // Regression guard for 515b30a: buildApp is the SINGLE choke point for
-    // registering these mocks. If a future test registers one outside
-    // buildApp, importing the real module here would return the mock and this
-    // assertion fails loudly — instead of silently leaking into a later test
-    // and reintroducing the "keep this test LAST" order-dependence.
+    // Regression guard for 515b30a: this asserts what the two doUnmock calls
+    // just above are supposed to guarantee -- that after teardown, both
+    // buildApp-managed mocks (review-bridge.js, fetch-telemetry-context.js)
+    // are actually un-registered, not just requested to be. It does NOT
+    // guard against some hypothetical future test that mocks a module
+    // outside buildApp (the unconditional doUnmock calls above already
+    // neutralize that case on their own); it guards those doUnmock calls
+    // themselves from being silently weakened or removed, which would
+    // reintroduce the "keep this test LAST" order-dependence from 515b30a
+    // without any test here catching it.
     const bridge = await import('./review-bridge.js')
     expect(vi.isMockFunction(bridge.runReviewPipeline)).toBe(false)
+    const telemetry = await import('./telemetry/fetch-telemetry-context.js')
+    expect(vi.isMockFunction(telemetry.fetchTelemetryContext)).toBe(false)
   })
 
   it('async handoff: pull_request.opened returns 200 immediately, enqueues a job, and does NOT run the pipeline until the job is processed', async () => {

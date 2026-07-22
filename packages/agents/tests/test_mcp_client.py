@@ -121,3 +121,65 @@ def test_connect_http_uses_get_valid_token(monkeypatch, tmp_path):
 
     client_mod.get_mcp_tools_for_agent("reviewer", str(tmp_path))
     assert calls["valid"] == 1  # token materialized via get_valid_token, not details['token']
+
+
+def test_get_mcp_tools_skips_server_when_get_valid_token_raises(monkeypatch, tmp_path):
+    """get_valid_token raising MCPTokenRefreshError (expired, unrefreshable
+    token) must be caught by the existing per-server except in
+    get_mcp_tools_for_agent -- the server is skipped, not the whole call
+    crashed, and no tools come back for it."""
+    import arete_agents.mcp.client as client_mod
+    from arete_agents.mcp.manager import MCPManager, MCPTokenRefreshError
+
+    monkeypatch.setattr(client_mod, "HAS_MCP", True)
+    monkeypatch.setattr(client_mod, "_ensure_bg_loop", lambda: object())
+
+    m = MCPManager(str(tmp_path))
+    m._save_config({"srv": {
+        "transport": "http", "target": "https://mcp.example/sse", "status": "Authenticated",
+        "token": "expired", "expires_at": 1, "refresh_token": None, "token_url": None,
+        "allowed_agents": ["all"],
+    }})
+    monkeypatch.setattr(client_mod, "MCPManager", lambda *_a, **_k: m)
+
+    def _raise(*_a, **_k):
+        raise MCPTokenRefreshError("token expired and cannot be refreshed")
+    monkeypatch.setattr(m, "get_valid_token", _raise)
+
+    # If a connect were ever attempted, this would raise loudly instead of
+    # being silently caught -- proves the server was skipped BEFORE scheduling
+    # a connection, not that some later step happened to swallow an error.
+    def _must_not_be_called(*_a, **_k):
+        raise AssertionError("must not attempt to connect when get_valid_token raised")
+    monkeypatch.setattr(client_mod.asyncio, "run_coroutine_threadsafe", _must_not_be_called)
+
+    tools = client_mod.get_mcp_tools_for_agent("reviewer", str(tmp_path))
+    assert tools == []
+
+
+def test_get_mcp_tools_skips_server_when_valid_token_is_none(monkeypatch, tmp_path):
+    """A server the config marks 'Authenticated' but for which get_valid_token
+    returns None (corrupted/raced config) must be skipped, and _connect_http
+    must NEVER be scheduled with a None token -- fail closed, no
+    unauthenticated connect."""
+    import arete_agents.mcp.client as client_mod
+    from arete_agents.mcp.manager import MCPManager
+
+    monkeypatch.setattr(client_mod, "HAS_MCP", True)
+    monkeypatch.setattr(client_mod, "_ensure_bg_loop", lambda: object())
+
+    m = MCPManager(str(tmp_path))
+    m._save_config({"srv": {
+        "transport": "http", "target": "https://mcp.example/sse", "status": "Authenticated",
+        "token": None, "expires_at": None, "refresh_token": None, "token_url": None,
+        "allowed_agents": ["all"],
+    }})
+    monkeypatch.setattr(client_mod, "MCPManager", lambda *_a, **_k: m)
+    monkeypatch.setattr(m, "get_valid_token", lambda *_a, **_k: None)
+
+    def _must_not_be_called(*_a, **_k):
+        raise AssertionError("must not schedule _connect_http with a None token")
+    monkeypatch.setattr(client_mod.asyncio, "run_coroutine_threadsafe", _must_not_be_called)
+
+    tools = client_mod.get_mcp_tools_for_agent("reviewer", str(tmp_path))
+    assert tools == []

@@ -71,12 +71,18 @@ Ranked. The first item is a live security gap, not an enhancement.
 8. ~~**`pipeline.integration.test.ts` is still flaky**~~ **RESOLVED.** The one
    real flake — order-dependence from `vi.doMock` + `vi.resetModules()` leaking
    mocks across tests — was fixed in commit `515b30a` (buildApp owns the doMock
-   registry). Phase 4 added an `afterEach` registry-clean assertion so the leak
-   cannot silently recur, and verified the suite passes under randomized order.
-   The test is hermetic (mocks Redis/Postgres/fetch/GitHub; the webhook CI job
-   needs no services). Phase 0's "fix or quarantine" criterion is **met**. Left
-   struck-through rather than deleted: an entry asserting a live flake that no
-   longer exists misstates shipped reality.
+   registry). Phase 4 added an `afterEach` assertion for both buildApp-managed
+   mocks (`review-bridge.js`, `telemetry/fetch-telemetry-context.js`) and
+   verified the suite passes under randomized order. That assertion guards
+   teardown symmetry — it verifies the unconditional `vi.doUnmock` calls
+   directly above it actually leave both modules un-mocked, catching those
+   `doUnmock` calls being silently weakened or removed — not "a future test
+   mocking outside buildApp" (the corrected framing; the earlier draft of this
+   entry overclaimed that case, which the unconditional doUnmock calls already
+   neutralize on their own). The test is hermetic (mocks Redis/Postgres/fetch/
+   GitHub; the webhook CI job needs no services). Phase 0's "fix or quarantine"
+   criterion is **met**. Left struck-through rather than deleted: an entry
+   asserting a live flake that no longer exists misstates shipped reality.
 9. **Running containers drift from compose on security-relevant settings.** The Alertmanager
    container was serving `0.0.0.0:9093` for hours after `docker-compose.yml` had been changed to
    `127.0.0.1:9093` (the C1 remediation) — a container does not re-read its port mapping on restart,
@@ -351,3 +357,40 @@ refresh-on-expiry + `0o600` (item 2 above). Carried forward:
    `runPipelineAndPublish` helper that also DRYs the two-block duplication, would close it.
 3. **Phase 3 items 1 (haiku fix-authoring adequacy) and 3 (review N=8 tuning) remain** —
    both still gated on a real Anthropic key + a real large PR to measure.
+4. **Unguarded second `checks.update` inside the publish-failure catch, on BOTH worker
+   paths** — PR path `worker.ts:134-144` and check_run path `worker.ts:239-249`. If that
+   `checks.update` call itself throws (transient GitHub API failure while reporting the
+   degraded outcome), the error propagates out of the catch block, so the job re-throws and
+   BullMQ retries it despite the pipeline having already produced a usable result — the
+   exact double-retry this task's two-block split was meant to prevent, just one call later.
+   Pre-existing and mirrored identically on both paths; a proper fix (e.g. wrap that
+   `checks.update` in its own try/catch that logs-and-returns) needs to touch the
+   already-shipped PR path too, not just check_run.
+5. **Redundant config disk read per HTTP MCP server.** `get_mcp_tools_for_agent` calls
+   `manager._load_config()` once up front, but for each `http`-transport server then calls
+   `manager.get_valid_token(server_name)`, which internally calls `get_server(name)` →
+   `_load_config()` again — one extra JSON read of `.agents/mcp_servers.json` per
+   authenticated HTTP server per call (`client.py` / `manager.py`). Harmless at current
+   scale (small local file, infrequent calls) and avoidable by threading the
+   already-loaded `config[server_name]` through, but not fixed blind without a measurement
+   showing it matters.
+6. **`exchange_refresh_token`/`exchange_code_for_token` only honor `expires_in` when it is
+   already a Python `int`/`float`.** A token endpoint that returns `expires_in` as a numeric
+   STRING (e.g. `"3600"`, which some OAuth servers do) fails the `isinstance(int, float)`
+   check, so `expires_at` is stored as `None` — `get_valid_token` then treats that token as
+   never-expiring instead of refreshing it on schedule (`auth.py`). Not exploitable (worst
+   case is a stale-but-still-valid-until-the-provider-itself-rejects-it token), but a
+   silent behavior downgrade for any provider using string `expires_in`.
+7. **`_save_config`'s `mkdir(exist_ok=True)` does not retroactively tighten a pre-existing
+   `.agents/` directory mode.** If `.agents/` already exists (e.g. created by an older
+   version of this code, or manually) with looser-than-0o700 permissions, `mkdir(mode=0o700,
+   exist_ok=True)` is a no-op on the existing directory — only a freshly-created directory
+   gets 0o700. The config file itself is still written at 0o600 regardless (Phase 4's F2
+   fix), so token contents stay protected either way; this only affects directory-level
+   listing/traversal on an upgrade from an older layout.
+8. **Token-endpoint error messages embed up to 500 chars of the raw response body**
+   (`auth.py`, `TokenExchangeError` construction on a non-2xx token response). A malicious or
+   compromised token endpoint could craft a response body that gets reflected verbatim into
+   a printed/logged error message — not a credential leak (the body is attacker-controlled,
+   not ours), but worth bounding/sanitizing before any error surface here becomes
+   user-facing.

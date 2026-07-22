@@ -27,10 +27,16 @@ class MCPManager:
             
     def _save_config(self, config: Dict[str, Any]) -> None:
         # The file holds real OAuth access + refresh tokens in cleartext, so it
-        # must be owner-only. mkdir the parent 0o700 and chmod the file 0o600
-        # after write (chmod is a no-op on Windows, harmless).
+        # must be owner-only. mkdir the parent 0o700, then create the file
+        # itself at 0o600 ATOMICALLY via os.open (O_CREAT with an explicit
+        # mode) -- avoids the TOCTOU window a plain open()+chmod() leaves
+        # between file creation (umask-default perms, e.g. 0o644) and the
+        # chmod call, during which the file holding tokens is world/group
+        # readable. The follow-up chmod is kept to tighten a pre-existing
+        # looser file from before this fix; it's a no-op on Windows, harmless.
         self.config_file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        with open(self.config_file, "w") as f:
+        fd = os.open(self.config_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
             json.dump(config, f, indent=2)
         try:
             os.chmod(self.config_file, 0o600)
