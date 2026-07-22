@@ -63,9 +63,15 @@ Ranked. The first item is a live security gap, not an enhancement.
    real OAuth exchange or is removed until it does).
    *For contrast, the credential that reaches a customer repo — the GitHub App installation token —
    does expire (~1h, GitHub-enforced) and is minted fresh per fix drive.*
-2. **Telemetry-fed investigations** (the one unshipped spec §3 Phase 2 bullet). The healing agent
-   should read the incident's own trace/log context. Blocked on an internal query surface: today only
-   `getAgentEventsPerMinute` (`queries.ts:781-815`) reaches ClickHouse at all.
+2. ~~**Telemetry-fed investigations** (the one unshipped spec §3 Phase 2 bullet). The healing agent
+   should read the incident's own trace/log context.~~ **DONE (2026-07-22).** The blocking query
+   surface shipped (`a6afc14`); the gated incident reads moved into `@arete/db/telemetry`, and the
+   fix drive now collects an incident's spans/logs/exceptions (`webhook/src/fix/incident-signals.ts`,
+   `fix.signals.collect` span), attaches them to the `FixRequest`, and renders them into the author
+   prompt (`agents/.../fix_signals.py`). Optional in both directions, fail-soft, and honest about the
+   three empty-states (denied ≠ unavailable ≠ quiet). **Scope limit carried forward:** platform-gated,
+   so it only heals platform incidents until Phase 3 ingests customer telemetry — for a customer
+   incident there is nothing to read, and the agent is told "unknown" rather than "nothing was wrong".
 3. **Give the fix pipeline a tool loop.** `fix_pipeline.py` makes one direct LLM call for a JSON
    blob; tool-calling exists only on the review side. Until then, rubrics necessarily live in the
    prompt, and spec §3's "tool descriptions ARE the prompt" cannot apply to healing.
