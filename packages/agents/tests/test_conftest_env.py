@@ -10,4 +10,7 @@ def test_test_session_always_has_a_usable_provider():
     constructs. A red line is then a real bug, not a missing key."""
     get_settings.cache_clear()
     settings = get_settings()  # must NOT raise
-    assert settings.llm_provider in {"gemini", "anthropic"}
+    # "ollama" is a valid keyless provider too (config.py Literal): a developer
+    # who exports LLM_PROVIDER=ollama for local dev has a usable provider and
+    # must not fail this test.
+    assert settings.llm_provider in {"gemini", "anthropic", "ollama"}
