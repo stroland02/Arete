@@ -116,7 +116,11 @@ export async function getIncidentErrorSpans(
         Duration AS durationNs
       FROM superlog.otel_traces
       WHERE ResourceAttributes['superlog.project_id'] IN ({installationIds: Array(String)})
-        AND StatusCode = 'STATUS_CODE_ERROR'
+        -- The ClickHouse OTel exporter stores the short status name ('Error'),
+        -- not the proto enum ('STATUS_CODE_ERROR'); match both so the filter
+        -- survives an exporter/config that emits either form. (Verified against
+        -- the live collector, which emits 'Error'.)
+        AND StatusCode IN ('Error', 'STATUS_CODE_ERROR')
         AND Timestamp >= fromUnixTimestamp64Milli({startMs: Int64})
         AND Timestamp <= fromUnixTimestamp64Milli({endMs: Int64})
         ${service ? "AND ServiceName = {service: String}" : ""}
