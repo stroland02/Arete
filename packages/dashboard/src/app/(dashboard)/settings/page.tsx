@@ -1,14 +1,24 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { IconBrandGithub, IconCircleCheck, IconAlertTriangle, IconChevronRight } from "@tabler/icons-react";
+import { IconBrandGithub, IconCircleCheck, IconAlertTriangle } from "@tabler/icons-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { getInstallationBilling, resolveSelectedInstallationIds, FREE_TIER_REVIEW_LIMIT } from "@/lib/queries";
+import {
+  getConnectedRepositories,
+  getConnectedTelemetryProviders,
+  getInstallationBilling,
+  resolveSelectedInstallationIds,
+  FREE_TIER_REVIEW_LIMIT,
+} from "@/lib/queries";
+import { getAccountState } from "@/lib/account-state";
+import { getActiveModelConnection } from "@/lib/model-connections-api";
+import { deriveConnectionsSummary } from "@/lib/settings-connections";
 import { isGithubLinked } from "@/lib/github-link";
 import { connectGithub } from "./github-link-actions";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { ConnectionsCard } from "@/components/settings/connections-card";
+import { SettingRow, SettingLink } from "@/components/settings/setting-row";
 
 export const dynamic = "force-dynamic";
 
@@ -71,8 +81,23 @@ export default async function SettingsPage({
 
   const { installation, connected, error } = await searchParams;
   const installationIds = resolveSelectedInstallationIds(session.installations ?? [], installation);
-  const billing = await getInstallationBilling(db, installationIds);
-  const githubLinked = await isGithubLinked(db, session.user.id);
+  // All independent, all tenancy-scoped by the same resolved installationIds
+  // (getActiveModelConnection derives its own scope from the session).
+  const [billing, githubLinked, accountState, repositories, telemetryProviders, activeModel] =
+    await Promise.all([
+      getInstallationBilling(db, installationIds),
+      isGithubLinked(db, session.user.id),
+      getAccountState(db, installationIds, session.user.id),
+      getConnectedRepositories(db, installationIds),
+      getConnectedTelemetryProviders(db, installationIds),
+      getActiveModelConnection(),
+    ]);
+  const connectionsSummary = deriveConnectionsSummary({
+    accountState,
+    repositories,
+    telemetryProviders,
+    activeModel,
+  });
   const banner = githubBanner(connected, error);
 
   const userName = session.user.name ?? session.user.email ?? "Signed in";
@@ -116,21 +141,18 @@ export default async function SettingsPage({
       </RevealItem>
 
       <RevealItem>
+        <ConnectionsCard summary={connectionsSummary} />
+      </RevealItem>
+
+      <RevealItem>
         <Card>
           <CardHeader>
             <CardTitle>Workspace</CardTitle>
           </CardHeader>
           <div className="divide-y divide-border-subtle">
-            <SettingLink
-              href="/connections"
-              label="Connections"
-              detail="Repositories, telemetry, and integrations"
-            />
-            <SettingLink
-              href="/connections/ai-models"
-              label="AI Models"
-              detail="The model Kuma runs reviews on"
-            />
+            {/* Connections / AI Models used to be listed here too; they now live
+                in the Connections card above, WITH their real state, so Settings
+                never shows two competing links to the same surface. */}
             <SettingLink
               href="/history"
               label="Review History"
@@ -249,31 +271,5 @@ export default async function SettingsPage({
         </Card>
       </RevealItem>
     </PageReveal>
-  );
-}
-
-function SettingRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-sm text-content-muted">{label}</span>
-      <span className={`text-sm text-content-secondary ${mono ? "font-mono" : ""}`}>{value}</span>
-    </div>
-  );
-}
-
-/** A navigational row into a workspace surface that now lives under Settings
- *  (Connections, AI Models, Review History). */
-function SettingLink({ href, label, detail }: { href: string; label: string; detail: string }) {
-  return (
-    <Link
-      href={href}
-      className="group flex items-center justify-between py-3 first:pt-0 last:pb-0 transition-colors"
-    >
-      <span className="flex flex-col">
-        <span className="text-sm font-medium text-content-primary group-hover:text-accent-primary">{label}</span>
-        <span className="text-xs text-content-muted">{detail}</span>
-      </span>
-      <IconChevronRight className="h-4 w-4 shrink-0 text-content-muted transition-transform group-hover:translate-x-0.5 group-hover:text-accent-primary" />
-    </Link>
   );
 }
