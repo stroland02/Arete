@@ -27,7 +27,9 @@ jobs:
         working-directory: packages/agents
 
       - name: Test
-        run: uv run pytest tests/ --ignore=tests/test_e2e_smoke.py -v
+        # Coverage is advisory (reported, never gated — no --cov-fail-under), per
+        # spec §3: "coverage reporting turned on, thresholds advisory".
+        run: uv run pytest tests/ --ignore=tests/test_e2e_smoke.py -v --cov=src --cov-report=term-missing
         working-directory: packages/agents
         env:
           LLM_PROVIDER: gemini
@@ -73,7 +75,9 @@ jobs:
         working-directory: packages/webhook
 
       - name: Test
-        run: pnpm test
+        # Advisory coverage (v8) — reported in the CI log, never gated (no
+        # thresholds), per spec §3 "coverage reporting turned on, advisory".
+        run: pnpm exec vitest run --coverage
         working-directory: packages/webhook
 
       # Prove the compiled dist/ artifact actually runs under plain `node`
@@ -151,7 +155,8 @@ jobs:
         working-directory: packages/dashboard
 
       - name: Test
-        run: pnpm test
+        # Advisory coverage (v8) — reported, never gated, per spec §3.
+        run: pnpm exec vitest run --coverage
         working-directory: packages/dashboard
 
   test-packages:
