@@ -164,11 +164,12 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
   },
   {
     name: "Webhook delivery retries",
-    area: "Built, but unreachable",
-    level: "soon",
-    works: "A retry worker exists, with exponential backoff.",
-    gap: "It is never started. A failed delivery records its next attempt and is then never retried — silent data loss, not just a missing screen.",
-    evidence: "retry-worker.ts:45 (no caller)",
+    area: "Partially wired",
+    level: "partial",
+    works:
+      "The retry worker now runs. A failed delivery is re-attempted on an exponential backoff and rescheduled — verified against real Postgres (attempts 1→2, nextAttempt advanced). Poll rate is set by OUTBOUND_RETRY_INTERVAL_MS.",
+    gap: "Nothing surfaces delivery health: nobody can see that a delivery failed, how many attempts remain, or the last error. That needs the webhook endpoints UI.",
+    evidence: "retry-worker.ts startOutboundRetryWorker, worker.ts",
   },
 
   // -------------------------------------------------------- partially wired
