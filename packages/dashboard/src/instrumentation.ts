@@ -24,6 +24,13 @@ export function register(): void {
       serviceName: 'arete-dashboard',
       attributes: {
         'deployment.environment.name': process.env.DEPLOYMENT_ENVIRONMENT ?? 'development',
+        // Self-dogfooding tenancy — mirrors @arete/telemetry resource.ts: when
+        // ARETE_SELF_PROJECT_ID is set, stamp the dashboard's own spans with
+        // that superlog.project_id so they are visible under that tenant. OFF
+        // by default; never point at a real customer tenant in prod.
+        ...(process.env.ARETE_SELF_PROJECT_ID
+          ? { 'superlog.project_id': process.env.ARETE_SELF_PROJECT_ID }
+          : {}),
       },
     })
   } catch (err) {
