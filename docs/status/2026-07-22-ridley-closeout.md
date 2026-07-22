@@ -22,7 +22,7 @@ Errors surface return the honest "not available" panel with zero error data and 
 
 ## Closed after the first close-out (contract §7 fully adopted)
 
-Items 1–3 below were open when this document was first written; all three landed in `4f0c1a8`.
+Items 1–3 below were open when this document was first written; all three landed in `a6afc14`.
 
 - **`receiver.ts` now resolves the platform installation from the flag.** Its drop-the-batch contract on
   unresolvable/ambiguous is preserved exactly — an alert filed against an arbitrary tenant is worse than an
