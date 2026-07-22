@@ -110,3 +110,17 @@ def test_get_tracer_and_meter_safe_before_init():
     with tracer.start_as_current_span("noop"):
         pass
     meter.create_counter("arete.test.counter").add(1)
+
+
+def test_resource_omits_project_id_when_self_id_unset(monkeypatch):
+    monkeypatch.delenv("ARETE_SELF_PROJECT_ID", raising=False)
+    resource = obs._build_resource()
+    assert "superlog.project_id" not in resource.attributes
+
+
+def test_resource_stamps_project_id_for_self_dogfooding(monkeypatch):
+    monkeypatch.setenv("ARETE_SELF_PROJECT_ID", "11111111-1111-4111-8111-111111111111")
+    resource = obs._build_resource()
+    assert resource.attributes["superlog.project_id"] == (
+        "11111111-1111-4111-8111-111111111111"
+    )
