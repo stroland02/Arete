@@ -200,6 +200,13 @@ model Incident {
   payload        Json
   startsAt       DateTime
   resolvedAt     DateTime?
+  /// A human triaged this incident as noise (non-actionable). Null = not noise.
+  /// Orthogonal to status: Alertmanager owns firing/resolved and never touches
+  /// this; a human owns noise via the dashboard, so a re-fire can't undo it.
+  noisedAt       DateTime?
+  /// How the incident was opened: "alert" (the Alertmanager receiver) or
+  /// "manual" (a New investigation a user opened by hand).
+  source         String       @default("alert")
   /// Set when this incident opened a fix run. Null if it never did.
   workItemId     String?
   createdAt      DateTime     @default(now())

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getIncidentDetail } from "@/lib/incidents";
+import { setIncidentNoiseAction } from "../actions";
 import { resolveSelectedInstallationIds } from "@/lib/queries";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 import { IconArrowLeft, IconSparkles } from "@tabler/icons-react";
@@ -97,6 +98,16 @@ export default async function IncidentDetailPage({
             <h1 className="text-xl font-semibold text-content-primary mt-1">{incident.alertName}</h1>
           </div>
           <div className="flex shrink-0 items-center gap-2.5">
+            <form action={setIncidentNoiseAction}>
+              <input type="hidden" name="id" value={incident.id} />
+              <input type="hidden" name="noise" value={incident.noisedAt ? "false" : "true"} />
+              <button
+                type="submit"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border-default bg-surface-1 px-3 py-1.5 text-xs font-medium text-content-secondary transition-colors hover:border-border-strong hover:bg-content-primary/5"
+              >
+                {incident.noisedAt ? "Unmark noise" : "Mark as noise"}
+              </button>
+            </form>
             {incident.workItemId && incident.fixContainerId && (
               <Link
                 href={`/services?container=${encodeURIComponent(incident.fixContainerId)}`}
@@ -133,6 +144,14 @@ export default async function IncidentDetailPage({
           <MetaRow
             label="Resolved"
             value={incident.resolvedAt ? formatTimestamp(incident.resolvedAt) : "Still firing"}
+          />
+          <MetaRow
+            label="Triage"
+            value={incident.noisedAt ? `Noise · ${formatTimestamp(incident.noisedAt)}` : "Actionable"}
+          />
+          <MetaRow
+            label="Source"
+            value={incident.source === "manual" ? "Manual investigation" : "Alert"}
           />
           <MetaRow label="Fingerprint" value={incident.fingerprint} mono />
         </div>
