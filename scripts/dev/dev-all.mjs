@@ -47,7 +47,9 @@ async function ensureDocker() {
 }
 
 async function run(cmd, args, opts = {}) {
-  await execFileP(cmd, args, { cwd: ROOT, ...opts });
+  // shell:true so Windows resolves the pnpm.cmd shim — execFile cannot launch a
+  // .cmd without a shell (it throws ENOENT). Harmless for docker.exe elsewhere.
+  await execFileP(cmd, args, { cwd: ROOT, shell: true, ...opts });
 }
 
 async function waitPostgres() {
@@ -88,6 +90,14 @@ async function openBrowser(url) {
 
 async function main() {
   await ensureDocker();
+  // Alertmanager's compose secret requires ALERTMANAGER_INGEST_TOKEN; without it
+  // `docker compose up` aborts the whole stack. Default a dev-only value when
+  // unset so `pnpm dev:all` works out of the box — a real deployment supplies
+  // its own. This is never a production secret.
+  if (!process.env.ALERTMANAGER_INGEST_TOKEN) {
+    process.env.ALERTMANAGER_INGEST_TOKEN = "dev-local-alertmanager-token-not-prod";
+    log("infra", "ALERTMANAGER_INGEST_TOKEN unset — using a dev-only default (not for production)");
+  }
   log("infra", "bringing up postgres/redis/clickhouse…");
   await run("docker", [...COMPOSE, "up", "-d"]);
   await waitPostgres();
