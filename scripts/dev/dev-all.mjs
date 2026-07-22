@@ -7,7 +7,7 @@
  * §10) productizes. Flow, fully automatic — no manual steps:
  *   1. ensure Docker daemon (auto-start Docker Desktop on Windows if down)
  *   2. infra:up (postgres/redis/clickhouse) + wait for postgres healthy
- *   3. sync DB schema (prisma db push — see migration-defect note in §6)
+ *   3. apply DB migrations (prisma migrate deploy)
  *   4. run dashboard dev server + Glass Box sidecar (prefixed logs)
  *   5. auto-open http://localhost:3000
  *
@@ -111,11 +111,13 @@ async function main() {
   log("infra", "bringing up postgres/redis/clickhouse…");
   await run("docker", [...COMPOSE, "up", "-d"]);
   await waitPostgres();
-  log("db", "syncing schema (prisma db push)…");
-  // NOTE: `migrate deploy` is preferred but currently blocked by a missing
-  // create-migration for ApprovalPrompt/AgentMemory on integration (see §6).
-  // db push syncs the DB to schema.prisma reliably until that's fixed.
-  await run("pnpm", ["--filter", "@arete/db", "exec", "prisma", "db", "push", "--accept-data-loss"]);
+  log("db", "applying migrations (prisma migrate deploy)…");
+  // Was `db push --accept-data-loss`, which is unsafe here: every checkout
+  // shares one Postgres, so pushing an older schema silently DROPS columns the
+  // other worktrees need (this cost us `ModelConnection.userId` on 2026-07-22
+  // and 500'd a sibling checkout). The migration history is complete now, so
+  // deploy is both safe and forward-only.
+  await run("pnpm", ["--filter", "@arete/db", "exec", "prisma", "migrate", "deploy"]);
 
   log("run", "starting dashboard + Glass Box sidecar…");
   const dash = spawnPrefixed("dashboard", "pnpm", ["--filter", "@arete/dashboard", "dev"]);

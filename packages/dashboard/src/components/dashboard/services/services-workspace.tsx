@@ -8,6 +8,7 @@ import { SendPrButton } from "./send-pr-button";
 import { motion, AnimatePresence, useInView } from "framer-motion";
 import { IconArrowRight, IconBrandGithub, IconChevronDown, IconCopy, IconGitBranch, IconGitPullRequest, IconHourglassHigh, IconPlus, IconLoader2, IconCheck } from "@tabler/icons-react";
 import { KumaLogo } from "@/components/ui/kuma-logo";
+import { ReadinessBadge } from "@/components/ui/readiness-badge";
 import type { ServiceReviewGroup, ServiceReviewRow } from "@/lib/queries";
 import { TriageBar } from "./triage-bar";
 import { deriveTriage, type TriageStatus } from "./triage";
@@ -1009,13 +1010,29 @@ function IssuePanel({
                 <IconGitPullRequest size={14} stroke={2} /> Post pull request
               </button>
             )}
+            {/* Both are inert — no handler exists yet. Disabled rather than
+                merely unstyled so the UI never implies an action it cannot
+                perform. Drop the disabled state when the handlers land. */}
             <div className="grid grid-cols-2 gap-1.5">
-              <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-1.5 text-[11px] font-semibold text-content-secondary transition-colors hover:bg-content-primary/5">
+              <button
+                type="button"
+                disabled
+                title="Requesting changes isn't wired up yet"
+                className="inline-flex cursor-not-allowed items-center justify-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-1.5 text-[11px] font-semibold text-content-secondary opacity-50"
+              >
                 Request changes
               </button>
-              <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-1.5 text-[11px] font-semibold text-content-secondary transition-colors hover:bg-content-primary/5">
+              <button
+                type="button"
+                disabled
+                title="Copying the patch isn't wired up yet"
+                className="inline-flex cursor-not-allowed items-center justify-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-1.5 text-[11px] font-semibold text-content-secondary opacity-50"
+              >
                 <IconCopy size={13} stroke={1.75} /> Copy patch
               </button>
+            </div>
+            <div className="flex justify-center pt-0.5">
+              <ReadinessBadge level="soon" />
             </div>
             <p className="text-[10px] leading-4 text-content-muted/80">
               Posting opens the pull request on your repo — the solution is approved on the Agents page first.

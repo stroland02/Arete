@@ -136,6 +136,11 @@ export default async function SettingsPage({
               label="Review History"
               detail="Every review Kuma has run"
             />
+            <SettingLink
+              href="/build-status"
+              label="Build Status"
+              detail="What's working, what's partly wired, what isn't built yet"
+            />
           </div>
         </Card>
       </RevealItem>
