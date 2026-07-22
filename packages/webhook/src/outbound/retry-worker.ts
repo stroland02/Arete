@@ -1,6 +1,8 @@
 import { deliverWebhook } from './deliver.js'
 import type { WebhookPayload } from './payload.js'
 import type { StoredDelivery, WebhookStore } from './store.js'
+import { PrismaWebhookStore, type WebhookPrismaClient } from './prisma-store.js'
+import { prisma } from '../db.js'
 import { logger } from '../logger.js'
 
 const log = logger.child({ component: 'outbound' })
@@ -62,4 +64,20 @@ export function startRetryWorker(
   // Don't keep the process alive just for the retry loop.
   timer.unref?.()
   return { stop: () => clearInterval(timer) }
+}
+
+/** Production entrypoint: the retry loop over the real Prisma-backed store.
+ *
+ *  This exists because `startRetryWorker` shipped with no caller — deliveries
+ *  recorded a `nextAttempt` and were then never retried. Keep the store
+ *  construction here rather than at the call site so the worker entrypoint can
+ *  start it with no arguments, the same shape as startApprovalWorker(). */
+export function startOutboundRetryWorker(): RetryWorkerHandle {
+  const raw = Number(process.env.OUTBOUND_RETRY_INTERVAL_MS)
+  // A malformed env var must not degrade into setInterval(fn, NaN), which fires
+  // as fast as the event loop allows and would hammer Postgres.
+  const intervalMs = Number.isFinite(raw) && raw > 0 ? raw : 30_000
+  const store = new PrismaWebhookStore(prisma as unknown as WebhookPrismaClient)
+  log.info({ intervalMs }, 'outbound retry worker starting')
+  return startRetryWorker(store, { intervalMs })
 }

@@ -15,6 +15,7 @@ import { fetchGitLabMRContext } from './gitlab-fetcher.js'
 import { runReviewPipeline } from './review-bridge.js'
 import { startApprovalWorker } from './approval-worker.js'
 import { startFixWorker } from './fix/queue-consumer.js'
+import { startOutboundRetryWorker } from './outbound/retry-worker.js'
 import { postReview } from './comment-poster.js'
 import { postGitLabReview, type DiffRefs } from './gitlab-comment-poster.js'
 import { persistReview, persistTelemetrySnapshots, fetchProjectMemories } from './persistence.js'
@@ -442,4 +443,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   // delay a review or an operator-approved remediation, and vice-versa.
   log.info({ concurrency: FIX_QUEUE_CONCURRENCY }, 'Areté fix-drive worker starting')
   startFixWorker()
+  // Also drive outbound-webhook retries. Unlike the others this is a Postgres
+  // polling loop, not a BullMQ consumer — the schedule lives in
+  // WebhookDelivery.nextAttempt. Without it a failed delivery records its next
+  // attempt and is never retried again, which is silent data loss rather than a
+  // visible outage.
+  startOutboundRetryWorker()
 }
