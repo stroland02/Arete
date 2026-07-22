@@ -33,6 +33,17 @@ Items 1–3 below were open when this document was first written; all three land
 - **The resolver lives in `@arete/db`, not the dashboard** — both packages must obey one fail-closed
   security rule, and two copies would be two places to drift.
 
+## Second wave — the PM-assigned feature queue, now complete
+
+| Work | Evidence |
+|---|---|
+| `services-workspace.tsx` decomposed 1,346 → 459 lines, behavior-preserving (8 new files). Guarded by 5 characterization tests written first and confirmed green against the untouched file; `git diff -U0` shows every added line is an import, re-export, or comment | `8166fbe` |
+| Fabricated `SAMPLE_*` "Sentry" fixtures moved out of the production component into `marketing/services-preview-fixtures.ts`, their only consumer. They could not reach the authed page before; now they structurally cannot | `8166fbe` |
+| Agents rail surfaces the live work inbox — what the agents are working on — reusing the extracted `WorkItemInboxSection`; selecting an item hands off to `/services?container=` | `73e2040` |
+| Settings shows a real Connections summary (repos, AI model, services) and links out; Workspace's duplicate Connections/AI-model nav rows folded into it | `9fd33be` |
+
+Final gate: **648 tests / 93 files**, `tsc --noEmit` clean, lint 0 errors, `next build` green, and each change driven in the running app.
+
 ## Open (not started, not claimed by me)
 
 1. **Emit-time `superlog.issue_fingerprint` stamping** — unclaimed; would light up `otel_exceptions` and
