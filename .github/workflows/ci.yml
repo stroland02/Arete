@@ -173,6 +173,9 @@ jobs:
           - package: telemetry
             filter: "@arete/telemetry"
             commands: "typecheck test"
+          - package: internal-token
+            filter: "@arete/internal-token"
+            commands: "typecheck test"
           - package: db
             filter: "@arete/db"
             commands: "build lint"
