@@ -3,43 +3,32 @@ from typing import Any, Dict
 
 
 class SecurityAssessor:
-    def __init__(self):
-        pass
-        
+    """Reports the security posture of a skill — or honestly declines to.
+
+    No scanner is wired up yet. This class previously *invented* Gen/Socket/Snyk
+    verdicts by substring-matching the skill's filename (a skill named
+    ``supabase-helper`` came back "Med Risk" for that reason alone) and the
+    installer printed them as a "Security Risk Assessments" table. A fabricated
+    security verdict is worse than no verdict: it is believed, and it is wrong.
+
+    So this refuses instead. To make it real, integrate an actual scanner here
+    and return its findings — keep ``status`` as the discriminator so callers
+    already handling ``unavailable`` keep working.
+    """
+
+    #: Discriminator for callers. A real implementation adds "assessed".
+    UNAVAILABLE = "unavailable"
+
     def assess_skill(self, skill_path: Path) -> Dict[str, Any]:
+        """Assess a skill directory.
+
+        Returns a refusal — identical for every skill, because nothing about a
+        skill is actually inspected. The payload deliberately carries no rating
+        vocabulary, so no caller can render it as a score.
         """
-        Runs security assessments on the given skill directory.
-        Currently returns simulated results modeled after the Areté security pipeline.
-        In the future, this will integrate with real static analysis and LLM reviews.
-        """
-        # A simple mock to generate deterministic but varied results based on skill name
-        skill_name = skill_path.name
-        
-        # Determine Gen status
-        gen_status = "Safe"
-        if "supabase" in skill_name:
-            gen_status = "Med Risk"
-            
-        # Determine Socket alerts
-        socket_alerts = 0
-        if "expo" in skill_name or "python" in skill_name or "supabase" in skill_name:
-            socket_alerts = 1
-            
-        # Determine Snyk status
-        snyk_status = "Low Risk"
-        if (
-            "expo" in skill_name
-            or "nextjs" in skill_name
-            or "python" in skill_name
-            or "supabase" in skill_name
-            or "onboarding" in skill_name
-        ):
-            snyk_status = "High Risk"
-        elif "debug" in skill_name:
-            snyk_status = "Med Risk"
-            
         return {
-            "gen": gen_status,
-            "socket": socket_alerts,
-            "snyk": snyk_status
+            "status": self.UNAVAILABLE,
+            "reason": (
+                "no security scanner is configured — skills are installed unscanned"
+            ),
         }

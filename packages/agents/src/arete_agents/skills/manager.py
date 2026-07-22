@@ -46,21 +46,18 @@ class SkillManager:
             print(f"Installing {len(skills_found)} skills...")
             self.agents_dir.mkdir(parents=True, exist_ok=True)
             
-            print("\nSecurity Risk Assessments:")
-            print(f"{'Skill Name':<30} | {'Gen':<10} | {'Socket':<15} | {'Snyk':<10}")
-            print("-" * 75)
-            
+            # No scanner is wired up, so there is no assessment to table. Say so
+            # once, plainly, rather than printing per-skill ratings that nothing
+            # produced. Restore a table here only when a real scanner backs it.
+            assessment = self.security.assess_skill(self.agents_dir)
+            if assessment.get("status") == SecurityAssessor.UNAVAILABLE:
+                print(f"\nSecurity: {assessment['reason']}.")
+
             installed_count = 0
             for skill_path in skills_found:
                 skill_name = skill_path.name
-                
-                # Mock security assessment
-                assessment = self.security.assess_skill(skill_path)
-                print(
-                    f"{skill_name:<30} | {assessment['gen']:<10} | "
-                    f"{str(assessment['socket'])+' alerts':<15} | {assessment['snyk']:<10}"
-                )
-                
+                print(f"  {skill_name}")
+
                 # Install skill (copying for cross-platform compatibility instead of symlink for now)
                 target_path = self.agents_dir / skill_name
                 if target_path.exists():
