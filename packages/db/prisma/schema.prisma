@@ -47,6 +47,7 @@ model Installation {
   issueContainers      IssueContainer[]
   accessGrants         InstallationAccess[]
   incidents            Incident[]
+  errorGroups          ErrorGroup[]
 
   @@unique([provider, externalId])
 }
@@ -223,9 +224,53 @@ model Incident {
   updatedAt      DateTime     @updatedAt
 
   installation   Installation @relation(fields: [installationId], references: [id])
+  /// Error groups a human attached to this incident — the "resolve these
+  /// together" set. Correlation by time window is derived at read time and is
+  /// NOT stored; only a confirmed attachment lands here.
+  errorGroups    ErrorGroup[]
 
   @@unique([installationId, fingerprint])
   @@index([installationId, status])
+}
+
+/// Human triage state for a runtime error group.
+///
+/// THE EVENTS ARE NOT HERE. Individual error events live in ClickHouse
+/// (superlog.otel_traces exception spans + superlog.otel_logs, 30-day TTL) and
+/// remain the only source of truth for counts, first/last seen, and traces. This
+/// table stores solely what a human decided, keyed by the deterministic
+/// fingerprint of the normalized error message. A group with no row here is
+/// implicitly "open" — absence is a valid state, so nothing is written until a
+/// person acts.
+///
+/// Scoped by installation like every other tenant surface. Today's error events
+/// are Kuma's own self-telemetry (platform-scoped, exactly like alert-born
+/// Incidents); when tenant OTLP ingest lands (Phase 3) the fingerprints become
+/// tenant-scoped and this table needs no change.
+model ErrorGroup {
+  id             String       @id @default(uuid())
+  installationId String
+  /// 16-char sha256 of the normalized (service, error message) pair — see
+  /// packages/dashboard/src/lib/error-fingerprint.ts.
+  fingerprint    String
+  /// "open" | "observing" | "resolved" | "silenced". Default open mirrors the
+  /// implicit state of a group that has no row yet.
+  status         String       @default("open")
+  /// Set when a human attaches this error to an incident, so resolving the
+  /// incident can resolve its errors together.
+  incidentId     String?
+  attachedAt     DateTime?
+  resolvedAt     DateTime?
+  silencedAt     DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  installation   Installation @relation(fields: [installationId], references: [id])
+  incident       Incident?    @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+
+  @@unique([installationId, fingerprint])
+  @@index([installationId, status])
+  @@index([incidentId])
 }
 
 /// One scan execution — honest status, always recorded.

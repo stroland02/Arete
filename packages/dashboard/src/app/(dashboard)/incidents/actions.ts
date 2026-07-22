@@ -6,6 +6,13 @@ import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { resolveSelectedInstallationIds } from '@/lib/queries';
 import { createManualIncident, setIncidentNoise } from '@/lib/incidents';
+import {
+  ERROR_STATUSES,
+  attachErrorGroupToIncident,
+  resolveIncidentWithErrors,
+  setErrorGroupStatus,
+  type ErrorStatus,
+} from '@/lib/errors';
 
 const SEVERITIES = ['critical', 'warning'] as const;
 
@@ -86,6 +93,92 @@ export async function setIncidentNoiseAction(formData: FormData): Promise<void> 
 
   const installationIds = resolveSelectedInstallationIds(session.installations ?? [], undefined);
   await setIncidentNoise(db, installationIds, id, noise === 'true');
+
+  revalidatePath(`/incidents/${id}`);
+  revalidatePath('/incidents');
+}
+
+/**
+ * Triages ONE error group (Open / Observing / Resolved / Silenced). Tenant-scoped
+ * through setErrorGroupStatus (pinned to the session's installations), so a
+ * fingerprint outside the caller's installations is a silent no-op — the same
+ * "never trust the client-supplied id" rule as setIncidentNoiseAction.
+ */
+export async function setErrorStatusAction(formData: FormData): Promise<void> {
+  const session = await auth();
+  if (!session?.user) {
+    redirect('/login');
+  }
+
+  const fingerprint = formData.get('fingerprint');
+  const status = formData.get('status');
+  if (typeof fingerprint !== 'string' || typeof status !== 'string') {
+    return;
+  }
+  if (!ERROR_STATUSES.includes(status as ErrorStatus)) {
+    return;
+  }
+
+  const installationIds = resolveSelectedInstallationIds(session.installations ?? [], undefined);
+  await setErrorGroupStatus(db, installationIds, fingerprint, status as ErrorStatus);
+
+  revalidatePath('/incidents');
+}
+
+/**
+ * Attaches an error group to an incident, or detaches it (`incidentId` absent
+ * or empty). This is the join the two views share: Errors are the individual
+ * failures, an Incident is the grouping that resolves them together.
+ * Tenant-scoped through attachErrorGroupToIncident.
+ */
+export async function attachErrorAction(formData: FormData): Promise<void> {
+  const session = await auth();
+  if (!session?.user) {
+    redirect('/login');
+  }
+
+  const fingerprint = formData.get('fingerprint');
+  const rawIncidentId = formData.get('incidentId');
+  if (typeof fingerprint !== 'string') {
+    return;
+  }
+
+  const incidentId =
+    typeof rawIncidentId === 'string' && rawIncidentId.length > 0 ? rawIncidentId : null;
+
+  const installationIds = resolveSelectedInstallationIds(session.installations ?? [], undefined);
+  await attachErrorGroupToIncident(db, installationIds, fingerprint, incidentId);
+
+  if (incidentId) {
+    revalidatePath(`/incidents/${incidentId}`);
+  }
+  // A detach still has to refresh the page it was performed on.
+  const from = formData.get('from');
+  if (typeof from === 'string' && from.length > 0) {
+    revalidatePath(`/incidents/${from}`);
+  }
+  revalidatePath('/incidents');
+}
+
+/**
+ * Resolves an incident together with every error group attached to it — the
+ * whole point of grouping errors into an incident. Tenant-scoped through
+ * resolveIncidentWithErrors, which returns how many groups it closed; an id
+ * outside the caller's installations closes nothing.
+ */
+export async function resolveIncidentWithErrorsAction(formData: FormData): Promise<void> {
+  const session = await auth();
+  if (!session?.user) {
+    redirect('/login');
+  }
+
+  const id = formData.get('id');
+  if (typeof id !== 'string') {
+    return;
+  }
+
+  const installationIds = resolveSelectedInstallationIds(session.installations ?? [], undefined);
+  await resolveIncidentWithErrors(db, installationIds, id);
 
   revalidatePath(`/incidents/${id}`);
   revalidatePath('/incidents');
