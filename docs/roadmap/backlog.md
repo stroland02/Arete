@@ -30,7 +30,21 @@ Retrospective: [`2026-07-21-phase-2-retrospective.md`](2026-07-21-phase-2-retros
 
 Ranked. The first item is a live security gap, not an enhancement.
 
-1. **Internal + MCP tokens have no expiry — spec §6 Phase 2 gate 2 is UNMET.**
+1. ~~**Internal + MCP tokens have no expiry — spec §6 Phase 2 gate 2 is UNMET.**~~
+   **CLOSED 2026-07-22 (verified in code).** The internal half shipped: `@arete/internal-token`
+   issues HS256 tokens carrying `exp` and `kid` (`9399330`), and `packages/webhook/src/internal-auth.ts`
+   now calls `verifyInternalToken`, failing closed (503 when unset, 401 when invalid). The MCP half
+   shipped a real OAuth code exchange, replacing the fabricated `simulated_token_for_<code>`;
+   `packages/agents/tests/test_mcp_auth.py` asserts that marker can never reappear.
+   *Residual, not a security gap:* `INTERNAL_API_TOKEN` is still referenced in
+   `arete_agents/config.py` and `packages/internal-token/src/keyset.ts` (bootstrap/keyset paths),
+   and MCP token files still want `expires_in` persistence.
+   **Why this sat stale:** three sessions in a row read this entry, each knew it was closed in
+   code, and each left it for "the owning session". A closed item presented as the top live
+   security gap is worse than no backlog — it misdirects whoever plans next. Correcting the record
+   is the coordinator's job, not the implementer's.
+
+   *Original description kept below for provenance:*
    `INTERNAL_API_TOKEN` is one static shared secret read from the environment per request
    (`packages/webhook/src/internal-auth.ts:43`): no `exp`, no `iat`, no rotation, no revocation.
    Probed — the middleware authenticates the identical token with the system clock set ten years
@@ -146,11 +160,11 @@ Triaged by the final reviewer as non-blocking; the two blockers it found (URL-at
 leak, missing CI gate) were fixed on the phase branch before merge.
 
 **Observability coverage gaps**
-- `review-pr-heavy` queue has a producer (`webhook-handler.ts:114`, `backfill.ts:86` route
-  PRs with >50 changed files) but **no consumer** — `worker.ts:311` only starts a Worker on
-  the fast queue. Those reviews never run and their traces dead-end. Pre-existing, not
-  introduced by Phase 1, but it undercuts "one real PR review traced end-to-end" — use a
-  small PR for that exit criterion until this is fixed.
+- ~~`review-pr-heavy` queue has a producer but **no consumer**~~ — **CLOSED (verified
+  2026-07-22).** `startReviewWorkers()` starts both lanes (`worker.ts`: `fast:
+  startReviewWorker(REVIEW_QUEUE_NAME, …)`, `heavy: startReviewWorker(REVIEW_QUEUE_HEAVY_NAME,
+  …)`), so large PRs are consumed and their traces complete. The "use a small PR for the
+  end-to-end exit criterion" workaround no longer applies.
 - Span-name convention drift (Python lane): `orchestrator.py:393,456` emit
   `agent_review:{name}` / `synthesize_reviews` with `pr_number`/`agent_name` attributes
   instead of spec §5's `agent.review` (attr `agent.role`) / `review.synthesize`. No
