@@ -316,17 +316,38 @@ dropped.
    whether it is good enough at the harder generative task. Do NOT change the tier
    blind: needs a real Anthropic key plus a regression corpus of known-fixable issues
    to measure haiku-vs-sonnet-authored patch pass rate before touching the default.
-2. **MCP OAuth has no refresh-on-expiry path, and no RFC 8414 discovery / dynamic
-   client registration.** Task 6 implemented a configured-`token_url` exchange only.
-   `mcp/manager.py`'s stored record carries `expires_at`/`refresh_token` fields, but
-   nothing in `mcp/auth.py` or `mcp/manager.py` ever reads them to refresh a token
-   before it expires, and there is no discovery/DCR flow for servers that don't hand
-   out a static `token_url` up front.
+2. ~~**MCP OAuth has no refresh-on-expiry path**~~ **PARTIALLY RESOLVED (Phase 4).**
+   Refresh-on-expiry now exists: `MCPManager.get_valid_token` (`mcp/manager.py`) reads
+   `expires_at` and, within a 60s skew window, refreshes via a real
+   `grant_type=refresh_token` exchange (`exchange_refresh_token`, `mcp/auth.py`), failing
+   closed (`MCPTokenRefreshError`) when it can't rather than presenting a stale token; the
+   creds file is now written `0o600`. **Still deferred:** RFC 8414 `.well-known` discovery
+   and dynamic client registration — carried to "Deferred from Phase 4" below.
 3. **Review `max_concurrency` default (N=8) is un-tuned.** Set on the `graph.invoke`
    config in `orchestrator.py`; the right value depends on real provider rate limits
    under real concurrent review load, which needs a real large PR and a real
    Anthropic key to validate — not measured this phase.
-4. **`processGitHubCheckRun` (the CI-diagnosis path in `packages/webhook/src/worker.ts`)
-   has the same shared try/catch double-retry exposure that Task 10 fixed for the PR
-   review path, left untouched.** No test harness exists for this path yet, so fixing
-   it blind risked an unverified change to a path nothing currently exercises in CI.
+4. ~~**`processGitHubCheckRun` has the same shared try/catch double-retry exposure**~~
+   **RESOLVED (Phase 4).** The CI-diagnosis path now uses the Task-10 two-block split
+   (`packages/webhook/src/worker.ts`): a `runReviewPipeline` failure re-throws (retryable
+   crash) while a `postReview` publish-only failure records a degraded check run and
+   returns (no full-pipeline retry). Its first tests were added to
+   `pipeline.integration.test.ts` (partial-success → resolves; infra-crash → rejects).
+
+## Deferred from Phase 4 (trustworthy CI signal + no-dependency harness hardening)
+
+Phase 4 closed the keyless-test signal debt (conftest mirrors CI's provider env), the
+`pipeline.integration.test.ts` flake (already fixed in `515b30a`; hardened + docs
+corrected this phase), the `processGitHubCheckRun` retry parity (item 4 above), and MCP
+refresh-on-expiry + `0o600` (item 2 above). Carried forward:
+
+1. **MCP RFC 8414 discovery + dynamic client registration** — deliberately not shipped:
+   speculative until a real MCP server that hands out no static `token_url` needs it, and
+   nothing in this environment validates such a flow (`mcp/auth.py` still synthesizes the
+   auth URL from `target`; `client_id` is the hardcoded `arete-client`, `auth.py:12`).
+2. **`review.publish` child span is absent on the check_run path** (`worker.ts`) though the
+   PR path wraps `postReview` in `withChildSpan('review.publish', …)`. Pre-existing
+   asymmetry (not a Phase 4 regression); a one-line parity fix, or a shared
+   `runPipelineAndPublish` helper that also DRYs the two-block duplication, would close it.
+3. **Phase 3 items 1 (haiku fix-authoring adequacy) and 3 (review N=8 tuning) remain** —
+   both still gated on a real Anthropic key + a real large PR to measure.
