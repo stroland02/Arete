@@ -85,3 +85,39 @@ def test_wrap_server_tools_filters_by_allowlist():
 def test_wrap_server_tools_returns_empty_without_session():
     mcp_client._tool_definitions["ghost"] = [MagicMock(name="x")]
     assert mcp_client.wrap_server_tools("ghost", None) == []
+
+
+def test_connect_http_uses_get_valid_token(monkeypatch, tmp_path):
+    """get_mcp_tools_for_agent must materialize the Bearer via
+    MCPManager.get_valid_token (refresh-on-expiry / fail-closed), not read the
+    raw stored 'token' field directly."""
+    import arete_agents.mcp.client as client_mod
+    from arete_agents.mcp.manager import MCPManager
+
+    monkeypatch.setattr(client_mod, "HAS_MCP", True)
+    monkeypatch.setattr(client_mod, "_ensure_bg_loop", lambda: object())
+
+    m = MCPManager(str(tmp_path))
+    m._save_config({"srv": {
+        "transport": "http", "target": "https://mcp.example/sse", "status": "Authenticated",
+        "token": "should-not-be-read-directly", "expires_at": None,
+        "refresh_token": None, "token_url": None, "allowed_agents": ["all"],
+    }})
+    monkeypatch.setattr(client_mod, "MCPManager", lambda *_a, **_k: m)
+
+    calls = {"valid": 0}
+    real_get_valid = m.get_valid_token
+
+    def spy_get_valid(name, **kw):
+        calls["valid"] += 1
+        return real_get_valid(name, **kw)
+    monkeypatch.setattr(m, "get_valid_token", spy_get_valid)
+
+    # Stop before any real event-loop / MCP connect: make the scheduling call
+    # raise so the connect branch is exercised only up to token materialization.
+    def _stop(*_a, **_k):
+        raise RuntimeError("stop before real MCP connect")
+    monkeypatch.setattr(client_mod.asyncio, "run_coroutine_threadsafe", _stop)
+
+    client_mod.get_mcp_tools_for_agent("reviewer", str(tmp_path))
+    assert calls["valid"] == 1  # token materialized via get_valid_token, not details['token']

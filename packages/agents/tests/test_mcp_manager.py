@@ -1,3 +1,7 @@
+import os
+import stat
+import sys
+
 import pytest
 
 from arete_agents.mcp.manager import MCPManager, MCPTokenRefreshError
@@ -52,3 +56,12 @@ def test_expired_without_refresh_token_fails_closed(tmp_path):
 def test_unknown_server_returns_none(tmp_path):
     m = MCPManager(str(tmp_path))
     assert m.get_valid_token("nope", now=1_000) is None
+
+
+def test_config_file_is_owner_only(tmp_path):
+    if sys.platform == "win32":
+        pytest.skip("POSIX file modes not enforced on Windows")
+    m = MCPManager(str(tmp_path))
+    m._save_config({"srv": {"token": "secret"}})
+    mode = stat.S_IMODE(os.stat(m.config_file).st_mode)
+    assert mode == 0o600, f"creds file mode is {oct(mode)}, expected 0o600"

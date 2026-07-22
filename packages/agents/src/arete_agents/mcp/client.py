@@ -124,8 +124,13 @@ def get_mcp_tools_for_agent(agent_name: str, workspace_root: str = None) -> List
                     future = asyncio.run_coroutine_threadsafe(_connect_stdio(server_name, details["target"]), loop)
                     future.result(timeout=10)
                 elif details["transport"] == "http":
+                    # Materialize the Bearer via get_valid_token so a near-expiry
+                    # token is refreshed first, and an unrefreshable expired token
+                    # fails closed (MCPTokenRefreshError -> caught below -> server
+                    # skipped) instead of being presented stale.
+                    token = manager.get_valid_token(server_name)
                     future = asyncio.run_coroutine_threadsafe(
-                        _connect_http(server_name, details["target"], details.get("token")), loop
+                        _connect_http(server_name, details["target"], token), loop
                     )
                     future.result(timeout=10)
             except Exception as e:

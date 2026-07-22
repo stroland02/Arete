@@ -1,4 +1,5 @@
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -25,9 +26,16 @@ class MCPManager:
             return {}
             
     def _save_config(self, config: Dict[str, Any]) -> None:
-        self.config_file.parent.mkdir(parents=True, exist_ok=True)
+        # The file holds real OAuth access + refresh tokens in cleartext, so it
+        # must be owner-only. mkdir the parent 0o700 and chmod the file 0o600
+        # after write (chmod is a no-op on Windows, harmless).
+        self.config_file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         with open(self.config_file, "w") as f:
             json.dump(config, f, indent=2)
+        try:
+            os.chmod(self.config_file, 0o600)
+        except (OSError, NotImplementedError):
+            pass
 
     def add_server(
         self,
