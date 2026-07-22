@@ -732,4 +732,48 @@ describe('pipeline integration: webhook -> queue -> worker -> review -> post', (
     const sentContext = runReviewPipelineMock.mock.calls[0][0]
     expect(sentContext.projectMemories).toEqual(['Use tabs, not spaces.'])
   })
+
+  describe('check_run (CI-diagnosis) path retry parity', () => {
+    // The pull_request path (Phase 3 Task 10) already distinguishes
+    // "no result -> retry" from "result produced, publish failed -> don't
+    // retry". processGitHubCheckRun ran the pre-fix shared try/catch, so a
+    // publish-only failure re-ran the whole CI-diagnosis LLM pipeline. These
+    // pin the same two-branch behavior for check_run.
+    const checkRunJob = {
+      provider: 'github', kind: 'check_run', owner: 'acme', repo: 'api',
+      repositoryExternalId: 1, fullName: 'acme/api', installationId: 42,
+      prNumber: 1, headSha: 'abc', ciLogs: 'build failed: TypeError at foo.ts:3',
+    }
+
+    it('partial success: pipeline produced a usable result but posting failed -> job does NOT throw (no full-pipeline retry)', async () => {
+      mocks.octokit.rest.pulls.createReview.mockRejectedValue(
+        Object.assign(new Error('GitHub API rate limited'), { status: 500 })
+      )
+      await buildApp(mocks)
+      const { processReviewJob } = await import('./worker.js')
+
+      await expect(processReviewJob(checkRunJob)).resolves.toBeUndefined()
+
+      expect(mocks.fetchMock).toHaveBeenCalledTimes(1)              // pipeline ran
+      expect(mocks.octokit.rest.pulls.createReview).toHaveBeenCalledTimes(1) // publish attempted
+      expect(mocks.octokit.rest.checks.update).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'completed', conclusion: 'failure' })
+      )
+      expect(mocks.prisma.reviewCreate).not.toHaveBeenCalled()      // not retried, not re-persisted
+    })
+
+    it('genuine infra crash: pipeline yields no result -> job DOES throw (still retried by attempts:3)', async () => {
+      const runReviewPipelineMock = vi.fn().mockRejectedValue(
+        new Error('Python pipeline exited with status 500: internal error')
+      )
+      await buildApp(mocks, { runReviewPipeline: runReviewPipelineMock })
+      const { processReviewJob } = await import('./worker.js')
+
+      await expect(processReviewJob(checkRunJob)).rejects.toThrow('Python pipeline exited with status 500')
+      expect(mocks.octokit.rest.pulls.createReview).not.toHaveBeenCalled()
+      expect(mocks.octokit.rest.checks.update).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'completed', conclusion: 'failure' })
+      )
+    })
+  })
 })
