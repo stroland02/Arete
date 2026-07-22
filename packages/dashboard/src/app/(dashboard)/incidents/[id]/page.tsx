@@ -5,6 +5,13 @@ import { db } from "@/lib/db";
 import { getIncidentDetail } from "@/lib/incidents";
 import { setIncidentNoiseAction } from "../actions";
 import { resolveSelectedInstallationIds } from "@/lib/queries";
+import {
+  getIncidentSignals,
+  incidentSignalWindow,
+  type ErrorSpan,
+  type LogLine,
+  type ExceptionGroup,
+} from "@/lib/telemetry-queries";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 import { IconArrowLeft, IconSparkles } from "@tabler/icons-react";
 
@@ -80,6 +87,26 @@ export default async function IncidentDetailPage({
   const payload = asRecord(incident.payload);
   const labels = asRecord(payload.labels);
   const annotations = asRecord(payload.annotations);
+
+  // Scope telemetry to the alert's service when the payload names one
+  // (Prometheus convention: `service`, else `job`); undefined widens to every
+  // service in the tenant. installationIds is the session-authorized set —
+  // the same tenancy boundary getIncidentDetail was fetched under.
+  const serviceLabel =
+    typeof labels.service === "string"
+      ? labels.service
+      : typeof labels.job === "string"
+        ? labels.job
+        : undefined;
+  const signals = await getIncidentSignals(
+    installationIds,
+    incidentSignalWindow(incident.startsAt, incident.resolvedAt),
+    serviceLabel,
+  );
+  const noSignals =
+    signals.exceptions.length === 0 &&
+    signals.spans.length === 0 &&
+    signals.logs.length === 0;
 
   return (
     <PageReveal className="max-w-5xl space-y-6">
@@ -184,7 +211,112 @@ export default async function IncidentDetailPage({
           </div>
         </div>
       </RevealItem>
+
+      {/* Signals — the incident's own trace/log/exception context from Areté's
+          SUPERLOG telemetry (dogfooding). Fail-soft: a telemetry-backend
+          outage renders a note, never breaks the incident page. */}
+      <RevealItem>
+        <div className="glass-panel p-5 space-y-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+            <h2 className="text-sm font-semibold text-content-primary">Signals</h2>
+            <p className="text-xs text-content-muted">
+              Trace, log &amp; exception context{serviceLabel ? ` for ${serviceLabel}` : ""} around this incident
+              (±15&nbsp;min)
+            </p>
+          </div>
+
+          {signals.unavailable ? (
+            <p className="text-sm text-content-muted">
+              Telemetry backend unavailable — signals couldn&apos;t be loaded for this window.
+            </p>
+          ) : noSignals ? (
+            <p className="text-sm text-content-muted">No signals recorded in this window.</p>
+          ) : (
+            <div className="space-y-6">
+              {signals.exceptions.length > 0 && <ExceptionsList exceptions={signals.exceptions} />}
+              {signals.spans.length > 0 && <ErrorSpansList spans={signals.spans} />}
+              {signals.logs.length > 0 && <LogsList logs={signals.logs} />}
+            </div>
+          )}
+        </div>
+      </RevealItem>
     </PageReveal>
+  );
+}
+
+function formatSignalTime(d: Date): string {
+  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function formatDuration(ms: number): string {
+  return ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${ms.toFixed(1)} ms`;
+}
+
+function SignalSectionLabel({ children }: { children: string }) {
+  return <h3 className="text-[11px] uppercase tracking-wide text-content-muted mb-2">{children}</h3>;
+}
+
+function ExceptionsList({ exceptions }: { exceptions: ExceptionGroup[] }) {
+  return (
+    <section>
+      <SignalSectionLabel>Exceptions</SignalSectionLabel>
+      <div className="space-y-2">
+        {exceptions.map((e, i) => (
+          <div key={i} className="flex items-start gap-3 text-sm">
+            <span className="shrink-0 rounded-md bg-accent-danger/10 px-1.5 py-0.5 text-xs font-semibold text-accent-danger tabular-nums">
+              {e.occurrences}×
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-mono text-xs text-content-secondary">
+                {e.exceptionType || "exception"}
+                <span className="text-content-muted"> · {e.service}</span>
+              </p>
+              {e.exceptionMessage && (
+                <p className="truncate text-content-secondary">{e.exceptionMessage}</p>
+              )}
+            </div>
+            <span className="shrink-0 text-xs text-content-muted tabular-nums">{formatSignalTime(e.lastSeen)}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ErrorSpansList({ spans }: { spans: ErrorSpan[] }) {
+  return (
+    <section>
+      <SignalSectionLabel>Error spans</SignalSectionLabel>
+      <div className="space-y-1.5">
+        {spans.map((s, i) => (
+          <div key={i} className="flex items-center gap-3 text-sm">
+            <span className="w-16 shrink-0 text-xs text-content-muted tabular-nums">{formatSignalTime(s.timestamp)}</span>
+            <span className="shrink-0 font-mono text-xs text-content-secondary">{s.spanName}</span>
+            <span className="shrink-0 text-xs text-content-muted">{s.service}</span>
+            <span className="min-w-0 flex-1 truncate text-xs text-content-muted">{s.statusMessage}</span>
+            <span className="shrink-0 text-xs text-content-muted tabular-nums">{formatDuration(s.durationMs)}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function LogsList({ logs }: { logs: LogLine[] }) {
+  return (
+    <section>
+      <SignalSectionLabel>Error logs</SignalSectionLabel>
+      <div className="space-y-1.5">
+        {logs.map((l, i) => (
+          <div key={i} className="flex items-start gap-3 text-sm">
+            <span className="w-16 shrink-0 text-xs text-content-muted tabular-nums">{formatSignalTime(l.timestamp)}</span>
+            <span className="shrink-0 text-xs font-semibold uppercase text-accent-danger">{l.severity}</span>
+            <span className="shrink-0 text-xs text-content-muted">{l.service}</span>
+            <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-content-secondary">{l.body}</span>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
