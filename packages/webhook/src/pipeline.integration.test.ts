@@ -31,6 +31,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import request from 'supertest'
 import type { Application } from 'express'
 
+// Each test here re-transpiles the real server + worker graph via dynamic
+// import() after vi.resetModules(), which is CPU-heavy. Under load (the whole
+// monorepo suite running at once), that can exceed vitest's default 5s
+// testTimeout -- and a timeout ABORTS the test mid-flight while its
+// processReviewJob() continuation keeps running, then leaks a fetch call into
+// the next test (observed: "fetch called 2 times, expected 1"). The work
+// itself is fully synchronous mocks (no real Redis/BullMQ, no real network),
+// so a generous file-scoped budget removes the starvation flake without
+// masking any genuine hang. Scoped to THIS file via setConfig so unit suites
+// keep their fast-fail default.
+vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 })
+
 // --- env (never real secrets; test-only values) ---
 vi.stubEnv('GITHUB_APP_ID', '12345')
 vi.stubEnv('GITHUB_PRIVATE_KEY', '-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----\n')

@@ -68,21 +68,38 @@ Ranked. The first item is a live security gap, not an enhancement.
 7. **A second Prometheus rules file will need a compose/config edit.** `rule_files` deliberately
    names the one file rather than globbing, because a glob also matches the `promtool` test file,
    whose schema makes Prometheus reject the entire config.
-8. ~~**`pipeline.integration.test.ts` is still flaky**~~ **RESOLVED.** The one
-   real flake — order-dependence from `vi.doMock` + `vi.resetModules()` leaking
-   mocks across tests — was fixed in commit `515b30a` (buildApp owns the doMock
-   registry). Phase 4 added an `afterEach` assertion for both buildApp-managed
-   mocks (`review-bridge.js`, `telemetry/fetch-telemetry-context.js`) and
-   verified the suite passes under randomized order. That assertion guards
-   teardown symmetry — it verifies the unconditional `vi.doUnmock` calls
-   directly above it actually leave both modules un-mocked, catching those
-   `doUnmock` calls being silently weakened or removed — not "a future test
-   mocking outside buildApp" (the corrected framing; the earlier draft of this
-   entry overclaimed that case, which the unconditional doUnmock calls already
-   neutralize on their own). The test is hermetic (mocks Redis/Postgres/fetch/
-   GitHub; the webhook CI job needs no services). Phase 0's "fix or quarantine"
-   criterion is **met**. Left struck-through rather than deleted: an entry
-   asserting a live flake that no longer exists misstates shipped reality.
+8. ~~**`pipeline.integration.test.ts` is still flaky**~~ **RESOLVED (two
+   distinct vectors, fixed separately).** The suite had TWO independent flake
+   vectors, not one — an earlier version of this entry claimed only the first
+   was ever present and declared the suite immune; the pre-`main` verification
+   pass falsified that by reproducing the second.
+   - **Vector 1 — mock order-dependence (fixed `515b30a`).** `vi.doMock` +
+     `vi.resetModules()` leaked mocks across tests. Fixed by having buildApp own
+     the doMock registry. Phase 4 added an `afterEach` assertion for both
+     buildApp-managed mocks (`review-bridge.js`,
+     `telemetry/fetch-telemetry-context.js`) that guards teardown symmetry — it
+     verifies the unconditional `vi.doUnmock` calls directly above it actually
+     leave both modules un-mocked, catching those `doUnmock` calls being
+     silently weakened or removed. (It does NOT guard "a future test mocking
+     outside buildApp"; the unconditional doUnmock calls already neutralize that
+     on their own.)
+   - **Vector 2 — starvation timeout leaking a `fetch` (fixed pre-`main`).**
+     Each test re-transpiles the real server+worker graph via dynamic `import()`
+     after `resetModules()`. When the whole monorepo suite runs at once, that
+     CPU contention pushed the async-handoff test past vitest's default 5s
+     `testTimeout`; the timeout ABORTS the test while its `processReviewJob()`
+     continuation keeps running, which then leaks a `fetch` into the next test
+     (observed: "fetch called 2 times, expected 1"). CI (isolated per-package
+     job) never hit it; the local all-suites-at-once run did. Fixed with a
+     file-scoped `vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 })` —
+     the work is fully synchronous mocks (no real Redis/BullMQ/network), so a
+     larger budget removes the starvation flake without masking any real hang,
+     and the scope keeps unit suites on their fast-fail default.
+
+   The test is hermetic (mocks Redis/Postgres/fetch/GitHub; the webhook CI job
+   needs no services). Phase 0's "fix or quarantine" criterion is **met** for
+   both vectors. Left struck-through rather than deleted: an entry asserting a
+   live flake that no longer exists misstates shipped reality.
 9. **Running containers drift from compose on security-relevant settings.** The Alertmanager
    container was serving `0.0.0.0:9093` for hours after `docker-compose.yml` had been changed to
    `127.0.0.1:9093` (the C1 remediation) — a container does not re-read its port mapping on restart,
