@@ -1,8 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const queryMock = vi.fn();
+// `jsonEachRow` is mocked with the real implementation's behaviour (await the
+// result set's `.json()`), not stubbed out: it is a pure type-narrowing helper
+// over a `JSONEachRow` response, so a mock that dropped it would make the
+// module under test fail for a reason the production path never has.
 vi.mock('./clickhouse', () => ({
   clickhouse: { query: (...args: unknown[]) => queryMock(...args) },
+  jsonEachRow: async (result: { json(): Promise<unknown> }) => result.json(),
 }));
 
 import { getAgentEventsPerMinute } from './queries';

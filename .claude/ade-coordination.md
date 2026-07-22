@@ -336,3 +336,70 @@ keeps working unchanged while no row is flagged**, so no deployment starts dropp
 `packages/dashboard/src/lib/telemetry-queries.ts` and `.env.example`. No `packages/db` schema, migration,
 or generated client file is modified by this entry — only `src/platform-installation.ts` (new) and the
 single `export *` line in `src/index.ts`.
+
+---
+
+### `pyrosome` (PM lane) cross-lane claim — incident-signal reads move to `@arete/db`; healing path consumes them (declared 2026-07-22)
+
+**Cross-lane declaration per coordination rule 4 + "declare cross-package changes in the ledger before
+editing".** This closes **Phase 2b item 2** (`docs/roadmap/backlog.md`) — *"Telemetry-fed investigations,
+the one unshipped spec §3 Phase 2 bullet: the healing agent should read the incident's own trace/log
+context."* Phase 2 deferred it for one stated reason — *"blocked on an internal query surface"* — and that
+surface shipped in `a6afc14`. The blocker is gone; the bullet is not.
+
+**The defect being closed:** an alert fires → `Incident` → `WorkItem` → the fix pipeline authors a patch,
+and at no point does the healing agent see the error spans, logs, or exceptions that *are the incident*.
+It reads the repository and the work item's static code evidence only. The dashboard can now show a human
+that runtime context (Signals panel, `incidents/[id]/page.tsx`); the agent asked to actually fix the thing
+still cannot see it. Grep confirms it: zero telemetry reads anywhere in `packages/webhook/src` or
+`packages/agents/src`.
+
+**Design decision — one implementation, not two (following contract §2's "one resolver, one truth", and
+the precedent set by the `platform-installation.ts` move immediately above).** The incident-signal reads
+move **down** into `@arete/db`, already a `workspace:*` dependency of BOTH `@arete/dashboard` and
+`@arete/webhook`, and already the owner of the ClickHouse schema and migrations
+(`packages/db/clickhouse/`). The alternative — giving `@arete/webhook` its own `@clickhouse/client` and a
+second copy of the three queries — would duplicate a **platform-gated** read. That is the exact thing the
+tenancy contract forbids: *"for a security gate two copies are two places to drift, and drift here is a
+tenant leak."* The gate (`isPlatformInstallation`) already lives in `@arete/db`; the queries it guards
+belong beside it.
+
+**Files claimed by this worktree:**
+- **db (additive — new modules + one `export *`; no schema, migration, or generated file touched):**
+  `packages/db/src/incident-signals.ts` (**new** — the single implementation, moved verbatim from
+  `telemetry-queries.ts`; one import path changes), `packages/db/src/clickhouse.ts` (**new** — the client,
+  moved from the dashboard and made **lazy** so importing `@arete/db` in a service with no ClickHouse
+  configured constructs nothing), `packages/db/src/incident-signals.test.ts` (**moved** from the dashboard
+  with `git mv`, preserving history — it injects a `db` fake rather than mocking Prisma, so it moves
+  intact), `packages/db/src/index.ts` (one added `export *`), `packages/db/package.json` +
+  `packages/db/vitest.config.ts` (a test harness, mirroring `packages/telemetry`'s — the shared package had
+  none, and gated queries must not land somewhere they cannot be tested).
+- **dashboard (delegation only, no caller changes):**
+  `packages/dashboard/src/lib/telemetry-queries.ts` — becomes a thin re-export of the `@arete/db`
+  implementation, **keeping every exported name, signature and type** so
+  `app/(dashboard)/incidents/[id]/page.tsx` and every other importer are untouched.
+  `packages/dashboard/src/lib/clickhouse.ts` — re-exports the shared client so any other dashboard caller
+  keeps working.
+- **webhook (primary lane):** `packages/webhook/src/fix/incident-signals.ts` (**new**) + test — resolves
+  the `Incident` linked to a `WorkItem`, takes the platform gate, and shapes the signals for the wire;
+  `packages/webhook/src/fix/trigger.ts` — attaches them to the existing `FixRequestBody`.
+- **agents (primary lane):** `packages/agents/src/arete_agents/models/fix.py` (an **optional** `signals`
+  field — absent means "no incident context", exactly as today), `fix_pipeline.py` (the signals reach the
+  findings prompt as runtime evidence), plus tests.
+
+**Why this is safe/additive:** nothing is removed and no signature changes. The dashboard's public surface
+is name-for-name identical. `signals` is optional on the wire in both directions, so a webhook and an
+agents service at different versions interoperate unchanged — a WorkItem with no incident behind it
+produces exactly today's request. The platform gate is taken by the same single resolver, so a
+non-platform incident yields `access: 'denied'` and ClickHouse is never contacted.
+
+**Honest scope limit, stated because it will otherwise read as a bug:** the gate means telemetry-fed
+healing works **only for platform incidents** — Kuma healing Kuma. That is not a shortcut, it is the whole
+truth of the current stack: nothing ingests customer telemetry until Phase 3
+(`docs/roadmap/2026-07-15-superlog-phased-roadmap.md`), so for a customer incident there is genuinely no
+telemetry to read. The agent must be told "no signals" rather than shown an empty list that reads as
+"nothing was wrong" — the §4 distinction, carried through to the prompt.
+
+**Explicitly NOT touched:** `packages/webhook/src/alerting/` (ceded to the `ridley` lane while its
+receiver work was in flight), `packages/dashboard/src/lib/platform-installation.ts` beyond leaving it as
+the re-export ridley made it, and any `packages/db` schema, migration, or generated client file.

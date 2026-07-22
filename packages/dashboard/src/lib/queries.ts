@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@arete/db';
 import type { AuthorizedInstallation } from './installations';
 import type { FindingLike } from './sensors';
-import { clickhouse } from './clickhouse';
+import { clickhouse, jsonEachRow } from './clickhouse';
 
 /**
  * Picks which authorized installation(s) the current page view should query:
@@ -806,7 +806,7 @@ export async function getAgentEventsPerMinute(
     format: 'JSONEachRow',
   });
 
-  const rows: Array<{ minute: string; count: string }> = await result.json();
+  const rows = await jsonEachRow<{ minute: string; count: string }>(result);
 
   return rows.map(r => ({
     minute: new Date(r.minute),
