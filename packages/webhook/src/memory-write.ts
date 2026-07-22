@@ -41,7 +41,7 @@
 // report `ok: true` without an actual persisted row.
 
 import { trace, metrics, SpanStatusCode, type Counter } from '@opentelemetry/api'
-import { scrubSinkText } from '@arete/telemetry'
+import { scrubSinkText, recordExceptionWithFingerprint } from '@arete/telemetry'
 import { prisma } from './db.js'
 import { logger } from './logger.js'
 import { MAX_PROJECT_MEMORIES } from './persistence.js'
@@ -130,7 +130,7 @@ export async function saveAgentMemory(params: SaveMemoryParams): Promise<SaveMem
       // honest result object, never an exception that could be mistaken for
       // (or accidentally mapped to) success.
       log.error({ err }, 'unexpected error saving agent memory')
-      span.recordException(err instanceof Error ? err : new Error(String(err)))
+      recordExceptionWithFingerprint(span, err instanceof Error ? err : new Error(String(err)))
       span.setStatus({ code: SpanStatusCode.ERROR })
       span.setAttribute('arete.memory.reason', 'internal_error')
       memoryWritesMetric().add(1, { outcome: 'internal_error' })

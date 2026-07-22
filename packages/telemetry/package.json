@@ -8,7 +8,8 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
-    "./logger": { "types": "./dist/logger.d.ts", "default": "./dist/logger.js" }
+    "./logger": { "types": "./dist/logger.d.ts", "default": "./dist/logger.js" },
+    "./fingerprint": { "types": "./dist/fingerprint.d.ts", "default": "./dist/fingerprint.js" }
   },
   "files": ["dist"],
   "scripts": {

@@ -41,6 +41,7 @@
 // that Alertmanager retries.
 
 import { trace, metrics, SpanStatusCode, type Counter } from '@opentelemetry/api'
+import { recordExceptionWithFingerprint } from '@arete/telemetry'
 import type { Prisma } from '@arete/db'
 import { logger } from '../logger.js'
 
@@ -210,7 +211,7 @@ export async function routeIncidentToFix(incidentId: string, deps: RouteIncident
       return { routed: true, workItemId: workItem.id }
     } catch (err) {
       log.error({ err, incidentId }, 'failed to route incident to a WorkItem')
-      span.recordException(err instanceof Error ? err : new Error(String(err)))
+      recordExceptionWithFingerprint(span, err instanceof Error ? err : new Error(String(err)))
       span.setStatus({ code: SpanStatusCode.ERROR })
       return { routed: false, reason: 'error' }
     } finally {

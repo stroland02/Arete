@@ -1,4 +1,5 @@
 import { trace, metrics, SpanStatusCode, type Counter, type Histogram, type Span } from '@opentelemetry/api'
+import { recordExceptionWithFingerprint } from '@arete/telemetry'
 import { publishAgentMetricsEvent } from './agent-metrics.js'
 
 /**
@@ -93,7 +94,7 @@ export async function runWithReviewSpan(attrs: ReviewSpanAttrs, fn: () => Promis
         })
       } catch (err) {
         outcome = 'failure'
-        span.recordException(err instanceof Error ? err : new Error(String(err)))
+        recordExceptionWithFingerprint(span, err instanceof Error ? err : new Error(String(err)))
         span.setStatus({ code: SpanStatusCode.ERROR, message: err instanceof Error ? err.message : String(err) })
         publishAgentMetricsEvent({
           ts: new Date().toISOString(),
@@ -127,7 +128,7 @@ export async function withChildSpan<T>(
     try {
       return await fn()
     } catch (err) {
-      span.recordException(err instanceof Error ? err : new Error(String(err)))
+      recordExceptionWithFingerprint(span, err instanceof Error ? err : new Error(String(err)))
       span.setStatus({ code: SpanStatusCode.ERROR })
       throw err
     } finally {
@@ -163,7 +164,7 @@ export async function runWithFixSpan<T>(attrs: FixSpanAttrs, fn: (span: Span) =>
       try {
         return await fn(span)
       } catch (err) {
-        span.recordException(err instanceof Error ? err : new Error(String(err)))
+        recordExceptionWithFingerprint(span, err instanceof Error ? err : new Error(String(err)))
         span.setStatus({ code: SpanStatusCode.ERROR, message: err instanceof Error ? err.message : String(err) })
         throw err
       } finally {

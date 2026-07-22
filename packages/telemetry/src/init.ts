@@ -9,6 +9,7 @@ import { PeriodicExportingMetricReader, AggregationType } from '@opentelemetry/s
 import { BatchLogRecordProcessor } from '@opentelemetry/sdk-logs'
 import { buildResource, type AreteServiceName } from './resource.js'
 import { ScrubbingSpanProcessor } from './scrub-processor.js'
+import { resetServiceName, setServiceName } from './service-name.js'
 
 /** §5 frozen: review/agent durations bucketed up to 300 s — the default 10 s
  *  ceiling silently corrupts p95/p99 exactly where LLM latency lives. */
@@ -28,6 +29,12 @@ let started = false
 export function initTelemetry(serviceName: AreteServiceName, serviceVersion = '0.1.0'): boolean {
   if (started) return sdk !== null
   started = true
+  // Record the process's service name even on the paths that return early
+  // below: `recordExceptionWithFingerprint` scopes its issue fingerprint by
+  // service name, and a span emitted through a manually-registered provider
+  // (tests, or a future non-SDK bootstrap) must still be scoped correctly.
+  // Not derived from the Resource — a Resource is not readable from app code.
+  setServiceName(serviceName)
   if (process.env.OTEL_SDK_DISABLED === 'true') return false
   try {
     // JS SDK emits legacy http semconv until v3; http/dup bridges (spec §4).
@@ -98,6 +105,7 @@ export async function shutdownTelemetry(): Promise<void> {
   const s = sdk
   sdk = null
   started = false
+  resetServiceName() // so a subsequent initTelemetry() can set it again
   if (!s) return
   try {
     await s.shutdown()

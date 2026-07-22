@@ -392,3 +392,80 @@ different-file edits.
 **Explicitly NOT touched:** `diff-view.tsx`, `diff-stat.ts`, `triage.ts`, `triage-bar.tsx`,
 `status-board.tsx`, `send-pr-button.tsx`, `app/(dashboard)/services/page.tsx`, and everything outside
 `packages/dashboard/src/components/`. No schema, migration, API route or query is read or written.
+
+---
+
+### `ridley` (W2, overview-revamp) cross-lane claim — emit-time `superlog.issue_fingerprint` in `packages/telemetry` + `packages/webhook` (declared 2026-07-22)
+
+**Cross-lane declaration per coordination rule 4 + the rule "declare cross-package changes in the ledger
+before editing".** `packages/telemetry` and `packages/webhook` are **Engineer A's lane**. The `ridley`
+worktree (branch `stroland02/overview-revamp`, W2) is closing the last open box of
+`docs/superpowers/specs/2026-07-22-telemetry-tenancy-contract.md` §7:
+*"Backlog: emit-time `superlog.issue_fingerprint` stamping, using §5's normalizer."*
+
+**Why (contract §5 — "One fingerprint, one normalizer").** The ClickHouse projections
+`superlog.otel_exceptions` (`packages/db/clickhouse/migrations/004_otel_exceptions.sql:75,101`) and
+`superlog.issue_activity_daily` (`002_issue_activity_daily.sql`) both read
+`event_attrs['superlog.issue_fingerprint']` / `LogAttributes['superlog.issue_fingerprint']`. **Nothing in
+the codebase stamps that attribute**, so the `fingerprint` column is always `''` and
+`issue_activity_daily` — which is *keyed by* fingerprint — cannot group at all. This lane stamps it at
+emit time. Contract §5 forbids a second algorithm ("Two algorithms would split one error into two groups
+and quietly break 'resolve these together'"), so the stamped value **must** come from the same
+normalizer the dashboard's read-time path (`lib/errors.ts` → `lib/error-fingerprint.ts`) uses.
+
+**Design decision — one implementation in `@arete/telemetry`, following the
+`platform-installation.ts` → `@arete/db` precedent (contract §2's "one resolver, one truth").** The
+normalizer moves **down** into `packages/telemetry/src/fingerprint.ts`, exposed as a dedicated
+`@arete/telemetry/fingerprint` subpath export that imports **only `node:crypto`** — no OTel SDK, no
+`init.ts` — so a Next.js server bundle that re-exports it does not pull the Node SDK bootstrap in (the
+exact concern the old `error-fingerprint.ts` header cites as its reason for copying). `@arete/telemetry`
+is the right home because the *emitters* are what must stamp, and it is already a `workspace:*`
+dependency of `@arete/webhook` (which is both the webhook and the worker process:
+`src/otel.ts` → `initTelemetry('arete-webhook')`, `src/otel-worker.ts` → `initTelemetry('arete-worker')`).
+`@arete/db` was rejected here: `@arete/telemetry` must not take a Prisma dependency to hash a string, and
+that package is claimed by a concurrent agent this session.
+
+**`@arete/telemetry` is NOT currently a dependency of `@arete/dashboard`** — one is added
+(`workspace:*`, plus the matching 3-line `link:../telemetry` entry under `packages/dashboard:` in
+`pnpm-lock.yaml`). It is a pure library package (not a deployable like `@arete/webhook`), so this does not
+reproduce the coupling the old header warned about.
+
+**Files claimed by this worktree:**
+- **telemetry (additive — two new modules, one new subpath export, three added `export`s):**
+  `packages/telemetry/src/fingerprint.ts` (**new** — the single implementation: `normalizeErrorMessage`,
+  `fingerprintScoped`, `fingerprintError`, moved verbatim from the dashboard module),
+  `packages/telemetry/src/fingerprint.test.ts` (**new**),
+  `packages/telemetry/src/record-exception.ts` (**new** — `recordExceptionWithFingerprint`),
+  `packages/telemetry/src/record-exception.test.ts` (**new**),
+  `packages/telemetry/src/service-name.ts` (**new** — the process's own `service.name`, so the stamped
+  fingerprint's `service` component matches the `ServiceName` column the read path groups on),
+  `packages/telemetry/src/service-name.test.ts` (**new**),
+  `packages/telemetry/src/init.ts` (one added `setServiceName(...)` call + one reset in
+  `shutdownTelemetry`; no SDK behaviour changed), `packages/telemetry/src/index.ts` (re-exports),
+  `packages/telemetry/package.json` (one `"./fingerprint"` exports entry).
+- **webhook (primary lane, additive):** `packages/webhook/src/fingerprint.ts` — `fingerprintComment`
+  keeps its exact name/signature/output and now delegates to the shared implementation;
+  `packages/webhook/src/observability.ts` (3 sites), `packages/webhook/src/memory-write.ts` (1),
+  `packages/webhook/src/alerting/incident.ts` (1), `packages/webhook/src/alerting/receiver.ts` (1) —
+  each `span.recordException(...)` routed through the helper. **No error-handling semantics change**: the
+  same coercion, the same rethrow, the same `setStatus`, the same `finally { span.end() }`; only one
+  extra attribute on the exception event.
+  `packages/webhook/src/fingerprint.test.ts` extended with the cross-lane agreement assertion.
+- **dashboard (delegation only, no caller changes):**
+  `packages/dashboard/src/lib/error-fingerprint.ts` — becomes a thin re-export of
+  `@arete/telemetry/fingerprint`, **keeping both exported names and signatures byte-identical**, so
+  `lib/errors.ts`, `lib/errors.test.ts` and `lib/error-fingerprint.test.ts` are untouched.
+  `packages/dashboard/package.json` + `pnpm-lock.yaml` (the one workspace-link dependency).
+
+**Why this is safe/additive:** nothing is removed and no public signature changes. The exception event
+the collector receives is the same event the OTel SDK's own `Span.recordException` would produce (the
+helper mirrors its `exception.type`/`exception.message`/`exception.stacktrace` construction exactly) plus
+one new attribute; an unrecorded/no-op span still does nothing. The read-time path is unchanged and keeps
+computing the fingerprint itself, so the projections and the Errors surface agree before and after.
+
+**Python lane (`packages/agents`) deliberately NOT implemented** — see the note below.
+
+**Explicitly NOT touched:** anything under `packages/db` (concurrent agent), any ClickHouse migration,
+`packages/agents`, and the pino/log emit path (`logger.ts`) — `issue_activity_daily`'s
+`LogAttributes['superlog.issue_fingerprint']` half stays unstamped and is called out as follow-up rather
+than half-done.

@@ -14,6 +14,7 @@
     "@arete/db": "workspace:*",
     "@arete/internal-token": "workspace:*",
     "@arete/orchestration": "workspace:*",
+    "@arete/telemetry": "workspace:*",
     "@arete/topology": "workspace:*",
     "@clickhouse/client": "^1.23.1",
     "@prisma/adapter-pg": "^7.8.0",

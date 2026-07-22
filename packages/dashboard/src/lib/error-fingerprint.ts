@@ -1,61 +1,31 @@
-// Deterministic grouping key for observed errors.
+// Deterministic grouping key for observed errors — a THIN RE-EXPORT.
 //
-// MIRRORS packages/webhook/src/fingerprint.ts (`fingerprintComment`) — the SAME
-// replacement rules, in the SAME order, producing the SAME 16-char sha256
-// shape. That is deliberate: an operator who sees the webhook group 15 review
-// comments into one bucket must see the Errors surface group 15 error events
-// the same way, or "grouping" means two different things in one product.
+// The implementation moved to `packages/telemetry/src/fingerprint.ts` and this
+// module now forwards to it, unchanged in name, signature and output. It is no
+// longer a copy of anything.
 //
-// It is COPIED rather than imported because @arete/webhook and @arete/dashboard
-// are separate workspace packages with no shared lib package between them, and
-// the dashboard must not take a dependency on the webhook service (it is a
-// deployable, not a library — importing it would pull its Prisma client,
-// OpenTelemetry bootstrap and env expectations into the Next.js bundle).
-// If a shared `@arete/core` ever lands, both should move there and this
-// duplicate should be deleted. KEEP THE TWO RULE LISTS IN SYNC.
+// WHY IT MOVED. This file used to carry a "MIRRORS packages/webhook/src/
+// fingerprint.ts … KEEP THE TWO RULE LISTS IN SYNC" header, and its own
+// closing note said: "If a shared `@arete/core` ever lands, both should move
+// there and this duplicate should be deleted." That day arrived for a concrete
+// reason: `superlog.issue_fingerprint` is now stamped at EMIT time by the
+// emitters (`@arete/telemetry` recordExceptionWithFingerprint) and read by the
+// `superlog.otel_exceptions` / `superlog.issue_activity_daily` projections,
+// while this surface still computes the same key at READ time (lib/errors.ts).
+// Under a hand-synced copy those two are one careless edit away from splitting
+// a single error into two groups — precisely what
+// docs/superpowers/specs/2026-07-22-telemetry-tenancy-contract.md §5
+// ("One fingerprint, one normalizer") forbids.
+//
+// WHY `@arete/telemetry` AND NOT A NEW PACKAGE. The party that must stamp is
+// the emitter, and `@arete/telemetry` is the package every TypeScript emitter
+// already depends on. The old header's objection — that importing across
+// packages would drag a service's Prisma client and OpenTelemetry bootstrap
+// into the Next.js bundle — applied to `@arete/webhook` (a deployable). It does
+// not apply here: `@arete/telemetry/fingerprint` is a dedicated subpath export
+// whose module imports `node:crypto` and nothing else, so none of the SDK
+// reaches this app. This mirrors the platform-installation resolver moving into
+// `@arete/db` (contract §2) — a rule two packages must both obey belongs in the
+// package they both depend on.
 
-import { createHash } from 'node:crypto';
-
-/**
- * Strips the dynamic parts out of an error message so two occurrences of the
- * SAME failure — differing only in a request uuid, a retry count, a URL, or a
- * timestamp — normalize to one identical string.
- *
- * Rule order matters: URLs and emails are consumed before the narrower
- * uuid/ip/number rules can chew holes in them, and quoted strings are replaced
- * before the bare-number rule so a quoted numeric literal collapses once.
- *
- * Returns '' for empty/whitespace-only input — callers decide what that means
- * (see errors.ts: a group with no message keeps the span name as its title).
- */
-export function normalizeErrorMessage(raw: string): string {
-  let s = raw;
-  s = s.replace(/https?:\/\/\S+/gi, '<url>');
-  s = s.replace(/\b[\w.+-]+@[\w.-]+\.\w+\b/g, '<email>');
-  s = s.replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '<uuid>');
-  s = s.replace(/\b\d{4}-\d{2}-\d{2}[T ][\d:.]+Z?(?:[+-]\d{2}:?\d{2})?\b/g, '<ts>');
-  s = s.replace(/\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b/g, '<ip>');
-  s = s.replace(/\b0x[0-9a-f]+\b/gi, '<hex>');
-  s = s.replace(/"(?:[^"\\]|\\.)*"/g, '<str>');
-  s = s.replace(/'(?:[^'\\]|\\.)*'/g, '<str>');
-  s = s.replace(/\b\d+\b/g, '<n>');
-  s = s.replace(/\s+/g, ' ').trim().toLowerCase();
-  return s;
-}
-
-/**
- * The grouping key for one error: 16 hex chars of
- * sha256(`${service}::${normalizeErrorMessage(message)}`).
- *
- * The service is part of the canonical string so the same generic message
- * ("connection reset") emitted by arete-worker and arete-agents stays two
- * groups — they are two different failures to go fix, and merging them would
- * hide one behind the other's volume.
- *
- * 16 chars = 64 bits, matching the webhook module and the `fingerprint` column
- * on ErrorGroup (`@@unique([installationId, fingerprint])`).
- */
-export function fingerprintError(service: string, message: string): string {
-  const canonical = `${service}::${normalizeErrorMessage(message)}`;
-  return createHash('sha256').update(canonical).digest('hex').slice(0, 16);
-}
+export { normalizeErrorMessage, fingerprintError } from '@arete/telemetry/fingerprint';

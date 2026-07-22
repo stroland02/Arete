@@ -57,7 +57,7 @@
 // label on the wire.
 
 import { trace, metrics, SpanStatusCode, type Counter } from '@opentelemetry/api'
-import { scrubSinkText, scrubSinkValue } from '@arete/telemetry'
+import { scrubSinkText, scrubSinkValue, recordExceptionWithFingerprint } from '@arete/telemetry'
 import {
   Prisma,
   resolvePlatformInstallationId as resolvePlatformInstallationIdFromDb,
@@ -302,7 +302,7 @@ export async function handleIncomingAlert(body: unknown): Promise<HandleAlertRes
       // but nothing about this batch loop may ever escape as an exception —
       // Alertmanager retries on non-2xx (see module header).
       log.error({ err }, 'unexpected error processing incoming alert batch')
-      span.recordException(err instanceof Error ? err : new Error(String(err)))
+      recordExceptionWithFingerprint(span, err instanceof Error ? err : new Error(String(err)))
       span.setStatus({ code: SpanStatusCode.ERROR })
     } finally {
       span.end()
