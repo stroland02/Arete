@@ -68,9 +68,21 @@ Ranked. The first item is a live security gap, not an enhancement.
 7. **A second Prometheus rules file will need a compose/config edit.** `rule_files` deliberately
    names the one file rather than globbing, because a glob also matches the `promtool` test file,
    whose schema makes Prometheus reject the entire config.
-8. **`pipeline.integration.test.ts` is still flaky** — Phase 0's "fix or quarantine" exit criterion
-   was never met and survived two phases. Confirmed pre-existing via `git stash` against a pre-Task-6
-   tree. Phase 3 action 7 (audit prior phases' exit criteria) exists because of this.
+8. ~~**`pipeline.integration.test.ts` is still flaky**~~ **RESOLVED.** The one
+   real flake — order-dependence from `vi.doMock` + `vi.resetModules()` leaking
+   mocks across tests — was fixed in commit `515b30a` (buildApp owns the doMock
+   registry). Phase 4 added an `afterEach` assertion for both buildApp-managed
+   mocks (`review-bridge.js`, `telemetry/fetch-telemetry-context.js`) and
+   verified the suite passes under randomized order. That assertion guards
+   teardown symmetry — it verifies the unconditional `vi.doUnmock` calls
+   directly above it actually leave both modules un-mocked, catching those
+   `doUnmock` calls being silently weakened or removed — not "a future test
+   mocking outside buildApp" (the corrected framing; the earlier draft of this
+   entry overclaimed that case, which the unconditional doUnmock calls already
+   neutralize on their own). The test is hermetic (mocks Redis/Postgres/fetch/
+   GitHub; the webhook CI job needs no services). Phase 0's "fix or quarantine"
+   criterion is **met**. Left struck-through rather than deleted: an entry
+   asserting a live flake that no longer exists misstates shipped reality.
 9. **Running containers drift from compose on security-relevant settings.** The Alertmanager
    container was serving `0.0.0.0:9093` for hours after `docker-compose.yml` had been changed to
    `127.0.0.1:9093` (the C1 remediation) — a container does not re-read its port mapping on restart,
@@ -310,17 +322,75 @@ dropped.
    whether it is good enough at the harder generative task. Do NOT change the tier
    blind: needs a real Anthropic key plus a regression corpus of known-fixable issues
    to measure haiku-vs-sonnet-authored patch pass rate before touching the default.
-2. **MCP OAuth has no refresh-on-expiry path, and no RFC 8414 discovery / dynamic
-   client registration.** Task 6 implemented a configured-`token_url` exchange only.
-   `mcp/manager.py`'s stored record carries `expires_at`/`refresh_token` fields, but
-   nothing in `mcp/auth.py` or `mcp/manager.py` ever reads them to refresh a token
-   before it expires, and there is no discovery/DCR flow for servers that don't hand
-   out a static `token_url` up front.
+2. ~~**MCP OAuth has no refresh-on-expiry path**~~ **PARTIALLY RESOLVED (Phase 4).**
+   Refresh-on-expiry now exists: `MCPManager.get_valid_token` (`mcp/manager.py`) reads
+   `expires_at` and, within a 60s skew window, refreshes via a real
+   `grant_type=refresh_token` exchange (`exchange_refresh_token`, `mcp/auth.py`), failing
+   closed (`MCPTokenRefreshError`) when it can't rather than presenting a stale token; the
+   creds file is now written `0o600`. **Still deferred:** RFC 8414 `.well-known` discovery
+   and dynamic client registration — carried to "Deferred from Phase 4" below.
 3. **Review `max_concurrency` default (N=8) is un-tuned.** Set on the `graph.invoke`
    config in `orchestrator.py`; the right value depends on real provider rate limits
    under real concurrent review load, which needs a real large PR and a real
    Anthropic key to validate — not measured this phase.
-4. **`processGitHubCheckRun` (the CI-diagnosis path in `packages/webhook/src/worker.ts`)
-   has the same shared try/catch double-retry exposure that Task 10 fixed for the PR
-   review path, left untouched.** No test harness exists for this path yet, so fixing
-   it blind risked an unverified change to a path nothing currently exercises in CI.
+4. ~~**`processGitHubCheckRun` has the same shared try/catch double-retry exposure**~~
+   **RESOLVED (Phase 4).** The CI-diagnosis path now uses the Task-10 two-block split
+   (`packages/webhook/src/worker.ts`): a `runReviewPipeline` failure re-throws (retryable
+   crash) while a `postReview` publish-only failure records a degraded check run and
+   returns (no full-pipeline retry). Its first tests were added to
+   `pipeline.integration.test.ts` (partial-success → resolves; infra-crash → rejects).
+
+## Deferred from Phase 4 (trustworthy CI signal + no-dependency harness hardening)
+
+Phase 4 closed the keyless-test signal debt (conftest mirrors CI's provider env), the
+`pipeline.integration.test.ts` flake (already fixed in `515b30a`; hardened + docs
+corrected this phase), the `processGitHubCheckRun` retry parity (item 4 above), and MCP
+refresh-on-expiry + `0o600` (item 2 above). Carried forward:
+
+1. **MCP RFC 8414 discovery + dynamic client registration** — deliberately not shipped:
+   speculative until a real MCP server that hands out no static `token_url` needs it, and
+   nothing in this environment validates such a flow (`mcp/auth.py` still synthesizes the
+   auth URL from `target`; `client_id` is the hardcoded `arete-client`, `auth.py:12`).
+2. **`review.publish` child span is absent on the check_run path** (`worker.ts`) though the
+   PR path wraps `postReview` in `withChildSpan('review.publish', …)`. Pre-existing
+   asymmetry (not a Phase 4 regression); a one-line parity fix, or a shared
+   `runPipelineAndPublish` helper that also DRYs the two-block duplication, would close it.
+3. **Phase 3 items 1 (haiku fix-authoring adequacy) and 3 (review N=8 tuning) remain** —
+   both still gated on a real Anthropic key + a real large PR to measure.
+4. **Unguarded second `checks.update` inside the publish-failure catch, on BOTH worker
+   paths** — PR path `worker.ts:134-144` and check_run path `worker.ts:239-249`. If that
+   `checks.update` call itself throws (transient GitHub API failure while reporting the
+   degraded outcome), the error propagates out of the catch block, so the job re-throws and
+   BullMQ retries it despite the pipeline having already produced a usable result — the
+   exact double-retry this task's two-block split was meant to prevent, just one call later.
+   Pre-existing and mirrored identically on both paths; a proper fix (e.g. wrap that
+   `checks.update` in its own try/catch that logs-and-returns) needs to touch the
+   already-shipped PR path too, not just check_run.
+5. **Redundant config disk read per HTTP MCP server.** `get_mcp_tools_for_agent` calls
+   `manager._load_config()` once up front, but for each `http`-transport server then calls
+   `manager.get_valid_token(server_name)`, which internally calls `get_server(name)` →
+   `_load_config()` again — one extra JSON read of `.agents/mcp_servers.json` per
+   authenticated HTTP server per call (`client.py` / `manager.py`). Harmless at current
+   scale (small local file, infrequent calls) and avoidable by threading the
+   already-loaded `config[server_name]` through, but not fixed blind without a measurement
+   showing it matters.
+6. **`exchange_refresh_token`/`exchange_code_for_token` only honor `expires_in` when it is
+   already a Python `int`/`float`.** A token endpoint that returns `expires_in` as a numeric
+   STRING (e.g. `"3600"`, which some OAuth servers do) fails the `isinstance(int, float)`
+   check, so `expires_at` is stored as `None` — `get_valid_token` then treats that token as
+   never-expiring instead of refreshing it on schedule (`auth.py`). Not exploitable (worst
+   case is a stale-but-still-valid-until-the-provider-itself-rejects-it token), but a
+   silent behavior downgrade for any provider using string `expires_in`.
+7. **`_save_config`'s `mkdir(exist_ok=True)` does not retroactively tighten a pre-existing
+   `.agents/` directory mode.** If `.agents/` already exists (e.g. created by an older
+   version of this code, or manually) with looser-than-0o700 permissions, `mkdir(mode=0o700,
+   exist_ok=True)` is a no-op on the existing directory — only a freshly-created directory
+   gets 0o700. The config file itself is still written at 0o600 regardless (Phase 4's F2
+   fix), so token contents stay protected either way; this only affects directory-level
+   listing/traversal on an upgrade from an older layout.
+8. **Token-endpoint error messages embed up to 500 chars of the raw response body**
+   (`auth.py`, `TokenExchangeError` construction on a non-2xx token response). A malicious or
+   compromised token endpoint could craft a response body that gets reflected verbatim into
+   a printed/logged error message — not a credential leak (the body is attacker-controlled,
+   not ours), but worth bounding/sanitizing before any error surface here becomes
+   user-facing.

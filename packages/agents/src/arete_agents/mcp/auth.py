@@ -83,6 +83,60 @@ def exchange_code_for_token(
     }
 
 
+def exchange_refresh_token(
+    token_url: str,
+    refresh_token: str,
+    client_id: str = _CLIENT_ID,
+    post: Optional[PostFn] = None,
+) -> dict:
+    """Real `grant_type=refresh_token` exchange against `token_url`.
+
+    A sibling to exchange_code_for_token for renewing an access token that is
+    at/near expiry. Same fail-closed contract: raises TokenExchangeError -- and
+    NEVER returns a fabricated placeholder -- on transport failure, a non-2xx
+    response, an unparsable body, or a response missing `access_token`.
+
+    Returns {access_token, expires_at, refresh_token}; per RFC 6749 the response
+    MAY omit refresh_token (the caller keeps the prior one via
+    update_server_token, which only overwrites on a non-None value).
+    """
+    post_fn = post if post is not None else _default_post
+
+    data = {
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "client_id": client_id,
+    }
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    try:
+        response = post_fn(token_url, data, headers)
+    except httpx.HTTPError as exc:
+        raise TokenExchangeError(f"could not reach the token endpoint ({exc})") from exc
+
+    if not (200 <= response.status_code < 300):
+        raise TokenExchangeError(
+            f"token endpoint returned HTTP {response.status_code}: {response.text[:500]}"
+        )
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise TokenExchangeError(f"token endpoint returned a non-JSON response ({exc})") from exc
+
+    access_token = payload.get("access_token")
+    if not access_token:
+        raise TokenExchangeError("token endpoint response is missing 'access_token'")
+
+    expires_in = payload.get("expires_in")
+    expires_at = time.time() + expires_in if isinstance(expires_in, (int, float)) else None
+
+    return {
+        "access_token": access_token,
+        "expires_at": expires_at,
+        "refresh_token": payload.get("refresh_token"),
+    }
+
+
 def _complete_auth(name: str, manager, code: str) -> None:
     """Shared by both the local-callback-server branch and the manual
     fallback branch of start_oauth_flow: exchange the real authorization

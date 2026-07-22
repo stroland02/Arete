@@ -30,6 +30,17 @@ os.environ.setdefault("INTERNAL_TOKEN_ACTIVE_KID", INTERNAL_TEST_ACTIVE_KID)
 # (previously observed flakiness). Test-only; production TTL is untouched.
 os.environ.setdefault("INTERNAL_TOKEN_TTL_SECONDS", "86400")
 
+# Mirror CI's provider env (ci.yml test-agents job) at collection time so the
+# LOCAL keyless sandbox exercises the SAME path CI and prod take, instead of
+# the anthropic-default -> Settings() raises -> orchestrator blind-merge
+# fallback path that masked 9 real full-pipeline failures. `test-key-not-real`
+# is never a valid key: gemini provider construction is lazy (llm/gemini.py),
+# every affected test injects a mock LLM, and CI proves no real network call is
+# made under this env. setdefault (not overwrite) preserves a developer's real
+# key if one is exported.
+os.environ.setdefault("LLM_PROVIDER", "gemini")
+os.environ.setdefault("GEMINI_API_KEY", "test-key-not-real")
+
 INTERNAL_HEADERS = {"Authorization": f"Bearer {mint_internal_token('arete-webhook')}"}
 
 

@@ -209,8 +209,9 @@ async function processGitHubCheckRun(octokit: Octokit, installationToken: string
   let result
   try {
     result = await runReviewPipeline(prContext)
-    await postReview(octokit, owner, repo, prNumber, result)
   } catch (err) {
+    // No usable result: genuine infra crash. Re-throwing is correct — BullMQ's
+    // attempts:3 (queue.ts) is meant to retry a crash that produced nothing.
     await (octokit as any).rest.checks.update({
       owner,
       repo,
@@ -223,6 +224,30 @@ async function processGitHubCheckRun(octokit: Octokit, installationToken: string
       },
     })
     throw err
+  }
+
+  try {
+    await postReview(octokit, owner, repo, prNumber, result)
+  } catch (err) {
+    // The pipeline DID produce a usable result — only publishing to GitHub
+    // failed. Re-throwing would make BullMQ redo the entire CI-diagnosis
+    // review (on top of the per-agent retry in the Python service) just to
+    // retry a GitHub API call. Record the degraded outcome and return (not
+    // throw) so this job is NOT retried; attempts:3 stays reserved for the
+    // no-result crash above.
+    log.error({ err }, 'Failed to post CI diagnosis (pipeline produced a usable result)')
+    await (octokit as any).rest.checks.update({
+      owner,
+      repo,
+      check_run_id: checkRunId,
+      status: 'completed',
+      conclusion: 'failure',
+      output: {
+        title: 'Review Post Failed',
+        summary: `Areté completed the CI diagnosis but failed to post it to GitHub: ${err instanceof Error ? err.message : String(err)}`,
+      },
+    })
+    return
   }
 
   await (octokit as any).rest.checks.update({
