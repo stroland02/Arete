@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { IconArrowRight, IconCircleCheck, IconCircleDashed } from "@tabler/icons-react";
 import type { OverviewSetup, SetupSubStep } from "@/lib/overview-setup";
+import { ReadinessBadge } from "@/components/ui/readiness-badge";
 
 /**
  * The Overview onboarding → next-action card. Renders the four-step honest
@@ -79,7 +80,7 @@ export function OverviewSetupCard({
                     className="inline-flex items-center gap-1.5 rounded-full border border-border-default bg-surface-2 px-2.5 py-1 text-[11px] text-content-muted"
                   >
                     {sub.label}
-                    <ComingSoonPill />
+                    <ReadinessBadge level="soon" />
                   </span>
                 )
               )}
@@ -176,7 +177,7 @@ function SubStepRow({ sub }: { sub: SetupSubStep }) {
     return (
       <li className="flex flex-col gap-0.5">
         <span className="flex flex-wrap items-center gap-2 text-xs text-content-muted">
-          <ComingSoonPill />
+          <ReadinessBadge level="soon" />
           {sub.label}
         </span>
         {sub.detail && (
@@ -210,10 +211,3 @@ function SubStepRow({ sub }: { sub: SetupSubStep }) {
   );
 }
 
-function ComingSoonPill() {
-  return (
-    <span className="rounded-full border border-border-default bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-content-muted">
-      Coming soon
-    </span>
-  );
-}

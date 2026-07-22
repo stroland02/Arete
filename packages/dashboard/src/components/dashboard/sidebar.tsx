@@ -52,12 +52,6 @@ export function Sidebar({ collapsed, onToggleCollapsed, installations, userName,
     ? MODEL_PROVIDERS.find((p) => p.id === activeModel.provider)?.name ?? activeModel.provider
     : null;
 
-  // A quick demonstration handler to prove the decoupled data pipeline loading state
-  const handleSimulateLoad = () => {
-    setIsLoading(true);
-    setTimeout(() => setIsLoading(false), 3000); // Spins for 3 seconds simulating a heavy data fetch
-  };
-
   return (
     <aside
       className={cn(
@@ -65,11 +59,8 @@ export function Sidebar({ collapsed, onToggleCollapsed, installations, userName,
         collapsed ? "w-20" : "w-64"
       )}
     >
-      <div 
-        className="p-6 h-[68px] flex items-center overflow-hidden cursor-pointer group" 
-        onClick={handleSimulateLoad} 
-        title="Click to simulate data pipeline loading!"
-      >
+      {/* The logo reflects real global loading state; it is not clickable. */}
+      <div className="p-6 h-[68px] flex items-center overflow-hidden group">
         <AnimatePresence mode="wait" initial={false}>
           {collapsed ? (
             <motion.div

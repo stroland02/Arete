@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { IconCpu, IconX } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
+import { ReadinessBadge } from "@/components/ui/readiness-badge";
 import type { Agent } from "./agent-catalog";
 import type { ActiveModelConnection } from "@/lib/model-connections-map";
 
@@ -141,9 +142,12 @@ function DrawerPanel({
 
       {/* Configuration — interactive, honestly unsaved */}
       <section className="space-y-4 border-t border-border-subtle pt-5">
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-content-muted">
-          Configuration
-        </h4>
+        <div className="flex items-center gap-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-content-muted">
+            Configuration
+          </h4>
+          <ReadinessBadge level="soon" label="Not saved yet" />
+        </div>
 
         {/* Model — the connected model this agent runs on. Read-only and dynamic:
             the provider/model is chosen once under AI Models, and every agent
