@@ -78,9 +78,17 @@ model TelemetryConnection {
 /// A customer's Bring-Your-Own AI model connection, scoped to an Installation
 /// (tenant). Resolved at review time so live reviews run on the customer's own
 /// model/key instead of a shared default. One row per (installation, provider).
+///
+/// A row may instead be PENDING: connected before any GitHub App installation
+/// exists (model is setup step 1). Invariant: installationId set (adopted /
+/// normal) OR userId set (pending). userId survives adoption as provenance.
 model ModelConnection {
   id             String       @id @default(uuid())
-  installationId String
+  /// Null while pending (no installation yet); set on adoption.
+  installationId String?
+  /// Owner (User.id) of a pending connection. Plain scoping column — no
+  /// relation — mirroring WorkItem/ScanRun precedent.
+  userId         String?
   /// AI model provider name, e.g. "openai", "anthropic", "ollama". A plain
   /// string (not an enum) — the set of supported model providers grows
   /// independently of source-control providers.
@@ -98,9 +106,11 @@ model ModelConnection {
   /// deployments. When null the provider's default endpoint is used.
   baseUrl        String?
   createdAt      DateTime     @default(now())
-  installation   Installation @relation(fields: [installationId], references: [id])
+  installation   Installation? @relation(fields: [installationId], references: [id])
 
   @@unique([installationId, provider])
+  @@unique([userId, provider])
+  @@index([userId])
 }
 
 /// A persistent Issue Container: the server-side unit the Fix workflow advances
