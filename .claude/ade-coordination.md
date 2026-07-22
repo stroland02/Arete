@@ -336,3 +336,59 @@ keeps working unchanged while no row is flagged**, so no deployment starts dropp
 `packages/dashboard/src/lib/telemetry-queries.ts` and `.env.example`. No `packages/db` schema, migration,
 or generated client file is modified by this entry — only `src/platform-installation.ts` (new) and the
 single `export *` line in `src/index.ts`.
+
+---
+
+### `ridley` (W2, overview-revamp) lane claim — decomposition of `services-workspace.tsx` (declared 2026-07-22)
+
+**Lane assigned to `ridley` by the PM.** `packages/dashboard/src/components/dashboard/services/services-workspace.tsx`
+is the repo's **declared highest-collision file** — `docs/handoff/2026-07-22-orchestration-briefs.md:63`
+names it as the file to check before approving any task, and
+`docs/superpowers/specs/2026-07-22-investigations-surface-and-agent-harness-design.md:333` states outright
+that *"`services-workspace.tsx` decomposition will collide unless the lane is declared in the"* coordination
+file. This entry is that declaration. **No other worktree may edit this file or its new siblings until this
+entry is retired.** The `ridley` worktree owns the whole
+`packages/dashboard/src/components/dashboard/services/` folder for the duration.
+
+**This change is BEHAVIOR-PRESERVING — a pure move-and-split.** Not one byte of rendered output changes:
+every component, style map, helper and string moves **verbatim**; only `import`/`export` lines are written
+fresh. No bug is fixed in this pass (defects found are reported, not touched), no orchestration is
+restructured, and `ServicesWorkspace`'s props contract is unchanged. Every public import path that existed
+before still resolves after: `ServicesWorkspace`, `WorkItemPanel`, and the `Severity`/`DiffRow`/`Issue`/`Service`
+types are all still importable from `.../services/services-workspace` (the type moves are re-exported from
+their old home, so `diff-view.tsx`, `diff-view.test.tsx`, `diff-stat.ts` and `diff-stat.test.ts` are not
+touched at all).
+
+**Why now:** at 1,346 lines the file mixes six independent concerns (marketing sample data, style maps,
+four panels, the work-item inbox, and the workspace orchestration), so any two agents touching *different*
+concerns still collide in the same file. Splitting it converts most future collisions into
+different-file edits.
+
+**Files created by this worktree (all new):**
+- `packages/dashboard/src/components/marketing/services-preview-fixtures.ts` — the invented
+  `SAMPLE_SERVICES`/`SAMPLE_ISSUES` marketing data, moved out of the production component to its only
+  consumer so fabricated "Sentry" rows can no longer reach an authed screen by a careless edit.
+- `packages/dashboard/src/components/dashboard/services/types.ts` — `Severity`, `DiffRow`, `Issue`, `Service`.
+- `packages/dashboard/src/components/dashboard/services/presentation.tsx` — `SEV_DOT`, `SEV_PILL`,
+  `SEV_LABEL`, `TONE_TEXT`, `markerForTone`, `RISK_DOT`, `riskDot`, `RISK_PILL`, `riskPill`, `shortWhen`,
+  `PanelSection`.
+- `packages/dashboard/src/components/dashboard/services/issue-synthesizer-console.tsx`
+- `packages/dashboard/src/components/dashboard/services/review-panel.tsx`
+- `packages/dashboard/src/components/dashboard/services/issue-panel.tsx`
+- `packages/dashboard/src/components/dashboard/services/work-item-inbox.tsx` — `KIND_LABEL`, `KIND_CHIP`,
+  `scanStatusLine`, `WorkItemInboxSection`.
+- `packages/dashboard/src/components/dashboard/services/work-item-panel.tsx`
+
+**Files modified by this worktree:**
+- `packages/dashboard/src/components/dashboard/services/services-workspace.tsx` — reduced to the
+  `ServicesWorkspace` orchestration plus back-compat re-exports.
+- `packages/dashboard/src/components/dashboard/services/services-workspace.test.tsx` — **characterization
+  tests added FIRST**, exercising the previously-untested `IssuePanel`, `IssueSynthesizerConsole` and
+  `ReviewPanel` through the public `ServicesWorkspace` API (no private export is opened up for testing),
+  so the same assertions prove the move changed nothing.
+- `packages/dashboard/src/components/marketing/services-preview.tsx` — the single `SAMPLE_*` importer,
+  repointed at the new fixtures module.
+
+**Explicitly NOT touched:** `diff-view.tsx`, `diff-stat.ts`, `triage.ts`, `triage-bar.tsx`,
+`status-board.tsx`, `send-pr-button.tsx`, `app/(dashboard)/services/page.tsx`, and everything outside
+`packages/dashboard/src/components/`. No schema, migration, API route or query is read or written.

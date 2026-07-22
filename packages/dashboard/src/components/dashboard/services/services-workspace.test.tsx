@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ServicesWorkspace, WorkItemPanel } from './services-workspace';
+import type { Issue, Service } from './services-workspace';
 import type { InboxView } from '@/lib/work-items';
+import type { ServiceReviewGroup } from '@/lib/queries';
 
 function inboxWith(items: InboxView['items'], lastScan: InboxView['lastScan']): InboxView {
   return { items, lastScan };
@@ -22,6 +24,179 @@ function item(overrides: Partial<InboxView['items'][number]> = {}): InboxView['i
     ...overrides,
   };
 }
+
+// ── Characterization fixtures for the panels that had no coverage ───────────
+// Deliberately NOT the marketing SAMPLE_* data: these are local to the test so
+// the assertions below pin the panels' rendering, not a fixture's contents.
+const CHAR_SERVICES: Service[] = [
+  { id: 'billing-api', open: 1, worst: 'critical' },
+  { id: 'quiet-service', open: 0, worst: 'clear' },
+];
+
+const CHAR_ISSUES: Issue[] = [
+  {
+    id: 'x1',
+    serviceId: 'billing-api',
+    source: 'Sentry',
+    severity: 'critical',
+    status: 'Fix proposed',
+    agent: 'Business Logic',
+    title: 'Null balance crashes the charge path',
+    occurrences: '12 events',
+    lastSeen: '2m ago',
+    where: 'src/billing/charge.ts:23',
+    summary: 'The charge path assumes a number and throws before the request completes.',
+    evidence: { file: 'evidence-file-header', rows: [['user.tier', 'free']] },
+    fix: {
+      file: 'src/billing/charge.ts',
+      rows: [
+        { kind: 'context', text: 'function charge(order, user) {' },
+        { kind: 'remove', text: 'const amount = order.total * user.balance' },
+        { kind: 'add', text: 'const bal = user.balance ?? 0' },
+      ],
+    },
+    timeline: [
+      { tone: 'critical', text: 'Error detected', when: 'Sentry · 2m ago' },
+      { tone: 'accent', text: 'Business Logic agent picked it up', when: '1m ago' },
+      { tone: 'good', text: 'Fix proposed — awaiting your approval', when: 'just now' },
+    ],
+  },
+];
+
+const CHAR_REVIEW_GROUPS: ServiceReviewGroup[] = [
+  {
+    repositoryFullName: 'acme/api',
+    worstRisk: 'high',
+    reviews: [
+      { id: 'rev-1', prNumber: 42, riskLevel: 'high', createdAt: '2026-07-17T12:00:00.000Z', findingCount: 3 },
+    ],
+  },
+];
+
+/**
+ * Characterization coverage for the three panels that ServicesWorkspace owns
+ * but never exported — IssueSynthesizerConsole, IssuePanel and ReviewPanel —
+ * plus the collapsible PanelSection they all share. Every one of them is
+ * driven THROUGH the public ServicesWorkspace props, never by reaching into a
+ * module-private function, so these assertions keep holding no matter which
+ * file the panels physically live in.
+ */
+describe('ServicesWorkspace — issue panels (sample/framed mode)', () => {
+  it('renders the scripted issue Synthesizer console for the initially selected issue', () => {
+    const html = renderToStaticMarkup(
+      <ServicesWorkspace services={CHAR_SERVICES} issues={CHAR_ISSUES} variant="framed" />,
+    );
+
+    // Header: live dot + the honest "Preview" chip + the focused-issue caption.
+    expect(html).toContain('Synthesizer');
+    expect(html).toContain('Preview');
+    expect(html).toContain('focused on Null balance crashes the charge path');
+
+    // The transcript is labelled as a scripted replay, not a live model.
+    expect(html).toContain('Scripted replay of this issue');
+    expect(html).toContain('not a live model');
+
+    // Every timeline entry renders with its text and its `when`.
+    expect(html).toContain('Error detected');
+    expect(html).toContain('Sentry · 2m ago');
+    expect(html).toContain('Business Logic agent picked it up');
+    expect(html).toContain('Fix proposed — awaiting your approval');
+    expect(html).toContain('just now');
+
+    // Pinned, deliberately disabled input strip.
+    expect(html).toContain('Ask the Synthesizer');
+    expect(html).toContain('Live chat coming soon');
+    expect(html).toContain('preview shell · live chat coming soon · focused on billing-api');
+  });
+
+  it('renders the issue pull-request panel with the repo target, PR body and diff', () => {
+    const html = renderToStaticMarkup(
+      <ServicesWorkspace services={CHAR_SERVICES} issues={CHAR_ISSUES} variant="framed" />,
+    );
+
+    // Severity pill in the header (not replaying on first render).
+    expect(html).toContain('Pull request');
+    expect(html).toContain('Critical');
+
+    // Repository target block.
+    expect(html).toContain('acme-corp/billing-api');
+    expect(html).toContain('main ← arete/fix-x1');
+    expect(html).toContain('Manage connected repositories');
+
+    // PanelSection: the formatted pull request.
+    expect(html).toContain('Fix: Null balance crashes the charge path');
+    expect(html).toContain('The charge path assumes a number and throws before the request completes.');
+
+    // PanelSection: the review comment — location + the DiffView rows.
+    expect(html).toContain('Review comment');
+    expect(html).toContain('src/billing/charge.ts:23');
+    expect(html).toContain('const bal = user.balance ?? 0');
+    expect(html).toContain('const amount = order.total * user.balance');
+
+    // Send gate: no real container backs sample data, so the honest disabled shell.
+    expect(html).toContain('Open a reviewed issue backed by a real container to post its pull request');
+    expect(html).toContain('Post pull request');
+    expect(html).toContain('Request changes');
+    expect(html).toContain('Copy patch');
+    expect(html).toContain('the solution is approved on the Agents page first');
+  });
+
+  it('renders both panels in their empty state when no issue is selected', () => {
+    const html = renderToStaticMarkup(<ServicesWorkspace services={[]} issues={[]} variant="framed" />);
+
+    // Console onboarding state + its connect CTA.
+    expect(html).toContain('The Synthesizer verifies every issue');
+    expect(html).toContain('Connect a repository');
+    expect(html).toContain('/connections');
+
+    // Issue panel's unselected shell — the three placeholder PanelSections.
+    expect(html).toContain('Select an issue to load its pull request');
+    expect(html).toContain('Repository');
+    expect(html).toContain('Review comments');
+    expect(html).toContain('The formatted PR — title and description — assembled from the verified findings.');
+  });
+});
+
+describe('ServicesWorkspace — review panel (real mode)', () => {
+  it('renders the selected review with its real PR number, risk tier and finding count', () => {
+    const html = renderToStaticMarkup(
+      <ServicesWorkspace
+        connected
+        reviewGroups={CHAR_REVIEW_GROUPS}
+        repositories={['acme/api']}
+        containerId="rev-1"
+      />,
+    );
+
+    expect(html).toContain('Pull request');
+    expect(html).toContain('PR #42');
+    expect(html).toContain('reviewed ');
+    expect(html).toContain('high');
+
+    // Verified findings section — the count comes straight off the review row.
+    expect(html).toContain('Verified findings');
+    expect(html).toContain('>3<');
+    expect(html).toContain('verified');
+
+    // Proposed fix is honestly teased, and the CTA is disabled.
+    expect(html).toContain('Proposed fix');
+    expect(html).toContain('The Fix workflow lands in the next release');
+    expect(html).toContain('open PR');
+    expect(html).toContain('Today Kuma posts its verified findings');
+  });
+
+  it('renders the review panel prompt when no review is selected', () => {
+    const html = renderToStaticMarkup(
+      <ServicesWorkspace connected reviewGroups={CHAR_REVIEW_GROUPS} repositories={['acme/api']} />,
+    );
+
+    expect(html).toContain('Select a pull request on the left to see its review');
+    // No review selected → none of the panel's PR facts. (The rail still lists
+    // "PR #42" as a selectable row, so that string alone proves nothing.)
+    expect(html).not.toContain('reviewed ');
+    expect(html).not.toContain('Verified findings');
+  });
+});
 
 describe('ServicesWorkspace', () => {
   it('hosts the Synthesizer in the center with a connect CTA when nothing is connected', () => {
