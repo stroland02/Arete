@@ -5,6 +5,8 @@ import { isGithubLinked } from '@/lib/github-link';
 import { decryptGithubToken } from '@/lib/github-credentials';
 import { fetchAuthorizedGithubLogins } from '@/lib/github';
 import { getAuthorizedInstallations } from '@/lib/installations';
+import { adoptPendingModelConnections } from '@/lib/model-connection-adoption';
+import { internalAuthHeaders } from '@/lib/internal-auth';
 import { decideGithubSetupRedirect } from '@/lib/github-setup';
 
 /**
@@ -55,6 +57,27 @@ export async function GET(req: NextRequest) {
         const logins = await fetchAuthorizedGithubLogins(token);
         const installs = await getAuthorizedInstallations(db, logins);
         authorizedExternalIds = installs.map((i) => i.externalId);
+
+        // The user is confirmed authorized for the just-installed installation
+        // (externalId from GitHub's redirect resolves inside their authorized
+        // set) → adopt any PENDING model connections into its INTERNAL id and
+        // poke the scan trigger fire-and-forget, so the first scan starts the
+        // moment the repo+model pair completes. The webhook re-checks all gates
+        // server-side; a failure here falls into the fail-closed catch below.
+        const externalIdNum = installationId ? Number(installationId) : Number.NaN;
+        const justInstalled = installs.find((i) => i.externalId === externalIdNum);
+        if (justInstalled) {
+          await adoptPendingModelConnections(db, session.user.id, justInstalled.id);
+          const webhookBase = process.env.WEBHOOK_SERVICE_URL;
+          if (webhookBase) {
+            const scanAuthHeaders = await internalAuthHeaders();
+            void fetch(`${webhookBase}/scan/trigger`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...scanAuthHeaders },
+              body: JSON.stringify({ installationId: justInstalled.id }),
+            }).catch(() => {});
+          }
+        }
       }
     } catch (err) {
       console.error('[github-setup] failed to resolve authorized installations', err);

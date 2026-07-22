@@ -6,12 +6,29 @@ import { getAccountState, disconnectedState } from "./account-state";
 // "connected_idle", never "disconnected" — the desync bug that showed a
 // "connect a repo" prompt when a repo was already connected.
 
-function fakeDb(opts: { repos: number; models: number; reviews: number }) {
+function fakeDb(opts: {
+  repos: number;
+  models: number;
+  reviews: number;
+  pendingModels?: number;
+  scans?: number;
+  telemetry?: number;
+}) {
   const repoRows = Array.from({ length: opts.repos }, (_, i) => ({ id: `r${i}` }));
   return {
     repository: { findMany: async () => repoRows },
-    modelConnection: { count: async () => opts.models },
+    modelConnection: {
+      // Two where shapes reach this: the pending-only probe ({ userId,
+      // installationId: null }, no-installations branch) and the combined
+      // installation-or-pending OR (installations branch).
+      count: async (args: { where: { userId?: string; installationId?: null } }) =>
+        args.where.userId && args.where.installationId === null
+          ? (opts.pendingModels ?? 0)
+          : opts.models,
+    },
     review: { count: async () => opts.reviews },
+    scanRun: { count: async () => opts.scans ?? 0 },
+    telemetryConnection: { count: async () => opts.telemetry ?? 0 },
   } as never;
 }
 
@@ -42,6 +59,33 @@ describe("getAccountState — the three-state rule", () => {
     expect(s.stage).toBe("active");
     expect(s.hasReviews).toBe(true);
     expect(s.reviewCount).toBe(3);
+  });
+
+  it("no installations + pending user-scoped model → stage disconnected but modelConnected true", async () => {
+    const s = await getAccountState(
+      fakeDb({ repos: 0, models: 0, reviews: 0, pendingModels: 1 }),
+      [],
+      "user-1",
+    );
+    // Model is setup step 1: the pending connection surfaces honestly while the
+    // repo (the stage driver) is still missing.
+    expect(s.stage).toBe("disconnected");
+    expect(s.modelConnected).toBe(true);
+    expect(s.repoConnected).toBe(false);
+  });
+
+  it("no installations and no userId → plain disconnected (no pending probe)", async () => {
+    const s = await getAccountState(fakeDb({ repos: 0, models: 0, reviews: 0, pendingModels: 5 }), []);
+    expect(s.modelConnected).toBe(false);
+  });
+
+  it("scan + telemetry counts surface as scanCompleted / telemetryConnected", async () => {
+    const s = await getAccountState(
+      fakeDb({ repos: 1, models: 1, reviews: 0, scans: 2, telemetry: 1 }),
+      ["inst-1"],
+    );
+    expect(s.scanCompleted).toBe(true);
+    expect(s.telemetryConnected).toBe(true);
   });
 
   it("disconnectedState() is the canonical empty", () => {

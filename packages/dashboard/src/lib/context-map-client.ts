@@ -1,4 +1,5 @@
 import type { CodeGraphExport } from '@arete/topology';
+import { internalAuthHeaders } from '@/lib/internal-auth';
 
 // Reuses the dashboard's existing agents-service convention (see agent-chat.ts /
 // packages/webhook/src/config.ts): the same FastAPI service that serves /chat
@@ -20,6 +21,12 @@ export async function fetchCodeGraph(installationId: number): Promise<CodeGraphE
     const res = await fetch(`${PYTHON_SERVICE_URL}/context-map/graph/${installationId}`, {
       cache: 'no-store',
       signal: controller.signal,
+      // The agents service's GET /context-map/* surface is behind the shared
+      // internal bearer with a fail-closed 503 (arete_agents/internal_auth.py)
+      // -- the read-side twin of the POST guard in agent-chat.ts above. This
+      // is the ONLY caller of /context-map/graph in the repo (confirmed by a
+      // full-repo sweep); nothing browser-facing reaches this fetch.
+      headers: { ...(await internalAuthHeaders()) },
     });
     if (!res.ok) return null;
     const body = (await res.json()) as { available: boolean; graph: CodeGraphExport | null };

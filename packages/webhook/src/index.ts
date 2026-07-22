@@ -1,17 +1,19 @@
 import { createServer } from './server.js'
 import { getConfig } from './config.js'
+import { logger } from './logger.js'
 
+const log = logger.child({ component: 'index' })
 const config = getConfig()
 
 createServer()
   .then((app) => {
     app.listen(config.port, () => {
-      console.log(`Areté webhook server listening on port ${config.port}`)
-      console.log(`Webhook endpoint: POST http://localhost:${config.port}/webhook`)
-      console.log(`Health check:     GET  http://localhost:${config.port}/health`)
+      log.info({ port: config.port }, 'Areté webhook server listening')
+      log.info({ endpoint: `POST http://localhost:${config.port}/webhook` }, 'webhook endpoint ready')
+      log.info({ endpoint: `GET http://localhost:${config.port}/health` }, 'health check ready')
     })
   })
   .catch((err) => {
-    console.error('Failed to start server:', err)
+    log.error({ err }, 'Failed to start server')
     process.exit(1)
   })

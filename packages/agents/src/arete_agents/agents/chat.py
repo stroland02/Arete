@@ -31,7 +31,8 @@ class ChatAgent:
         # title/comment/reply (e.g. containing "</user_reply>") from breaking
         # out of its delimiter and injecting fake instructions. diff_hunk is
         # left as-is: it is source code the assistant must read verbatim.
-        user_prompt = f"""<pr_metadata>
+        user_prompt = (
+            f"""<pr_metadata>
 PR: {escape_for_prompt(pr_title)}
 Description: {escape_for_prompt(pr_description)}
 File: {escape_for_prompt(file_path)}
@@ -50,7 +51,10 @@ File: {escape_for_prompt(file_path)}
 </user_reply>
 
 Please provide a helpful and conversational response to the user's reply.
-If the user provides a repository-specific rule or correction that should be remembered for future PRs, you must include an action to save memory. If you need a human to clarify something before you can proceed with a review, you must include an ask_human action.
+"""
+            "If the user provides a repository-specific rule or correction that should be remembered for future PRs, "
+            "you must include an action to save memory. If you need a human to clarify something before you can "
+            f"""proceed with a review, you must include an ask_human action.
 Return your response ONLY as valid JSON matching this schema:
 {{
   "reply": "<your markdown conversational response>",
@@ -61,6 +65,7 @@ Return your response ONLY as valid JSON matching this schema:
 }}
 Only include the 'actions' array if you actually need to perform an action.
 """
+        )
 
         messages = [
             SystemMessage(content=system_prompt),

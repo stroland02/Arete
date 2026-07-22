@@ -13,7 +13,7 @@ export function Shimmer({ className, style }: { className?: string; style?: CSSP
         <motion.div
           aria-hidden
           className="absolute inset-0"
-          style={{ background: "linear-gradient(90deg, transparent, rgba(242,241,234,0.06), transparent)" }}
+          style={{ background: "linear-gradient(90deg, transparent, color-mix(in srgb, var(--color-content-primary) 6%, transparent), transparent)" }}
           initial={{ x: "-100%" }}
           animate={{ x: "100%" }}
           transition={{ repeat: Infinity, duration: 2.1, ease: "easeInOut" }}
@@ -40,12 +40,12 @@ export function TimeseriesSkeleton() {
           <svg viewBox="0 0 600 150" preserveAspectRatio="none" className="absolute inset-0 h-full w-full" aria-hidden>
             <defs>
               <linearGradient id="ts-skeleton-ghost" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0" stopColor="rgba(124,151,255,0.14)" />
-                <stop offset="1" stopColor="rgba(124,151,255,0)" />
+                <stop offset="0" stopColor="color-mix(in srgb, var(--color-accent-primary) 14%, transparent)" />
+                <stop offset="1" stopColor="transparent" />
               </linearGradient>
             </defs>
             <polygon points="0,150 0,104 100,96 200,108 300,88 400,98 500,80 600,90 600,150" fill="url(#ts-skeleton-ghost)" />
-            <polyline points="0,104 100,96 200,108 300,88 400,98 500,80 600,90" fill="none" stroke="rgba(124,151,255,0.28)" strokeWidth="2" strokeDasharray="5 5" strokeLinecap="round" />
+            <polyline points="0,104 100,96 200,108 300,88 400,98 500,80 600,90" fill="none" stroke="color-mix(in srgb, var(--color-accent-primary) 28%, transparent)" strokeWidth="2" strokeDasharray="5 5" strokeLinecap="round" />
           </svg>
         </div>
         <div className="flex justify-between pl-[34px] pt-2">
@@ -71,7 +71,7 @@ export function BarsSkeleton({ rows = 4 }: { rows?: number }) {
             <div className="h-[9px] w-3.5 rounded bg-surface-2" />
           </div>
           <div className="relative h-2 overflow-hidden rounded-full bg-surface-2">
-            <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${widths[i % widths.length]}%`, background: "rgba(124,151,255,0.16)" }} />
+            <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${widths[i % widths.length]}%`, background: "color-mix(in srgb, var(--color-accent-primary) 16%, transparent)" }} />
           </div>
         </li>
       ))}

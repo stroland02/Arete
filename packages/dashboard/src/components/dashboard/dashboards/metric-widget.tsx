@@ -34,12 +34,12 @@ export function MetricWidget({ label, value, icon, change, positive, trend, skel
         <div className="flex items-end justify-between gap-3">
           <div>
             <p className="mb-1 text-sm font-medium text-content-muted">{label}</p>
-            <h3 className="font-mono text-3xl font-bold tabular-nums tracking-tight text-content-primary">
+            <h3 className="font-serif text-3xl font-semibold tabular-nums tracking-tight text-content-primary">
               <CountUpValue value={String(value)} />
             </h3>
           </div>
           {trend && trend.length > 1 && (
-            <Sparkline data={trend} className="h-7 w-20 shrink-0" strokeClassName={positive === false ? "stroke-accent-danger" : "stroke-accent-primary"} />
+            <Sparkline data={trend} className="h-7 w-20 shrink-0" strokeClassName={positive === false ? "stroke-accent-danger" : "stroke-accent-primary"} fillGradient endDot />
           )}
         </div>
       )}

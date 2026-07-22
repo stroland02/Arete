@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useSyncExternalStore } from "react";
 import { motion, AnimatePresence, useInView } from "framer-motion";
 import {
   IconBriefcase,
@@ -78,16 +78,36 @@ const AGENT_PROFILES = [
   },
 ];
 
+// No-op store for useHasMounted below: the "store" never changes, we only
+// care that useSyncExternalStore re-renders once client and server snapshots
+// diverge (i.e. once hydration completes).
+function subscribeNever() {
+  return () => {};
+}
+
+/**
+ * True once hydration has completed, false during SSR and the first client
+ * render. Implemented with useSyncExternalStore (not a state+effect pair) so
+ * the flip to `true` happens without an extra synchronous setState call
+ * inside an effect body — see https://react.dev/reference/react/useSyncExternalStore.
+ */
+function useHasMounted(): boolean {
+  return useSyncExternalStore(
+    subscribeNever,
+    () => true,
+    () => false,
+  );
+}
+
 export function SpecialistRoster() {
   const [activeId, setActiveId] = useState(AGENT_PROFILES[0].id);
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
-  
+
   const containerRef = useRef<HTMLDivElement>(null);
   const isInView = useInView(containerRef, { margin: "-100px 0px -100px 0px" });
 
   // Guard against hydration: defer observer logic until after first client render
-  const [hasMounted, setHasMounted] = useState(false);
-  useEffect(() => { setHasMounted(true); }, []);
+  const hasMounted = useHasMounted();
 
   useEffect(() => {
     if (!hasMounted || !isInView || !isAutoPlaying) return;
@@ -232,7 +252,7 @@ export function SpecialistRoster() {
                 <div className="rounded-lg border border-border-default bg-surface-0 p-4 shadow-sm relative overflow-hidden">
                   <div className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: activeAgent.color }} />
                   <p className="text-sm font-mono text-content-primary leading-relaxed pl-2">
-                    "{activeAgent.example}"
+                    &quot;{activeAgent.example}&quot;
                   </p>
                 </div>
               </div>

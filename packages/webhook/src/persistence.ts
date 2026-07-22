@@ -3,8 +3,13 @@ import { prisma } from './db.js'
 import { emitReviewCreated } from './outbound/emit.js'
 import { PrismaWebhookStore, type WebhookPrismaClient } from './outbound/prisma-store.js'
 import type { ReviewResult, TelemetrySnapshot } from './types.js'
+import { logger } from './logger.js'
 
-const MAX_PROJECT_MEMORIES = 20
+const log = logger.child({ component: 'persistence' })
+
+// Exported: memory-write.ts (Phase 2 Task 8) reuses this as its write-side
+// row cap so the read cap (below) and the write cap can never drift apart.
+export const MAX_PROJECT_MEMORIES = 20
 
 export interface ReviewExistsParams {
   provider: ScmProvider
@@ -134,8 +139,9 @@ export async function persistReview(params: PersistReviewParams): Promise<void> 
     },
   })
   if (existing) {
-    console.log(
-      `[persistence] Review for ${fullName}#${prNumber} @ ${headSha} already exists — skipping duplicate`
+    log.info(
+      { fullName, prNumber, headSha },
+      'Review already exists — skipping duplicate'
     )
     return
   }
@@ -224,9 +230,9 @@ export async function persistReview(params: PersistReviewParams): Promise<void> 
     const { syncReviewFindings } = await import('./scan/review-sync.js')
     await syncReviewFindings(installation.id, review.id, commentsToCreate)
   } catch (err) {
-    console.error(
-      `[persistence] work-item sync failed for ${fullName}#${prNumber} (non-fatal):`,
-      err
+    log.error(
+      { err, fullName, prNumber },
+      'work-item sync failed (non-fatal)'
     )
   }
 
@@ -245,9 +251,9 @@ export async function persistReview(params: PersistReviewParams): Promise<void> 
       riskLevel: result.risk_level,
     })
   } catch (err) {
-    console.error(
-      `[persistence] outbound review.created webhook emit failed for ${fullName}#${prNumber} (non-fatal):`,
-      err
+    log.error(
+      { err, fullName, prNumber },
+      'outbound review.created webhook emit failed (non-fatal)'
     )
   }
 }

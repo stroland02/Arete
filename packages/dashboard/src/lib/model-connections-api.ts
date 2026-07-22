@@ -25,6 +25,8 @@ export type { ModelConnectionView, ProbeResult, TestHttp, ActiveModelConnection 
 export interface SessionScope {
   /** The caller's authorized Installation ids (internal uuids). */
   installationIds: string[];
+  /** The caller's user id — scopes PENDING (pre-installation) model connections. */
+  userId: string;
 }
 
 /** Resolve the caller's authorized installation ids, or null if unauthenticated.
@@ -32,7 +34,10 @@ export interface SessionScope {
 export async function requireScope(): Promise<SessionScope | null> {
   const session = await auth();
   if (!session?.user) return null;
-  return { installationIds: resolveSelectedInstallationIds(session.installations ?? [], undefined) };
+  return {
+    installationIds: resolveSelectedInstallationIds(session.installations ?? [], undefined),
+    userId: session.user.id,
+  };
 }
 
 /**
@@ -44,9 +49,16 @@ export async function requireScope(): Promise<SessionScope | null> {
 export async function getActiveModelConnection(): Promise<ActiveModelConnection | null> {
   try {
     const scope = await requireScope();
-    if (!scope || scope.installationIds.length === 0) return null;
+    if (!scope) return null;
     const row = await db.modelConnection.findFirst({
-      where: { installationId: { in: scope.installationIds } },
+      // Installation-scoped rows plus the caller's PENDING (pre-installation)
+      // rows — a model connected before the first repo still shows as active.
+      where: {
+        OR: [
+          { installationId: { in: scope.installationIds } },
+          { userId: scope.userId, installationId: null },
+        ],
+      },
       orderBy: { createdAt: 'desc' },
       select: { provider: true, model: true },
     });
@@ -75,9 +87,16 @@ export interface LlmBlock {
 export async function resolveActiveLlmForChat(): Promise<LlmBlock | null> {
   try {
     const scope = await requireScope();
-    if (!scope || scope.installationIds.length === 0) return null;
+    if (!scope) return null;
     const row = await db.modelConnection.findFirst({
-      where: { installationId: { in: scope.installationIds } },
+      // Same visibility rule as getActiveModelConnection: pending user-scoped
+      // rows count, so chat works before the first installation exists.
+      where: {
+        OR: [
+          { installationId: { in: scope.installationIds } },
+          { userId: scope.userId, installationId: null },
+        ],
+      },
       orderBy: { createdAt: 'desc' },
     });
     if (!row) return null;
@@ -112,7 +131,7 @@ export async function probeModelConnection(input: {
   try {
     const res = await fetch(`${base}/internal/model-connections/test`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', ...internalAuthHeaders() },
+      headers: { 'content-type': 'application/json', ...(await internalAuthHeaders()) },
       body: JSON.stringify(input),
     });
     if (!res.ok) {

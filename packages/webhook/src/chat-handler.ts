@@ -2,6 +2,10 @@ import type { Octokit } from '@octokit/core'
 import { getServiceConfig } from './config.js'
 import { prisma } from './db.js'
 import { evaluateBillingGate } from './billing.js'
+import { logger } from './logger.js'
+import { internalAuthHeaders } from './internal-auth.js'
+
+const log = logger.child({ component: 'chat' })
 
 interface PullRequestReviewCommentPayload {
   action: string
@@ -52,7 +56,7 @@ export async function handleReviewCommentEvent(
       botCommentBody = response.data.body
     }
   } catch (err) {
-    console.error('[chat-handler] Error fetching original comment:', err)
+    log.error({ err }, 'Error fetching original comment')
     return
   }
 
@@ -72,8 +76,9 @@ export async function handleReviewCommentEvent(
     })
     const gate = evaluateBillingGate(installation)
     if (!gate.allowed) {
-      console.log(
-        `[chat-handler] Chat reply blocked for installation ${installationId} (${gate.reason})`
+      log.info(
+        { installationId, reason: gate.reason },
+        'Chat reply blocked'
       )
       await (octokit as any).rest.pulls.createReplyForReviewComment({
         owner: payload.repository.owner.login,
@@ -98,26 +103,41 @@ export async function handleReviewCommentEvent(
   const response = await runChatPipeline(context)
   const reply = response.reply || 'Sorry, I encountered an error formatting my response.'
 
-  // Process Agent Actions (e.g. saving memory)
+  // Process Agent Actions (e.g. saving memory).
+  //
+  // TENANCY + CAPS (review finding B6, fixed 2026-07-21). This used to resolve
+  // the repo with `prisma.repository.findFirst({ where: { fullName } })` — NO
+  // installationId scoping — and then create the AgentMemory row inline, with
+  // no size cap and no row cap. Two installations with identically-named repos
+  // collide and whichever row the DB returns first wins, so a chat reply in
+  // one tenant could write a memory into another tenant's repo; those rows are
+  // then re-injected into that tenant's every future review prompt
+  // (fetchProjectMemories -> agents/base.py). The guard, the caps and the
+  // canonical sink redaction all belong to the sink, not to one caller, so
+  // this path now goes through the SAME saveAgentMemory used by
+  // POST /internal/memory — making memory-write.ts's "ONE real write path"
+  // claim true rather than aspirational.
   if (response.actions && response.actions.length > 0) {
     const repoFullName = `${payload.repository.owner.login}/${payload.repository.name}`
-    const repo = await prisma.repository.findFirst({
-      where: { fullName: repoFullName }
-    })
-    
-    if (repo) {
-      for (const action of response.actions) {
-        if (action.type === 'save_memory') {
-          await prisma.agentMemory.create({
-            data: {
-              repositoryId: repo.id,
-              kind: action.kind || 'terminology',
-              title: action.title || 'Rule',
-              body: action.body
-            }
-          })
-          console.log(`[chat-handler] Saved memory for ${repoFullName}: ${action.title}`)
-        }
+    const { saveAgentMemory } = await import('./memory-write.js')
+    for (const action of response.actions) {
+      if (action.type !== 'save_memory') continue
+      // No installation on the payload == no tenant identity == no write.
+      // Fail closed: previously this still wrote, resolving the repo by name
+      // alone. GitHub always sends `installation` for App-delivered events,
+      // so this costs nothing legitimate.
+      const result = await saveAgentMemory({
+        installationExternalId: installationId ?? NaN,
+        repoFullName,
+        kind: action.kind || 'terminology',
+        title: action.title || 'Rule',
+        body: action.body,
+      })
+      if (result.ok) {
+        log.info({ repoFullName, installationId }, 'Saved memory')
+      } else {
+        // Honest logging: a rejected write is never reported as saved.
+        log.warn({ repoFullName, installationId, reason: result.reason }, 'Memory write rejected')
       }
     }
   }
@@ -145,7 +165,7 @@ export async function runChatPipeline(context: any): Promise<{ reply: string, ac
     const res = await fetch(`${baseUrl}/chat`, {
       method: 'POST',
       body: JSON.stringify(context),
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await internalAuthHeaders()) },
       signal: controller.signal,
     })
     if (!res.ok) {

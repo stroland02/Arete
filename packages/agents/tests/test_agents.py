@@ -1,8 +1,10 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.tools import tool
 
+from arete_agents.agents.security import SecurityAgent
 from arete_agents.models.pr import FileChange, PRContext
 from arete_agents.models.review import FileReview
 
@@ -429,14 +431,6 @@ def test_business_logic_agent_returns_file_review():
     )
     result = agent.review_file(file, make_pr([file]))
     assert result.comments[0].category == "business_logic"
-
-
-from unittest.mock import patch
-
-from langchain_core.messages import ToolMessage
-from langchain_core.tools import tool
-
-from arete_agents.agents.security import SecurityAgent
 
 
 def test_agent_calls_context_map_tool_then_finalizes(sample_pr):

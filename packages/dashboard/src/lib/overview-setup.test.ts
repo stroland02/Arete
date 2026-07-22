@@ -1,41 +1,119 @@
 import { describe, it, expect } from "vitest";
 import { deriveOverviewSetup } from "./overview-setup";
 
-// State-matrix test for the OVERVIEW surface's adoption of the Account-State
-// Contract: the onboarding card must render the correct next-action for each
-// of the three stages, derived from the resolver — never collapsing
-// "connected but idle" into "not connected".
+// State-matrix test for the four-step honest setup narrative (Account-State
+// Contract): connect an AI model → connect your codebase → build, deploy &
+// verify → extend Kuma. Every `done` maps to a real DB fact; capabilities not
+// yet shipped are `coming_soon` guidance — never a checkmark.
 
-describe("deriveOverviewSetup — the three-state matrix", () => {
-  it("disconnected → next step is 'Connect a repository', not complete", () => {
-    const s = deriveOverviewSetup({ repoConnected: false, modelConnected: false, hasReviews: false });
+type Input = Parameters<typeof deriveOverviewSetup>[0];
+
+const state = (over: Partial<Input> = {}): Input => ({
+  repoConnected: false,
+  modelConnected: false,
+  hasReviews: false,
+  scanCompleted: false,
+  telemetryConnected: false,
+  ...over,
+});
+
+describe("deriveOverviewSetup — the four-step setup matrix", () => {
+  it("all empty → nothing done, next step is connect-model", () => {
+    const s = deriveOverviewSetup(state());
+    expect(s.steps).toHaveLength(4);
+    expect(s.doneCount).toBe(0);
     expect(s.setupComplete).toBe(false);
-    expect(s.nextStep?.label).toBe("Connect a repository");
-    expect(s.doneCount).toBe(1); // only "Create your Kuma account"
+    expect(s.nextStep?.id).toBe("connect-model");
   });
 
-  it("repo connected, no model → next step is 'Connect an AI model', NEVER 'Connect a repository'", () => {
-    const s = deriveOverviewSetup({ repoConnected: true, modelConnected: false, hasReviews: false });
+  it("pending model only (no repo yet) → step 1 done, next is connect-codebase", () => {
+    const s = deriveOverviewSetup(state({ modelConnected: true }));
+    expect(s.steps[0].done).toBe(true);
+    expect(s.doneCount).toBe(1);
     expect(s.setupComplete).toBe(false);
-    expect(s.nextStep?.label).toBe("Connect an AI model");
-    // The regression this guards: a connected repo must never prompt to connect one.
-    expect(s.nextStep?.label).not.toBe("Connect a repository");
-    expect(s.steps.find((x) => x.label === "Connect a repository")?.done).toBe(true);
-    expect(s.doneCount).toBe(2);
+    expect(s.nextStep?.id).toBe("connect-codebase");
   });
 
-  it("repo + model connected, no reviews → next step is 'Open a pull request'", () => {
-    const s = deriveOverviewSetup({ repoConnected: true, modelConnected: true, hasReviews: false });
+  it("repo + model connected, no scan or reviews → next is verify", () => {
+    const s = deriveOverviewSetup(state({ repoConnected: true, modelConnected: true }));
+    expect(s.steps[0].done).toBe(true);
+    expect(s.steps[1].done).toBe(true);
+    expect(s.steps[2].done).toBe(false);
     expect(s.setupComplete).toBe(false);
-    expect(s.nextStep?.label).toBe("Open a pull request");
-    expect(s.steps.find((x) => x.label === "Connect an AI model")?.done).toBe(true);
-    expect(s.doneCount).toBe(3);
+    expect(s.nextStep?.id).toBe("verify");
   });
 
-  it("active → setup complete, no next step", () => {
-    const s = deriveOverviewSetup({ repoConnected: true, modelConnected: true, hasReviews: true });
+  it("scanCompleted alone completes verify (first scan proves the pair works)", () => {
+    const s = deriveOverviewSetup(
+      state({ repoConnected: true, modelConnected: true, scanCompleted: true })
+    );
+    expect(s.steps[2].done).toBe(true);
     expect(s.setupComplete).toBe(true);
-    expect(s.nextStep).toBeUndefined();
-    expect(s.doneCount).toBe(5);
+  });
+
+  it("hasReviews alone completes verify (first PR review is the other real signal)", () => {
+    const s = deriveOverviewSetup(
+      state({ repoConnected: true, modelConnected: true, hasReviews: true })
+    );
+    expect(s.steps[2].done).toBe(true);
+    expect(s.setupComplete).toBe(true);
+  });
+
+  it("coming_soon sub-steps are NEVER done in any state — guidance, not a checkmark", () => {
+    const bools = [false, true];
+    for (const repoConnected of bools)
+      for (const modelConnected of bools)
+        for (const hasReviews of bools)
+          for (const scanCompleted of bools)
+            for (const telemetryConnected of bools) {
+              const s = deriveOverviewSetup({
+                repoConnected,
+                modelConnected,
+                hasReviews,
+                scanCompleted,
+                telemetryConnected,
+              });
+              const comingSoonIds = ["workspace-setup", "mcp-kuma"];
+              const rows = s.steps
+                .flatMap((step) => step.subSteps ?? [])
+                .filter((sub) => comingSoonIds.includes(sub.id));
+              expect(rows).toHaveLength(2);
+              for (const sub of rows) expect(sub.status).toBe("coming_soon");
+            }
+  });
+
+  it("telemetryConnected toggles step 4 done without affecting setupComplete", () => {
+    const core = { repoConnected: true, modelConnected: true, hasReviews: true };
+    const off = deriveOverviewSetup(state(core));
+    const on = deriveOverviewSetup(state({ ...core, telemetryConnected: true }));
+    expect(off.steps[3].done).toBe(false);
+    expect(on.steps[3].done).toBe(true);
+    expect(off.setupComplete).toBe(true);
+    expect(on.setupComplete).toBe(true);
+    // Telemetry connected early never fakes setup progress on steps 1–3.
+    const early = deriveOverviewSetup(state({ telemetryConnected: true }));
+    expect(early.steps[3].done).toBe(true);
+    expect(early.setupComplete).toBe(false);
+    expect(early.nextStep?.id).toBe("connect-model");
+  });
+
+  it("setupComplete when steps 1–3 done even with step 4 todo; extend becomes the next step", () => {
+    const s = deriveOverviewSetup(
+      state({ repoConnected: true, modelConnected: true, hasReviews: true })
+    );
+    expect(s.setupComplete).toBe(true);
+    expect(s.doneCount).toBe(3);
+    expect(s.nextStep?.id).toBe("extend");
+    // Everything done → no next step at all.
+    const all = deriveOverviewSetup(
+      state({
+        repoConnected: true,
+        modelConnected: true,
+        hasReviews: true,
+        telemetryConnected: true,
+      })
+    );
+    expect(all.doneCount).toBe(4);
+    expect(all.nextStep).toBeUndefined();
   });
 });

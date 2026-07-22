@@ -46,6 +46,7 @@ model Installation {
   modelConnections     ModelConnection[]
   issueContainers      IssueContainer[]
   accessGrants         InstallationAccess[]
+  incidents            Incident[]
 
   @@unique([provider, externalId])
 }
@@ -77,9 +78,17 @@ model TelemetryConnection {
 /// A customer's Bring-Your-Own AI model connection, scoped to an Installation
 /// (tenant). Resolved at review time so live reviews run on the customer's own
 /// model/key instead of a shared default. One row per (installation, provider).
+///
+/// A row may instead be PENDING: connected before any GitHub App installation
+/// exists (model is setup step 1). Invariant: installationId set (adopted /
+/// normal) OR userId set (pending). userId survives adoption as provenance.
 model ModelConnection {
   id             String       @id @default(uuid())
-  installationId String
+  /// Null while pending (no installation yet); set on adoption.
+  installationId String?
+  /// Owner (User.id) of a pending connection. Plain scoping column — no
+  /// relation — mirroring WorkItem/ScanRun precedent.
+  userId         String?
   /// AI model provider name, e.g. "openai", "anthropic", "ollama". A plain
   /// string (not an enum) — the set of supported model providers grows
   /// independently of source-control providers.
@@ -97,9 +106,11 @@ model ModelConnection {
   /// deployments. When null the provider's default endpoint is used.
   baseUrl        String?
   createdAt      DateTime     @default(now())
-  installation   Installation @relation(fields: [installationId], references: [id])
+  installation   Installation? @relation(fields: [installationId], references: [id])
 
   @@unique([installationId, provider])
+  @@unique([userId, provider])
+  @@index([userId])
 }
 
 /// A persistent Issue Container: the server-side unit the Fix workflow advances
@@ -158,11 +169,63 @@ model WorkItem {
   fingerprint    String
   containerId    String?
   scanRunId      String?
+  /// Consecutive fix_failed count for this item's healing runs (Phase 2 Task 6
+  /// cooldown). Incremented atomically alongside the `state: "open"` write in
+  /// driveFix's fail() path; reset to 0 by a successful drive. Added rather
+  /// than derived: each "Fix it" click creates a BRAND NEW IssueContainer
+  /// (work-items/[id]/fix route) and IssueContainer carries no back-reference
+  /// to the WorkItem that spawned it, so once a retry overwrites
+  /// WorkItem.containerId the prior (possibly failed) container becomes
+  /// unreachable from here — there is no query that reconstructs "how many
+  /// times in a row has this item failed" from existing rows.
+  fixFailureCount Int      @default(0)
+  /// Timestamp of the most recent fix_failed outcome. Deliberately NOT derived
+  /// from `updatedAt`: scan/trigger.ts and review-sync.ts both refresh an
+  /// open WorkItem's title/detail/confidence/scanRunId on every re-scan pass
+  /// that still matches its fingerprint, which would reset `updatedAt` and
+  /// silently corrupt the cooldown clock if that were the timestamp used.
+  fixFailureAt   DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   @@unique([installationId, fingerprint])
   @@index([installationId, state])
+}
+
+/// An alert-born incident. Created by the Alertmanager receiver, resolved when
+/// the alert clears. One row per (installationId, fingerprint) — Alertmanager
+/// re-sends the same firing alert on its repeat interval, and every resend must
+/// land on the same row rather than opening a new incident.
+model Incident {
+  id             String       @id @default(uuid())
+  installationId String
+  /// Alertmanager's own fingerprint for the alert instance. The idempotency key.
+  fingerprint    String
+  alertName      String
+  severity       String       /// "critical" | "warning"
+  /// "firing" | "resolved"
+  status         String       @default("firing")
+  summary        String
+  /// Alert labels + annotations as received. Scrubbed before write (Task 3).
+  payload        Json
+  startsAt       DateTime
+  resolvedAt     DateTime?
+  /// A human triaged this incident as noise (non-actionable). Null = not noise.
+  /// Orthogonal to status: Alertmanager owns firing/resolved and never touches
+  /// this; a human owns noise via the dashboard, so a re-fire can't undo it.
+  noisedAt       DateTime?
+  /// How the incident was opened: "alert" (the Alertmanager receiver) or
+  /// "manual" (a New investigation a user opened by hand).
+  source         String       @default("alert")
+  /// Set when this incident opened a fix run. Null if it never did.
+  workItemId     String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  installation   Installation @relation(fields: [installationId], references: [id])
+
+  @@unique([installationId, fingerprint])
+  @@index([installationId, status])
 }
 
 /// One scan execution — honest status, always recorded.
@@ -257,6 +320,17 @@ model ReviewComment {
 
   createdAt        DateTime @default(now())
   review           Review   @relation(fields: [reviewId], references: [id])
+
+  /// Added Phase 2 Task 12 (measured): this table carried ONLY its primary
+  /// key -- no index on the FK every dashboard read joins through (queries.ts
+  /// getDashboardViewModel/getDashboardsViewModel/getAgentActivity/
+  /// getFindingsByPath all join Review->ReviewComment on reviewId). At a
+  /// synthetic 75k-row seed, EXPLAIN ANALYZE showed Postgres sequential-
+  /// scanning the whole table for every one of those reads (33-72ms each;
+  /// see docs/roadmap/2026-07-21-phase-2-efficiency-review.md Task 12 for the
+  /// full before/after). A single index on the join column is the smallest
+  /// change that removes the seq scan from all of them at once.
+  @@index([reviewId])
 }
 
 model ApprovalPrompt {

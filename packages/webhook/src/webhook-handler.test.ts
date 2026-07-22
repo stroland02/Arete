@@ -49,6 +49,24 @@ describe('handlePullRequestEvent', () => {
     )
   })
 
+  it('routes a >50-changed-file PR to the heavy lane (a queue a running Worker must consume — see worker.test.ts)', async () => {
+    mockPrisma()
+    const mockEnqueue = vi.fn().mockResolvedValue(undefined)
+    vi.doMock('./queue.js', () => ({ enqueueReviewJob: mockEnqueue }))
+
+    const { handlePullRequestEvent } = await import('./webhook-handler.js')
+
+    await handlePullRequestEvent({} as any, {
+      repository: { id: 123, owner: { login: 'acme' }, name: 'api', full_name: 'acme/api' },
+      pull_request: { number: 1, head: { sha: 'abcdef' }, changed_files: 51 },
+      installation: { id: 777 },
+      action: 'opened',
+    })
+
+    expect(mockEnqueue).toHaveBeenCalledTimes(1)
+    expect(mockEnqueue).toHaveBeenCalledWith(expect.objectContaining({ prNumber: 1 }), 'heavy')
+  })
+
   it('does not enqueue for closed PRs', async () => {
     mockPrisma()
     const mockEnqueue = vi.fn()
@@ -214,11 +232,11 @@ describe('registerCheckRunWebhooks', () => {
   beforeEach(() => { vi.resetModules() })
 
   function makeApp() {
-    const handlers: Record<string, Function> = {}
+    const handlers: Record<string, (...args: any[]) => any> = {}
     return {
       app: {
         webhooks: {
-          on: (event: string, handler: Function) => { handlers[event] = handler },
+          on: (event: string, handler: (...args: any[]) => any) => { handlers[event] = handler },
         },
       },
       handlers,

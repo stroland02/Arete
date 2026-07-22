@@ -10,6 +10,12 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from arete_agents.models.pr import FileChange, PRContext
 from arete_agents.models.review import FileReview, NoiseDecision, ReviewComment
 
+# NOTE: these two constants gate the REVIEW path ONLY (BaseReviewAgent.review_file,
+# below). fix_pipeline.author_patch never references either one -- it bounds itself
+# with MAX_LINES_PER_FILE and wall-clock timeouts instead. Do not assume the fix
+# pipeline is capped by these; it is not. (Not renamed to a REVIEW_-prefixed name
+# because packages/agents/tests/test_orchestrator.py imports MAX_PATCH_CHARS by
+# this name -- see docs/roadmap/backlog.md for the naming-honesty note.)
 MAX_PATCH_CHARS = 50_000
 MAX_TOOL_ROUNDS = 5
 
@@ -63,12 +69,15 @@ class BaseReviewAgent(ABC):
             f"- {escape_for_prompt(f.path)} (+{f.additions}/-{f.deletions})"
             for f in others
         )
-        return f"""
+        return (
+            f"""
 <pr_file_manifest>
-Other files changed in this same PR (peripheral context only — review ONLY the file in <diff> below, but consider cross-file impact, e.g. renamed/removed symbols these files may introduce):
+Other files changed in this same PR (peripheral context only — review ONLY the file in <diff> below, but """
+            f"""consider cross-file impact, e.g. renamed/removed symbols these files may introduce):
 {lines}
 </pr_file_manifest>
 """
+        )
 
     def _build_telemetry_block(self, pr_context: PRContext) -> str:
         """Hook for agents that want production/business telemetry folded
@@ -87,7 +96,11 @@ Other files changed in this same PR (peripheral context only — review ONLY the
 
         predecessor_block = ""
         if pr_context.predecessor_handoff_notes or pr_context.predecessor_root_cause:
-            predecessor_block = "\n<predecessor_context>\nThis is a follow-up review on a previously flagged PR. Use this context from the prior agent review pass to avoid repeating past mistakes or feedback:\n"
+            predecessor_block = (
+                "\n<predecessor_context>\nThis is a follow-up review on a previously flagged PR. "
+                "Use this context from the prior agent review pass to avoid repeating past mistakes "
+                "or feedback:\n"
+            )
             if pr_context.predecessor_root_cause:
                 predecessor_block += f"Prior Root Cause:\n{escape_for_prompt(pr_context.predecessor_root_cause)}\n"
             if pr_context.predecessor_handoff_notes:
@@ -104,14 +117,20 @@ Other files changed in this same PR (peripheral context only — review ONLY the
                 "</repo_conventions>\n"
             )
 
-        return f"""Review this pull request file for {self.agent_name} issues.
+        cross_file_context = (
+            f"{predecessor_block}{repo_conventions_block}"
+            f"{self._build_pr_manifest(file, pr_context)}"
+            f"{self._build_telemetry_block(pr_context)}"
+        )
+        return (
+            f"""Review this pull request file for {self.agent_name} issues.
 
 <pr_metadata>
 PR: "{escape_for_prompt(pr_context.title)}" in {escape_for_prompt(pr_context.repo)}
 Description: {escape_for_prompt(pr_context.description)}
 File: {escape_for_prompt(file.path)} ({file.language})
 </pr_metadata>
-{predecessor_block}{repo_conventions_block}{self._build_pr_manifest(file, pr_context)}{self._build_telemetry_block(pr_context)}
+{cross_file_context}
 <diff>
 {patch}{truncation_note}
 </diff>
@@ -122,7 +141,8 @@ Return ONLY valid JSON (no markdown, no extra text):
     {{
       "path": "{file.path}",
       "line": <integer>,
-      "body": "<issue description and how to fix it. IMPORTANT: You MUST provide the exact code fix by wrapping it in a GitHub markdown ```suggestion block, so the user can one-click commit it.>",
+      "body": "<issue description and how to fix it. IMPORTANT: You MUST provide the exact code fix by """
+            f"""wrapping it in a GitHub markdown ```suggestion block, so the user can one-click commit it.>",
       "severity": "<info|warning|error>",
       "category": "{self.agent_name}"
     }}
@@ -131,6 +151,7 @@ Return ONLY valid JSON (no markdown, no extra text):
 }}
 
 If no issues found, return empty comments array."""
+        )
 
     def _parse_response(self, path: str, raw: str) -> tuple[list[ReviewComment], str]:
         try:
@@ -145,9 +166,9 @@ If no issues found, return empty comments array."""
             return [], f"Failed to parse agent response: {exc}"
 
     def review_file(self, file: FileChange, pr_context: PRContext) -> FileReview:
+        from arete_agents.context_map.tools import get_context_map_tools
         from arete_agents.mcp.client import get_mcp_tools_for_agent
         from arete_agents.tools.actions import get_native_action_tools
-        from arete_agents.context_map.tools import get_context_map_tools
 
         context_map_tools = get_context_map_tools(
             getattr(pr_context, "installation_id", None)
@@ -167,7 +188,9 @@ If no issues found, return empty comments array."""
         ]
 
         mcp_tools = get_mcp_tools_for_agent(self.agent_name)
-        mcp_tools.extend(get_native_action_tools())
+        mcp_tools.extend(
+            get_native_action_tools(pr_context.installation_id, pr_context.repo)
+        )
         mcp_tools.extend(context_map_tools)
 
         llm_with_tools = self._llm.bind_tools(mcp_tools) if mcp_tools else self._llm

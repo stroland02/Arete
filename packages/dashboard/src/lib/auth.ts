@@ -12,6 +12,7 @@ import {
   getStoredInstallations,
   persistInstallationAccess,
 } from './installations';
+import { adoptPendingModelConnections } from './model-connection-adoption';
 import { shouldRefreshInstallations } from './installation-cache';
 
 // Extracted (behavior-preserving) from the inline NextAuth() callbacks so
@@ -53,6 +54,13 @@ export async function authJwtCallback({
         } else {
           token.installations = [];
         }
+      }
+      // A model connected BEFORE any installation (pending user-scoped rows) is
+      // adopted by the first installation the moment one resolves — inside this
+      // try so a failure never breaks login (next refresh retries).
+      const firstInstallation = token.installations?.[0];
+      if (firstInstallation) {
+        await adoptPendingModelConnections(db, token.sub, firstInstallation.id);
       }
       token.installationsFetchedAt = now;
     } catch (error) {

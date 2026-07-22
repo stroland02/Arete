@@ -24,12 +24,20 @@ export interface AccountState {
   repoConnected: boolean;
   /** How many repositories are connected. */
   repoCount: number;
-  /** An AI model is connected — the agents' real dependency. */
+  /**
+   * An AI model is connected — the agents' real dependency. True for an
+   * installation-scoped connection OR a pending user-scoped one (model can be
+   * connected before any repo; adopted by the first installation).
+   */
   modelConnected: boolean;
   /** At least one review has actually run. */
   hasReviews: boolean;
   /** How many reviews exist across the connected repos. */
   reviewCount: number;
+  /** At least one repo scan finished ("complete" | "no_findings") — the first proof the repo+model pair works. */
+  scanCompleted: boolean;
+  /** At least one telemetry service (GitHub Actions, PostHog, Vercel, Stripe…) is connected. */
+  telemetryConnected: boolean;
   /** The single canonical lifecycle stage every surface renders from. */
   stage: AccountStage;
 }
@@ -42,6 +50,8 @@ export function disconnectedState(): AccountState {
     modelConnected: false,
     hasReviews: false,
     reviewCount: 0,
+    scanCompleted: false,
+    telemetryConnected: false,
     stage: "disconnected",
   };
 }
@@ -54,19 +64,40 @@ export function disconnectedState(): AccountState {
 export async function getAccountState(
   db: PrismaClient,
   installationIds: string[],
+  userId?: string,
 ): Promise<AccountState> {
-  if (installationIds.length === 0) return disconnectedState();
+  if (installationIds.length === 0) {
+    // No repo yet — but the user may already have a PENDING model connection
+    // (model is setup step 1; adopted by the first installation). Surface it
+    // honestly; stage stays "disconnected" (repo is the stage driver).
+    if (!userId) return disconnectedState();
+    const pendingModels = await db.modelConnection.count({
+      where: { userId, installationId: null },
+    });
+    return { ...disconnectedState(), modelConnected: pendingModels > 0 };
+  }
 
   const repos = await db.repository.findMany({
     where: { installationId: { in: installationIds } },
     select: { id: true },
   });
 
-  const [modelCount, reviewCount] = await Promise.all([
-    db.modelConnection.count({ where: { installationId: { in: installationIds } } }),
+  const [modelCount, reviewCount, scanCount, telemetryCount] = await Promise.all([
+    db.modelConnection.count({
+      where: userId
+        ? { OR: [{ installationId: { in: installationIds } }, { userId, installationId: null }] }
+        : { installationId: { in: installationIds } },
+    }),
     repos.length
       ? db.review.count({ where: { repositoryId: { in: repos.map((r) => r.id) } } })
       : Promise.resolve(0),
+    db.scanRun.count({
+      where: {
+        installationId: { in: installationIds },
+        status: { in: ["complete", "no_findings"] },
+      },
+    }),
+    db.telemetryConnection.count({ where: { installationId: { in: installationIds } } }),
   ]);
 
   const hasReviews = reviewCount > 0;
@@ -76,6 +107,8 @@ export async function getAccountState(
     modelConnected: modelCount > 0,
     hasReviews,
     reviewCount,
+    scanCompleted: scanCount > 0,
+    telemetryConnected: telemetryCount > 0,
     stage: hasReviews ? "active" : "connected_idle",
   };
 }

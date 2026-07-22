@@ -31,6 +31,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import request from 'supertest'
 import type { Application } from 'express'
 
+// Each test here re-transpiles the real server + worker graph via dynamic
+// import() after vi.resetModules(), which is CPU-heavy. Under load (the whole
+// monorepo suite running at once), that can exceed vitest's default 5s
+// testTimeout -- and a timeout ABORTS the test mid-flight while its
+// processReviewJob() continuation keeps running, then leaks a fetch call into
+// the next test (observed: "fetch called 2 times, expected 1"). The work
+// itself is fully synchronous mocks (no real Redis/BullMQ, no real network),
+// so a generous file-scoped budget removes the starvation flake without
+// masking any genuine hang. Scoped to THIS file via setConfig so unit suites
+// keep their fast-fail default.
+vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 })
+
 // --- env (never real secrets; test-only values) ---
 vi.stubEnv('GITHUB_APP_ID', '12345')
 vi.stubEnv('GITHUB_PRIVATE_KEY', '-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----\n')
@@ -210,20 +222,46 @@ function makeRoutedFetchMock(overrides: { reviewResult?: any } = {}) {
  * the handlers the real server registered — HMAC validation is bypassed,
  * everything downstream is the real code path.
  */
-async function buildApp(mocks: Mocks): Promise<Application> {
+type BuildOverrides = {
+  /** When set, ./telemetry/fetch-telemetry-context.js resolves to this fixed value. */
+  telemetryContext?: unknown[]
+  /** When set, ./review-bridge.js runReviewPipeline is replaced by this mock. */
+  runReviewPipeline?: ReturnType<typeof vi.fn>
+}
+
+async function buildApp(mocks: Mocks, overrides: BuildOverrides = {}): Promise<Application> {
   vi.resetModules()
+
+  // EVERY module this file ever mocks is (re-)registered or explicitly
+  // un-mocked here, unconditionally — vi.resetModules() clears the module
+  // cache but not the doMock registry, so anything registered outside this
+  // function would leak into later tests and make the file order-dependent.
+  if (overrides.telemetryContext !== undefined) {
+    const telemetryContext = overrides.telemetryContext
+    vi.doMock('./telemetry/fetch-telemetry-context.js', () => ({
+      fetchTelemetryContext: vi.fn().mockResolvedValue(telemetryContext),
+    }))
+  } else {
+    vi.doUnmock('./telemetry/fetch-telemetry-context.js')
+  }
+  if (overrides.runReviewPipeline !== undefined) {
+    const runReviewPipeline = overrides.runReviewPipeline
+    vi.doMock('./review-bridge.js', () => ({ runReviewPipeline }))
+  } else {
+    vi.doUnmock('./review-bridge.js')
+  }
 
   vi.doMock('@octokit/app', () => {
     class App {
       webhooks: {
-        handlers: Map<string, Function[]>
-        on: (event: string | string[], handler: Function) => void
+        handlers: Map<string, ((...args: any[]) => any)[]>
+        on: (event: string | string[], handler: (...args: any[]) => any) => void
       }
       constructor(_opts: unknown) {
-        const handlers = new Map<string, Function[]>()
+        const handlers = new Map<string, ((...args: any[]) => any)[]>()
         this.webhooks = {
           handlers,
-          on(event: string | string[], handler: Function) {
+          on(event: string | string[], handler: (...args: any[]) => any) {
             for (const e of Array.isArray(event) ? event : [event]) {
               if (!handlers.has(e)) handlers.set(e, [])
               handlers.get(e)!.push(handler)
@@ -245,7 +283,7 @@ async function buildApp(mocks: Mocks): Promise<Application> {
           try {
             const payload = JSON.parse(raw)
             const event = req.headers['x-github-event']
-            const handlers: Function[] = webhooks.handlers.get(event) ?? []
+            const handlers: ((...args: any[]) => any)[] = webhooks.handlers.get(event) ?? []
             for (const handler of handlers) {
               await handler({ octokit: mocks.octokit, payload })
             }
@@ -302,9 +340,25 @@ describe('pipeline integration: webhook -> queue -> worker -> review -> post', (
     }
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.unstubAllGlobals()
+    vi.doUnmock('./telemetry/fetch-telemetry-context.js')
+    vi.doUnmock('./review-bridge.js')
     vi.resetModules()
+    // Regression guard for 515b30a: this asserts what the two doUnmock calls
+    // just above are supposed to guarantee -- that after teardown, both
+    // buildApp-managed mocks (review-bridge.js, fetch-telemetry-context.js)
+    // are actually un-registered, not just requested to be. It does NOT
+    // guard against some hypothetical future test that mocks a module
+    // outside buildApp (the unconditional doUnmock calls above already
+    // neutralize that case on their own); it guards those doUnmock calls
+    // themselves from being silently weakened or removed, which would
+    // reintroduce the "keep this test LAST" order-dependence from 515b30a
+    // without any test here catching it.
+    const bridge = await import('./review-bridge.js')
+    expect(vi.isMockFunction(bridge.runReviewPipeline)).toBe(false)
+    const telemetry = await import('./telemetry/fetch-telemetry-context.js')
+    expect(vi.isMockFunction(telemetry.fetchTelemetryContext)).toBe(false)
   })
 
   it('async handoff: pull_request.opened returns 200 immediately, enqueues a job, and does NOT run the pipeline until the job is processed', async () => {
@@ -513,6 +567,63 @@ describe('pipeline integration: webhook -> queue -> worker -> review -> post', (
     )
   })
 
+  it('partial success: pipeline produces a usable result but posting to GitHub fails -> job does NOT throw (no full-pipeline retry), check run recorded as failed', async () => {
+    // Non-422 failure on every attempt -- postReview's own 422 fallback
+    // doesn't apply, so this always throws (e.g. rate limit, GitHub outage).
+    mocks.octokit.rest.pulls.createReview.mockRejectedValue(
+      Object.assign(new Error('GitHub API rate limited'), { status: 500 })
+    )
+    const app = await buildApp(mocks)
+
+    const res = await request(app)
+      .post('/webhook')
+      .set('Content-Type', 'application/json')
+      .set('X-GitHub-Event', 'pull_request')
+      .send(JSON.stringify(PR_PAYLOAD))
+    expect(res.status).toBe(200)
+
+    const { processReviewJob } = await import('./worker.js')
+    // The pipeline already produced a usable ReviewResult (the mocked
+    // FastAPI /review call succeeds) -- only posting it back to GitHub
+    // fails. Re-running the whole job would redo the entire files x agents
+    // review for nothing (the double-retry this task removes), so the job
+    // must resolve, not throw/reject.
+    await expect(processReviewJob(mocks.capturedJobs[0])).resolves.toBeUndefined()
+
+    // The pipeline DID run (FastAPI /review was called) -- proving a usable
+    // result existed before the post failure.
+    expect(mocks.fetchMock).toHaveBeenCalledTimes(1)
+    // Posting was attempted and failed.
+    expect(mocks.octokit.rest.pulls.createReview).toHaveBeenCalledTimes(1)
+    // Check run resolved (not left stuck "in_progress") with a failure
+    // conclusion reflecting that the review never reached GitHub.
+    expect(mocks.octokit.rest.checks.update).toHaveBeenCalledWith(
+      expect.objectContaining({ check_run_id: 555, status: 'completed', conclusion: 'failure' })
+    )
+    // No retry means this attempt never re-persists (the point of the fix).
+    expect(mocks.prisma.reviewCreate).not.toHaveBeenCalled()
+  })
+
+  it('genuine infra crash: pipeline yields no result at all -> job DOES throw (still retried by attempts:3)', async () => {
+    const runReviewPipelineMock = vi.fn().mockRejectedValue(new Error('Python pipeline exited with status 500: internal error'))
+    await buildApp(mocks, { runReviewPipeline: runReviewPipelineMock })
+
+    const { processReviewJob } = await import('./worker.js')
+    // No ReviewResult was ever produced -- a genuine infra crash. This must
+    // still propagate so BullMQ's attempts:3/backoff retries it; that is the
+    // ONLY case this task's fix leaves re-throwing.
+    await expect(processReviewJob({
+      provider: 'github', kind: 'pull_request', owner: 'acme', repo: 'api',
+      repositoryExternalId: 1, fullName: 'acme/api', installationId: 42, prNumber: 1, headSha: 'abc',
+    })).rejects.toThrow('Python pipeline exited with status 500')
+
+    // Posting never happens -- there was nothing to post.
+    expect(mocks.octokit.rest.pulls.createReview).not.toHaveBeenCalled()
+    expect(mocks.octokit.rest.checks.update).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'completed', conclusion: 'failure' })
+    )
+  })
+
   it('GitLab happy path: valid MR event -> job -> fetch diff -> FastAPI -> posted discussion -> Prisma transaction', async () => {
     const app = await buildApp(mocks)
 
@@ -602,26 +713,18 @@ describe('pipeline integration: webhook -> queue -> worker -> review -> post', (
   })
 
   it('fetches telemetry context and includes it in the PRContext sent to the Python pipeline', async () => {
-    // Registered before buildApp: vi.resetModules() clears the module cache
-    // but not the doMock registry, so these survive and apply when worker.js
-    // is dynamically imported below. Keep this test LAST in the describe
-    // block — these two doMocks are not re-registered by buildApp, so they
-    // would leak into any test that ran after this one.
-    vi.doMock('./telemetry/fetch-telemetry-context.js', () => ({
-      fetchTelemetryContext: vi.fn().mockResolvedValue([
-        { provider: 'github_actions', source_ref: 'acme/api', summary_text: 'ok', metrics: {}, links: [], fetched_at: '2026-07-10T00:00:00Z' },
-      ]),
-    }))
-
     const runReviewPipelineMock = vi.fn().mockResolvedValue({
       pr_context: {}, file_reviews: [], overall_summary: 'ok', risk_level: 'low', total_comments: 0,
     })
-    vi.doMock('./review-bridge.js', () => ({ runReviewPipeline: runReviewPipelineMock }))
-
     // Reuses the shared boundary mocks (octokit via github-auth, @arete/db,
     // queue) that buildApp registers, then feeds job data straight into the
     // worker exactly like runCapturedJob does.
-    await buildApp(mocks)
+    await buildApp(mocks, {
+      telemetryContext: [
+        { provider: 'github_actions', source_ref: 'acme/api', summary_text: 'ok', metrics: {}, links: [], fetched_at: '2026-07-10T00:00:00Z' },
+      ],
+      runReviewPipeline: runReviewPipelineMock,
+    })
 
     const { processReviewJob } = await import('./worker.js')
     await processReviewJob({
@@ -639,9 +742,8 @@ describe('pipeline integration: webhook -> queue -> worker -> review -> post', (
     const runReviewPipelineMock = vi.fn().mockResolvedValue({
       pr_context: {}, file_reviews: [], overall_summary: 'ok', risk_level: 'low', total_comments: 0,
     })
-    vi.doMock('./review-bridge.js', () => ({ runReviewPipeline: runReviewPipelineMock }))
 
-    await buildApp(mocks)
+    await buildApp(mocks, { runReviewPipeline: runReviewPipelineMock })
     mocks.prisma.repositoryFindUnique.mockResolvedValue({ id: 'repo-uuid-1' })
     mocks.prisma.agentMemoryFindMany.mockResolvedValue([
       { body: 'Use tabs, not spaces.' },
@@ -655,5 +757,54 @@ describe('pipeline integration: webhook -> queue -> worker -> review -> post', (
 
     const sentContext = runReviewPipelineMock.mock.calls[0][0]
     expect(sentContext.projectMemories).toEqual(['Use tabs, not spaces.'])
+  })
+
+  describe('check_run (CI-diagnosis) path retry parity', () => {
+    // The pull_request path (Phase 3 Task 10) already distinguishes
+    // "no result -> retry" from "result produced, publish failed -> don't
+    // retry". processGitHubCheckRun ran the pre-fix shared try/catch, so a
+    // publish-only failure re-ran the whole CI-diagnosis LLM pipeline. These
+    // pin the same two-branch behavior for check_run.
+    // `as const` on the discriminants keeps them as literal types ('github' /
+    // 'check_run') so this object is assignable to the ReviewJobData union when
+    // passed to processReviewJob; a bare const would widen them to `string`
+    // (TS2345). The existing inline pull_request jobs avoid this by being
+    // contextually typed at the call site.
+    const checkRunJob = {
+      provider: 'github' as const, kind: 'check_run' as const, owner: 'acme', repo: 'api',
+      repositoryExternalId: 1, fullName: 'acme/api', installationId: 42,
+      prNumber: 1, headSha: 'abc', ciLogs: 'build failed: TypeError at foo.ts:3',
+    }
+
+    it('partial success: pipeline produced a usable result but posting failed -> job does NOT throw (no full-pipeline retry)', async () => {
+      mocks.octokit.rest.pulls.createReview.mockRejectedValue(
+        Object.assign(new Error('GitHub API rate limited'), { status: 500 })
+      )
+      await buildApp(mocks)
+      const { processReviewJob } = await import('./worker.js')
+
+      await expect(processReviewJob(checkRunJob)).resolves.toBeUndefined()
+
+      expect(mocks.fetchMock).toHaveBeenCalledTimes(1)              // pipeline ran
+      expect(mocks.octokit.rest.pulls.createReview).toHaveBeenCalledTimes(1) // publish attempted
+      expect(mocks.octokit.rest.checks.update).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'completed', conclusion: 'failure' })
+      )
+      expect(mocks.prisma.reviewCreate).not.toHaveBeenCalled()      // not retried, not re-persisted
+    })
+
+    it('genuine infra crash: pipeline yields no result -> job DOES throw (still retried by attempts:3)', async () => {
+      const runReviewPipelineMock = vi.fn().mockRejectedValue(
+        new Error('Python pipeline exited with status 500: internal error')
+      )
+      await buildApp(mocks, { runReviewPipeline: runReviewPipelineMock })
+      const { processReviewJob } = await import('./worker.js')
+
+      await expect(processReviewJob(checkRunJob)).rejects.toThrow('Python pipeline exited with status 500')
+      expect(mocks.octokit.rest.pulls.createReview).not.toHaveBeenCalled()
+      expect(mocks.octokit.rest.checks.update).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'completed', conclusion: 'failure' })
+      )
+    })
   })
 })

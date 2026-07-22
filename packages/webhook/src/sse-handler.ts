@@ -1,19 +1,26 @@
 import type { Request, Response } from 'express';
 import { Redis } from 'ioredis';
+import { logger } from './logger.js';
+
+const log = logger.child({ component: 'sse' });
 
 const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
 
 /**
  * Real-Time Metric Streaming (SSE)
- * Subscribes to the 'agent_metrics' Redis PubSub channel and pushes live
- * LangGraph agent state/throughput metrics to the frontend dashboard.
+ * Subscribes to the 'agent_metrics' Redis PubSub channel and streams live
+ * LangGraph agent state/throughput metrics. This is INTERNAL operational data:
+ * the route (`GET /metrics/stream` in server.ts) is guarded by
+ * requireInternalToken, and no wildcard CORS header is set — it is consumed
+ * server-side / through an authenticated proxy, not a cross-origin browser
+ * EventSource. (Was previously unauthenticated with Access-Control-Allow-Origin:
+ * '*', i.e. world-readable — hardened as a Phase-1 loose end.)
  */
 export function handleMetricsStream(req: Request, res: Response) {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     'Connection': 'keep-alive',
-    'Access-Control-Allow-Origin': '*', // Allow frontend to connect
   });
 
   // Create a dedicated Redis subscriber connection per client
@@ -21,7 +28,7 @@ export function handleMetricsStream(req: Request, res: Response) {
   
   subscriber.subscribe('agent_metrics', (err) => {
     if (err) {
-      console.error('[sse] Failed to subscribe to agent_metrics', err);
+      log.error({ err }, 'Failed to subscribe to agent_metrics');
       res.write(`event: error\ndata: ${JSON.stringify({ error: err.message })}\n\n`);
     } else {
       res.write(`event: connected\ndata: ${JSON.stringify({ status: 'listening' })}\n\n`);

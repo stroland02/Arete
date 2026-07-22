@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, type ReactNode } from "react";
+import { useState, useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
 import { SynthesizerConsole } from "../agents/synthesizer-console";
 import { StatusBoardLive } from "./status-board";
@@ -298,6 +298,27 @@ function shortWhen(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
+// No-op store for useHasMounted below: the "store" never changes, we only
+// care that useSyncExternalStore re-renders once client and server snapshots
+// diverge (i.e. once hydration completes).
+function subscribeNever() {
+  return () => {};
+}
+
+/**
+ * True once hydration has completed, false during SSR and the first client
+ * render. Implemented with useSyncExternalStore (not a state+effect pair) so
+ * the flip to `true` happens without an extra synchronous setState call
+ * inside an effect body — see https://react.dev/reference/react/useSyncExternalStore.
+ */
+function useHasMounted(): boolean {
+  return useSyncExternalStore(
+    subscribeNever,
+    () => true,
+    () => false,
+  );
+}
+
 /**
  * Embedded (full-bleed) triage workspace. When no services are connected,
  * the rail's "Connect your tools" list is still real and actionable — never
@@ -309,8 +330,7 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
   const isInView = useInView(containerRef, { margin: "-100px 0px -100px 0px" });
 
   // Guard against hydration: defer observer logic until after first client render
-  const [hasMounted, setHasMounted] = useState(false);
-  useEffect(() => { setHasMounted(true); }, []);
+  const hasMounted = useHasMounted();
 
   // Real mode: the authenticated /services page passes reviewGroups (even []),
   // switching the rail + center + right panel to real reviews. The marketing
@@ -376,7 +396,9 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
 
   useEffect(() => {
     if (isReplaying && selected) {
-      setReplayStep(0);
+      // replayStep is already 0 here: both places that flip isReplaying to
+      // true (handleSelectIssue below, and the scroll-into-view effect above)
+      // reset it in the same synchronous batch before this effect runs.
       const totalSteps = selected.timeline.length;
       const timers = selected.timeline.map((_, idx) => 
         setTimeout(() => setReplayStep(idx + 1), (idx + 1) * 700)
@@ -1144,6 +1166,14 @@ function WorkItemInboxSection({
  */
 export function WorkItemPanel({ item }: { item: WorkItemView }) {
   const [busy, setBusy] = useState<null | 'fix' | 'dismiss'>(null);
+  // Fix-run cooldown (Phase 3 Task 8): item.fixCooldown is computed
+  // server-side by computeFixCooldown (fix-cooldown.ts) — the SAME pure
+  // policy the fix API route enforces. Surfacing it here lets the user see
+  // the cooldown BEFORE clicking Fix it, instead of only after a 429.
+  const cooldownActive = !item.fixCooldown.allowed;
+  const cooldownMinutes = cooldownActive
+    ? Math.max(1, Math.ceil((item.fixCooldown.retryAfterSeconds ?? 0) / 60))
+    : 0;
 
   async function act(action: 'fix' | 'dismiss') {
     setBusy(action);
@@ -1232,10 +1262,20 @@ export function WorkItemPanel({ item }: { item: WorkItemView }) {
             Services), keeping one decision per stage. */}
         {item.state === "open" && (
           <footer className="shrink-0 space-y-1.5 border-t border-border-subtle px-3 py-3">
+            {cooldownActive && (
+              <p
+                title="A previous fix attempt failed; retrying immediately would repeat it — the same guard the fix API enforces server-side."
+                className="flex items-center gap-1.5 rounded-lg border border-accent-warning/30 bg-accent-warning/10 px-2.5 py-1.5 text-[11px] font-medium text-accent-warning"
+              >
+                <IconHourglassHigh size={13} stroke={2} aria-hidden />
+                retry available in {cooldownMinutes}m
+              </p>
+            )}
             <button
               type="button"
               onClick={() => act("fix")}
-              disabled={busy !== null}
+              disabled={busy !== null || cooldownActive}
+              title={cooldownActive ? `A previous fix attempt failed — retry available in ${cooldownMinutes}m` : undefined}
               className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent-primary px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-accent-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {busy === "fix" ? (

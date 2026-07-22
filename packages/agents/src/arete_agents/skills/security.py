@@ -1,6 +1,6 @@
-import random
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
+
 
 class SecurityAssessor:
     def __init__(self):
@@ -27,7 +27,13 @@ class SecurityAssessor:
             
         # Determine Snyk status
         snyk_status = "Low Risk"
-        if "expo" in skill_name or "nextjs" in skill_name or "python" in skill_name or "supabase" in skill_name or "onboarding" in skill_name:
+        if (
+            "expo" in skill_name
+            or "nextjs" in skill_name
+            or "python" in skill_name
+            or "supabase" in skill_name
+            or "onboarding" in skill_name
+        ):
             snyk_status = "High Risk"
         elif "debug" in skill_name:
             snyk_status = "Med Risk"

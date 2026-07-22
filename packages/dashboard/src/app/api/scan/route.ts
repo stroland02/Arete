@@ -28,7 +28,7 @@ export async function POST(_req: Request): Promise<Response> {
   try {
     const res = await fetch(`${base}/scan/trigger`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...internalAuthHeaders() },
+      headers: { 'Content-Type': 'application/json', ...(await internalAuthHeaders()) },
       body: JSON.stringify({ installationId: target }),
     });
     const body = await res.json().catch(() => ({}));

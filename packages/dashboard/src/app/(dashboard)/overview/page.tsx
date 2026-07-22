@@ -1,21 +1,17 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import {
-  IconArrowRight,
-  IconCircleCheck,
-  IconCircleDashed,
-  IconShieldCheck,
-} from "@tabler/icons-react";
+import { IconArrowRight } from "@tabler/icons-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { getDashboardViewModel, getDashboardsViewModel, resolveSelectedInstallationIds } from "@/lib/queries";
+import { getDashboardsViewModel, resolveSelectedInstallationIds } from "@/lib/queries";
 import { getSensoriumViewModel } from "@/lib/sensorium";
 import { getAccountState } from "@/lib/account-state";
 import { deriveOverviewSetup } from "@/lib/overview-setup";
+import { bucketByDay } from "@/lib/trends";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
-import { ActivityList } from "@/components/dashboard/activity-list";
-import { AgentsAtWorkStrip } from "@/components/dashboard/agents-at-work-strip";
 import { SensoriumMap } from "@/components/dashboard/sensorium-map";
+import { OverviewSetupCard } from "@/components/dashboard/overview-setup-card";
+import { OverviewStatTile } from "@/components/dashboard/overview-stat-tile";
 import { DashboardsWorkspace } from "@/components/dashboard/dashboards/dashboards-workspace";
 
 // This page reads the session and queries Prisma scoped to it on every
@@ -40,10 +36,9 @@ export default async function DashboardOverview({
     installation
   );
 
-  const viewModel = await getDashboardViewModel(db, installationIds);
-  // The dashboards presets (Review Activity / Findings / Telemetry) now live on
-  // this page too — Overview is the single home. Same view-model the standalone
-  // /dashboards page used, so the charts are unchanged.
+  // One tenant-scoped aggregate powers both the stat tiles and the dashboards
+  // presets (Review Activity / Findings / Telemetry) — Overview is the single
+  // home, and this is its single activity view-model.
   const dashboardsModel = await getDashboardsViewModel(db, installationIds);
   // The Sensorium code graph is keyed by the GitHub external installation id,
   // not the DB uuid — resolve the primary selected installation's externalId.
@@ -53,24 +48,19 @@ export default async function DashboardOverview({
   const sensorium = await getSensoriumViewModel(db, installationIds, graphExternalId);
 
   // Account-State Contract: connection facts + onboarding derive from the single
-  // resolver, never ad-hoc hasAccess/totalPrs checks. Activity DATA still comes
-  // from the view-model below and is shown only when it actually exists.
-  const accountState = await getAccountState(db, installationIds);
-  const connected = accountState.repoConnected;
-  const { totalPrs, criticalBugs, recentReviews, latestReviews, commentsByCategory } = viewModel.hasAccess
-    ? viewModel
-    : { totalPrs: 0, criticalBugs: 0, recentReviews: 0, latestReviews: [], commentsByCategory: [] };
+  // resolver, never ad-hoc hasAccess/totalPrs checks. The userId lets a pending
+  // (pre-repo) model connection count as setup step 1 honestly.
+  const accountState = await getAccountState(db, installationIds, session.user.id);
 
-  const findingCountById = Object.fromEntries(
-    commentsByCategory.map((c) => [c.category, c.count])
-  );
+  const { totalPrs, criticalBugs, recentReviews, reviewDates } = dashboardsModel.hasAccess
+    ? dashboardsModel
+    : { totalPrs: 0, criticalBugs: 0, recentReviews: 0, reviewDates: [] as Date[] };
 
-  const hasReviews = accountState.hasReviews;
   const firstName = (session.user.name ?? "").trim().split(" ")[0];
 
   // Onboarding progress — derived from the Account-State resolver (single source
-  // of truth), honest across all three stages; the card evolves once reviews flow.
-  const { steps, doneCount, setupComplete, nextStep } = deriveOverviewSetup(accountState);
+  // of truth), honest across all stages; the card evolves once reviews flow.
+  const setup = deriveOverviewSetup(accountState);
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -109,135 +99,29 @@ export default async function DashboardOverview({
           </RevealItem>
         )}
 
-        {/* Onboarding → next-action card. It never disappears: once a repo is
-            connected and reviews are flowing, it evolves from the setup
-            checklist into the "act on what Kuma found" step of the workflow,
-            so the user always has a clear next move. */}
+        {/* Onboarding → next-action card. It never disappears: once setup is
+            done it evolves into the "act on what Kuma found" step of the
+            workflow, so the user always has a clear next move. */}
         <RevealItem>
-          <section className="rounded-2xl border border-border-default bg-surface-1 p-6">
-            {setupComplete ? (
-              /* Setup done — point at acting on findings (the next step in how
-                 Kuma actually resolves what it found). */
-              <>
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-content-primary">
-                    You&apos;re set up — here&apos;s what&apos;s next
-                  </h2>
-                  <span className="inline-flex items-center gap-1 rounded-full border border-accent-success/25 bg-accent-success/10 px-2 py-0.5 text-[10px] font-medium text-accent-success">
-                    <IconCircleCheck className="h-3 w-3" stroke={2.25} />
-                    Setup complete
-                  </span>
-                </div>
-
-                <div className="mt-5 flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface-0/50 p-5 sm:flex-row sm:items-center">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-content-primary">
-                      {criticalBugs > 0
-                        ? `Act on ${criticalBugs} critical finding${criticalBugs === 1 ? "" : "s"} Kuma caught`
-                        : "Review Kuma's findings and approve fixes"}
-                    </p>
-                    <p className="mt-0.5 text-xs leading-5 text-content-muted">
-                      Each finding comes with a proposed fix and the evidence behind it. Open the
-                      Services workspace to review it, approve the change, and let Kuma open the
-                      pull request.
-                    </p>
-                  </div>
-                  <Link
-                    href="/services"
-                    className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-accent-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/90"
-                  >
-                    Review findings
-                    <IconArrowRight className="h-4 w-4" />
-                  </Link>
-                </div>
-              </>
-            ) : (
-              /* Still setting up — the SuperLog-style checklist. */
-              <>
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-content-primary">
-                    Finish setting up Kuma
-                  </h2>
-                  <span className="font-mono text-xs text-content-muted">
-                    {doneCount} of {steps.length}
-                  </span>
-                </div>
-
-                {/* progress bar */}
-                <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
-                  <div
-                    className="h-full rounded-full bg-accent-primary transition-all"
-                    style={{ width: `${(doneCount / steps.length) * 100}%` }}
-                  />
-                </div>
-
-                {/* current-step highlight */}
-                {nextStep && (
-                  <div className="mt-5 flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface-0/50 p-5 sm:flex-row sm:items-center">
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-content-primary">{nextStep.label}</p>
-                      <p className="mt-0.5 text-xs leading-5 text-content-muted">
-                        {nextStep.label === "Connect a repository"
-                          ? "Install the Kuma GitHub App on the repo you want reviewed. Every pull request is then reviewed automatically."
-                          : nextStep.label === "Connect an AI model"
-                            ? "Connect the model Kuma runs reviews on — Claude Code recommended. Local · Ollama is the free default."
-                            : "Open a pull request on a connected repository — the six specialists review it and post verified findings back to the PR."}
-                      </p>
-                    </div>
-                    {nextStep.label === "Connect a repository" && (
-                      <Link
-                        href="/connections"
-                        className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-accent-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/90"
-                      >
-                        Connect a repository
-                        <IconArrowRight className="h-4 w-4" />
-                      </Link>
-                    )}
-                    {nextStep.label === "Connect an AI model" && (
-                      <Link
-                        href="/connections/ai-models"
-                        className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-accent-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/90"
-                      >
-                        Connect an AI model
-                        <IconArrowRight className="h-4 w-4" />
-                      </Link>
-                    )}
-                  </div>
-                )}
-
-                {/* checklist */}
-                <ul className="mt-5 space-y-2.5">
-                  {steps.map((step) => (
-                    <li key={step.label} className="flex items-center gap-2.5 text-sm">
-                      {step.done ? (
-                        <IconCircleCheck className="h-4 w-4 shrink-0 text-accent-success" stroke={2} />
-                      ) : (
-                        <IconCircleDashed className="h-4 w-4 shrink-0 text-content-muted/60" stroke={2} />
-                      )}
-                      <span className={step.done ? "text-content-secondary" : "text-content-muted"}>
-                        {step.label}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </section>
+          <OverviewSetupCard setup={setup} criticalBugs={criticalBugs} />
         </RevealItem>
 
-        {/* Metric tiles */}
+        {/* Metric tiles — real counts, real daily buckets (no trend when the
+            series doesn't exist yet). */}
         <RevealItem>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <StatTile label="Pull requests reviewed" value={totalPrs} />
-            <StatTile label="Critical issues caught" value={criticalBugs} />
-            <StatTile label="Reviews this week" value={recentReviews} />
+            <OverviewStatTile
+              label="Pull requests reviewed"
+              value={totalPrs}
+              trend={reviewDates.length > 0 ? bucketByDay(reviewDates, 30) : undefined}
+            />
+            <OverviewStatTile label="Critical issues caught" value={criticalBugs} />
+            <OverviewStatTile
+              label="Reviews this week"
+              value={recentReviews}
+              trend={reviewDates.length > 0 ? bucketByDay(reviewDates, 7) : undefined}
+            />
           </div>
-        </RevealItem>
-
-        {/* Agents at work — the six specialists and what each has caught */}
-        <RevealItem className="space-y-3">
-          <SectionLabel>Agents at work</SectionLabel>
-          <AgentsAtWorkStrip findingCountById={findingCountById} hasReviews={hasReviews} />
         </RevealItem>
 
         {/* Dashboards — the review-pipeline + telemetry charts, folded in from
@@ -245,60 +129,6 @@ export default async function DashboardOverview({
         <RevealItem className="space-y-3">
           <SectionLabel>Dashboards</SectionLabel>
           <DashboardsWorkspace model={dashboardsModel} accountState={accountState} />
-        </RevealItem>
-
-        {/* Critical findings */}
-        <RevealItem className="space-y-3">
-          <SectionLabel>Critical findings</SectionLabel>
-          {criticalBugs > 0 ? (
-            <div className="flex items-center gap-3 rounded-2xl border border-accent-danger/30 bg-accent-danger/5 p-5">
-              <IconShieldCheck className="h-5 w-5 shrink-0 text-accent-danger" stroke={1.75} />
-              <p className="text-sm text-content-secondary">
-                <span className="font-semibold text-content-primary">{criticalBugs}</span> critical
-                {criticalBugs === 1 ? " issue" : " issues"} caught across your recent reviews.
-              </p>
-            </div>
-          ) : (
-            <StatePanel
-              icon={<IconShieldCheck className="h-5 w-5 text-accent-success" stroke={1.75} />}
-            >
-              All clear — no critical findings in your recent reviews.
-            </StatePanel>
-          )}
-        </RevealItem>
-
-        {/* Recent reviews */}
-        <RevealItem className="space-y-3">
-          <SectionLabel>Recent reviews</SectionLabel>
-          {latestReviews.length > 0 ? (
-            <div className="overflow-hidden rounded-2xl border border-border-default bg-surface-1">
-              <ActivityList
-                reviews={latestReviews.map((review) => ({
-                  id: review.id,
-                  repositoryName: review.repositoryFullName,
-                  prNumber: review.prNumber,
-                  createdAt: review.createdAt.toISOString(),
-                  riskLevel: review.riskLevel,
-                }))}
-              />
-            </div>
-          ) : (
-            <StatePanel>
-              {connected ? (
-                <>Open a pull request on a connected repository and its review appears here.</>
-              ) : (
-                <span className="inline-flex flex-wrap items-center gap-x-1.5">
-                  No reviews yet — connect a repository to get started.
-                  <Link
-                    href="/connections"
-                    className="inline-flex items-center gap-1 font-medium text-accent-primary hover:underline"
-                  >
-                    Connect a repository <IconArrowRight className="h-3.5 w-3.5" />
-                  </Link>
-                </span>
-              )}
-            </StatePanel>
-          )}
         </RevealItem>
       </PageReveal>
     </div>
@@ -313,25 +143,9 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function StatTile({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-2xl border border-border-default bg-surface-1 p-5">
-      <p className="font-mono text-3xl font-semibold tabular-nums text-content-primary">{value}</p>
-      <p className="mt-1 text-xs text-content-muted">{label}</p>
-    </div>
-  );
-}
-
-function StatePanel({
-  children,
-  icon,
-}: {
-  children: React.ReactNode;
-  icon?: React.ReactNode;
-}) {
+function StatePanel({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-border-default bg-surface-1 p-5">
-      {icon && <span className="shrink-0">{icon}</span>}
       <p className="text-sm text-content-secondary">{children}</p>
     </div>
   );

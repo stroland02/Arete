@@ -1,5 +1,8 @@
 import type { Octokit } from '@octokit/core'
 import { enqueueReviewJob } from './queue.js'
+import { logger } from './logger.js'
+
+const log = logger.child({ component: 'backfill' })
 
 /**
  * Minimal shape Kuma needs out of a GitHub `repository` object as delivered
@@ -68,12 +71,12 @@ export async function backfillInstallationPRs(
     try {
       prs = await listOpenPullRequests(octokit, owner, name)
     } catch (err) {
-      console.error(`[backfill] Failed to list open PRs for ${repo.full_name} — skipping repo:`, err)
+      log.error({ err, repo: repo.full_name }, 'Failed to list open PRs — skipping repo')
       continue
     }
 
     if (prs.length === 0) {
-      console.log(`[backfill] No open PRs to backfill for ${repo.full_name}`)
+      log.info({ repo: repo.full_name }, 'No open PRs to backfill')
       continue
     }
 
@@ -94,9 +97,9 @@ export async function backfillInstallationPRs(
           headSha: pr.head.sha,
         }, lane)
 
-        console.log(`[backfill] Enqueued review-pr job for ${repo.full_name}#${pr.number} on '${lane}' lane (backfill)`)
+        log.info({ repo: repo.full_name, prNumber: pr.number, lane }, 'Enqueued review-pr job (backfill)')
       } catch (err) {
-        console.error(`[backfill] Failed to enqueue backfill job for ${repo.full_name}#${pr.number}:`, err)
+        log.error({ err, repo: repo.full_name, prNumber: pr.number }, 'Failed to enqueue backfill job')
       }
     }
   }

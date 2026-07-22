@@ -23,6 +23,9 @@ const NAV_ITEMS = [
   // routes still exist (/map deep-links; /dashboards redirects to /overview).
   { href: "/services", label: "Services" },
   { href: "/agents", label: "Agents" },
+  // Incidents lives on Overview too (its own section), but a top-level tab
+  // makes it deep-linkable/discoverable the same way Services and Agents are.
+  { href: "/incidents", label: "Incidents" },
   // Connections and Review History now live under Settings (linked from the
   // Settings page). Their routes still exist for those links + deep-links.
   { href: "/settings", label: "Settings" },
