@@ -403,3 +403,48 @@ telemetry to read. The agent must be told "no signals" rather than shown an empt
 **Explicitly NOT touched:** `packages/webhook/src/alerting/` (ceded to the `ridley` lane while its
 receiver work was in flight), `packages/dashboard/src/lib/platform-installation.ts` beyond leaving it as
 the re-export ridley made it, and any `packages/db` schema, migration, or generated client file.
+
+---
+
+### `pyrosome` (PM lane) cross-lane claim — manual investigations can reach a fix (declared 2026-07-22)
+
+**Cross-lane declaration per coordination rule 4.** These are `packages/dashboard` files (the `dashboard`
+lane), edited from the PM worktree. All four are **server-side** (`lib/`, a server action, an API route) —
+**no UI component, page, or styling is touched**, so this does not collide with the dashboard-UI work.
+
+**The defect being closed:** an `Incident` row on its own is **inert** — only a `WorkItem` enters the fix
+pipeline. The Alertmanager path knows this and routes accordingly (`webhook alerting/incident.ts`
+`routeIncidentToFix`: open WorkItem → link → open container → dispatch). The **manual** path
+(`lib/incidents.ts::createManualIncident`, reached from the "New investigation" form) created the Incident
+and **stopped**. So a hand-opened investigation had nothing to press "Fix it" on and could never be driven
+to a fix at all — an automation asymmetry, not a missing button.
+
+**Approved behavior (user decision, 2026-07-22): auto-start on creation** — opening an investigation opens
+the WorkItem *and* dispatches the fix drive, mirroring the critical-alert path. **HITL is preserved
+(Global Constraint 5):** the container is born UNAPPROVED (`gates.solutionApprovedAt: null`) and the drive
+halts at `ready` for the human approve→send gate. Auto-start begins *authoring* a patch; nothing merges,
+applies, or posts.
+
+**Design decision — extract, don't triplicate.** "Open an IssueContainer at `detecting`, flip the WorkItem
+to `fixing`, POST `/fix/trigger`" existed in two places (the "Fix it" route and webhook's alerting path).
+Adding a third copy for the manual path is exactly the drift the tenancy contract warns about, so the two
+**dashboard** copies now share one module. Webhook's copy stays put — it is a different service, and
+`alerting/` remains ceded.
+
+**Files claimed by this worktree:**
+- **dashboard (server-side only):** `packages/dashboard/src/lib/fix-dispatch.ts` (**new** — `openFixContainer`
+  + `dispatchFixTrigger`, the shared run-start primitives) + `fix-dispatch.test.ts` (**new**);
+  `packages/dashboard/src/lib/incidents.ts` (`createManualIncident` now opens the linked WorkItem and
+  auto-starts the run; returns `{incidentId, workItemId, containerId}` instead of a bare id) +
+  `incidents.test.ts`; `packages/dashboard/src/app/(dashboard)/incidents/actions.ts` (consumes the new
+  result, fires the trigger); `packages/dashboard/src/app/api/work-items/[id]/fix/route.ts` (**refactor
+  only** — delegates to the shared primitives; its external contract, status codes and `{containerId}`
+  response are byte-identical, proven by its 6 pre-existing tests still passing untouched).
+
+**Why this is safe:** the only breaking change is `createManualIncident`'s return type, and it has exactly
+one caller (the server action), updated in the same commit. No schema, migration, or generated file is
+touched. With no connected repository the WorkItem is still opened and left `open` (nothing to fix
+against yet) — the same best-effort fallback `routeIncidentToFix` makes, never a silent failure.
+
+**Verification:** dashboard `vitest` **609/609 green** (91 files, incl. the 6 untouched fix-route tests),
+`tsc --noEmit` clean.

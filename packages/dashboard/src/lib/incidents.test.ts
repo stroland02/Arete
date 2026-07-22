@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { getIncidents, getIncidentDetail } from './incidents';
+import { getIncidents, getIncidentDetail, createManualIncident } from './incidents';
 
 function row(overrides: Record<string, unknown> = {}) {
   return {
@@ -234,5 +234,113 @@ describe('getIncidentDetail', () => {
 
     expect(detail?.workItemId).toBe('wi-2');
     expect(detail?.fixContainerId).toBeNull();
+  });
+});
+
+function fakeMutationsDb(repo: { fullName: string } | null = { fullName: 'acme/api' }) {
+  const incidentCreate = vi.fn().mockResolvedValue({ id: 'inc-new' });
+  const incidentUpdate = vi.fn().mockResolvedValue({});
+  const workItemCreate = vi.fn().mockResolvedValue({ id: 'wi-new-1234567' });
+  const workItemUpdate = vi.fn().mockResolvedValue({});
+  const repositoryFindFirst = vi.fn().mockResolvedValue(repo);
+  const issueContainerCreate = vi.fn().mockResolvedValue({ id: 'cont-new' });
+  const db = {
+    incident: { create: incidentCreate, update: incidentUpdate },
+    workItem: { create: workItemCreate, update: workItemUpdate },
+    repository: { findFirst: repositoryFindFirst },
+    issueContainer: { create: issueContainerCreate },
+  };
+  return {
+    db: db as never,
+    incidentCreate,
+    incidentUpdate,
+    workItemCreate,
+    workItemUpdate,
+    repositoryFindFirst,
+    issueContainerCreate,
+  };
+}
+
+describe('createManualIncident', () => {
+  const input = { alertName: 'Checkout latency', severity: 'critical', summary: 'p99 climbing' };
+
+  it('records the incident as a firing, manual investigation', async () => {
+    const { db, incidentCreate } = fakeMutationsDb();
+
+    await createManualIncident(db, 'inst-1', input);
+
+    expect(incidentCreate.mock.calls[0][0].data).toMatchObject({
+      installationId: 'inst-1',
+      alertName: 'Checkout latency',
+      severity: 'critical',
+      status: 'firing',
+      summary: 'p99 climbing',
+      source: 'manual',
+    });
+  });
+
+  // THE DEAD END THIS FUNCTION EXISTS TO CLOSE: an Incident row on its own is
+  // inert — only a WorkItem enters the fix pipeline. Without this, a
+  // hand-opened investigation could never be driven to a fix at all.
+  it('opens a WorkItem for the investigation and links it back to the incident', async () => {
+    const { db, workItemCreate, incidentUpdate } = fakeMutationsDb();
+
+    const result = await createManualIncident(db, 'inst-1', input);
+
+    expect(result.incidentId).toBe('inc-new');
+    expect(result.workItemId).toBe('wi-new-1234567');
+    expect(workItemCreate.mock.calls[0][0].data).toMatchObject({
+      installationId: 'inst-1',
+      source: 'manual',
+      title: 'Checkout latency',
+      detail: 'p99 climbing',
+      state: 'open',
+      evidence: [],
+    });
+    expect(incidentUpdate).toHaveBeenCalledWith({
+      where: { id: 'inc-new' },
+      data: { workItemId: 'wi-new-1234567' },
+    });
+  });
+
+  it("namespaces the WorkItem fingerprint to the incident's own, so it cannot collide with a scan-born item", async () => {
+    const { db, incidentCreate, workItemCreate } = fakeMutationsDb();
+
+    await createManualIncident(db, 'inst-1', input);
+
+    const incidentFingerprint = incidentCreate.mock.calls[0][0].data.fingerprint;
+    expect(incidentFingerprint).toMatch(/^manual-/);
+    expect(workItemCreate.mock.calls[0][0].data.fingerprint).toBe(`incident:${incidentFingerprint}`);
+  });
+
+  it('auto-starts the fix run: opens an UNAPPROVED container and flips the item to fixing', async () => {
+    const { db, issueContainerCreate, workItemUpdate } = fakeMutationsDb();
+
+    const result = await createManualIncident(db, 'inst-1', input);
+
+    expect(result.containerId).toBe('cont-new');
+    const container = issueContainerCreate.mock.calls[0][0].data;
+    expect(container.state).toBe('detecting');
+    // HITL: auto-start begins AUTHORING a patch; it must never pre-approve one.
+    expect(container.gates).toEqual({ solutionApprovedAt: null });
+    expect(container.target).toEqual({ owner: 'acme', repo: 'api' });
+    expect(workItemUpdate).toHaveBeenCalledWith({
+      where: { id: 'wi-new-1234567' },
+      data: { state: 'fixing', containerId: 'cont-new' },
+    });
+  });
+
+  it('still opens the WorkItem, but starts no run, when the tenant has no connected repository', async () => {
+    const { db, workItemCreate, issueContainerCreate, workItemUpdate } = fakeMutationsDb(null);
+
+    const result = await createManualIncident(db, 'inst-1', input);
+
+    expect(result.workItemId).toBe('wi-new-1234567');
+    expect(result.containerId).toBeNull();
+    // The investigation is still healable later — the item exists and is `open`
+    // for a "Fix it" once a repository is connected.
+    expect(workItemCreate).toHaveBeenCalled();
+    expect(issueContainerCreate).not.toHaveBeenCalled();
+    expect(workItemUpdate).not.toHaveBeenCalled();
   });
 });
