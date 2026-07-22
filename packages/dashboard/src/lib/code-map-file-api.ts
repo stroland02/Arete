@@ -45,7 +45,7 @@ export async function fetchFileFromWebhook(
   if (!base) return { ok: false, reason: 'unavailable' };
   try {
     const url = `${base}/internal/context-map/file?installationId=${externalInstallationId}&path=${encodeURIComponent(path)}`;
-    const res = await fetch(url, { headers: internalAuthHeaders() });
+    const res = await fetch(url, { headers: await internalAuthHeaders() });
     const body = (await res.json().catch(() => null)) as FileContentEnvelope | null;
     if (!body || typeof body !== 'object') return { ok: false, reason: 'unavailable' };
     return body;

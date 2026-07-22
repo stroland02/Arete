@@ -18,6 +18,7 @@ function item(overrides: Partial<InboxView['items'][number]> = {}): InboxView['i
     confidence: 0.8,
     state: 'open',
     containerId: null,
+    fixCooldown: { allowed: true },
     ...overrides,
   };
 }
@@ -142,6 +143,32 @@ describe('ServicesWorkspace — work-item inbox', () => {
     );
     expect(postedHtml).toContain('https://github.com/acme/shop/pull/12');
     expect(postedHtml).not.toContain('Dismiss');
+  });
+
+  it('fix-run cooldown: a cooling-down item shows a "retry available in Xm" badge and disables Fix it', () => {
+    const html = renderToStaticMarkup(
+      <WorkItemPanel item={item({ fixCooldown: { allowed: false, retryAfterSeconds: 296 } })} />,
+    );
+
+    expect(html).toContain('retry available in 5m');
+    // The Fix it button element itself carries the boolean `disabled` attribute
+    // (not just a `disabled:` Tailwind variant class, which every Fix it button
+    // has regardless of cooldown state).
+    const fixButtonMatch = html.match(/<button[^>]*>[\s\S]*?Fix it[\s\S]*?<\/button>/);
+    expect(fixButtonMatch).toBeTruthy();
+    expect(fixButtonMatch![0]).toMatch(/\sdisabled(=""|\s|>)/);
+  });
+
+  it('fix-run cooldown: a ready item shows no badge and an enabled Fix it action', () => {
+    const html = renderToStaticMarkup(<WorkItemPanel item={item()} />);
+
+    expect(html).not.toContain('retry available');
+    // Fix it's own button element carries no boolean `disabled` attribute
+    // (busy=null, cooldown allowed) — only the always-present `disabled:`
+    // Tailwind variant class, which is not the same thing.
+    const fixButtonMatch = html.match(/<button[^>]*>[\s\S]*?Fix it[\s\S]*?<\/button>/);
+    expect(fixButtonMatch).toBeTruthy();
+    expect(fixButtonMatch![0]).not.toMatch(/\sdisabled(=""|\s|>)/);
   });
 
   it('shows Scanning… while a run is in flight', () => {

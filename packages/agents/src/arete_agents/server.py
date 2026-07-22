@@ -129,10 +129,12 @@ _remediation = RemediationGraph(get_command_executor())
 # Every POST below is called ONLY by our own server-side processes
 # (packages/webhook's review-bridge / scan-trigger / fix-trigger / chat-handler
 # / approval-worker / context-map-index, and packages/dashboard's agent-chat),
-# each of which already holds INTERNAL_API_TOKEN. They all spend money, mutate
-# state, or -- in /review and /chat's case -- can induce an add_project_memory
-# write into a CALLER-NAMED tenant using this process's own credential. The
-# hop is therefore authenticated with the same shared bearer and the same
+# each of which mints its own short-lived internal token (obs Phase 3 Task 4 --
+# arete_agents/internal_token.py, the Python counterpart of
+# @arete/internal-token). They all spend money, mutate state, or -- in
+# /review and /chat's case -- can induce an add_project_memory write into a
+# CALLER-NAMED tenant using this process's own credential. The hop is
+# therefore authenticated with the same signed-token scheme and the same
 # fail-closed posture the webhook uses (internal_auth.py).
 #
 # GET /health is deliberately NOT behind this guard; see internal_auth.py.
@@ -143,8 +145,8 @@ _remediation = RemediationGraph(get_command_executor())
 # URL path and return that tenant's code graph, so leaving them open is a
 # cross-tenant READ leak to anyone with network reach to this port. Their
 # only caller (packages/dashboard/src/lib/context-map-client.ts, called
-# server-side from the overview/map pages) already holds INTERNAL_API_TOKEN,
-# so they get the same guard below (spec section 6 gate 4; see
+# server-side from the overview/map pages) mints its own internal token the
+# same way, so they get the same guard below (spec section 6 gate 4; see
 # docs/roadmap/backlog.md for the original finding).
 _INTERNAL = [Depends(require_internal_token)]
 

@@ -10,6 +10,12 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from arete_agents.models.pr import FileChange, PRContext
 from arete_agents.models.review import FileReview, NoiseDecision, ReviewComment
 
+# NOTE: these two constants gate the REVIEW path ONLY (BaseReviewAgent.review_file,
+# below). fix_pipeline.author_patch never references either one -- it bounds itself
+# with MAX_LINES_PER_FILE and wall-clock timeouts instead. Do not assume the fix
+# pipeline is capped by these; it is not. (Not renamed to a REVIEW_-prefixed name
+# because packages/agents/tests/test_orchestrator.py imports MAX_PATCH_CHARS by
+# this name -- see docs/roadmap/backlog.md for the naming-honesty note.)
 MAX_PATCH_CHARS = 50_000
 MAX_TOOL_ROUNDS = 5
 

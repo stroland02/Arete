@@ -5,6 +5,7 @@
 // of lib/queries.ts.
 
 import type { PrismaClient } from '@arete/db';
+import { computeFixCooldown, type FixCooldownResult } from './fix-cooldown';
 
 export interface WorkItemView {
   id: string;
@@ -19,6 +20,14 @@ export interface WorkItemView {
   containerId?: string | null;
   /** The posted PR's URL, when the container's pr JSON carries one. */
   prUrl?: string | null;
+  /**
+   * Fix-run cooldown state (Phase 3 Task 8), computed from the item's
+   * fixFailureCount/fixFailureAt via the SAME pure computeFixCooldown the fix
+   * API route enforces server-side (fix-cooldown.ts) — never re-derived here.
+   * Lets the Services UI show "retry available in Xm" and disable Fix it
+   * BEFORE the user clicks, instead of only after a 429.
+   */
+  fixCooldown: FixCooldownResult;
 }
 
 export interface InboxView {
@@ -88,18 +97,23 @@ export async function getWorkItemInbox(
     }
   }
 
-  const items = (rows as Array<Record<string, unknown>>).map((r) => ({
-    id: String(r.id),
-    kind: r.kind as WorkItemView['kind'],
-    title: String(r.title),
-    detail: String(r.detail),
-    evidence: (Array.isArray(r.evidence) ? r.evidence : []) as WorkItemView['evidence'],
-    dimension: String(r.dimension),
-    confidence: Number(r.confidence),
-    state: r.state as WorkItemView['state'],
-    containerId: (r.containerId ?? null) as string | null,
-    prUrl: typeof r.containerId === 'string' ? prUrls.get(r.containerId) ?? null : null,
-  }));
+  const items = (rows as Array<Record<string, unknown>>).map((r) => {
+    const fixFailureCount = typeof r.fixFailureCount === 'number' ? r.fixFailureCount : 0;
+    const fixFailureAt = r.fixFailureAt ? new Date(r.fixFailureAt as string | Date) : null;
+    return {
+      id: String(r.id),
+      kind: r.kind as WorkItemView['kind'],
+      title: String(r.title),
+      detail: String(r.detail),
+      evidence: (Array.isArray(r.evidence) ? r.evidence : []) as WorkItemView['evidence'],
+      dimension: String(r.dimension),
+      confidence: Number(r.confidence),
+      state: r.state as WorkItemView['state'],
+      containerId: (r.containerId ?? null) as string | null,
+      prUrl: typeof r.containerId === 'string' ? prUrls.get(r.containerId) ?? null : null,
+      fixCooldown: computeFixCooldown(fixFailureCount, fixFailureAt),
+    };
+  });
 
   return {
     items,

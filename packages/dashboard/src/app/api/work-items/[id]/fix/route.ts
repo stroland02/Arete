@@ -96,7 +96,7 @@ export async function POST(
     try {
       await fetch(`${base}/fix/trigger`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...internalAuthHeaders() },
+        headers: { 'Content-Type': 'application/json', ...(await internalAuthHeaders()) },
         body: JSON.stringify({ workItemId: item.id }),
       });
     } catch (err) {

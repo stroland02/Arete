@@ -165,7 +165,7 @@ export async function runChatPipeline(context: any): Promise<{ reply: string, ac
     const res = await fetch(`${baseUrl}/chat`, {
       method: 'POST',
       body: JSON.stringify(context),
-      headers: { 'Content-Type': 'application/json', ...internalAuthHeaders() },
+      headers: { 'Content-Type': 'application/json', ...(await internalAuthHeaders()) },
       signal: controller.signal,
     })
     if (!res.ok) {

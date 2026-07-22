@@ -18,6 +18,7 @@ from arete_agents.agents.performance import PerformanceAgent
 from arete_agents.agents.quality import QualityAgent
 from arete_agents.agents.security import SecurityAgent
 from arete_agents.agents.test_coverage import TestCoverageAgent
+from arete_agents.config import get_settings
 from arete_agents.context_map import ensure_indexed
 from arete_agents.critic import CriticAgent
 from arete_agents.grounding import has_quoted_evidence, valid_lines_for_patch
@@ -652,7 +653,16 @@ class ReviewOrchestrator:
             )
 
         try:
-            state = self.graph.invoke({"pr": pr})
+            # Bounds simultaneous provider calls across the (files x agents)
+            # Send() fan-out in _build_graph -- unbounded, a 20-file PR is
+            # ~120 concurrent calls. Same mechanism remediation.py:126 uses;
+            # value is a sane default (Task 9), not yet tuned against a real
+            # large PR + real Anthropic key.
+            settings = get_settings()
+            state = self.graph.invoke(
+                {"pr": pr},
+                config={"max_concurrency": settings.review_max_concurrency},
+            )
             return state["final_result"]
         except Exception as exc:
             logging.warning(f"LangGraph orchestration failed: {exc}. Falling back to blind merge.")

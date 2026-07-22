@@ -22,7 +22,14 @@ class MCPManager:
         with open(self.config_file, "w") as f:
             json.dump(config, f, indent=2)
 
-    def add_server(self, name: str, transport: str, url_or_cmd: str, allowed_agents: str = "all") -> None:
+    def add_server(
+        self,
+        name: str,
+        transport: str,
+        url_or_cmd: str,
+        allowed_agents: str = "all",
+        token_url: Optional[str] = None,
+    ) -> None:
         config = self._load_config()
         
         if name in config:
@@ -46,6 +53,12 @@ class MCPManager:
             "target": url_or_cmd,
             "status": "Needs authentication",
             "token": None,
+            # OAuth token endpoint for this server. When absent, the auth
+            # flow (mcp/auth.py) fails closed rather than fabricating a
+            # token -- see Task 6 (MCP auth honesty).
+            "token_url": token_url,
+            "expires_at": None,
+            "refresh_token": None,
             "allowed_agents": agents_list
         }
         self._save_config(config)
@@ -58,9 +71,24 @@ class MCPManager:
     def get_server(self, name: str) -> Optional[Dict[str, Any]]:
         return self._load_config().get(name)
         
-    def update_server_token(self, name: str, token: str) -> None:
+    def update_server_token(
+        self,
+        name: str,
+        access_token: str,
+        expires_at: Optional[float] = None,
+        refresh_token: Optional[str] = None,
+    ) -> None:
+        """Store a REAL token obtained from a real OAuth exchange (see
+        mcp/auth.py::exchange_code_for_token). Only ever called after a
+        genuine `access_token` has been received -- never with a fabricated
+        placeholder. ``refresh_token`` is only overwritten when the token
+        response actually included one, so a prior refresh token survives
+        an exchange whose response omits it."""
         config = self._load_config()
         if name in config:
-            config[name]["token"] = token
+            config[name]["token"] = access_token
+            config[name]["expires_at"] = expires_at
+            if refresh_token is not None:
+                config[name]["refresh_token"] = refresh_token
             config[name]["status"] = "Authenticated"
             self._save_config(config)

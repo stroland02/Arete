@@ -78,13 +78,19 @@ services:
       REDIS_URL: redis://redis:6379
       # Phase 2 Task 8: add_project_memory posts back to the webhook's
       # token-guarded POST /internal/memory (arete_agents/tools/memory.py).
-      # Without these two the tool cannot persist anything and reports an
-      # honest failure on every call -- the feature is inert (review finding
-      # B5). The SAME token also guards this service's own POST surface
+      # Without these the tool cannot persist anything and reports an honest
+      # failure on every call -- the feature is inert (review finding B5).
+      # Phase 3: the shared credential is now a signed, short-lived, rotatable
+      # keyset (packages/internal-token / arete_agents/internal_token.py)
+      # instead of the retired single-literal INTERNAL_API_TOKEN. The SAME
+      # keyset JSON also guards this service's own POST surface
       # (arete_agents/internal_auth.py), fail-closed 503 when unset, so it is
-      # required in BOTH directions.
+      # required in BOTH directions. Rotation/revocation:
+      # docs/ops/internal-token-rotation.md.
       WEBHOOK_SERVICE_URL: http://webhook:3000
-      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
+      INTERNAL_TOKEN_SIGNING_KEYS: ${INTERNAL_TOKEN_SIGNING_KEYS:-}
+      INTERNAL_TOKEN_ACTIVE_KID: ${INTERNAL_TOKEN_ACTIVE_KID:-}
+      INTERNAL_TOKEN_TTL_SECONDS: ${INTERNAL_TOKEN_TTL_SECONDS:-}
     ports:
       - "8000:8000"
     volumes:
@@ -117,8 +123,19 @@ services:
       DATABASE_URL: postgresql://arete:arete@postgres:5432/arete
       # Guards this service's own /internal/* surface (internal-auth.ts) AND
       # is presented outbound to the agents service's guarded POST endpoints
-      # (internalAuthHeaders()). Unset == both directions fail closed with 503.
-      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
+      # (internalAuthHeaders()). Signed, short-lived keyset (Phase 3) —
+      # unset/unparseable == both directions fail closed with 503.
+      INTERNAL_TOKEN_SIGNING_KEYS: ${INTERNAL_TOKEN_SIGNING_KEYS:-}
+      INTERNAL_TOKEN_ACTIVE_KID: ${INTERNAL_TOKEN_ACTIVE_KID:-}
+      INTERNAL_TOKEN_TTL_SECONDS: ${INTERNAL_TOKEN_TTL_SECONDS:-}
+      # Dedicated static credential the webhook VERIFIES for the one hop it
+      # doesn't originate (Alertmanager -> POST /alerts/incoming,
+      # alertmanager-auth.ts). Not part of the signed-token keyset above --
+      # Alertmanager cannot mint a JWT. This compose file has no Alertmanager
+      # service of its own (that lives in infra/docker-compose.yml); this
+      # entry only lets the webhook verify a token presented by whatever
+      # Alertmanager instance is configured to reach it.
+      ALERTMANAGER_INGEST_TOKEN: ${ALERTMANAGER_INGEST_TOKEN:-}
       PORT: "3000"
     ports:
       - "3000:3000"
@@ -157,9 +174,12 @@ services:
     environment:
       DATABASE_URL: postgresql://arete:arete@postgres:5432/arete
       NODE_ENV: production
-      # Presented to the agents service's guarded /chat (agent-chat.ts).
+      # Presented to the agents service's guarded /chat (agent-chat.ts) as a
+      # signed, short-lived internal token (Phase 3 keyset).
       PYTHON_SERVICE_URL: http://agents:8000
-      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
+      INTERNAL_TOKEN_SIGNING_KEYS: ${INTERNAL_TOKEN_SIGNING_KEYS:-}
+      INTERNAL_TOKEN_ACTIVE_KID: ${INTERNAL_TOKEN_ACTIVE_KID:-}
+      INTERNAL_TOKEN_TTL_SECONDS: ${INTERNAL_TOKEN_TTL_SECONDS:-}
     ports:
       - "3001:3001"
     depends_on:

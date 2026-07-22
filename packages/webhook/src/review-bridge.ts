@@ -51,7 +51,7 @@ export async function runReviewPipeline(
     const res = await fetch(`${baseUrl}/review`, {
       method: 'POST',
       body: JSON.stringify(prContext),
-      headers: { 'Content-Type': 'application/json', ...internalAuthHeaders() },
+      headers: { 'Content-Type': 'application/json', ...(await internalAuthHeaders()) },
       signal: controller.signal
     })
 

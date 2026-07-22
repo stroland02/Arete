@@ -1,8 +1,123 @@
 import threading
+import time
 import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Callable, Optional
 from urllib.parse import parse_qs, urlparse
+
+import httpx
+
+_TOKEN_REQUEST_TIMEOUT_S = 10.0
+_CLIENT_ID = "arete-client"
+_REDIRECT_URI = "http://localhost:3118/callback"
+
+PostFn = Callable[[str, dict, dict], httpx.Response]
+
+
+class TokenExchangeError(Exception):
+    """Raised when the token endpoint can't be trusted for a real
+    credential: a transport failure, a non-2xx status, an unparsable body,
+    or a response missing `access_token`. The caller must never respond to
+    this by fabricating a token -- it must fail closed."""
+
+
+def _default_post(url: str, data: dict, headers: dict) -> httpx.Response:
+    return httpx.post(url, data=data, headers=headers, timeout=_TOKEN_REQUEST_TIMEOUT_S)
+
+
+def exchange_code_for_token(
+    token_url: str,
+    code: str,
+    redirect_uri: str = _REDIRECT_URI,
+    client_id: str = _CLIENT_ID,
+    post: Optional[PostFn] = None,
+) -> dict:
+    """Real `grant_type=authorization_code` exchange against `token_url`.
+
+    Models packages/webhook/src/oauth/oauth-token-exchange.ts: a real POST
+    to the provider's token endpoint, `expires_at = now + expires_in`.
+    Raises TokenExchangeError -- and NEVER returns a fabricated
+    placeholder -- on transport failure, a non-2xx response, an unparsable
+    body, or a response missing `access_token`.
+
+    ``post`` is injectable for testing without a real network call; when
+    omitted, resolved from the module-level `_default_post` at CALL time
+    (not bind time) so tests can monkeypatch it.
+    """
+    post_fn = post if post is not None else _default_post
+
+    data = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": redirect_uri,
+        "client_id": client_id,
+    }
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    try:
+        response = post_fn(token_url, data, headers)
+    except httpx.HTTPError as exc:
+        raise TokenExchangeError(f"could not reach the token endpoint ({exc})") from exc
+
+    if not (200 <= response.status_code < 300):
+        raise TokenExchangeError(
+            f"token endpoint returned HTTP {response.status_code}: {response.text[:500]}"
+        )
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise TokenExchangeError(f"token endpoint returned a non-JSON response ({exc})") from exc
+
+    access_token = payload.get("access_token")
+    if not access_token:
+        raise TokenExchangeError("token endpoint response is missing 'access_token'")
+
+    expires_in = payload.get("expires_in")
+    expires_at = time.time() + expires_in if isinstance(expires_in, (int, float)) else None
+
+    return {
+        "access_token": access_token,
+        "expires_at": expires_at,
+        "refresh_token": payload.get("refresh_token"),
+    }
+
+
+def _complete_auth(name: str, manager, code: str) -> None:
+    """Shared by both the local-callback-server branch and the manual
+    fallback branch of start_oauth_flow: exchange the real authorization
+    `code` for a real token, or fail closed with an honest message.
+
+    This used to fabricate `simulated_token_for_{code}` and print a
+    success message with no exchange ever happening (the honesty defect
+    this function replaces). Now: no `token_url` configured -> nothing is
+    stored, status stays "Needs authentication", and we say so plainly.
+    Exchange failure -> nothing is stored, the real error is printed.
+    Only a genuine `access_token` response reaches `update_server_token`
+    and the "ready to use" message.
+    """
+    server_info = manager.get_server(name) or {}
+    token_url = server_info.get("token_url")
+    if not token_url:
+        print(
+            f"Token endpoint not configured for '{name}'; server left unauthenticated. "
+            "Set token_url on this MCP server to complete a real OAuth exchange."
+        )
+        return
+
+    try:
+        result = exchange_code_for_token(token_url, code)
+    except TokenExchangeError as exc:
+        print(f"Authentication failed: {exc}")
+        return
+
+    manager.update_server_token(
+        name,
+        access_token=result["access_token"],
+        expires_at=result["expires_at"],
+        refresh_token=result["refresh_token"],
+    )
+    print(f"Authentication complete! {name} is now ready to use.")
 
 
 class OAuthCallbackHandler(BaseHTTPRequestHandler):
@@ -85,11 +200,7 @@ def start_oauth_flow(name: str, manager) -> None:
         
         if server.oauth_code:
             print("Successfully received authorization code.")
-            # In a real scenario, we'd exchange the code for a token here.
-            # We'll simulate receiving a token.
-            token = f"simulated_token_for_{server.oauth_code}"
-            manager.update_server_token(name, token)
-            print(f"Authentication complete! {name} is now ready to use.")
+            _complete_auth(name, manager, server.oauth_code)
         else:
             print("OAuth flow did not return a code.")
     except Exception:
@@ -98,8 +209,6 @@ def start_oauth_flow(name: str, manager) -> None:
         parsed = urlparse(manual_url)
         params = parse_qs(parsed.query)
         if "code" in params:
-            token = f"simulated_token_for_{params['code'][0]}"
-            manager.update_server_token(name, token)
-            print(f"Authentication complete! {name} is now ready to use.")
+            _complete_auth(name, manager, params["code"][0])
         else:
             print("Invalid URL provided. Authentication failed.")

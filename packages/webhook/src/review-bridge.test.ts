@@ -31,11 +31,13 @@ describe('runReviewPipeline', () => {
   })
 
   // Outbound half of review finding B4. The agents service's POST /review is
-  // now behind the shared internal bearer with a fail-closed 503
+  // behind the signed internal-token guard with a fail-closed 503
   // (arete_agents/internal_auth.py); this process is one of its callers and
-  // must actually put the credential on the wire, or every review 401s.
+  // must actually put a valid signed credential on the wire, or every review
+  // 401s.
   it('sends the internal bearer token to the agents service', async () => {
-    vi.stubEnv('INTERNAL_API_TOKEN', 's3cret')
+    vi.stubEnv('INTERNAL_TOKEN_SIGNING_KEYS', JSON.stringify({ k1: 'a'.repeat(48) }))
+    vi.stubEnv('INTERNAL_TOKEN_ACTIVE_KID', 'k1')
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: vi.fn().mockResolvedValue(MOCK_RESULT),
@@ -48,9 +50,12 @@ describe('runReviewPipeline', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/review'),
       expect.objectContaining({
-        headers: expect.objectContaining({ authorization: 'Bearer s3cret' }),
+        headers: expect.objectContaining({ authorization: expect.stringMatching(/^Bearer .+/) }),
       })
     )
+    const { verifyInternalToken } = await import('@arete/internal-token')
+    const sentAuth = (fetchMock.mock.calls[0][1] as any).headers.authorization as string
+    await expect(verifyInternalToken(sentAuth)).resolves.toMatchObject({ ok: true, iss: 'arete-webhook' })
     vi.unstubAllEnvs()
   })
 
@@ -132,9 +137,18 @@ describe('runReviewPipeline', () => {
 
     const { runReviewPipeline } = await import('./review-bridge.js')
     const promise = runReviewPipeline({ repo: 'x/y', pr_number: 1, title: 'T', description: '', files: [] })
-    
-    vi.advanceTimersByTime(120_001)
-    await expect(promise).rejects.toThrow('timed out')
+    // Attach the rejection assertion BEFORE advancing timers: internalAuthHeaders()
+    // is now async, so the mocked fetch() call — and the abort listener it
+    // registers — no longer happens synchronously. advanceTimersByTimeAsync
+    // flushes pending microtasks between ticks so the listener is attached
+    // before the abort timer fires, but if the assertion below were only
+    // attached AFTER advancing (rather than subscribed here first), the
+    // promise could settle before anything is listening and Node would
+    // report an unhandled rejection.
+    const assertion = expect(promise).rejects.toThrow('timed out')
+
+    await vi.advanceTimersByTimeAsync(120_001)
+    await assertion
     vi.useRealTimers()
   })
 

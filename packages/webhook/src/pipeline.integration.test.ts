@@ -541,6 +541,63 @@ describe('pipeline integration: webhook -> queue -> worker -> review -> post', (
     )
   })
 
+  it('partial success: pipeline produces a usable result but posting to GitHub fails -> job does NOT throw (no full-pipeline retry), check run recorded as failed', async () => {
+    // Non-422 failure on every attempt -- postReview's own 422 fallback
+    // doesn't apply, so this always throws (e.g. rate limit, GitHub outage).
+    mocks.octokit.rest.pulls.createReview.mockRejectedValue(
+      Object.assign(new Error('GitHub API rate limited'), { status: 500 })
+    )
+    const app = await buildApp(mocks)
+
+    const res = await request(app)
+      .post('/webhook')
+      .set('Content-Type', 'application/json')
+      .set('X-GitHub-Event', 'pull_request')
+      .send(JSON.stringify(PR_PAYLOAD))
+    expect(res.status).toBe(200)
+
+    const { processReviewJob } = await import('./worker.js')
+    // The pipeline already produced a usable ReviewResult (the mocked
+    // FastAPI /review call succeeds) -- only posting it back to GitHub
+    // fails. Re-running the whole job would redo the entire files x agents
+    // review for nothing (the double-retry this task removes), so the job
+    // must resolve, not throw/reject.
+    await expect(processReviewJob(mocks.capturedJobs[0])).resolves.toBeUndefined()
+
+    // The pipeline DID run (FastAPI /review was called) -- proving a usable
+    // result existed before the post failure.
+    expect(mocks.fetchMock).toHaveBeenCalledTimes(1)
+    // Posting was attempted and failed.
+    expect(mocks.octokit.rest.pulls.createReview).toHaveBeenCalledTimes(1)
+    // Check run resolved (not left stuck "in_progress") with a failure
+    // conclusion reflecting that the review never reached GitHub.
+    expect(mocks.octokit.rest.checks.update).toHaveBeenCalledWith(
+      expect.objectContaining({ check_run_id: 555, status: 'completed', conclusion: 'failure' })
+    )
+    // No retry means this attempt never re-persists (the point of the fix).
+    expect(mocks.prisma.reviewCreate).not.toHaveBeenCalled()
+  })
+
+  it('genuine infra crash: pipeline yields no result at all -> job DOES throw (still retried by attempts:3)', async () => {
+    const runReviewPipelineMock = vi.fn().mockRejectedValue(new Error('Python pipeline exited with status 500: internal error'))
+    await buildApp(mocks, { runReviewPipeline: runReviewPipelineMock })
+
+    const { processReviewJob } = await import('./worker.js')
+    // No ReviewResult was ever produced -- a genuine infra crash. This must
+    // still propagate so BullMQ's attempts:3/backoff retries it; that is the
+    // ONLY case this task's fix leaves re-throwing.
+    await expect(processReviewJob({
+      provider: 'github', kind: 'pull_request', owner: 'acme', repo: 'api',
+      repositoryExternalId: 1, fullName: 'acme/api', installationId: 42, prNumber: 1, headSha: 'abc',
+    })).rejects.toThrow('Python pipeline exited with status 500')
+
+    // Posting never happens -- there was nothing to post.
+    expect(mocks.octokit.rest.pulls.createReview).not.toHaveBeenCalled()
+    expect(mocks.octokit.rest.checks.update).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'completed', conclusion: 'failure' })
+    )
+  })
+
   it('GitLab happy path: valid MR event -> job -> fetch diff -> FastAPI -> posted discussion -> Prisma transaction', async () => {
     const app = await buildApp(mocks)
 

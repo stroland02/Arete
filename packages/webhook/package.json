@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@arete/db": "workspace:*",
+    "@arete/internal-token": "workspace:*",
     "@arete/net-guard": "workspace:*",
     "@arete/telemetry": "workspace:*",
     "@octokit/app": "^15.1.0",

@@ -94,9 +94,10 @@ export async function POST(req: NextRequest): Promise<Response> {
   // connect itself.
   const webhookBase = process.env.WEBHOOK_SERVICE_URL;
   if (webhookBase) {
+    const scanAuthHeaders = await internalAuthHeaders();
     void fetch(`${webhookBase}/scan/trigger`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...internalAuthHeaders() },
+      headers: { 'Content-Type': 'application/json', ...scanAuthHeaders },
       body: JSON.stringify({ installationId: target }),
     }).catch(() => {});
   }

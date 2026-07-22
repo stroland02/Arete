@@ -13,6 +13,9 @@ importers:
       '@arete/db':
         specifier: workspace:*
         version: link:../db
+      '@arete/internal-token':
+        specifier: workspace:*
+        version: link:../internal-token
       '@arete/orchestration':
         specifier: workspace:*
         version: link:../orchestration
@@ -111,6 +114,22 @@ importers:
       typescript:
         specifier: ^5.5.0
         version: 5.9.3
+
+  packages/internal-token:
+    dependencies:
+      jose:
+        specifier: ^6.2.4
+        version: 6.2.4
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.1
+        version: 22.20.1
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@22.20.1)(lightningcss@1.32.0)
 
   packages/net-guard:
     dependencies:
@@ -215,6 +234,9 @@ importers:
       '@arete/db':
         specifier: workspace:*
         version: link:../db
+      '@arete/internal-token':
+        specifier: workspace:*
+        version: link:../internal-token
       '@arete/net-guard':
         specifier: workspace:*
         version: link:../net-guard
@@ -3634,8 +3656,8 @@ packages:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
 
-  jose@6.2.3:
-    resolution: {integrity: sha512-YYVDInQKFJfR/xa3ojUTl8c2KoTwiL1R5Wg9YCydwH0x0B9grbzlg5HC7mMjCtUJjbQ/YnGEZIhI5tCgfTb4Hw==}
+  jose@6.2.4:
+    resolution: {integrity: sha512-N8acGzVsQy6M/fjFcxtysNc4Q379TcM5dM/qKkNtsHFji88yANnXTr7BLeP75iPnFwBfQzM/jg2BZ9+HZrHCZA==}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -4855,7 +4877,7 @@ snapshots:
   '@auth/core@0.41.2':
     dependencies:
       '@panva/hkdf': 1.2.1
-      jose: 6.2.3
+      jose: 6.2.4
       oauth4webapi: 3.8.6
       preact: 10.24.3
       preact-render-to-string: 6.5.11(preact@10.24.3)
@@ -8455,7 +8477,7 @@ snapshots:
 
   jiti@2.7.0: {}
 
-  jose@6.2.3: {}
+  jose@6.2.4: {}
 
   js-tokens@4.0.0: {}
 

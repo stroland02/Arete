@@ -24,6 +24,8 @@ import { runWithReviewSpan, withChildSpan, recordQueueJob } from './observabilit
 import {
   REVIEW_QUEUE_NAME,
   REVIEW_QUEUE_CONCURRENCY,
+  REVIEW_QUEUE_HEAVY_NAME,
+  REVIEW_QUEUE_HEAVY_CONCURRENCY,
   FIX_QUEUE_CONCURRENCY,
   type ReviewJobData,
   type GitHubPullRequestJobData,
@@ -94,10 +96,14 @@ async function processGitHubPullRequest(octokit: Octokit, installationToken: str
   let result: ReviewResult
   try {
     result = await runReviewPipeline(prContext)
-    await withChildSpan('review.publish', () => postReview(octokit, owner, repo, prNumber, result))
   } catch (err) {
-    // Without this, a failure here (Python pipeline error, GitHub API error, etc.)
-    // leaves the check run stuck "in_progress" forever on the PR.
+    // No usable result at all: Python pipeline error, network failure, or
+    // timeout (see review-bridge.ts — it either resolves a ReviewResult or
+    // throws, there is no partial-result-then-throw case). Without this
+    // check-run update, a failure here leaves the check run stuck
+    // "in_progress" forever on the PR. Re-throwing is correct here: BullMQ's
+    // attempts:3 (queue.ts) exists precisely to retry a genuine infra crash
+    // that produced nothing.
     await (octokit as any).rest.checks.update({
       owner,
       repo,
@@ -110,6 +116,33 @@ async function processGitHubPullRequest(octokit: Octokit, installationToken: str
       },
     })
     throw err
+  }
+
+  try {
+    await withChildSpan('review.publish', () => postReview(octokit, owner, repo, prNumber, result))
+  } catch (err) {
+    // The pipeline DID produce a usable result here (findings/summary exist
+    // -- runReviewPipeline resolved) — only publishing it to GitHub failed.
+    // Re-throwing would make BullMQ redo the ENTIRE files x agents review
+    // (on top of the per-agent retry already inside the Python service) just
+    // to retry a GitHub API call: the double-retry this task removes.
+    // Record the degraded outcome on the check run and return normally
+    // (not throw) so this job is NOT retried. attempts:3 stays reserved for
+    // the no-result crash above — this is not a silent failure, the check
+    // run still surfaces "failure" to the PR author.
+    log.error({ err }, 'Failed to post review (pipeline produced a usable result)')
+    await (octokit as any).rest.checks.update({
+      owner,
+      repo,
+      check_run_id: checkRunId,
+      status: 'completed',
+      conclusion: 'failure',
+      output: {
+        title: 'Review Post Failed',
+        summary: `Areté completed the review but failed to post it to GitHub: ${err instanceof Error ? err.message : String(err)}`,
+      },
+    })
+    return
   }
 
   await (octokit as any).rest.checks.update({
@@ -300,24 +333,30 @@ export async function processReviewJob(data: ReviewJobData): Promise<void> {
 }
 
 /**
- * Starts the BullMQ worker that consumes the `review-pr` queue. Runs in its
+ * Starts a BullMQ worker that consumes the given review queue. Runs in its
  * own process (see the `worker` pnpm script) so a burst of PRs or a slow LLM
- * call never blocks webhook delivery acknowledgement. Concurrency is capped
- * so a burst of PRs can't fan out into unbounded LLM calls against the
- * Python review service.
+ * call never blocks webhook delivery acknowledgement. `concurrency` is
+ * capped so a burst of PRs can't fan out into unbounded LLM calls against
+ * the Python review service. Parameterized by queue name/concurrency (rather
+ * than hardcoded to REVIEW_QUEUE_NAME) so the same function can start a
+ * separate consumer per lane — see startReviewWorkers below, which is the
+ * fix for the heavy lane having had no consumer at all.
  */
-export function startReviewWorker(): Worker<ReviewJobData> {
+export function startReviewWorker(
+  queueName: string = REVIEW_QUEUE_NAME,
+  concurrency: number = REVIEW_QUEUE_CONCURRENCY
+): Worker<ReviewJobData> {
   const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379'
   const connection = new IORedis(redisUrl, { maxRetriesPerRequest: null })
 
   const worker = new Worker<ReviewJobData>(
-    REVIEW_QUEUE_NAME,
+    queueName,
     async (job: Job<ReviewJobData>) => {
       await processReviewJob(job.data)
     },
     {
       connection,
-      concurrency: REVIEW_QUEUE_CONCURRENCY,
+      concurrency,
       // See the deviation note in queue.ts: bullmq-otel@2.0.0's BullMQOtel
       // constructor takes a BullMQOtelOptions object, not a bare string.
       telemetry: new BullMQOtel({ tracerName: 'arete-worker' }),
@@ -325,15 +364,37 @@ export function startReviewWorker(): Worker<ReviewJobData> {
   )
 
   worker.on('completed', (job) => {
-    recordQueueJob(REVIEW_QUEUE_NAME, 'completed')
-    log.info({ jobId: job.id }, 'Job completed')
+    recordQueueJob(queueName, 'completed')
+    log.info({ jobId: job.id, queue: queueName }, 'Job completed')
   })
   worker.on('failed', (job, err) => {
-    recordQueueJob(REVIEW_QUEUE_NAME, 'failed')
-    log.error({ err, jobId: job?.id }, 'Job failed')
+    recordQueueJob(queueName, 'failed')
+    log.error({ err, jobId: job?.id, queue: queueName }, 'Job failed')
   })
 
   return worker
+}
+
+/**
+ * Starts consumers for BOTH review lanes: the fast queue (`review-pr`) and
+ * the heavy queue (`review-pr-heavy`, PRs >50 changed files — see
+ * webhook-handler.ts's routing at the `changedFiles > 50` check). Both run
+ * the exact same `processReviewJob`; only the concurrency differs.
+ *
+ * This closes the defect this function was added for: webhook-handler.ts
+ * has always routed oversized PRs to the heavy queue, but until now nothing
+ * ever started a Worker on it, so those jobs sat enqueued in Redis forever
+ * with no consumer — the largest PRs were silently never reviewed. A
+ * separate (lower-concurrency) consumer, rather than routing heavy PRs onto
+ * the fast queue, was chosen so a burst of huge PRs still can't delay/starve
+ * the fast lane's throughput, which is the whole reason the dual-lane split
+ * (webhook-handler.ts's "Dual-Lane Ingestion Queuing" comment) exists.
+ */
+export function startReviewWorkers(): { fast: Worker<ReviewJobData>; heavy: Worker<ReviewJobData> } {
+  return {
+    fast: startReviewWorker(REVIEW_QUEUE_NAME, REVIEW_QUEUE_CONCURRENCY),
+    heavy: startReviewWorker(REVIEW_QUEUE_HEAVY_NAME, REVIEW_QUEUE_HEAVY_CONCURRENCY),
+  }
 }
 
 // Only start the worker when this file is run directly (e.g. `pnpm worker`),
@@ -342,8 +403,11 @@ export function startReviewWorker(): Worker<ReviewJobData> {
 // moduleResolution "nodenext") — this is the standard ESM equivalent,
 // comparing this module's URL to the URL of the process's entry script.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  log.info({ concurrency: REVIEW_QUEUE_CONCURRENCY }, 'Areté review worker starting')
-  startReviewWorker()
+  log.info(
+    { fastConcurrency: REVIEW_QUEUE_CONCURRENCY, heavyConcurrency: REVIEW_QUEUE_HEAVY_CONCURRENCY },
+    'Areté review workers starting (fast + heavy lanes)'
+  )
+  startReviewWorkers()
   // Also consume the approval-exec queue (human-approved infra commands →
   // agents /approvals/apply). Same process, separate queue/isolation.
   log.info('Areté approval-exec worker starting')

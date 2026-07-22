@@ -35,6 +35,7 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
 from arete_agents.config import get_settings
+from arete_agents.internal_token import InternalTokenNotConfigured, mint_internal_token
 
 logger = logging.getLogger(__name__)
 
@@ -108,10 +109,14 @@ def build_memory_tool(
         # bypassable by any caller that wasn't this function (review finding B2).
         title = note.strip()[:80] or "Rule"
 
-        settings = get_settings()
         headers = {"Content-Type": "application/json"}
-        if settings.internal_api_token:
-            headers["Authorization"] = f"Bearer {settings.internal_api_token}"
+        try:
+            headers["Authorization"] = f"Bearer {mint_internal_token('arete-agents')}"
+        except InternalTokenNotConfigured:
+            # No keyset configured: send the request without a bearer and let
+            # the webhook's own fail-closed 503 (internal_auth.py's TS twin)
+            # reject it -- never silently skip auth on this side either.
+            pass
 
         payload = {
             "installationId": installation_id,

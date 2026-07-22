@@ -52,19 +52,29 @@ describe("IncidentList", () => {
     expect(html).toContain("Queue depth above threshold");
   });
 
-  it("exposes a link through to the fix run when the incident opened a WorkItem with a live container", () => {
+  it("links each row through to its incident detail page", () => {
+    const html = renderToStaticMarkup(
+      <IncidentList incidents={[incident({ id: "inc-1" })]} />
+    );
+    expect(html).toContain('href="/incidents/inc-1"');
+  });
+
+  it("hints at the fix run when the incident opened a WorkItem with a live container (the actual link lives on the detail page)", () => {
     const html = renderToStaticMarkup(
       <IncidentList incidents={[incident({ workItemId: "wi-1", fixContainerId: "container-9" })]} />
     );
-    expect(html).toContain("/services?container=container-9");
     expect(html).toMatch(/fix run/i);
+    // No second, nested link to /services — the row's own link (to the
+    // incident detail page) is the only anchor; the detail page carries the
+    // first-class "View fix run" action.
+    expect(html).not.toContain("/services?container=");
   });
 
-  it("does not render a fix-run link when no WorkItem is linked", () => {
+  it("shows a plain 'Fix opened' hint when no live container exists yet", () => {
     const html = renderToStaticMarkup(
-      <IncidentList incidents={[incident({ workItemId: null, fixContainerId: null })]} />
+      <IncidentList incidents={[incident({ workItemId: "wi-1", fixContainerId: null })]} />
     );
-    expect(html).not.toContain("/services?container=");
+    expect(html).toMatch(/fix opened/i);
   });
 
   it("empty → honest empty state, no fabricated rows", () => {

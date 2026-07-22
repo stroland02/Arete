@@ -286,9 +286,18 @@ describe('runChatPipeline', () => {
 
     const { runChatPipeline } = await import('./chat-handler.js')
     const promise = runChatPipeline({ user_reply: 'hi' })
+    // Attach the rejection assertion BEFORE advancing timers: internalAuthHeaders()
+    // is now async, so the mocked fetch() call — and the abort listener it
+    // registers — no longer happens synchronously. advanceTimersByTimeAsync
+    // flushes pending microtasks between ticks so the listener is attached
+    // before the abort timer fires, but if the assertion below were only
+    // attached AFTER advancing (rather than subscribed here first), the
+    // promise could settle before anything is listening and Node would
+    // report an unhandled rejection.
+    const assertion = expect(promise).rejects.toThrow('timed out')
 
-    vi.advanceTimersByTime(120_001)
-    await expect(promise).rejects.toThrow('timed out')
+    await vi.advanceTimersByTimeAsync(120_001)
+    await assertion
     vi.useRealTimers()
   })
 })

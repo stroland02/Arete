@@ -112,7 +112,7 @@ export async function probeModelConnection(input: {
   try {
     const res = await fetch(`${base}/internal/model-connections/test`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', ...internalAuthHeaders() },
+      headers: { 'content-type': 'application/json', ...(await internalAuthHeaders()) },
       body: JSON.stringify(input),
     });
     if (!res.ok) {

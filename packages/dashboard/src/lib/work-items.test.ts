@@ -103,3 +103,26 @@ describe('getWorkItemInbox', () => {
     });
   });
 });
+
+// Fix-run cooldown (Phase 3 Task 8): the badge/disable state the Services UI
+// shows BEFORE the user clicks Fix it, computed with the same pure
+// computeFixCooldown the fix API route enforces server-side (fix-cooldown.ts)
+// — never re-derived here.
+describe('getWorkItemInbox — fix cooldown view state', () => {
+  it('yields a "cooling down" fixCooldown with a positive remaining-seconds for a recently-failed item', async () => {
+    const { db } = fakeDb([row({ fixFailureCount: 2, fixFailureAt: new Date() })]);
+
+    const inbox = await getWorkItemInbox(db, ['inst-1']);
+
+    expect(inbox.items[0].fixCooldown.allowed).toBe(false);
+    expect(inbox.items[0].fixCooldown.retryAfterSeconds).toBeGreaterThan(0);
+  });
+
+  it('yields a "ready" fixCooldown for an item with no prior failures', async () => {
+    const { db } = fakeDb([row({ fixFailureCount: 0, fixFailureAt: null })]);
+
+    const inbox = await getWorkItemInbox(db, ['inst-1']);
+
+    expect(inbox.items[0].fixCooldown).toEqual({ allowed: true });
+  });
+});
