@@ -731,3 +731,51 @@ against yet) — the same best-effort fallback `routeIncidentToFix` makes, never
 
 **Verification:** dashboard `vitest` **609/609 green** (91 files, incl. the 6 untouched fix-route tests),
 `tsc --noEmit` clean.
+
+---
+
+### `pyrosome` (PM lane) cross-lane claim — outbound-webhook endpoint management, re-enabled behind auth (declared 2026-07-22)
+
+**Cross-lane declaration per coordination rule 4.** Touches `packages/webhook` (primary PM lane) **and**
+`packages/dashboard` server-side files (the `dashboard` lane). All dashboard files are `lib/` + API routes —
+**no UI component, page, or styling**, so this does not collide with the dashboard-UI work. **The UI for this
+feature is explicitly left to the `ridley`/dashboard-UI lane.**
+
+**The defect being closed:** `POST/GET /api/webhooks/endpoints` was deleted from the webhook service for a
+real vulnerability — it trusted a client-supplied `installationId` with NO authentication, so an anonymous
+caller could register a webhook for, or list the endpoints of, ANY tenant, and the response handed back that
+tenant's `whsec_` signing secret (with which payloads can be forged that pass a receiver's signature check).
+The feature has been dark since, and with it every "send findings to Slack/Linear/PagerDuty" story.
+Two further flaws were found in the existing code while building the replacement:
+`WebhookStore.listEndpoints` returns rows **including `secret`**, and `WebhookStore.setEnabled(id, enabled)`
+is **not tenant-scoped** — it will disable any row in the table given only an id.
+
+**Design — the dashboard AUTHENTICATES, the webhook service EXECUTES.** The webhook service owns the data
+and the SSRF guard but has no session; the dashboard has the session but must not fetch customer-supplied
+URLs from the Next.js server. This is the **exact split `model-connections-api.ts` already uses** for its
+provider probe, followed deliberately rather than inventing a second pattern. Notably the dashboard does
+**NOT** gain an `@arete/net-guard` dependency — that would mean a `pnpm-lock.yaml` change, which
+coordination rule 3 forbids doing from two worktrees at once.
+
+**Files claimed by this worktree:**
+- **webhook (primary lane):** `src/outbound/management.ts` (**new** — the tenant-scoped core: secret stripped
+  on read via the existing `toPublicEndpoint`, returned once on create; toggle ownership-resolved first;
+  SSRF via the delivery path's own `assertPublicWebhookUrl`) + `management.test.ts` (**new**, 8 adversarial
+  tests); `src/server.ts` (**additive** — `GET/POST /internal/webhooks/endpoints` and
+  `PATCH /internal/webhooks/endpoints/:id`; `/internal` is ALREADY blanket-guarded by `requireInternalToken`
+  at `server.ts:174`, so no new auth code); `src/server.test.ts` (stale "fast-follow" comment corrected +
+  an unauthenticated-probe assertion for the new routes).
+- **dashboard (server-side only):** `src/lib/webhook-endpoints-api.ts` (**new** — session scope via
+  `requireScope()`, client-supplied `installationId` verified against the session's own, proxy with
+  `internalAuthHeaders()`) + `webhook-endpoints-api.test.ts` (**new**, 8 tests);
+  `src/app/api/webhooks/endpoints/route.ts` + `.../[id]/route.ts` (**new**).
+
+**Why this is safe:** the old unauthenticated routes stay deleted — `server.test.ts:55-68` still asserts they
+404 and never emit `whsec_`, untouched and passing. The new internal routes trust their `installationId`
+**only** because nothing can reach them without a signed internal token, and that is pinned by its own test.
+Cross-tenant attempts are `404`, never `403` (a 403 would confirm the installation exists). No schema,
+migration, or generated file is touched.
+
+**Verification:** webhook **523/523**, dashboard **617/617**, `tsc --noEmit` clean in both.
+(`src/tenancy.test.ts` fails intermittently under full parallel load — pre-existing, unrelated to this
+change, passes 7/7 in isolation.)
