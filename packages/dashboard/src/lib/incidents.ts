@@ -5,6 +5,7 @@
 // the fix-run link is resolved with a second, separately-scoped lookup rather
 // than an `include`.
 
+import { randomUUID } from 'node:crypto';
 import type { PrismaClient } from '@arete/db';
 
 export interface IncidentView {
@@ -18,6 +19,11 @@ export interface IncidentView {
   summary: string;
   startsAt: string; // ISO — client-safe
   resolvedAt: string | null;
+  /** Set when a user triaged this incident as noise (non-actionable). Null =
+   *  not noise. Orthogonal to status (the receiver never touches it). */
+  noisedAt: string | null;
+  /** "alert" (Alertmanager receiver) | "manual" (a New investigation). */
+  source: string;
   /** The WorkItem this incident opened, if any. Null if it never opened one. */
   workItemId: string | null;
   /** The linked WorkItem's containerId, when its fix run has actually started.
@@ -43,6 +49,10 @@ export interface IncidentDetail {
   summary: string;
   startsAt: string; // ISO — client-safe
   resolvedAt: string | null;
+  /** Set when a user triaged this incident as noise. Null = not noise. */
+  noisedAt: string | null;
+  /** "alert" (Alertmanager receiver) | "manual" (a New investigation). */
+  source: string;
   /** Alert labels + annotations as received and scrubbed (receiver.ts) —
    *  `{ labels: Record<string, unknown>; annotations: Record<string, unknown>; ... }`.
    *  Passed through as-is; already scrubbed before it was written. */
@@ -115,6 +125,8 @@ export async function getIncidents(
       summary: String(r.summary),
       startsAt: (r.startsAt as Date).toISOString(),
       resolvedAt: r.resolvedAt ? (r.resolvedAt as Date).toISOString() : null,
+      noisedAt: r.noisedAt ? (r.noisedAt as Date).toISOString() : null,
+      source: String(r.source ?? 'alert'),
       workItemId,
       fixContainerId: workItemId ? containerByWorkItem.get(workItemId) ?? null : null,
     };
@@ -167,8 +179,75 @@ export async function getIncidentDetail(
     summary: String(row.summary),
     startsAt: (row.startsAt as Date).toISOString(),
     resolvedAt: row.resolvedAt ? (row.resolvedAt as Date).toISOString() : null,
+    noisedAt: row.noisedAt ? (row.noisedAt as Date).toISOString() : null,
+    source: String(row.source ?? 'alert'),
     payload: row.payload,
     workItemId,
     fixContainerId,
   };
+}
+
+/** Prisma delegates the incident mutations use. Structural so tests inject a
+ *  fake and the server actions pass the real client. */
+type IncidentMutationsDb = {
+  incident: {
+    create(args: unknown): Promise<{ id: string }>;
+    updateMany(args: unknown): Promise<{ count: number }>;
+  };
+};
+
+/**
+ * Opens a MANUAL incident (a "New investigation") for one installation. The
+ * caller is responsible for having already verified `installationId` belongs
+ * to the signed-in session (see the server action) — this function trusts the
+ * id it is given, exactly like the connection actions' write path.
+ *
+ * A manual incident carries `source: "manual"` and a `manual-<uuid>`
+ * fingerprint (the Alertmanager path uses Alertmanager's own fingerprint; a
+ * hand-opened one has none, so we synthesize a collision-free one to satisfy
+ * the `@@unique([installationId, fingerprint])` constraint). It starts
+ * `firing` and un-triaged, so it lands in the Open tab immediately.
+ */
+export async function createManualIncident(
+  db: IncidentMutationsDb | PrismaClient,
+  installationId: string,
+  input: { alertName: string; severity: string; summary: string },
+): Promise<string> {
+  const created = (await (db as IncidentMutationsDb).incident.create({
+    data: {
+      installationId,
+      fingerprint: `manual-${randomUUID()}`,
+      alertName: input.alertName,
+      severity: input.severity,
+      status: 'firing',
+      summary: input.summary,
+      source: 'manual',
+      payload: { source: 'manual' },
+      startsAt: new Date(),
+    },
+  })) as { id: string };
+  return created.id;
+}
+
+/**
+ * Marks an incident as noise (non-actionable) or clears that. Tenant-scoped
+ * like every write in lib/: the `updateMany` WHERE pins `installationId: { in:
+ * installationIds }`, so an id belonging to an installation outside the
+ * caller's list matches zero rows and is a silent no-op — a cross-tenant probe
+ * cannot mutate, and cannot distinguish "not yours" from "doesn't exist".
+ * Empty `installationIds` => no query, returns false. Returns whether a row
+ * was actually updated.
+ */
+export async function setIncidentNoise(
+  db: IncidentMutationsDb | PrismaClient,
+  installationIds: string[],
+  id: string,
+  noise: boolean,
+): Promise<boolean> {
+  if (installationIds.length === 0) return false;
+  const result = (await (db as IncidentMutationsDb).incident.updateMany({
+    where: { id, installationId: { in: installationIds } },
+    data: { noisedAt: noise ? new Date() : null },
+  })) as { count: number };
+  return result.count > 0;
 }
