@@ -48,10 +48,11 @@ describe('server middleware mount', () => {
   // anonymous caller could register a webhook for — or list the endpoints of —
   // an arbitrary tenant, and the create response handed back that tenant's
   // whsec_ signing secret. The unauthenticated route must NOT ship: it is
-  // removed from the public webhook service entirely (authenticated,
-  // tenant-scoped management is a dashboard fast-follow). These assertions are
-  // adversarial — an attacker probing another tenant must hit a 404 wall and
-  // never receive a secret.
+  // removed from the public webhook service entirely. Authenticated,
+  // tenant-scoped management now lives under `/internal/webhooks/endpoints`,
+  // behind the signed internal-token guard, and is asserted separately below.
+  // These assertions are adversarial — an attacker probing another tenant must
+  // hit a 404 wall and never receive a secret.
   it('does NOT expose GET /api/webhooks/endpoints (no unauth cross-tenant read)', async () => {
     const res = await request(app).get('/api/webhooks/endpoints?installationId=victim-tenant')
     expect(res.status).toBe(404)
@@ -65,6 +66,28 @@ describe('server middleware mount', () => {
       .send({ installationId: 'victim-tenant', url: 'https://93.184.216.34/attacker-hook' })
     expect(res.status).toBe(404)
     expect(res.text).not.toContain('whsec_')
+  })
+
+  // The REPLACEMENT surface must not reintroduce the hole it replaces. These
+  // routes trust the installationId in the request — that is safe ONLY because
+  // nothing can reach them without a signed internal token. If the `/internal`
+  // guard ever stopped covering them, the original vulnerability would be back
+  // verbatim, so an unauthenticated probe is pinned here.
+  it('does NOT serve /internal/webhooks/endpoints to an unauthenticated caller', async () => {
+    const list = await request(app).get('/internal/webhooks/endpoints?installationId=victim-tenant')
+    const create = await request(app)
+      .post('/internal/webhooks/endpoints')
+      .set('Content-Type', 'application/json')
+      .send({ installationId: 'victim-tenant', url: 'https://93.184.216.34/attacker-hook', events: ['review.created'] })
+    const toggle = await request(app)
+      .patch('/internal/webhooks/endpoints/some-id')
+      .set('Content-Type', 'application/json')
+      .send({ installationId: 'victim-tenant', enabled: false })
+
+    for (const res of [list, create, toggle]) {
+      expect(res.status).toBeGreaterThanOrEqual(400)
+      expect(res.text).not.toContain('whsec_')
+    }
   })
 })
 
