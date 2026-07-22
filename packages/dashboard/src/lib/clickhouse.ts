@@ -10,4 +10,4 @@
 // shared client is LAZY: constructed on first query rather than at import, so a
 // service that never touches telemetry never opens a pool.
 
-export { clickhouse, getClickhouse, resetClickhouse, jsonEachRow } from '@arete/db';
+export { clickhouse, getClickhouse, resetClickhouse, jsonEachRow } from '@arete/db/telemetry';

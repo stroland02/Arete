@@ -19,7 +19,7 @@ export {
   getIncidentLogs,
   getIncidentExceptions,
   getIncidentSignals,
-} from '@arete/db';
+} from '@arete/db/telemetry';
 
 export type {
   TelemetryQueriesDb,
@@ -29,4 +29,4 @@ export type {
   ExceptionGroup,
   SignalAccess,
   IncidentSignals,
-} from '@arete/db';
+} from '@arete/db/telemetry';

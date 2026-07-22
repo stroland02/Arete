@@ -119,6 +119,10 @@ export async function withChildSpan<T>(
     | 'fix.resolve'
     | 'fix.token.mint'
     | 'fix.container.advance'
+    // Reading the incident's own trace/log/exception context before authoring
+    // (fix/incident-signals.ts). Its own child so a slow telemetry read is
+    // attributable instead of inflating fix.agents.call.
+    | 'fix.signals.collect'
     | 'fix.agents.call'
     | 'fix.container.settle',
   fn: () => Promise<T>
