@@ -44,18 +44,32 @@ Items 1–3 below were open when this document was first written; all three land
 
 Final gate: **648 tests / 93 files**, `tsc --noEmit` clean, lint 0 errors, `next build` green, and each change driven in the running app.
 
+## Follow-ups — closed (`5c8cdc3`)
+
+- **One fingerprint algorithm.** It existed twice (dashboard mirroring `packages/webhook/src/fingerprint.ts`). Hashes were byte-identical; only the scope differed. Now one `fingerprintScoped()` in `@arete/telemetry/fingerprint`, with `fingerprintError`/`fingerprintComment` as wrappers so neither call site reads with lying parameter names. A pinned digest proves already-stored review-comment fingerprints still match.
+- **Stamped at emit time.** All six `recordException` sites route through `recordExceptionWithFingerprint`. The JS OTel API's `recordException` accepts no attributes, so the helper reproduces the SDK's attribute construction and adds one via `addEvent`. The hash input is the **scrubbed** message — `ScrubbingSpanProcessor` rewrites attributes on span end, so hashing raw would make emit-time and read-time disagree exactly for messages containing a secret.
+- **`@arete/db` test runner** — 26 direct tests on the fail-closed tenancy resolver; tests excluded from `dist` via `tsconfig.build.json` (the `packages/internal-token` precedent). Lockfile: 11/5 lines, zero new snapshots.
+- **Local test artifacts cleared.** The manual investigation, its `ErrorGroup`, and two triage rows created while clicking through verification are gone. **Kept deliberately:** the `InstallationAccess` grant and `Installation.isPlatform` — local *configuration*, not fabricated data; without them the dev login has no installations and every surface goes dark.
+
+### Two claims I had to correct
+- **"Stamping lights up `otel_exceptions`" was wrong.** That table is gated on `superlog.project_id`, not the fingerprint. Every existing exception event predates `project_id` stamping by three minutes (last exception 18:19:39, stamping began 18:22). Verified by running the MV's own transformation against real rows with only that predicate removed: it returns all 12 events correctly, fingerprint column empty. The pipeline was never broken — it has no qualifying rows yet.
+- **The error-log path is unexercised for a data reason, not a code reason.** `otel_logs` has zero rows at ERROR+ because the dashboard exports traces only. Its SQL, timestamp format and column projection are verified against real rows at a lowered threshold.
+
 ## Open (not started, not claimed by me)
 
-1. **Emit-time `superlog.issue_fingerprint` stamping** — unclaimed; would light up `otel_exceptions` and
-   move grouping to ingest. Must reuse `error-fingerprint.ts` (contract §5) or groups will split.
-2. **Error-log path is implemented but not fully exercised.** Its SQL shape, timestamp format and column
-   projection are verified against real `otel_logs` rows (queried at a lowered severity threshold, which
-   also exercises the empty-`exception.type` fallback), and the parsing is unit-tested — but `otel_logs`
-   has 0 rows at ERROR+, so no genuine ERROR-severity record has flowed end to end. A data-availability
-   gap, not a known code gap; it lights up on the first real error-level log.
-3. **`packages/db` has no test runner.** The shared resolver is covered from both consumers (dashboard
-   `platform-installation.test.ts`, webhook `receiver.test.ts`) rather than by a unit suite in its own
-   package. Adding vitest there means a lockfile change; deferred deliberately.
+1. **Python fingerprint stamping (`packages/agents`).** Four `record_exception` sites; Python's API *does*
+   accept `attributes=`, so the mechanical part is trivial. The blocker is the value: it needs nine ordered
+   regexes ported to Python — a second implementation, which contract §5 forbids. A drifting copy would
+   split `arete-agents` errors into two groups with no test able to catch it from either side. Honest
+   options: a shared normalization service, a generated port with a golden-vector fixture asserted from
+   both languages, or accepting the copy via an explicit spec amendment. Deliberately not decided silently.
+2. **The pino log path is unstamped.** `otel_exceptions_from_logs_mv` / `issue_activity_daily` read
+   `LogAttributes['superlog.issue_fingerprint']`; only the span lane is stamped so far.
+3. **End-to-end ERROR-severity log.** Still blocked on such a row existing (see the correction above), not
+   on code.
+4. **`packages/webhook/src/tenancy.test.ts` — watch for flakiness.** Intermittent failures (a 5s timeout
+   and a spy-call-count race at ~L370) were observed while the tree carried in-flight edits. It did NOT
+   reproduce in three consecutive runs on the settled tree, so this is "unreproduced", not "fixed".
 
 ## Contradicts the plan / discovered mid-flight
 
