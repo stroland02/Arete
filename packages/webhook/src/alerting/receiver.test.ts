@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { resetPlatformInstallationDiagnostics } from '@arete/db'
 
 // handleIncomingAlert is the pure business-logic core behind POST
 // /alerts/incoming (route wiring + the auth-rejection mutation test live in
@@ -13,6 +14,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // platform installation, so a spoofed `installationId` label is structurally
 // incapable of steering a row into a customer's tenant. The tests below are
 // the mutation tests for that gate (Global Constraint 10).
+//
+// Tenancy, second half (telemetry-tenancy contract §2, 2026-07-22): WHICH
+// installation that is is no longer the `ARETE_PLATFORM_INSTALLATION_ID`
+// string — it is `Installation.isPlatform`, resolved by the one shared
+// resolver in `@arete/db` that the dashboard's telemetry gates also use. The
+// `platform installation resolution` block below asserts the SAME fail-closed
+// matrix that `packages/dashboard/src/lib/platform-installation.test.ts`
+// asserts on the dashboard side (zero flagged rows / exactly one / more than
+// one / env fallback / a throwing database), from this side of the boundary
+// and against this receiver's own consequence: a dropped batch. Two surfaces
+// agreeing about a security boundary is only checkable if both are checked.
 
 interface FakeIncidentRow {
   id: string
@@ -32,7 +44,16 @@ interface FakeIncidentRow {
 
 const PLATFORM_ID = 'inst-platform'
 
-function makeFakeIncidentStore(knownInstallationIds: string[] = [PLATFORM_ID]) {
+/** @param knownInstallationIds rows `installation.findUnique` will return — i.e.
+ *    which ids actually exist (finding I6's existence check).
+ *  @param platform how `Installation.isPlatform` resolves: `flagged` is the set
+ *    of ids carrying the flag (0 = un-migrated deployment, so the env fallback
+ *    decides; 2+ = the ambiguity that must fail closed), `findManyThrows` makes
+ *    the resolving read fail. */
+function makeFakeIncidentStore(
+  knownInstallationIds: string[] = [PLATFORM_ID],
+  platform: { flagged?: string[]; findManyThrows?: Error } = {}
+) {
   const rows = new Map<string, FakeIncidentRow>()
   const known = new Set(knownInstallationIds)
   let seq = 0
@@ -82,11 +103,18 @@ function makeFakeIncidentStore(knownInstallationIds: string[] = [PLATFORM_ID]) {
     }),
   }
 
-  // The receiver validates ARETE_PLATFORM_INSTALLATION_ID against a real
-  // Installation row before attributing anything to it (finding I6 — a
-  // misconfigured id must be detectable, not swallowed as a generic foreign
-  // key error inside the per-alert catch).
+  // Two distinct reads, deliberately:
+  //  * findMany({ where: { isPlatform: true }, take: 2 }) is the shared
+  //    resolver in @arete/db deciding WHO the platform is (contract §2).
+  //  * findUnique is this receiver verifying the resolved id names a real row
+  //    and learning its owner for the attribution log (finding I6 — a
+  //    misconfigured id must be detectable, not swallowed as a generic foreign
+  //    key error inside the per-alert catch).
   const installation = {
+    findMany: vi.fn(async (_args: any) => {
+      if (platform.findManyThrows) throw platform.findManyThrows
+      return (platform.flagged ?? []).map((id) => ({ id }))
+    }),
     findUnique: vi.fn(async (args: any) => {
       const id = args.where.id
       return known.has(id) ? { id, owner: 'arete-platform', provider: 'github' } : null
@@ -94,6 +122,27 @@ function makeFakeIncidentStore(knownInstallationIds: string[] = [PLATFORM_ID]) {
   }
 
   return { incident, installation, rows }
+}
+
+/** Captures the pino lines the receiver (and the log sink it hands the shared
+ *  resolver) emits, so the fail-closed cases can assert that the operator is
+ *  actually TOLD — a silent drop and a logged drop are very different outages. */
+function makeLogSpy() {
+  const warn = vi.fn()
+  const error = vi.fn()
+  const info = vi.fn()
+  const debug = vi.fn()
+  const logger: any = { warn, error, info, debug }
+  logger.child = () => logger
+  return { warn, error, logger }
+}
+
+/** Every `message` argument the spy saw, whether logged as `(msg)` or
+ *  pino's `(mergeObject, msg)`. */
+function messages(spy: ReturnType<typeof vi.fn>): string[] {
+  return spy.mock.calls
+    .map((call) => call.find((arg: unknown) => typeof arg === 'string'))
+    .filter((m): m is string => typeof m === 'string')
 }
 
 function baseAlert(overrides: Record<string, unknown> = {}) {
@@ -113,7 +162,10 @@ function baseAlert(overrides: Record<string, unknown> = {}) {
   }
 }
 
-async function loadReceiver(store: ReturnType<typeof makeFakeIncidentStore>) {
+async function loadReceiver(
+  store: ReturnType<typeof makeFakeIncidentStore>,
+  logSpy?: ReturnType<typeof makeLogSpy>
+) {
   // Task 4 (incident.ts) reads incident.workItemId via the SAME '../db.js'
   // import right after every upsert. This suite is only exercising the
   // record/upsert behavior, so the WorkItem side is stubbed minimally:
@@ -146,6 +198,7 @@ async function loadReceiver(store: ReturnType<typeof makeFakeIncidentStore>) {
     update: vi.fn(async () => ({})),
   }
   const repository = { findFirst: vi.fn(async () => null) }
+  if (logSpy) vi.doMock('../logger.js', () => ({ logger: logSpy.logger }))
   vi.doMock('../db.js', () => ({
     prisma: {
       incident: store.incident,
@@ -160,6 +213,11 @@ async function loadReceiver(store: ReturnType<typeof makeFakeIncidentStore>) {
 describe('handleIncomingAlert', () => {
   beforeEach(() => {
     vi.resetModules()
+    // `vi.resetModules()` re-evaluates receiver.js (clearing ITS memo) but not
+    // an externalized `@arete/db`, whose "told the operator once" memo would
+    // otherwise leak between tests and make the migrate notice appear or not
+    // depending on test order.
+    resetPlatformInstallationDiagnostics()
     process.env.ARETE_PLATFORM_INSTALLATION_ID = PLATFORM_ID
   })
 
@@ -248,7 +306,7 @@ describe('handleIncomingAlert', () => {
       ).toBeNull()
     })
 
-    it('drops every alert when ARETE_PLATFORM_INSTALLATION_ID is unset — never invents an owner', async () => {
+    it('drops every alert when nothing resolves — no flag, no env var, never invents an owner', async () => {
       delete process.env.ARETE_PLATFORM_INSTALLATION_ID
       const store = makeFakeIncidentStore()
       const { handleIncomingAlert } = await loadReceiver(store)
@@ -265,6 +323,138 @@ describe('handleIncomingAlert', () => {
       expect(await handleIncomingAlert({ alerts: [baseAlert()] })).toEqual({ created: 0, updated: 0 })
       expect(store.rows.size).toBe(0)
       expect(store.installation.findUnique).toHaveBeenCalled()
+    })
+  })
+
+  // ---------------------------------------------------------------------
+  // Telemetry-tenancy contract §2 — the platform installation is a DATABASE
+  // FACT (`Installation.isPlatform`), resolved by the one shared resolver in
+  // `@arete/db`. Same matrix as the dashboard's platform-installation.test.ts,
+  // asserted here against this receiver's consequence: whether the batch is
+  // recorded or dropped.
+  // ---------------------------------------------------------------------
+  describe('platform installation resolution (telemetry-tenancy contract §2)', () => {
+    it('resolves the flagged Installation row — the DB fact, with no env var set at all', async () => {
+      delete process.env.ARETE_PLATFORM_INSTALLATION_ID
+      const store = makeFakeIncidentStore([PLATFORM_ID], { flagged: [PLATFORM_ID] })
+      const { handleIncomingAlert } = await loadReceiver(store)
+
+      expect(await handleIncomingAlert({ alerts: [baseAlert()] })).toEqual({ created: 1, updated: 0 })
+      expect([...store.rows.values()][0]).toMatchObject({ installationId: PLATFORM_ID })
+      expect(store.installation.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { isPlatform: true }, take: 2 })
+      )
+    })
+
+    it('prefers the flagged row over a DISAGREEING env var — the env var is a fallback, not an override', async () => {
+      // The mistyped-into-a-customer's-id case the flag exists to defeat.
+      process.env.ARETE_PLATFORM_INSTALLATION_ID = 'inst-victim'
+      const store = makeFakeIncidentStore([PLATFORM_ID, 'inst-victim'], { flagged: [PLATFORM_ID] })
+      const { handleIncomingAlert } = await loadReceiver(store)
+
+      await handleIncomingAlert({ alerts: [baseAlert()] })
+
+      expect(store.rows.size).toBe(1)
+      const row = [...store.rows.values()][0]
+      expect(row.installationId).toBe(PLATFORM_ID)
+      expect(row.installationId).not.toBe('inst-victim')
+    })
+
+    it('still resolves via the env var when NO row is flagged, and says to adopt the flag', async () => {
+      // The upgrade path: an un-migrated deployment must not start dropping
+      // every alert the moment this ships.
+      process.env.ARETE_PLATFORM_INSTALLATION_ID = PLATFORM_ID
+      const store = makeFakeIncidentStore([PLATFORM_ID], { flagged: [] })
+      const logSpy = makeLogSpy()
+      const { handleIncomingAlert } = await loadReceiver(store, logSpy)
+
+      expect(await handleIncomingAlert({ alerts: [baseAlert()] })).toEqual({ created: 1, updated: 0 })
+      expect([...store.rows.values()][0]).toMatchObject({ installationId: PLATFORM_ID })
+
+      const notice = messages(logSpy.warn).find((m) => m.includes('isPlatform'))
+      expect(notice).toBeDefined()
+      expect(notice).toContain('ARETE_PLATFORM_INSTALLATION_ID')
+    })
+
+    it('DROPS the batch when TWO rows are flagged — never picks one arbitrarily', async () => {
+      delete process.env.ARETE_PLATFORM_INSTALLATION_ID
+      const store = makeFakeIncidentStore([PLATFORM_ID, 'inst-other'], {
+        flagged: [PLATFORM_ID, 'inst-other'],
+      })
+      const logSpy = makeLogSpy()
+      const { handleIncomingAlert } = await loadReceiver(store, logSpy)
+
+      expect(await handleIncomingAlert({ alerts: [baseAlert()] })).toEqual({ created: 0, updated: 0 })
+      expect(store.rows.size).toBe(0)
+      // Neither candidate was chosen — not the first, not the second.
+      expect(store.incident.upsert).not.toHaveBeenCalled()
+      expect(messages(logSpy.error).some((m) => m.includes('AMBIGUOUS platform installation'))).toBe(
+        true
+      )
+    })
+
+    it('ignores the env var when the flag is AMBIGUOUS — an ambiguous flag fails closed', async () => {
+      process.env.ARETE_PLATFORM_INSTALLATION_ID = PLATFORM_ID
+      const store = makeFakeIncidentStore([PLATFORM_ID, 'inst-other'], {
+        flagged: [PLATFORM_ID, 'inst-other'],
+      })
+      const { handleIncomingAlert } = await loadReceiver(store)
+
+      expect(await handleIncomingAlert({ alerts: [baseAlert()] })).toEqual({ created: 0, updated: 0 })
+      expect(store.rows.size).toBe(0)
+    })
+
+    it('drops the batch (never throws) when the resolving read fails', async () => {
+      delete process.env.ARETE_PLATFORM_INSTALLATION_ID
+      const store = makeFakeIncidentStore([PLATFORM_ID], {
+        findManyThrows: new Error('connection refused'),
+      })
+      const { handleIncomingAlert } = await loadReceiver(store)
+
+      await expect(handleIncomingAlert({ alerts: [baseAlert()] })).resolves.toEqual({
+        created: 0,
+        updated: 0,
+      })
+      expect(store.rows.size).toBe(0)
+    })
+
+    it('drops the batch when a FLAGGED row has since disappeared (finding I6 still applies)', async () => {
+      delete process.env.ARETE_PLATFORM_INSTALLATION_ID
+      const store = makeFakeIncidentStore([], { flagged: ['inst-vanished'] })
+      const { handleIncomingAlert } = await loadReceiver(store)
+
+      expect(await handleIncomingAlert({ alerts: [baseAlert()] })).toEqual({ created: 0, updated: 0 })
+      expect(store.rows.size).toBe(0)
+      expect(store.installation.findUnique).toHaveBeenCalled()
+    })
+
+    it('keeps the safety log naming the owner every alert is filed against', async () => {
+      delete process.env.ARETE_PLATFORM_INSTALLATION_ID
+      const store = makeFakeIncidentStore([PLATFORM_ID], { flagged: [PLATFORM_ID] })
+      const logSpy = makeLogSpy()
+      const { handleIncomingAlert } = await loadReceiver(store, logSpy)
+
+      await handleIncomingAlert({ alerts: [baseAlert()] })
+
+      expect(logSpy.warn).toHaveBeenCalledWith(
+        { installationId: PLATFORM_ID, owner: 'arete-platform' },
+        expect.stringContaining('ALL incoming alerts are filed against this installation')
+      )
+    })
+
+    it('tells the operator, rather than dropping the batch silently', async () => {
+      delete process.env.ARETE_PLATFORM_INSTALLATION_ID
+      const store = makeFakeIncidentStore([PLATFORM_ID], { flagged: [] })
+      const logSpy = makeLogSpy()
+      const { handleIncomingAlert } = await loadReceiver(store, logSpy)
+
+      await handleIncomingAlert({ alerts: [baseAlert()] })
+
+      expect(
+        messages(logSpy.error).some(
+          (m) => m.includes('no platform installation could be resolved') && m.includes('isPlatform')
+        )
+      ).toBe(true)
     })
   })
 

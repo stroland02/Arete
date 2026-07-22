@@ -20,20 +20,31 @@ Security property proven live, not asserted: flagging a *different* installation
 Errors surface return the honest "not available" panel with zero error data and zero trace links, while
 `.env.local` still named the old one — the stale env var could not open the surface.
 
+## Closed after the first close-out (contract §7 fully adopted)
+
+Items 1–3 below were open when this document was first written; all three landed in `4f0c1a8`.
+
+- **`receiver.ts` now resolves the platform installation from the flag.** Its drop-the-batch contract on
+  unresolvable/ambiguous is preserved exactly — an alert filed against an arbitrary tenant is worse than an
+  alert lost. Its false "There is no `platform` flag" comment is corrected.
+- **`lib/telemetry-queries.ts` gates on `isPlatformInstallation` before any query**, its raw SQL bodies are
+  private so the gate is structural, and access-denied is a state distinct from backend-unavailable.
+- **`.env.example`** documents the flag as authoritative and both env vars as transitional/partitioning.
+- **The resolver lives in `@arete/db`, not the dashboard** — both packages must obey one fail-closed
+  security rule, and two copies would be two places to drift.
+
 ## Open (not started, not claimed by me)
 
-1. **`packages/webhook/src/alerting/receiver.ts` still reads `ARETE_PLATFORM_INSTALLATION_ID`.** It is the
-   other half of the tenancy defect and should adopt `Installation.isPlatform`. Its comment "There is no
-   'platform' flag on the Installation model to enforce this" is now out of date.
-2. **`lib/telemetry-queries.ts` does not yet gate on `isPlatformInstallation`** before its `project_id`
-   filter, and its header still describes that filter as tenant isolation. Engineer B's file — needs a
-   ledger declaration first. Contract §7.
-3. **`.env.example` still documents only the env var** — should say the flag is authoritative and the var
-   is a transition fallback. It was being edited concurrently by another track.
-4. **Emit-time `superlog.issue_fingerprint` stamping** — unclaimed; would light up `otel_exceptions` and
+1. **Emit-time `superlog.issue_fingerprint` stamping** — unclaimed; would light up `otel_exceptions` and
    move grouping to ingest. Must reuse `error-fingerprint.ts` (contract §5) or groups will split.
-5. **Error-log path is implemented but unexercised** — `otel_logs` has 0 rows at ERROR+, so `logToEvent`
-   has never run on real data. It will light up on the first real error-level log.
+2. **Error-log path is implemented but not fully exercised.** Its SQL shape, timestamp format and column
+   projection are verified against real `otel_logs` rows (queried at a lowered severity threshold, which
+   also exercises the empty-`exception.type` fallback), and the parsing is unit-tested — but `otel_logs`
+   has 0 rows at ERROR+, so no genuine ERROR-severity record has flowed end to end. A data-availability
+   gap, not a known code gap; it lights up on the first real error-level log.
+3. **`packages/db` has no test runner.** The shared resolver is covered from both consumers (dashboard
+   `platform-installation.test.ts`, webhook `receiver.test.ts`) rather than by a unit suite in its own
+   package. Adding vitest there means a lockfile change; deferred deliberately.
 
 ## Contradicts the plan / discovered mid-flight
 

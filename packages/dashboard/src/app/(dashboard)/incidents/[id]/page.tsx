@@ -111,11 +111,19 @@ export default async function IncidentDetailPage({
       : typeof labels.job === "string"
         ? labels.job
         : undefined;
+  // `db` is threaded in because the ACCESS decision is a database fact
+  // (`Installation.isPlatform`, via lib/platform-installation.ts), not the
+  // `superlog.project_id` filter — see the telemetry-queries.ts header and
+  // docs/superpowers/specs/2026-07-22-telemetry-tenancy-contract.md §3.
   const signals = await getIncidentSignals(
+    db,
     installationIds,
     incidentSignalWindow(incident.startsAt, incident.resolvedAt),
     serviceLabel,
   );
+  // Only meaningful once access was granted AND the backend answered. Guarding
+  // it here keeps the three states below mutually exclusive: denied, backend
+  // down, genuinely empty.
   const noSignals =
     signals.exceptions.length === 0 &&
     signals.spans.length === 0 &&
@@ -284,7 +292,15 @@ export default async function IncidentDetailPage({
 
       {/* Signals — the incident's own trace/log/exception context from Areté's
           SUPERLOG telemetry (dogfooding). Fail-soft: a telemetry-backend
-          outage renders a note, never breaks the incident page. */}
+          outage renders a note, never breaks the incident page.
+
+          THREE DISTINCT STATES, never collapsed into each other (telemetry
+          tenancy contract §4): access denied (this surface is Kuma's own
+          internals and this account is not the platform installation — nothing
+          was queried), backend unavailable (we asked, ClickHouse did not
+          answer), and genuinely empty (we asked, the window held nothing).
+          Saying "No signals recorded in this window" for either of the first
+          two would assert an empty window we never actually observed. */}
       <RevealItem>
         <div className="glass-panel p-5 space-y-5">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
@@ -295,7 +311,13 @@ export default async function IncidentDetailPage({
             </p>
           </div>
 
-          {signals.unavailable ? (
+          {signals.access === "denied" ? (
+            <p className="text-sm text-content-muted">
+              Signals aren&apos;t available for this account — this panel shows Areté&apos;s own
+              internal trace, log and exception data, which only the platform installation can
+              view. Nothing was queried for this window.
+            </p>
+          ) : signals.unavailable ? (
             <p className="text-sm text-content-muted">
               Telemetry backend unavailable — signals couldn&apos;t be loaded for this window.
             </p>
