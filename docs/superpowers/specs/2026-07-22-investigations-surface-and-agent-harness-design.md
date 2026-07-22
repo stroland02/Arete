@@ -93,8 +93,20 @@ The backend is further along than the UI. Confirmed present:
 - **Full dark *and* light token sets** in `globals.css`; the app is cream because
   `app/layout.tsx` hard-codes `data-theme="light"`. We keep cream — no change.
 
-**The gap is precisely:** no append-only agent event log, no tool loop in the fix
-pipeline, and no Investigations UI.
+- **An Incidents surface already exists and matches the reference layout.** Verified
+  running on 2026-07-22: `/incidents` (list) with Open/Resolved/Noise/All tabs, an
+  incident count, and a `+ New investigation` dialog
+  (`components/dashboard/incidents/{incidents-workspace,incident-list,new-investigation-dialog}.tsx`),
+  plus a 213-line detail route at `/incidents/[id]`. It renders in our cream palette.
+
+**The gap is precisely:** there is **no append-only agent event log** (no
+`InvestigationEvent`/`IncidentEvent` model in `schema.prisma`) and **no tool loop** in the
+fix pipeline — so the detail page has no rich transcript to project. The surface exists;
+the substance behind it does not.
+
+**Naming:** the shipped surface is called **Incidents**, not Investigations. This design
+adopts that name — the new page is not needed; the detail view is *deepened*. Read
+"Investigations surface" throughout this document as "the Incidents detail transcript".
 
 ### 3.2 Unit A — The contract (`packages/db`, shared types)
 
@@ -182,7 +194,8 @@ the harness, not reconstructed by the UI.**
 
 ### 3.4 Unit C — The UI (`packages/dashboard`)
 
-**Routes:** `/investigations` (list) and `/investigations/[id]` (detail).
+**Routes: none are new.** `/incidents` and `/incidents/[id]` already exist (see §3.1);
+this work deepens the existing detail route rather than adding a page.
 
 **The projection is a pure function**, unit tested without React:
 
