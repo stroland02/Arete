@@ -33,16 +33,39 @@ Items 1–3 below were open when this document was first written; all three land
 - **The resolver lives in `@arete/db`, not the dashboard** — both packages must obey one fail-closed
   security rule, and two copies would be two places to drift.
 
-## Second wave — the PM-assigned feature queue, now complete
+## Second wave — the PM-assigned feature queue (one item MISBUILT, see the warning below)
 
 | Work | Evidence |
 |---|---|
 | `services-workspace.tsx` decomposed 1,346 → 459 lines, behavior-preserving (8 new files). Guarded by 5 characterization tests written first and confirmed green against the untouched file; `git diff -U0` shows every added line is an import, re-export, or comment | `8166fbe` |
 | Fabricated `SAMPLE_*` "Sentry" fixtures moved out of the production component into `marketing/services-preview-fixtures.ts`, their only consumer. They could not reach the authed page before; now they structurally cannot | `8166fbe` |
-| Agents rail surfaces the live work inbox — what the agents are working on — reusing the extracted `WorkItemInboxSection`; selecting an item hands off to `/services?container=` | `73e2040` |
+| ⚠️ **Agents rail surfaces the live work inbox — BUILT IN THE WRONG DIRECTION, see below** | `73e2040` |
 | Settings shows a real Connections summary (repos, AI model, services) and links out; Workspace's duplicate Connections/AI-model nav rows folded into it | `9fd33be` |
 
 Final gate: **648 tests / 93 files**, `tsc --noEmit` clean, lint 0 errors, `next build` green, and each change driven in the running app.
+
+### ⚠️ Item 2 was built in the WRONG DIRECTION — it is NOT done
+
+`docs/superpowers/specs/2026-07-22-investigations-surface-and-agent-harness-design.md` §0 and §1 lock a
+**user decision**: *"the Agents page is absorbed into Services … so there is one place to see 'what is Kuma
+doing to my services' rather than two"* — i.e. **embed Agents INTO Services**.
+
+`73e2040` did the reverse: it put the Services `WorkItemInboxSection` into the **Agents** rail. That
+**entrenches two pages** instead of consolidating to one, and duplicates a section that already lives on
+Services onto a page scheduled for absorption.
+
+**Cause:** the lane brief's shorthand ("the Agents→Services embed") is ambiguous, and it was read as
+"embed Services into Agents" without opening the spec that defines the item. A clarifying question was
+asked, but only about the *shape* — the wrong direction was already baked into every option, so the
+question could not catch it.
+
+**State:** the change is small, additive, tested, and harmless while `/agents` still exists — but it points
+against the locked decision. **Do not treat item 2 as delivered.** The real work is the absorption, which
+belongs with the Investigations-surface slice in that spec (the spec's own status is *proposed, awaiting
+user review*, so the wider slice is not greenlit — only the surface decision in §1 is locked).
+
+**Options for whoever picks this up:** revert `73e2040` first (cleanest — the panel becomes moot once
+Agents is absorbed), or leave it as interim value and let the absorption subsume it. Not decided here.
 
 ## Follow-ups — closed (`5c8cdc3`)
 
