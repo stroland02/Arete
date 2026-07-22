@@ -13,6 +13,8 @@ function incident(overrides: Partial<IncidentView> = {}): IncidentView {
     summary: "Error rate exceeded 5% for 10 minutes",
     startsAt: new Date().toISOString(),
     resolvedAt: null,
+    noisedAt: null,
+    source: "alert",
     workItemId: null,
     fixContainerId: null,
     ...overrides,
