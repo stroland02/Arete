@@ -419,7 +419,13 @@ export async function createServer(): Promise<express.Application> {
   server.use(createNodeMiddleware(app.webhooks, { path: '/webhook' }))
 
   const { handleMetricsStream } = await import('./sse-handler.js')
-  server.get('/metrics/stream', handleMetricsStream)
+  // Auth-guarded like every other non-webhook route: agent_metrics is internal
+  // operational data (aggregate LangGraph throughput, no per-tenant field), so a
+  // valid internal token is required. Meant for server-side / authenticated-proxy
+  // consumption — never a direct unauthenticated browser EventSource. Previously
+  // this route had NO auth and the handler set Access-Control-Allow-Origin: * —
+  // a world-readable metrics stream (Phase-1 final-review hardening item).
+  server.get('/metrics/stream', requireInternalToken, handleMetricsStream)
 
   server.get('/oauth/:provider/authorize', (req, res) => {
     const installationId = req.query.installationId as string | undefined
