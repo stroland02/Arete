@@ -3,11 +3,6 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { DashboardStatusBanner } from './dashboard-connect-banner';
 
 describe('DashboardStatusBanner', () => {
-  it('connect-repository shows the repository CTA', () => {
-    const html = renderToStaticMarkup(<DashboardStatusBanner variant="connect-repository" />);
-    expect(html).toContain('Connect a repository');
-    expect(html).not.toContain('Connect a service');
-  });
   it('connect-service shows the service CTA', () => {
     const html = renderToStaticMarkup(<DashboardStatusBanner variant="connect-service" />);
     expect(html).toContain('Connect a service');

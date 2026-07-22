@@ -18,12 +18,14 @@ const connectedWithData: Model = {
 const connectedEmpty: Model = { ...base, totalPrs: 0, reviewDates: [], latestReviews: [] };
 
 // The three Account-State stages this surface must render correctly. Banner +
-// skeleton now derive from the resolver, not from model.hasAccess/totalPrs.
+// skeleton derive from the resolver, not from model.hasAccess/totalPrs.
 const idle: AccountState = {
-  repoConnected: true, repoCount: 1, modelConnected: false, hasReviews: false, reviewCount: 0, stage: 'connected_idle',
+  repoConnected: true, repoCount: 1, modelConnected: false, hasReviews: false, reviewCount: 0,
+  scanCompleted: false, telemetryConnected: false, stage: 'connected_idle',
 };
 const active: AccountState = {
-  repoConnected: true, repoCount: 1, modelConnected: true, hasReviews: true, reviewCount: 4, stage: 'active',
+  repoConnected: true, repoCount: 1, modelConnected: true, hasReviews: true, reviewCount: 4,
+  scanCompleted: true, telemetryConnected: false, stage: 'active',
 };
 
 describe('DashboardsWorkspace — Account-State three-state matrix', () => {
@@ -38,10 +40,11 @@ describe('DashboardsWorkspace — Account-State three-state matrix', () => {
     expect(html).not.toContain('Waiting for your first review');
   });
 
-  it('disconnected → connect banner once + skeletons, no range control', () => {
+  it('disconnected → NO banner (skeletons alone carry the shape; the setup card owns the connect CTA), no range control', () => {
     const html = renderToStaticMarkup(<DashboardsWorkspace model={{ hasAccess: false }} accountState={disconnectedState()} />);
-    const count = (html.match(/Connect a repository/g) || []).length;
-    expect(count).toBe(1);
+    expect(html).not.toContain('Connect a repository');
+    expect(html).not.toContain('Bring this dashboard to life');
+    expect(html).not.toContain('Waiting for your first review');
     expect(html).toContain('chart preview');
     expect(html).not.toContain('7d');
   });

@@ -19,7 +19,15 @@ export async function DELETE(
 
   const { id } = await ctx.params;
   await db.modelConnection.deleteMany({
-    where: { id, installationId: { in: scope.installationIds } },
+    // Installation-scoped rows OR the caller's own PENDING (pre-installation)
+    // row — cross-tenant deletion stays impossible either way.
+    where: {
+      id,
+      OR: [
+        { installationId: { in: scope.installationIds } },
+        { userId: scope.userId, installationId: null },
+      ],
+    },
   });
   return new NextResponse(null, { status: 204 });
 }

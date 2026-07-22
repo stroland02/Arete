@@ -28,6 +28,12 @@ describe('BarBreakdownWidget', () => {
     expect(html).toContain('performance');
     expect(html).toContain('3');
   });
+  it('sets the max row count in bronze', () => {
+    const html = renderToStaticMarkup(
+      <BarBreakdownWidget title="By category" data={[{ category: 'security', count: 3 }, { category: 'performance', count: 1 }]} />
+    );
+    expect(html).toContain('text-accent-secondary');
+  });
   it('shows an empty state for no data', () => {
     const html = renderToStaticMarkup(<BarBreakdownWidget title="By category" data={[]} />);
     expect(html).toContain('Nothing to show yet');
@@ -39,6 +45,15 @@ describe('TimeseriesWidget', () => {
     const html = renderToStaticMarkup(<TimeseriesWidget title="Reviews over time" dates={[new Date(), new Date()]} days={30} />);
     expect(html).toContain('<svg');
     expect(html).toContain('polyline');
+  });
+  it('renders the cobalt gradient wash and the bronze latest-point dot', () => {
+    const html = renderToStaticMarkup(<TimeseriesWidget title="Reviews over time" dates={[new Date(), new Date()]} days={30} />);
+    expect(html).toContain('linearGradient');
+    expect(html).toContain('var(--color-accent-secondary)'); // bronze latest dot
+  });
+  it('renders no tooltip content until hover (client interaction)', () => {
+    const html = renderToStaticMarkup(<TimeseriesWidget title="Reviews over time" dates={[new Date(), new Date()]} days={30} />);
+    expect(html).not.toContain('reviews ·');
   });
   it('shows an empty state when the series is all zero', () => {
     const html = renderToStaticMarkup(<TimeseriesWidget title="Reviews over time" dates={[]} days={30} />);

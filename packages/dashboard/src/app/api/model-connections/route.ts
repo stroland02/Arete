@@ -22,7 +22,14 @@ export async function GET(): Promise<Response> {
   if (!scope) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const rows = await db.modelConnection.findMany({
-    where: { installationId: { in: scope.installationIds } },
+    // Installation-scoped rows plus the caller's PENDING (pre-installation)
+    // rows, so a model connected before the first repo still lists.
+    where: {
+      OR: [
+        { installationId: { in: scope.installationIds } },
+        { userId: scope.userId, installationId: null },
+      ],
+    },
     orderBy: { createdAt: 'asc' },
   });
   return NextResponse.json(rows.map(toView));
@@ -30,15 +37,16 @@ export async function GET(): Promise<Response> {
 
 /**
  * POST /api/model-connections — connect (upsert) a model for the caller's
- * primary installation. Validate-then-write: a key-bearing connection is probed
- * first and a bad key NEVER persists. Keyless (Ollama) connections skip the probe.
+ * primary installation, or — with no installation yet — a PENDING user-scoped
+ * connection the first installation adopts (model is setup step 1). Validate-
+ * then-write: a key-bearing connection is probed first and a bad key NEVER
+ * persists. Keyless (Ollama) connections skip the probe.
  */
 export async function POST(req: NextRequest): Promise<Response> {
   const scope = await requireScope();
   if (!scope) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const target = scope.installationIds[0];
-  if (!target) return NextResponse.json({ error: 'Install the GitHub App first' }, { status: 403 });
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const provider = typeof body.provider === 'string' ? body.provider.trim() : '';
@@ -76,6 +84,29 @@ export async function POST(req: NextRequest): Promise<Response> {
     apiKeyEncrypted?: string | null;
   } = { model, baseUrl, createdAt: new Date() };
   if (apiKey) update.apiKeyEncrypted = encryptCredentials({ apiKey });
+
+  if (!target) {
+    // PENDING path — no installation yet. Persist a user-scoped row (adopted by
+    // the first installation, see model-connection-adoption.ts) with the SAME
+    // validate-then-write and key-preservation rules. No scan trigger: there is
+    // nothing to scan without a repo.
+    console.warn(`[model-connections] connect scope=pending provider=${provider}`);
+    const row = await db.modelConnection.upsert({
+      where: { userId_provider: { userId: scope.userId, provider } },
+      create: {
+        userId: scope.userId,
+        installationId: null,
+        provider,
+        model,
+        baseUrl,
+        apiKeyEncrypted: apiKey ? encryptCredentials({ apiKey }) : null,
+      },
+      update,
+    });
+    return NextResponse.json(toView(row));
+  }
+
+  console.warn(`[model-connections] connect scope=installation provider=${provider}`);
   const row = await db.modelConnection.upsert({
     where: { installationId_provider: { installationId: target, provider } },
     create: {

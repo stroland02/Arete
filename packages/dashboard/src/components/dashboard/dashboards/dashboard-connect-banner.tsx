@@ -2,24 +2,18 @@
 
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
-import { IconBrandGithub, IconPlugConnected, IconClockHour4, IconArrowRight } from "@tabler/icons-react";
+import { IconPlugConnected, IconClockHour4, IconArrowRight } from "@tabler/icons-react";
 
-export type BannerVariant = "connect-repository" | "connect-service" | "awaiting-review";
+export type BannerVariant = "connect-service" | "awaiting-review";
 
 type Copy = {
   title: string;
   desc: string;
-  Icon: typeof IconBrandGithub;
+  Icon: typeof IconPlugConnected;
   cta?: { label: string; href: string };
 };
 
 const COPY: Record<BannerVariant, Copy> = {
-  "connect-repository": {
-    title: "Bring this dashboard to life",
-    desc: "Below is the shape of this dashboard. Connect a repo and every panel fills with your real pull-request reviews — usually within a couple of minutes.",
-    Icon: IconBrandGithub,
-    cta: { label: "Connect a repository", href: "/connections" },
-  },
   "connect-service": {
     title: "See your telemetry in one place",
     desc: "Below is the shape of this dashboard. Connect a service like Sentry, Vercel, or PostHog and its latest metrics appear here, captured at each review.",
