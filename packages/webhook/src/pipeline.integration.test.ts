@@ -328,11 +328,18 @@ describe('pipeline integration: webhook -> queue -> worker -> review -> post', (
     }
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.unstubAllGlobals()
     vi.doUnmock('./telemetry/fetch-telemetry-context.js')
     vi.doUnmock('./review-bridge.js')
     vi.resetModules()
+    // Regression guard for 515b30a: buildApp is the SINGLE choke point for
+    // registering these mocks. If a future test registers one outside
+    // buildApp, importing the real module here would return the mock and this
+    // assertion fails loudly — instead of silently leaking into a later test
+    // and reintroducing the "keep this test LAST" order-dependence.
+    const bridge = await import('./review-bridge.js')
+    expect(vi.isMockFunction(bridge.runReviewPipeline)).toBe(false)
   })
 
   it('async handoff: pull_request.opened returns 200 immediately, enqueues a job, and does NOT run the pipeline until the job is processed', async () => {

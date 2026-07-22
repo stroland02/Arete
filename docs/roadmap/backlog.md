@@ -68,9 +68,15 @@ Ranked. The first item is a live security gap, not an enhancement.
 7. **A second Prometheus rules file will need a compose/config edit.** `rule_files` deliberately
    names the one file rather than globbing, because a glob also matches the `promtool` test file,
    whose schema makes Prometheus reject the entire config.
-8. **`pipeline.integration.test.ts` is still flaky** — Phase 0's "fix or quarantine" exit criterion
-   was never met and survived two phases. Confirmed pre-existing via `git stash` against a pre-Task-6
-   tree. Phase 3 action 7 (audit prior phases' exit criteria) exists because of this.
+8. ~~**`pipeline.integration.test.ts` is still flaky**~~ **RESOLVED.** The one
+   real flake — order-dependence from `vi.doMock` + `vi.resetModules()` leaking
+   mocks across tests — was fixed in commit `515b30a` (buildApp owns the doMock
+   registry). Phase 4 added an `afterEach` registry-clean assertion so the leak
+   cannot silently recur, and verified the suite passes under randomized order.
+   The test is hermetic (mocks Redis/Postgres/fetch/GitHub; the webhook CI job
+   needs no services). Phase 0's "fix or quarantine" criterion is **met**. Left
+   struck-through rather than deleted: an entry asserting a live flake that no
+   longer exists misstates shipped reality.
 9. **Running containers drift from compose on security-relevant settings.** The Alertmanager
    container was serving `0.0.0.0:9093` for hours after `docker-compose.yml` had been changed to
    `127.0.0.1:9093` (the C1 remediation) — a container does not re-read its port mapping on restart,
