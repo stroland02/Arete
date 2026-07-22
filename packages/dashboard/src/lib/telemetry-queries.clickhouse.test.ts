@@ -75,7 +75,7 @@ describe('getIncidentErrorSpans', () => {
     expect(call.query).toContain(
       "ResourceAttributes['superlog.project_id'] IN ({installationIds: Array(String)})"
     );
-    expect(call.query).toContain('StatusCode = ' + "'STATUS_CODE_ERROR'");
+    expect(call.query).toContain("StatusCode IN ('Error', 'STATUS_CODE_ERROR')");
     expect(call.query).toContain('fromUnixTimestamp64Milli({startMs: Int64})');
     expect(call.query).not.toContain(hostile);
     expect(call.query_params.installationIds).toEqual([hostile, 'inst_2']);
