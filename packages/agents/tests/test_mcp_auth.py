@@ -174,3 +174,63 @@ class TestCompleteAuthHonestFailure:
         for server in config.values():
             for value in server.values():
                 assert "simulated_token_for_" not in str(value)
+
+
+class TestExchangeRefreshToken:
+    def _resp(self, status_code=200, json_body=None, text=""):
+        from unittest.mock import MagicMock
+        r = MagicMock()
+        r.status_code = status_code
+        r.text = text
+        if json_body is None:
+            r.json.side_effect = ValueError("no json")
+        else:
+            r.json.return_value = json_body
+        return r
+
+    def test_refresh_returns_new_token_and_expiry(self):
+        from arete_agents.mcp.auth import exchange_refresh_token
+        captured = {}
+
+        def fake_post(url, data, headers):
+            captured["url"] = url
+            captured["data"] = data
+            return self._resp(
+                json_body={
+                    "access_token": "new-access",
+                    "expires_in": 3600,
+                    "refresh_token": "new-refresh",
+                }
+            )
+
+        out = exchange_refresh_token("https://idp.example/token", "old-refresh", post=fake_post)
+        assert out["access_token"] == "new-access"
+        assert out["refresh_token"] == "new-refresh"
+        assert out["expires_at"] is not None and out["expires_at"] > 0
+        assert captured["url"] == "https://idp.example/token"
+        assert captured["data"]["grant_type"] == "refresh_token"
+        assert captured["data"]["refresh_token"] == "old-refresh"
+
+    def test_refresh_non_2xx_raises_and_fabricates_nothing(self):
+        import pytest
+
+        from arete_agents.mcp.auth import TokenExchangeError, exchange_refresh_token
+
+        with pytest.raises(TokenExchangeError):
+            exchange_refresh_token(
+                "https://idp.example/token",
+                "old-refresh",
+                post=lambda u, d, h: self._resp(status_code=400, text="bad"),
+            )
+
+    def test_refresh_missing_access_token_raises(self):
+        import pytest
+
+        from arete_agents.mcp.auth import TokenExchangeError, exchange_refresh_token
+
+        with pytest.raises(TokenExchangeError):
+            exchange_refresh_token(
+                "https://idp.example/token",
+                "old-refresh",
+                post=lambda u, d, h: self._resp(json_body={"expires_in": 3600}),
+            )
