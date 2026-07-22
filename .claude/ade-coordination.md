@@ -200,3 +200,40 @@ still in SuperLog research. **Engineer 1 must avoid `packages/agents/.../context
 UIs are open to improve. No net-new visual design system this wave; make services
 production-ready. Sensorium builds ON the shipped context-mapping foundation
 (`docs/superpowers/plans/2026-07-13-context-mapping-foundation.md`) — do not rebuild it.
+
+---
+
+### `ridley` (W2, overview-revamp) cross-lane claim — `packages/db` schema (declared 2026-07-22)
+
+**Cross-package declaration per coordination rule 4 + rule "declare cross-package changes in the
+ledger before editing".** The `ridley` worktree (branch `stroland02/overview-revamp`, W2 of a
+3-track parallel effort — W3 owns dashboard UI files) is adding **`Installation.isPlatform`** to
+`packages/db/prisma/schema.prisma` — **Engineer A / Engineer 1's `@arete/db` schema-writer lane**.
+
+**Why (the defect being closed):** which installation may see Kuma's OWN self-telemetry is
+currently decided by TWO unreconciled env vars — `ARETE_PLATFORM_INSTALLATION_ID` (gates
+`packages/dashboard/src/lib/errors.ts` and picks the alert-incident tenant in
+`packages/webhook/src/alerting/receiver.ts`) and `ARETE_SELF_PROJECT_ID` (stamped as
+`superlog.project_id` on Kuma's own spans, filtered on by `telemetry-queries.ts`). They agree only
+by coincidence (`scripts/dev/dev-all.mjs:107` copies one into the other in dev). If they diverge
+and either points at a customer installation, that customer sees Kuma's internals. Both env docs
+say "NEVER a customer's" but nothing enforces it. `receiver.ts` says so explicitly: *"There is no
+'platform' flag on the Installation model to enforce this."* This change adds that flag, making
+the tenancy gate a **DB fact** instead of a string coincidence.
+
+**Files claimed by this worktree:**
+- **db (additive, one column + one migration — no other model touched):**
+  `packages/db/prisma/schema.prisma` (`Installation.isPlatform Boolean @default(false)`),
+  `packages/db/prisma/migrations/20260722210000_add_installation_is_platform/migration.sql` (new).
+- **dashboard (primary lane):** `packages/dashboard/src/lib/platform-installation.ts` (new — the
+  single resolver: `resolvePlatformInstallationId` / `isPlatformInstallation` /
+  `assertSelfTelemetryTenancyConsistent`), `packages/dashboard/src/lib/platform-installation.test.ts`
+  (new), `packages/dashboard/src/lib/errors.ts` (adopt the resolver; contract unchanged),
+  `packages/dashboard/src/lib/errors.test.ts`.
+
+**Migration is additive and backward-compatible** (`@default(false)`), generated with
+`prisma migrate diff --script` and applied with `prisma migrate deploy` — **never `prisma db push`**
+(all worktrees share one Postgres; `db push` drops other worktrees' columns). No existing column,
+index, or model is altered, so it cannot conflict with a concurrent `@arete/db` change that adds
+different models. **`ARETE_PLATFORM_INSTALLATION_ID` keeps working as a fallback** while no row is
+flagged, so existing deployments and local envs do not go dark on merge.

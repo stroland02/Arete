@@ -17,6 +17,7 @@ import {
   ERROR_STATUSES,
 } from './errors';
 import { fingerprintError } from './error-fingerprint';
+import { resetPlatformInstallationDiagnostics } from './platform-installation';
 
 const PLATFORM = 'inst-platform';
 const CUSTOMER = 'inst-customer';
@@ -72,6 +73,12 @@ function fakeDb(opts: {
   upsertResult?: unknown;
   errorUpdateCount?: number;
   incidentUpdateCount?: number;
+  /** Installation ids carrying `isPlatform: true`. The tenancy gate is now a
+   *  database fact (lib/platform-installation.ts), not an env-var string, so
+   *  every fake must be able to answer "who is the platform installation?".
+   *  Defaults to the one flagged PLATFORM row — the correctly-configured
+   *  deployment — so the tests below exercise the surface, not the setup. */
+  platformFlagged?: string[];
 } = {}) {
   const errorGroupFindMany = vi.fn().mockResolvedValue(opts.errorGroups ?? []);
   const errorGroupUpsert = vi.fn().mockResolvedValue(opts.upsertResult ?? {});
@@ -83,6 +90,11 @@ function fakeDb(opts: {
   const incidentUpdateMany = vi
     .fn()
     .mockResolvedValue({ count: opts.incidentUpdateCount ?? 0 });
+  const installationFindMany = vi
+    .fn()
+    .mockImplementation(async () =>
+      (opts.platformFlagged ?? [PLATFORM]).map((id) => ({ id })),
+    );
 
   const db = {
     errorGroup: {
@@ -95,6 +107,9 @@ function fakeDb(opts: {
       findFirst: incidentFindFirst,
       updateMany: incidentUpdateMany,
     },
+    installation: {
+      findMany: installationFindMany,
+    },
   };
 
   return {
@@ -105,13 +120,19 @@ function fakeDb(opts: {
     incidentFindMany,
     incidentFindFirst,
     incidentUpdateMany,
+    installationFindMany,
   };
 }
 
 const originalPlatformEnv = process.env.ARETE_PLATFORM_INSTALLATION_ID;
 
 beforeEach(() => {
-  process.env.ARETE_PLATFORM_INSTALLATION_ID = PLATFORM;
+  // The gate reads `Installation.isPlatform` now. The env var is deleted here
+  // so these tests prove the DATABASE flag drives the surface — a passing suite
+  // can never be an artifact of a leftover env var. Its fallback behaviour is
+  // covered explicitly below and in platform-installation.test.ts.
+  delete process.env.ARETE_PLATFORM_INSTALLATION_ID;
+  resetPlatformInstallationDiagnostics();
   mockClickhouse([]);
 });
 
@@ -122,18 +143,31 @@ afterEach(() => {
 });
 
 describe('isPlatformInstallation', () => {
-  it('is true only when the configured platform id is among the caller installations', () => {
-    expect(isPlatformInstallation([PLATFORM])).toBe(true);
-    expect(isPlatformInstallation([CUSTOMER, PLATFORM])).toBe(true);
-    expect(isPlatformInstallation([CUSTOMER])).toBe(false);
-    expect(isPlatformInstallation([])).toBe(false);
+  it('is true only when the FLAGGED installation is among the caller installations', async () => {
+    const { db } = fakeDb({ platformFlagged: [PLATFORM] });
+    expect(await isPlatformInstallation(db, [PLATFORM])).toBe(true);
+    expect(await isPlatformInstallation(db, [CUSTOMER, PLATFORM])).toBe(true);
+    expect(await isPlatformInstallation(db, [CUSTOMER])).toBe(false);
+    expect(await isPlatformInstallation(db, [])).toBe(false);
   });
 
-  it('is false for everyone when the env var is unset or blank', () => {
-    delete process.env.ARETE_PLATFORM_INSTALLATION_ID;
-    expect(isPlatformInstallation([PLATFORM])).toBe(false);
-    process.env.ARETE_PLATFORM_INSTALLATION_ID = '   ';
-    expect(isPlatformInstallation([PLATFORM])).toBe(false);
+  it('is false for everyone when no row is flagged and no env fallback is set', async () => {
+    const { db } = fakeDb({ platformFlagged: [] });
+    expect(await isPlatformInstallation(db, [PLATFORM])).toBe(false);
+  });
+
+  it('still honours ARETE_PLATFORM_INSTALLATION_ID while no row is flagged (transition)', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    process.env.ARETE_PLATFORM_INSTALLATION_ID = PLATFORM;
+    const { db } = fakeDb({ platformFlagged: [] });
+    expect(await isPlatformInstallation(db, [PLATFORM])).toBe(true);
+    expect(await isPlatformInstallation(db, [CUSTOMER])).toBe(false);
+  });
+
+  it('is false for everyone when the flag is ambiguous — two flagged rows fail closed', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { db } = fakeDb({ platformFlagged: [PLATFORM, 'inst-second'] });
+    expect(await isPlatformInstallation(db, [PLATFORM])).toBe(false);
   });
 });
 
@@ -158,10 +192,28 @@ describe('tenancy gate on the reads', () => {
     expect(await getIncidentErrorGroups(db, [], 'inc-1')).toBeNull();
   });
 
-  it('returns null when the platform installation is not configured at all', async () => {
-    delete process.env.ARETE_PLATFORM_INSTALLATION_ID;
-    const { db } = fakeDb();
+  it('returns null when no installation is flagged as the platform at all', async () => {
+    const { db } = fakeDb({ platformFlagged: [] });
     expect(await getErrorGroups(db, [PLATFORM])).toBeNull();
+    expect(await getIncidentErrorGroups(db, [PLATFORM], 'inc-1')).toBeNull();
+  });
+
+  it('returns null when the platform flag is ambiguous — never picks one arbitrarily', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { db } = fakeDb({ platformFlagged: [PLATFORM, 'inst-second'] });
+    expect(await getErrorGroups(db, [PLATFORM])).toBeNull();
+  });
+
+  it('gates on the FLAGGED row, not on the env var — a stale env var cannot open the surface', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    // Env still names the customer (the exact misconfiguration this change
+    // exists to defuse); the flag names the platform. The flag wins, so the
+    // customer caller is still refused.
+    process.env.ARETE_PLATFORM_INSTALLATION_ID = CUSTOMER;
+    const { db } = fakeDb({ platformFlagged: [PLATFORM] });
+    expect(await getErrorGroups(db, [CUSTOMER])).toBeNull();
+    expect(queryMock).not.toHaveBeenCalled();
   });
 });
 

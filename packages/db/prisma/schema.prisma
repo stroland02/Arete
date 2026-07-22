@@ -32,6 +32,25 @@ model Installation {
   subscriptionStatus   String       @default("trialing")
   planTier             String       @default("trialing")
   usageCount           Int          @default(0)
+  /// Marks the ONE dedicated, platform-owned Installation that Kuma's
+  /// self-observability surfaces are filed against and gated to: incidents
+  /// created by the Alertmanager receiver, Kuma's own ErrorGroup triage rows,
+  /// and every read of Kuma's own self-telemetry (the Errors surface, the
+  /// self-telemetry queries filtered by `superlog.project_id`).
+  ///
+  /// MUST NEVER be set on a customer installation. Everything above is Kuma's
+  /// INTERNAL data; flagging a customer's row makes that customer's dashboard
+  /// show Kuma's internals. Exactly zero or one row may carry this flag — more
+  /// than one is a misconfiguration and the resolver fails CLOSED (returns no
+  /// platform installation and logs) rather than picking one arbitrarily.
+  ///
+  /// This column exists to replace the `ARETE_PLATFORM_INSTALLATION_ID` /
+  /// `ARETE_SELF_PROJECT_ID` string coincidence with a database fact: two
+  /// unreconciled env vars decided this before, and divergence between them
+  /// leaks Kuma's internals into a tenant's surface. The env var remains a
+  /// fallback ONLY while no row is flagged, so existing deployments keep
+  /// working; flag the row and drop the env var.
+  isPlatform           Boolean      @default(false)
   createdAt            DateTime     @default(now())
   /// Per-tenant BYO model config ("connect your model"), or null to use the
   /// service default / Ollama safety fallback. Non-secret fields

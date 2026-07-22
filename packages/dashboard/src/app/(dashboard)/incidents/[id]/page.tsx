@@ -17,6 +17,7 @@ import {
   type LogLine,
   type ExceptionGroup,
 } from "@/lib/telemetry-queries";
+import { traceUrl } from "@/lib/trace-links";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 import { IconArrowLeft, IconSparkles } from "@tabler/icons-react";
 
@@ -381,6 +382,30 @@ function SignalSectionLabel({ children }: { children: string }) {
   return <h3 className="text-[11px] uppercase tracking-wide text-content-muted mb-2">{children}</h3>;
 }
 
+/**
+ * The "open this in Jaeger" affordance on a Signals row.
+ *
+ * Renders NOTHING when no URL can be built — either the row carried no trace
+ * id, or no Jaeger UI is configured for this deployment (see lib/trace-links).
+ * Deliberately not a disabled or dead anchor: a control that cannot act must
+ * not look like one that can. The trace id itself is real and still shown
+ * elsewhere; only the link is conditional.
+ */
+function TraceLink({ traceId }: { traceId: string | null | undefined }) {
+  const href = traceUrl(traceId);
+  if (!href) return null;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer noopener"
+      className="shrink-0 text-xs font-medium text-content-muted underline decoration-dotted underline-offset-2 transition-colors hover:text-content-secondary"
+    >
+      Trace
+    </a>
+  );
+}
+
 function ExceptionsList({ exceptions }: { exceptions: ExceptionGroup[] }) {
   return (
     <section>
@@ -420,6 +445,7 @@ function ErrorSpansList({ spans }: { spans: ErrorSpan[] }) {
             <span className="shrink-0 text-xs text-content-muted">{s.service}</span>
             <span className="min-w-0 flex-1 truncate text-xs text-content-muted">{s.statusMessage}</span>
             <span className="shrink-0 text-xs text-content-muted tabular-nums">{formatDuration(s.durationMs)}</span>
+            <TraceLink traceId={s.traceId} />
           </div>
         ))}
       </div>
@@ -438,6 +464,7 @@ function LogsList({ logs }: { logs: LogLine[] }) {
             <span className="shrink-0 text-xs font-semibold uppercase text-accent-danger">{l.severity}</span>
             <span className="shrink-0 text-xs text-content-muted">{l.service}</span>
             <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-content-secondary">{l.body}</span>
+            <TraceLink traceId={l.traceId} />
           </div>
         ))}
       </div>

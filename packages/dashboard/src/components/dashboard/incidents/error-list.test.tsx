@@ -1,7 +1,25 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ErrorList } from "./error-list";
 import type { ErrorGroupView } from "@/lib/errors";
+
+// The Jaeger base URL the trace link is built from. Unset by default so every
+// pre-existing assertion below runs in the "no Jaeger configured" world, which
+// is also the default for any deployment that hasn't wired one up.
+const ORIGINAL_JAEGER = process.env.NEXT_PUBLIC_JAEGER_UI_URL;
+
+function setJaeger(value: string | undefined): void {
+  if (value === undefined) delete process.env.NEXT_PUBLIC_JAEGER_UI_URL;
+  else process.env.NEXT_PUBLIC_JAEGER_UI_URL = value;
+}
+
+beforeEach(() => {
+  setJaeger(undefined);
+});
+
+afterAll(() => {
+  setJaeger(ORIGINAL_JAEGER);
+});
 
 function group(overrides: Partial<ErrorGroupView> = {}): ErrorGroupView {
   return {
@@ -138,6 +156,41 @@ describe("ErrorList", () => {
     expect(html).toMatch(/Resolve/);
     expect(html).toMatch(/Silence/);
     expect(html).toContain('value="fp-1"');
+  });
+
+  it("links a row's sample trace into Jaeger when one can be opened", () => {
+    setJaeger("http://localhost:16686");
+    const html = renderToStaticMarkup(
+      <ErrorList errors={[group({ sampleTraceId: "4bf92f3577b34da6a3ce929d0e0e4736" })]} />
+    );
+    expect(html).toContain(
+      'href="http://localhost:16686/trace/4bf92f3577b34da6a3ce929d0e0e4736"'
+    );
+    expect(html).toContain("Trace");
+    // Opens the external tool in its own tab, without handing it window.opener.
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('rel="noreferrer noopener"');
+  });
+
+  it("shows NO trace link at all when no Jaeger UI is configured", () => {
+    // THE honesty assertion: with nowhere to send the operator we render
+    // nothing — not a disabled link, not a dead anchor, not the word "Trace"
+    // dangling as a promise the deployment can't keep.
+    const html = renderToStaticMarkup(
+      <ErrorList errors={[group({ sampleTraceId: "4bf92f3577b34da6a3ce929d0e0e4736" })]} />
+    );
+    expect(html).not.toContain("<a");
+    expect(html).not.toMatch(/Trace/i);
+    expect(html).not.toContain("/trace/");
+    expect(html).not.toContain("16686");
+  });
+
+  it("shows no trace link when the group has no sample trace id", () => {
+    setJaeger("http://localhost:16686");
+    const html = renderToStaticMarkup(<ErrorList errors={[group({ sampleTraceId: null })]} />);
+    expect(html).not.toMatch(/Trace/i);
+    // Never a link to a base-less /trace/ — no fabricated id.
+    expect(html).not.toContain("/trace/");
   });
 
   it("empty → honest per-filter empty state, no fabricated rows", () => {

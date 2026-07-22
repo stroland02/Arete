@@ -21,11 +21,18 @@
 // in `otel_traces`/`otel_logs` and there is nothing to filter on, so this
 // surface can only ever be shown to the PLATFORM installation — the same
 // dedicated, platform-owned Installation the Alertmanager receiver files every
-// incident against (`ARETE_PLATFORM_INSTALLATION_ID`, see
-// packages/webhook/src/alerting/receiver.ts and .env.example: "a DEDICATED,
-// PLATFORM-OWNED Installation, NEVER a customer's"). Every read and every
-// write below is gated on `isPlatformInstallation` FIRST. A customer account
-// must never see Kuma's internal errors.
+// incident against (see packages/webhook/src/alerting/receiver.ts and
+// .env.example: "a DEDICATED, PLATFORM-OWNED Installation, NEVER a
+// customer's"). Every read and every write below is gated on
+// `isPlatformInstallation` FIRST. A customer account must never see Kuma's
+// internal errors.
+//
+// WHO the platform installation is is NOT decided here, and is no longer a
+// string in an env file: it is the `Installation.isPlatform` row flag, resolved
+// by lib/platform-installation.ts — the single reconciler for what used to be
+// two unrelated env vars (`ARETE_PLATFORM_INSTALLATION_ID` gating this file,
+// `ARETE_SELF_PROJECT_ID` stamping Kuma's own spans) that agreed only by
+// coincidence. Read that module's header before changing this gate.
 //
 // The reads return `null` — not `[]` — when the gate fails. An empty list
 // reads as "you have no errors", which is a lie; `null` says "this surface is
@@ -34,7 +41,16 @@
 import type { PrismaClient } from '@arete/db';
 import { clickhouse } from './clickhouse';
 import { fingerprintError } from './error-fingerprint';
+import {
+  authorizedPlatformInstallationId,
+  isPlatformInstallation,
+} from './platform-installation';
 import { bucketByDay } from './trends';
+
+// Re-exported so the Errors surface keeps a single import site for its gate.
+// The signature is now `(db, installationIds) => Promise<boolean>` — it asks
+// the database who the platform installation is instead of reading an env var.
+export { isPlatformInstallation };
 
 export type ErrorStatus = 'open' | 'observing' | 'resolved' | 'silenced';
 
@@ -79,10 +95,15 @@ export interface IncidentErrorGroups {
 }
 
 /** Prisma delegates the reads use — structural, so tests inject fakes and the
- *  page passes the real client (the lib/ convention, see incidents.ts). */
+ *  page passes the real client (the lib/ convention, see incidents.ts).
+ *
+ *  `installation` is here because the tenancy gate itself is now a database
+ *  read (`Installation.isPlatform`, see platform-installation.ts) rather than
+ *  an env-var string comparison. */
 export type ErrorGroupsDb = {
   errorGroup: { findMany(args: unknown): Promise<unknown[]> };
   incident: { findMany(args: unknown): Promise<unknown[]> };
+  installation: { findMany(args: unknown): Promise<unknown[]> };
 };
 
 export type IncidentErrorGroupsDb = ErrorGroupsDb & {
@@ -101,6 +122,7 @@ export type ErrorMutationsDb = {
     findFirst(args: unknown): Promise<unknown | null>;
     updateMany(args: unknown): Promise<{ count: number }>;
   };
+  installation: { findMany(args: unknown): Promise<unknown[]> };
 };
 
 /** Default trailing window for the Errors list. */
@@ -123,29 +145,6 @@ const MAX_MESSAGE = 500;
 
 /** Longest first-line-of-Body we will use as a log group's title. */
 const MAX_LOG_TITLE = 120;
-
-/**
- * True iff `ARETE_PLATFORM_INSTALLATION_ID` is configured AND the caller is
- * authorized for it. This is the ONLY gate protecting Kuma's internal
- * telemetry from customer accounts — see the module header.
- *
- * Unset env => false for everyone, including the platform's own operators.
- * That is deliberate and matches the receiver: an unconfigured platform
- * installation makes the feature inert rather than making it leak.
- */
-export function isPlatformInstallation(installationIds: string[]): boolean {
-  return platformInstallationId(installationIds) !== null;
-}
-
-/** The configured platform installation id, but only when the caller is
- *  actually authorized for it. Writes use this as the row's installationId, so
- *  a row can never be created against an installation the caller lacks. */
-function platformInstallationId(installationIds: string[]): string | null {
-  const configured = process.env.ARETE_PLATFORM_INSTALLATION_ID;
-  if (typeof configured !== 'string' || configured.trim().length === 0) return null;
-  const platformId = configured.trim();
-  return installationIds.includes(platformId) ? platformId : null;
-}
 
 function clampDays(days: number | undefined): number {
   const raw = Math.floor(days ?? DEFAULT_DAYS);
@@ -405,7 +404,7 @@ export async function getErrorGroups(
   installationIds: string[],
   opts?: { days?: number },
 ): Promise<ErrorGroupView[] | null> {
-  if (!isPlatformInstallation(installationIds)) return null;
+  if (!(await isPlatformInstallation(db, installationIds))) return null;
 
   const days = clampDays(opts?.days);
 
@@ -509,7 +508,7 @@ export async function getIncidentErrorGroups(
   installationIds: string[],
   incidentId: string,
 ): Promise<IncidentErrorGroups | null> {
-  if (!isPlatformInstallation(installationIds)) return null;
+  if (!(await isPlatformInstallation(db, installationIds))) return null;
 
   const incident = (await (db as IncidentErrorGroupsDb).incident.findFirst({
     where: { id: incidentId, installationId: { in: installationIds } },
@@ -548,8 +547,9 @@ export async function getIncidentErrorGroups(
  * once someone actually triages it).
  *
  * Tenant-scoped by construction: the row's `installationId` is the PLATFORM
- * installation id resolved from env, and only after confirming the caller is
- * authorized for it. A caller who is not the platform installation returns
+ * installation id resolved from the `Installation.isPlatform` flag, and only
+ * after confirming the caller is authorized for it. A caller who is not the
+ * platform installation returns
  * `false` having touched nothing — indistinguishable from "no such group", and
  * unable to create a row against any installation at all.
  *
@@ -562,7 +562,7 @@ export async function setErrorGroupStatus(
   fingerprint: string,
   status: ErrorStatus,
 ): Promise<boolean> {
-  const platformId = platformInstallationId(installationIds);
+  const platformId = await authorizedPlatformInstallationId(db, installationIds);
   if (platformId === null) return false;
   if (!isErrorStatus(status)) return false;
   if (typeof fingerprint !== 'string' || fingerprint.length === 0) return false;
@@ -595,7 +595,7 @@ export async function attachErrorGroupToIncident(
   fingerprint: string,
   incidentId: string | null,
 ): Promise<boolean> {
-  const platformId = platformInstallationId(installationIds);
+  const platformId = await authorizedPlatformInstallationId(db, installationIds);
   if (platformId === null) return false;
   if (typeof fingerprint !== 'string' || fingerprint.length === 0) return false;
 
@@ -638,7 +638,7 @@ export async function resolveIncidentWithErrors(
   installationIds: string[],
   incidentId: string,
 ): Promise<number> {
-  const platformId = platformInstallationId(installationIds);
+  const platformId = await authorizedPlatformInstallationId(db, installationIds);
   if (platformId === null) return 0;
 
   const now = new Date();
