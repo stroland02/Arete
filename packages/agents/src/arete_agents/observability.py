@@ -199,17 +199,24 @@ def _build_resource() -> Resource:
         service_version = importlib_metadata.version("arete-agents")
     except importlib_metadata.PackageNotFoundError:  # editable/dev checkout
         service_version = "0.0.0-dev"
-    return Resource.create(
-        {
-            "service.name": SERVICE_NAME_VALUE,
-            "service.version": service_version,
-            # §5: default development; "production" only when explicitly set.
-            "deployment.environment.name": os.getenv(
-                "DEPLOYMENT_ENVIRONMENT", "development"
-            ),
-            "service.instance.id": str(uuid.uuid4()),
-        }
-    )
+    attrs = {
+        "service.name": SERVICE_NAME_VALUE,
+        "service.version": service_version,
+        # §5: default development; "production" only when explicitly set.
+        "deployment.environment.name": os.getenv(
+            "DEPLOYMENT_ENVIRONMENT", "development"
+        ),
+        "service.instance.id": str(uuid.uuid4()),
+    }
+    # Self-dogfooding tenancy (mirrors packages/telemetry resource.ts): when
+    # ARETE_SELF_PROJECT_ID is set, stamp our own telemetry with that
+    # superlog.project_id so it becomes visible under that tenant. OFF by
+    # default; NEVER point at a real customer tenant in a multi-tenant deploy —
+    # intended for a dedicated internal or local-dev tenant only.
+    self_project_id = os.getenv("ARETE_SELF_PROJECT_ID")
+    if self_project_id:
+        attrs["superlog.project_id"] = self_project_id
+    return Resource.create(attrs)
 
 
 def _histogram_views() -> list[View]:
