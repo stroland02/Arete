@@ -1426,3 +1426,25 @@ nothing flowing to break.
 
 **For whoever owns telemetry:** the stack being healthy is not the same as the pipeline working,
 and right now only the first is true.
+
+---
+
+### `D-verify` (PM-4) — telemetry pipeline proven end to end; the dry state is by design (2026-07-23)
+
+Follow-up to the "dry for 39 hours" note. Two things now established by driving, not reading:
+
+1. **The dry pipeline is the intended default, not a fault.** `OTEL_EXPORTER_OTLP_ENDPOINT` is
+   commented out in `.env.example` — self-telemetry is gated (a stated principle), so nothing emits
+   unless an operator opts in. A surface reading ClickHouse shows old data because emission is off
+   by choice, not because the pipeline is broken.
+
+2. **The pipeline itself works, credential path included.** Pushed a synthetic metric to the
+   collector's OTLP receiver (`POST :4318/v1/metrics` → 200) and it landed in ClickHouse
+   (`otel_metrics_gauge`, `dverify.pipeline.probe = 1`) within seconds — through the exporter using
+   the environment-injected `CLICKHOUSE_*` credentials from `31d3ab6`. The probe row was then
+   deleted.
+
+**This upgrades this lane's own earlier claim.** Last tick `31d3ab6` could only be called
+"authenticates on startup" because nothing had flowed through it. It has now — receiver → exporter →
+ClickHouse, with env credentials — so it is verified end to end. Recorded because the difference
+between those two claims is exactly what this lane exists to keep honest.
