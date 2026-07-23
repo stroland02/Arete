@@ -43,6 +43,7 @@ export function BuildStatusEditor({ items }: { items: { id: string; title: strin
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [removing, setRemoving] = useState("");
+  const [reason, setReason] = useState("");
 
   const set = (k: keyof typeof EMPTY) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -81,11 +82,15 @@ export function BuildStatusEditor({ items }: { items: { id: string; title: strin
   }
 
   async function remove() {
-    if (!removing) return;
-    const ok = await send(`/api/build-status?id=${encodeURIComponent(removing)}`, {
-      method: "DELETE",
-    });
-    if (ok) setRemoving("");
+    if (!removing || !reason.trim()) return;
+    const ok = await send(
+      `/api/build-status?id=${encodeURIComponent(removing)}&reason=${encodeURIComponent(reason.trim())}`,
+      { method: "DELETE" }
+    );
+    if (ok) {
+      setRemoving("");
+      setReason("");
+    }
   }
 
   const field =
@@ -223,7 +228,7 @@ export function BuildStatusEditor({ items }: { items: { id: string; title: strin
       </form>
 
       <div className="border-t border-border-subtle pt-3">
-        <label className={label} htmlFor="bs-remove">Remove an item</label>
+        <label className={label} htmlFor="bs-remove">Drop an item</label>
         <div className="mt-1 flex gap-2">
           <select
             id="bs-remove"
@@ -239,13 +244,25 @@ export function BuildStatusEditor({ items }: { items: { id: string; title: strin
           <button
             type="button"
             onClick={remove}
-            disabled={busy || !removing}
+            disabled={busy || !removing || !reason.trim()}
             className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-accent-danger/30 px-3 text-sm font-medium text-accent-danger disabled:opacity-40"
           >
             <IconTrash size={14} stroke={1.75} aria-hidden />
-            Remove
+            Drop
           </button>
         </div>
+        {/* The reason is required, and the button stays disabled without one.
+            A drop keeps the row and records why — "we decided not to" is
+            information, and erasing the row throws it away. */}
+        <input
+          className={`${field} mt-2`}
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Why is this being dropped? (required — kept on the row)"
+        />
+        <p className="mt-1 text-[11px] text-content-muted">
+          Dropped items stay in the catalogue with their reason. They are not deleted.
+        </p>
       </div>
     </section>
   );
