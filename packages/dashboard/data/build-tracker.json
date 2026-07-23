@@ -10,7 +10,7 @@
     ],
     "seededAt": "2026-07-23",
     "lastEditedAt": "2026-07-23",
-    "lastEditedBy": "autonomous loop",
+    "lastEditedBy": "D-verify",
     "seededNote": "Seeded 2026-07-23 from the docs above. A working file (docs/roadmap/master-build-status.json) was used to assemble this and was retired in 476b7e8 so only one record exists; it is not listed here because a provenance path a reader cannot open is not provenance. Every item carries its own provenance to a doc that still exists."
   },
   "mission": {
@@ -2465,6 +2465,44 @@
         "session": "PM-3 C-data lane, 2026-07-23",
         "note": "three near-misses and one real error during the verification sweep"
       }
+    },
+    {
+      "id": "agent-cannot-drive-authenticated-pages",
+      "title": "No agent lane can drive an authenticated page",
+      "lane": "idea",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "next",
+      "importance": "high",
+      "rank": 410,
+      "gap": "The workflow names a drive-it stage, but no lane can perform it. The Chrome DevTools MCP profile is single-instance, so whichever agent claims it first blocks the rest, and there is no seeded dev session, so curl and fetch only ever reach the login page. Consequence: every page-level claim in this record was verified by reading code, not by driving the product. Unblocked by either a per-lane browser profile (--isolated or a distinct userDataDir) or a seeded dev session on a known port.",
+      "evidence": "scripts/smoke-localhost.mjs reports every dashboard route as \"auth wall (expected; page not verified)\"; chrome-devtools MCP returns \"browser is already running for ...chrome-profile\"",
+      "provenance": {
+        "doc": ".claude/ade-coordination.md",
+        "note": "D-verify, 2026-07-23"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "D-verify"
+    },
+    {
+      "id": "uv-env-file-silently-loads-nothing",
+      "title": "uv run --env-file silently loads nothing from the root .env",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "next",
+      "importance": "medium",
+      "rank": 420,
+      "gap": "uv chokes on the escaped multi-line GITHUB_PRIVATE_KEY and loads no variables at all, without erroring. The agents service then starts with none of its configuration and fails later for reasons that look unrelated. It must be given those variables explicitly instead. Silent is the defect here — a parse failure that reported itself would cost minutes rather than hours.",
+      "evidence": "docs/roadmap/backlog.md, recorded while isolating the scan timeout",
+      "provenance": {
+        "doc": "docs/roadmap/backlog.md",
+        "note": "environment note, 2026-07-23"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "D-verify"
     }
   ]
 }

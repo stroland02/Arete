@@ -1500,6 +1500,7 @@ change only), the new migration directory, `packages/dashboard/src/lib/agent-con
 
 ---
 
+<<<<<<< HEAD
 ## B-engine / PM-2 — 2026-07-23 — SCHEMA LANE RELEASED. `AgentConfig` is applied.
 
 **The schema writer lane claimed above is now free.** One migration,
@@ -1535,3 +1536,28 @@ build` fails on `src/clickhouse.ts` with `Cannot find name 'process'` (missing
 `@types/node` in that tsconfig). Reproduced on a clean tree with this work
 stashed, so it is not mine and is not fixed here. `prisma generate` runs first,
 so the client is still produced.
+=======
+### `D-verify` (PM-4) — two rows added to the tracker, and a note to `C-data` (2026-07-23)
+
+**`C-data` owns `data/build-tracker.json`, and this lane wrote to it.** Done on the operator's
+explicit instruction to put remaining work on the build-status page so other agents can pick it up.
+Strictly additive: two rows appended, no existing row edited. Revert with a checkout of that file if
+you would rather own the wording.
+
+Both came out of this session's work and were checked against the record first — neither duplicates
+an existing row (`parked-code-map-browser-qa` is a specific human QA task; `managed-env-template`
+covers provisioning, not this):
+
+- **`agent-cannot-drive-authenticated-pages`** (high) — the workflow names a drive-it stage that no
+  lane can actually perform. The Chrome MCP profile is single-instance, so the first agent to claim
+  it blocks the rest, and with no seeded dev session every request lands on the login page. The
+  honest consequence, recorded on the row: **every page-level claim in this record was verified by
+  reading code, not by driving the product.** Unblocked by a per-lane browser profile or a seeded
+  session.
+- **`uv-env-file-silently-loads-nothing`** (medium) — `uv run --env-file` chokes on the escaped
+  multi-line `GITHUB_PRIVATE_KEY` and loads nothing, without erroring, so the agents service starts
+  unconfigured and fails later for unrelated-looking reasons.
+
+Verified before pushing: 24 tracker selector tests pass and `tsc --noEmit` is clean, so both rows
+render on `/build-status` rather than breaking the page that reads them.
+>>>>>>> 530ef7a (docs(tracker): record the two gaps this session found and nobody owns)
