@@ -470,12 +470,12 @@
     },
     {
       "id": "internal-token-no-expiry",
-      "title": "INTERNAL_API_TOKEN has no expiry — and expiry is not expressible",
+      "title": "Internal service-to-service auth is a short-lived signed token with a rotatable keyset",
       "lane": "idea",
       "area": "Partially wired",
-      "level": "partial",
-      "state": "next",
-      "importance": "critical",
+      "level": "live",
+      "state": "shipped",
+      "importance": "low",
       "rank": 20,
       "programmes": [
         {
@@ -483,9 +483,9 @@
           "phase": "2b"
         }
       ],
-      "works": "One static shared secret authenticates every internal service-to-service call, and it does authenticate correctly.",
-      "gap": "No exp, no iat, no rotation, no revocation — and tokenMatches(header, token) takes no clock argument, so expiry is not merely absent but not expressible in the current code path. It guards every write-and-spend route on both the webhook and agents services. Needs a credential-lifecycle design (rotation window, dual-token overlap so rotation cannot break in-flight calls), not a patch. Resolve BEFORE building more dashboard proxies onto it.",
-      "evidence": "packages/webhook/src/internal-auth.ts:43",
+      "works": "The static shared secret is retired. Callers present a short-lived HS256 JWT minted by @arete/internal-token with claims {iss, aud: arete-internal, iat, exp} and a kid header; the default TTL is 120s. Verification rejects missing, malformed, unknown-kid, bad-signature, expired and wrong-audience tokens with an undifferentiated 401, and answers 503 when the keyset is unconfigured rather than running open. The keyset maps kid -> secret with a separate activeKid, so a rotation can overlap (old kids keep verifying while new tokens mint with the new one) and dropping a kid revokes everything signed with it.",
+      "gap": "",
+      "evidence": "packages/internal-token/src/mint.ts:5,15-16 (TTL 120s, iat/exp/kid), src/keyset.ts:7-39 (kid map + activeKid), packages/webhook/src/internal-auth.ts:43-68 (401/503 posture)",
       "provenance": {
         "doc": "docs/roadmap/backlog.md",
         "note": "Phase 2b item 1"
@@ -495,7 +495,8 @@
       "addedBy": "seed",
       "tags": [
         "honesty-security"
-      ]
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "mcp-token-plaintext-and-simulated-oauth",
@@ -888,13 +889,14 @@
         }
       ],
       "gap": "73e2040 put the Services work inbox INTO the Agents rail — the reverse of the locked decision. It entrenches two pages instead of consolidating to one, and duplicates a section onto a page scheduled for absorption. Small, additive, tested and harmless while /agents exists, but it points the wrong way. Revert it, or let the absorption subsume it — not yet decided.",
-      "evidence": "73e2040",
+      "evidence": "packages/dashboard/src/components/dashboard/agents/agent-rail.tsx:7,143 imports and renders WorkItemInboxSection from components/dashboard/services/work-item-inbox",
       "provenance": {
         "doc": "docs/status/2026-07-22-ridley-closeout.md"
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "back-to-overview-and-sample-data-copy",
