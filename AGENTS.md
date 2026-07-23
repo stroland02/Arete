@@ -6,7 +6,7 @@ Read these three before writing any code.
 | Read | Why |
 |---|---|
 | [`docs/PRINCIPLES.md`](docs/PRINCIPLES.md) | The mission, the honesty rules, the HITL moat, the tenancy and BYO-model contracts, and the working rules. **What never to do.** |
-| [`packages/dashboard/data/build-tracker.json`](packages/dashboard/data/build-tracker.json) | **The single record** of what is built, what is half-wired and what remains — 85 items, each with provenance, importance and phase. **What to do.** Contract: `packages/dashboard/src/lib/build-tracker/schema.ts`. |
+| [`packages/dashboard/data/build-tracker.json`](packages/dashboard/data/build-tracker.json) | **The single record** of what is built, what is half-wired and what remains — 85 items, each with provenance, importance and phase. **What to do.** Contract and selectors: `packages/dashboard/src/lib/build-tracker.ts`. |
 | [`.claude/ade-coordination.md`](.claude/ade-coordination.md) | Who owns which package right now. Claim one, and declare cross-package edits **before** editing. |
 
 > **One record, deliberately.** Three lanes built a build-status tracker in parallel and a
