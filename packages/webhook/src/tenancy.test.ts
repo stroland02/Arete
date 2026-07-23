@@ -17,7 +17,7 @@
  *   4. A GitHub payload with no installation skips persistence entirely
  *      (no garbage externalId=0 row) but still posts the review.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import type { Request, Response } from 'express'
 
 // ---------------------------------------------------------------------------
@@ -283,6 +283,33 @@ async function loadHandlers(fake: Fake, opts: { reviewResult?: any; stripeEvent?
 
   return { handlePullRequestEvent, handleGitLabWebhook, handleStripeWebhook, postReview, capturedJobs, drainJobs }
 }
+
+// Warm vite's transform cache before any test is timed.
+//
+// loadHandlers() has to run INSIDE each test — it takes per-test mock config —
+// and its first call pays the cold transform of the whole handler graph
+// (webhook-handler -> worker -> ...). Measured: ~2.4s in isolation, ~3.9s under
+// full-suite CPU contention. Every later call is nearly free, because
+// vi.resetModules() clears the module REGISTRY, not vite's TRANSFORM CACHE.
+//
+// Charged to the first test, that 3.9s sat inside vitest's 5s testTimeout with
+// ~1.1s of headroom, and crossed it whenever another package's suite ran
+// concurrently — the intermittent "tenancy.test.ts is flaky" failures that have
+// been dismissed as load noise more than once. This is not a timeout bump: the
+// work is setup, so it is charged to setup, where hookTimeout (10s) applies, and
+// each test is left measuring only its own behaviour.
+//
+// It goes through loadHandlers rather than a bare import so every vi.doMock is
+// applied first — a raw import of ./worker.js would construct the real Prisma
+// client and the real queue.
+beforeAll(async () => {
+  vi.stubEnv('GITLAB_WEBHOOK_SECRET', 'gl-secret')
+  vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_fake')
+  vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'whsec_fake')
+  await loadHandlers(createFakePrisma())
+  vi.unstubAllEnvs()
+  vi.resetModules()
+})
 
 describe('tenancy: provider-scoped installations', () => {
   beforeEach(() => {
