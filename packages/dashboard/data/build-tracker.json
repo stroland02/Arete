@@ -209,12 +209,11 @@
       "importance": "high",
       "rank": 10,
       "blockedBy": [
-        "agents-layer-inside-services",
         "agent-config-persistence"
       ],
       "href": "/agents",
       "works": "Per-agent chat is genuinely live against the connected model, with provider errors surfaced honestly. Findings come from real reviews.",
-      "gap": "Every configuration control is local-only and never saved, and the page is scheduled for absorption into Services.",
+      "gap": "Agent configuration is still local-only, with Save disabled and the reason stated. The absorption into Services has now happened.",
       "evidence": "components/dashboard/agents/agent-config-drawer.tsx:24 \u2014 \"deliberately NOT persisted yet\"",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md"
@@ -819,8 +818,8 @@
           "phase": "stage-2"
         }
       ],
-      "gap": "Every parameter control in the config drawer is local-only and explicitly 'deliberately NOT persisted'. Without this, the Stage 2 agents layer ships parameter controls that are theatre \u2014 so either build it, or give them an explicit disabled state.",
-      "evidence": "components/dashboard/agents/agent-config-drawer.tsx:24 \u2014 \"deliberately NOT persisted yet\"",
+      "gap": "Still unsaved, and now honestly so. Stage 2.2 shipped the agents layer without it by leaving the Save button disabled with a note saying why \u2014 no fake saves, including the model pick. That is the right interim, not a fix: the controls are interactive locally and nothing is persisted, so the work remains.",
+      "evidence": "components/dashboard/agents/agent-config-drawer.tsx:24,245 \u2014 Save is disabled; no agent-config API route exists",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
         "note": "Stage 2.4"
@@ -835,7 +834,7 @@
       "title": "Agents layer inside Services",
       "lane": "idea",
       "area": "Not built yet",
-      "level": "soon",
+      "level": "live",
       "state": "shipped",
       "importance": "high",
       "rank": 90,
@@ -845,11 +844,8 @@
           "phase": "stage-2"
         }
       ],
-      "blockedBy": [
-        "agent-config-persistence"
-      ],
-      "works": "Shipped 2.2 at c2487f6 and 2.3 at 829e012: specialists in the Services rail, conversation in the centre pane, parameters in a drawer; /agents retired from nav, route kept for deep-links.",
-      "evidence": "sidebar.tsx still lists /agents and the (dashboard)/agents route still exists \u2014 the absorption has not happened",
+      "works": "The agents layer renders inside Services as components/dashboard/services/agents-section.tsx \u2014 one place to see what Kuma is doing to a service, which was the locked decision.",
+      "evidence": "packages/dashboard/src/components/dashboard/services/agents-section.tsx; commit c2487f6",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
         "note": "Stage 2.2"
@@ -864,8 +860,8 @@
       "title": "Retire /agents as a nav destination",
       "lane": "idea",
       "area": "Not built yet",
-      "level": "soon",
-      "state": "someday",
+      "level": "live",
+      "state": "shipped",
       "importance": "medium",
       "rank": 100,
       "programmes": [
@@ -874,10 +870,6 @@
           "phase": "stage-2"
         }
       ],
-      "blockedBy": [
-        "agents-layer-inside-services"
-      ],
-      "gap": "Keep the route for deep-links; remove the tab once the absorption lands.",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
         "note": "Stage 2.3"
@@ -886,7 +878,8 @@
       "addedAt": "2026-07-23",
       "addedBy": "seed",
       "verifiedAt": "2026-07-23",
-      "evidence": "components/dashboard/sidebar.tsx still lists /agents as a nav destination"
+      "evidence": "components/dashboard/sidebar.tsx no longer lists \"/agents\"; commit 5426b5d",
+      "works": "/agents is gone from the sidebar NAV_ITEMS and kept as a route, so existing deep-links still resolve."
     },
     {
       "id": "revert-or-subsume-agents-rail-inbox",
@@ -903,7 +896,7 @@
           "phase": "stage-2"
         }
       ],
-      "evidence": "packages/dashboard/src/components/dashboard/agents/agent-rail.tsx:7,143 imports and renders WorkItemInboxSection from components/dashboard/services/work-item-inbox",
+      "evidence": "components/dashboard/agents/agent-rail.tsx:7,143 and components/dashboard/services/work-item-inbox.tsx",
       "provenance": {
         "doc": "docs/status/2026-07-22-ridley-closeout.md"
       },
@@ -911,7 +904,7 @@
       "addedAt": "2026-07-23",
       "addedBy": "seed",
       "verifiedAt": "2026-07-23",
-      "works": "Decided and closed: SUBSUMED, not reverted. 73e2040 duplicated no code and already handed off toward Services; 2.2 absorbed it."
+      "works": "Closed as SUBSUMED, not reverted: 73e2040 duplicated no code and already handed off toward Services; 2.2 absorbed it."
     },
     {
       "id": "back-to-overview-and-sample-data-copy",
@@ -2425,10 +2418,10 @@
       "state": "next",
       "importance": "critical",
       "rank": 5,
-      "gap": "webhook/src/scan/trigger.ts fetchScan is a bare fetch; undici defaults headersTimeout to 300s and agents /scan only sends headers when the whole scan ends. Against any model slower than ~5min a scan can NEVER succeed, and the completed agent work is discarded. Observed: failed at 307s while the agents service kept working 7 more minutes. This is the whole of the 'dashboards are empty' symptom.",
+      "gap": "The webhook stops waiting on agents /scan while the service is still working, and the completed findings are discarded. Observed: gave up at 307s, agents kept working 7 more minutes. ded009f added an explicit deadline; the underlying limit that ended the run is still unknown (the 300s headersTimeout theory was DISPROVED). This is the whole of the 'dashboards are empty' symptom.",
       "provenance": {
         "doc": "docs/handoff/2026-07-23-m1-scan-timeout-plan.md",
-        "note": "M1 blocker; diagnosis in docs/roadmap/backlog.md"
+        "note": "M1 blocker"
       },
       "origin": "session"
     }
