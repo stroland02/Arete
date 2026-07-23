@@ -134,21 +134,18 @@ export function AgentRail({
         })}
       </ul>
 
-      {/* What the agents are working on — the live work inbox, bounded so it
-          never crowds out the agents list on a short viewport. Selecting an
-          item hands off to /services (focused on its container when there is
-          one) to act on it. */}
-      {inbox && (
-        <div className="max-h-[45%] shrink-0 overflow-y-auto border-t border-border-subtle">
-          <WorkItemInboxSection
-            inbox={inbox}
-            activeItemId={null}
-            onSelect={(item) =>
-              router.push(item.containerId ? `/services?container=${encodeURIComponent(item.containerId)}` : "/services")
-            }
-          />
-        </div>
-      )}
+      {/* The work inbox used to render here too. It does not any more — Stage
+          2.1, resolved as SUBSUMED.
+
+          Services now owns the inbox AND the agents layer, and /agents is no
+          longer a nav destination, so a second copy here was the same list in
+          two places with different powers: this one could only hand off to
+          /services, while the one there can actually act on an item. Two lists
+          that drift is how a reader stops trusting either.
+
+          Recorded honestly: I marked 2.1 shipped claiming 2.2 had subsumed
+          this, and another lane checked and found both still rendering. This
+          commit is what that row was already claiming. */}
 
       <footer className="shrink-0 space-y-1.5 border-t border-border-subtle px-3 py-2">
         {activeModel ? (

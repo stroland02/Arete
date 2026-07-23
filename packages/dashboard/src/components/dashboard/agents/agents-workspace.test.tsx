@@ -78,7 +78,12 @@ describe('AgentsWorkspace — characterization before the Services absorption', 
     expect(html).not.toContain('Work items');
   });
 
-  it('renders the work inbox when one is supplied', () => {
+  it('does NOT render the work inbox any more — Services owns it (Stage 2.1)', () => {
+    // This assertion was inverted deliberately. It originally pinned the
+    // duplicate inbox that /agents rendered alongside Services. Stage 2.1
+    // resolved that duplication as SUBSUMED: Services owns the inbox and can
+    // act on an item, while this copy could only hand off. A characterization
+    // test that still demanded the duplicate would be defending the bug.
     const html = render({
       inbox: inboxWith([
         {
@@ -96,8 +101,8 @@ describe('AgentsWorkspace — characterization before the Services absorption', 
       ]),
     });
 
-    expect(html).toContain('Work items');
-    expect(html).toContain('SQL built from raw request input');
+    expect(html).not.toContain('Work items');
+    expect(html).not.toContain('SQL built from raw request input');
   });
 
   it('renders no config drawer until an agent is configured', () => {

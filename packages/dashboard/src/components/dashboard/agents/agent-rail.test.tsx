@@ -42,7 +42,12 @@ describe('AgentRail', () => {
     expect(html).toContain('Configure the Security agent');
   });
 
-  it('surfaces the work-item inbox when one is supplied — what the agents are working on', () => {
+  it('no longer surfaces the work-item inbox — Services owns it (Stage 2.1)', () => {
+    // Inverted deliberately. This pinned a SECOND copy of the inbox that lived
+    // here as well as in Services, with strictly less power: it could only push
+    // to /services, while the Services copy can act on the item. 2.1 resolved
+    // that as subsumed, so the assertion now guards against the duplicate
+    // coming back rather than requiring it.
     const html = renderToStaticMarkup(
       <AgentRail
         findingCountById={{}}
@@ -56,10 +61,10 @@ describe('AgentRail', () => {
         ])}
       />,
     );
-    expect(html).toContain('Work items');
-    expect(html).toContain('SQL built from raw request input');
-    // in-flight state surfaces on the row, so "what they're working on" is visible
-    expect(html).toContain('staged');
+    expect(html).not.toContain('Work items');
+    expect(html).not.toContain('SQL built from raw request input');
+    // The agents list itself is untouched — only the duplicated inbox is gone.
+    expect(html).toContain('View the Security agent');
   });
 
   it('renders no work-items section when no inbox is supplied (fresh/unconnected account)', () => {
