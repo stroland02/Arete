@@ -407,8 +407,8 @@
       ],
       "href": "/services",
       "works": "Repo rail, live synthesizer console over SSE, status board, Scan / Fix it / Dismiss against real endpoints, and both HITL gates (approve, then post the PR) now render on the work-item panel.",
-      "gap": "Scan completion is a blind timer, and Fix/Dismiss full-page reloads and loses rail position.",
-      "evidence": "services-workspace.tsx",
+      "gap": "Scan completion is a blind timer, and Fix/Dismiss still trigger a full-page reload that loses rail position. A fix exists on stroland02/overview-revamp (e0a3f65) but is NOT merged to main, so the behaviour is unchanged here.",
+      "evidence": "packages/dashboard/src/components/dashboard/services/work-item-panel.tsx:45,136 and work-item-inbox.tsx:63 (window.location.reload)",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md"
       },
@@ -417,7 +417,8 @@
       "addedBy": "seed",
       "tags": [
         "surface"
-      ]
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "surface-settings",
@@ -805,14 +806,15 @@
         }
       ],
       "gap": "Every parameter control in the config drawer is local-only and explicitly 'deliberately NOT persisted'. Without this, the Stage 2 agents layer ships parameter controls that are theatre — so either build it, or give them an explicit disabled state.",
-      "evidence": "agent-config-drawer.tsx:24,245",
+      "evidence": "packages/dashboard/src/components/dashboard/agents/agent-config-drawer.tsx:24,149,249 (Save disabled, \"Not saved yet\" badge)",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
         "note": "Stage 2.4"
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "agents-layer-inside-services",
@@ -1271,7 +1273,9 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "evidence": "emailVerified appears only at packages/db/prisma/schema.prisma:464 and is never written; no reset/verify route exists under packages/dashboard/src/app",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "pino-log-path-unstamped",
