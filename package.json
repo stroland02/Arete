@@ -16,7 +16,8 @@
     "dev:glassbox": "node scripts/dev/glassbox-watch.mjs",
     "dev:all": "node scripts/dev/dev-all.mjs",
     "lanes": "node scripts/lanes.mjs check",
-    "board": "node scripts/lanes.mjs board"
+    "board": "node scripts/lanes.mjs board",
+    "test:scripts": "node --test \"scripts/*.test.mjs\""
   },
   "packageManager": "pnpm@9.15.9"
 }

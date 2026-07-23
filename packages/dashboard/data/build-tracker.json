@@ -850,14 +850,15 @@
       ],
       "works": "The locked decision, refined by the user 2026-07-22: agents are an additional layer within Services showing how they interact with the workflow; select the agents that are working to open their conversation and their parameter controls.",
       "gap": "Not started. Spec §0/§1 is locked; the wider Investigations slice around it is not greenlit.",
-      "evidence": "docs/superpowers/specs/2026-07-22-investigations-surface-and-agent-harness-design.md §0/§1",
+      "evidence": "sidebar.tsx still lists /agents and the (dashboard)/agents route still exists — the absorption has not happened",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
         "note": "Stage 2.2"
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "retire-agents-nav",
@@ -1355,7 +1356,9 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23",
+      "evidence": "packages/agents/src/arete_agents/observability.py contains zero issue_fingerprint references — the Python lane is still unstamped and the decision is still owed"
     },
     {
       "id": "review-pr-heavy-no-consumer",
@@ -1848,18 +1851,19 @@
       "addedBy": "seed",
       "tags": [
         "sdlc"
-      ]
+      ],
+      "verifiedAt": "2026-07-23",
+      "evidence": "lib/auth.ts still wires the Google provider (5 references); the blocker is the deleted upstream client, not the code"
     },
     {
       "id": "lane-to-preview-governance",
-      "title": "Feature commits keep bypassing the integration gate",
+      "title": "Lane discipline is enforced by a checker, not by a branch convention",
       "lane": "idea",
       "area": "Partially wired",
-      "level": "partial",
-      "state": "someday",
+      "level": "live",
+      "state": "shipped",
       "importance": "medium",
       "rank": 290,
-      "gap": "Commits have repeatedly landed directly on a serving branch instead of going lane to integration-preview to a reviewed merge, each time requiring a reverse-merge and suite repair. Duplicate parallel work has also shipped three times (agent-statuses, the healing loop, model switching). A process gap, not a code gap — but it costs real hours.",
       "provenance": {
         "doc": "docs/status/2026-07-20-phase-wrap-up.md",
         "note": "Manual intervention, item 3"
@@ -1869,7 +1873,10 @@
       "addedBy": "seed",
       "tags": [
         "sdlc"
-      ]
+      ],
+      "verifiedAt": "2026-07-23",
+      "works": "The integration-preview convention this row complained about being bypassed is no longer the model. Four lanes now push straight to main behind a landing gate: .claude/lanes.json records ownership in a form scripts/lanes.mjs can reject, .claude/skills/land-on-main encodes fetch-rebase-verify-push, and shared files are append-only so a lane that overwrites another destroys the record that would have shown the collision.",
+      "evidence": ".claude/lanes.json, scripts/lanes.mjs, .claude/skills/land-on-main/SKILL.md"
     },
     {
       "id": "managed-env-template",
@@ -1889,7 +1896,9 @@
       "addedBy": "seed",
       "tags": [
         "sdlc"
-      ]
+      ],
+      "verifiedAt": "2026-07-23",
+      "evidence": "repo root has .env.example only; there is no provisioning template a new environment can be created from"
     },
     {
       "id": "root-aggregate-test-script",
@@ -2100,7 +2109,9 @@
       "addedBy": "seed",
       "tags": [
         "product-commercial"
-      ]
+      ],
+      "verifiedAt": "2026-07-23",
+      "evidence": "app/(dashboard)/settings/page.tsx still carries the \"no self-serve upgrade\" copy and offers no checkout or billing-portal route"
     },
     {
       "id": "telemetry-freshness-poller",
