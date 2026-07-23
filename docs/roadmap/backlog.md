@@ -441,3 +441,43 @@ the product renders and the agents read — is
   with evidence.
 
 Anything added here should get a row there too, or it will not be visible to the people building.
+
+## Discovered 2026-07-23 — a repo scan cannot complete against a local model
+
+**Why this matters more than it looks:** it is the reason a dev account's dashboards stay empty. No
+scan completing means no `ScanRun` success, no findings, no work items — so the Overview setup card
+can never move past step 3 ("Build, deploy & verify"), and every findings-fed surface renders its
+honest empty state. It reads as "the app lost its data" when it is actually "the app was never able
+to produce any".
+
+**Observed, first real scan ever run in this database** (2026-07-23, dev installation
+`146880121`, repo `stroland02/beancount-sandbox`, model `Local · Ollama qwen2.5-coder`):
+
+- `POST /api/scan` → webhook `/scan/trigger` → agents `POST /scan`. The chain works: the agents
+  service received it and called the model **5 times**
+  (`POST http://localhost:11434/v1/chat/completions` → 200 each).
+- `ScanRun` started `04:56:25`, model activity stopped `04:58:13`, run recorded **`failed` /
+  `fetch failed` at `05:01:32`**.
+- `WorkItem` count unchanged (2), no `Review`, no findings. Whatever the model produced was lost.
+
+**Not yet isolated** — two candidates, and the distinction decides the fix:
+1. The webhook's `fetchScan` (`packages/webhook/src/scan/trigger.ts:223`) is a plain `fetch` with no
+   timeout accommodation; a slow local model outruns it and the thrown error marks the run failed,
+   discarding completed agent work.
+2. An agents-side error after the 5th model call, with `fetch failed` being the downstream symptom.
+
+`fetch failed` is a *network-level* throw, not a non-2xx (that path raises
+`agents /scan responded <status>`), which points at 1 — but that is inference, not proof.
+
+**Why it is worth fixing properly rather than raising a timeout:** the scan is a synchronous HTTP
+call spanning an unbounded LLM workload. Even with a longer timeout it stays fragile against slower
+models and larger repos, and a failure silently throws away work the agents already did. The shape
+that survives is the one `/fix/trigger` already uses — enqueue, ack, and let the worker persist
+progress — so a slow run is *slow*, not *failed*.
+
+**Also observed while getting here** (environment, not product): `ridley` had no root `.env`; the
+`.env` predates the internal-token JWT migration, so it carries `INTERNAL_API_TOKEN` but neither
+`INTERNAL_TOKEN_SIGNING_KEYS` nor `INTERNAL_TOKEN_ACTIVE_KID` — every internal-token-guarded call
+answers 503 until a keyset is added to all three processes. And `uv run --env-file` **fails to parse
+this `.env` at all** (it chokes on the escaped multi-line `GITHUB_PRIVATE_KEY` and loads nothing
+silently), so the agents service must receive those vars explicitly rather than via `--env-file`.
