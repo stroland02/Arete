@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ServicesWorkspace, WorkItemPanel } from './services-workspace';
+import { ApprovalsSection } from './approvals-section';
 import type { Issue, Service } from './services-workspace';
 import type { InboxView } from '@/lib/work-items';
 import type { ServiceReviewGroup } from '@/lib/queries';
@@ -318,6 +319,36 @@ describe('ServicesWorkspace — work-item inbox', () => {
     );
     expect(postedHtml).toContain('https://github.com/acme/shop/pull/12');
     expect(postedHtml).not.toContain('Dismiss');
+  });
+
+  // ── The approval queue (Stage 1.3) ────────────────────────────────────────
+
+  it('approvals: a pending command is shown VERBATIM with both decisions', () => {
+    const command = 'aws s3 rm s3://build-cache/pr-42 --recursive';
+    const html = renderToStaticMarkup(
+      <ApprovalsSection
+        approvals={[
+          {
+            id: 'ap-1',
+            command,
+            reason: 'The stale build cache is why this PR will not reproduce.',
+            createdAt: '2026-07-20T09:00:00.000Z',
+            repositoryFullName: 'acme/shop',
+            prNumber: 42,
+          },
+        ]}
+      />,
+    );
+    // The exact string that would run must be present, not a paraphrase.
+    expect(html).toContain('aws s3 rm s3://build-cache/pr-42 --recursive');
+    expect(html).toContain('Approve');
+    expect(html).toContain('Reject');
+    expect(html).toContain('acme/shop');
+  });
+
+  it('approvals: an empty queue renders NOTHING — no header implying work exists', () => {
+    const html = renderToStaticMarkup(<ApprovalsSection approvals={[]} />);
+    expect(html).toBe('');
   });
 
   // ── The two human gates (Stage 1.1 / 1.2) ─────────────────────────────────

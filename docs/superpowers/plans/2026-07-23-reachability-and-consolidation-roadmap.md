@@ -59,7 +59,7 @@ Ordered by *value per unit risk*, and by what unblocks what. Each stage is a coh
 |---|---|---|---|
 | 1.1 | ✅ **DONE** (`1192d37`) **Approve a proposed fix** — resolved per option (a) below | S | Gate lives on the Services work-item panel; no `/agents` URL created |
 | 1.2 | ✅ **DONE** (`1192d37`) **Post the approved PR** | S–M | Same panel; the `!realMode` dead branch is bypassed, not revived |
-| 1.3 | **Approvals panel** — surface `ApprovalPrompt` so the safety gate is visible | M | Needs a session-scoped server proxy; `ApprovalPrompt` has zero dashboard references today |
+| 1.3 | ✅ **DONE** **Approvals panel** — surface `ApprovalPrompt` so the safety gate is visible | M | Proxy + reject route + rail section; **"reject" turned out not to exist at all** — see below |
 | 1.4 | **Silence / un-silence a finding** — the noise loop closed at the human end | M | Backend already escalates and counts; dashboard hardcodes `noiseState:'OPEN'` (`queries.ts:765`) |
 | 1.5 | **Connect Sentry** — flip `connector-catalog.ts` `status:"planned"` once the integration is approved | S | Connector + tests fully built; UI gate only. **Blocked on Sentry's own approval**, not on us |
 
@@ -99,6 +99,22 @@ have produced a control that 404s on every review.
 The real unit of work was therefore: carry the container's **stored state** to the surface, and let that
 state — not the work-item state — decide which gate may be offered. Whoever picks up 1.3/1.4 should
 confirm the identity of every id they wire before assuming a link is all that is missing.
+
+#### What 1.3 turned out to actually be
+
+Also not pure wiring. The approve half was reachability as described — the webhook's execute endpoint
+is internal-token protected, so the browser needed a session-scoped proxy, which is what
+`/api/approvals/[id]/approve` now is. But **"reject" was not a wiring gap, it was a missing capability**:
+`executeApproval` has always refused to run a `REJECTED` command, and *nothing in the entire system
+could write that status*. The refusal branch was dead code and "no" was not an answer a human could
+give. That needed a new route, not a new link.
+
+Verified live on :3002 against deliberately-labelled local rows, since this database has no real
+reviews: reject → 200 and the row is durably `REJECTED` with `executedAt` still null; approve → 502
+`upstream_unreachable` (the webhook is not running locally) with the row left `PENDING`, so a failed
+upstream never silently consumes the decision. A second `ApprovalPrompt` planted under a **different
+installation** did not appear on the dev account — tenancy proven, not asserted. All five rows were
+removed afterwards by explicit primary key.
 
 #### Recorded while doing Stage 1 — not fixed, deliberately
 

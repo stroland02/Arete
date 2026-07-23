@@ -503,3 +503,27 @@ Stage 1 close-out), and the `/agents` route, which Stage 2 owns.
 **Ordering disclosure:** the rule says declare before editing. This entry was written after the
 edits and before the commit — the claim is dashboard-internal and additive, so nothing another lane
 holds was at risk, but the ordering was still wrong and is recorded rather than papered over.
+
+### `ridley` (W2, overview-revamp) lane claim — Stage 1.3 approvals surface (declared 2026-07-23)
+
+**Entirely within the `dashboard` lane. No schema change, no migration, no edit to `packages/webhook`.**
+
+Roadmap: `docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md` Stage 1 item 1.3.
+
+**Files claimed (all NEW except the last three):**
+- `packages/dashboard/src/lib/approvals.ts` + `approvals.test.ts` — tenancy-scoped reads.
+- `packages/dashboard/src/app/api/approvals/[id]/approve/route.ts` — session-scoped PROXY to the
+  webhook's existing `POST /api/approvals/:id/execute`. The webhook route is unchanged and remains
+  the authority for the PENDING->EXECUTED transition.
+- `packages/dashboard/src/app/api/approvals/[id]/reject/route.ts` — writes `status = 'REJECTED'`.
+- `packages/dashboard/src/components/dashboard/services/approvals-section.tsx`.
+- `services-workspace.tsx` (one prop + one render + triage count), `services/page.tsx` (one query),
+  `services-workspace.test.tsx` (two cases).
+
+**Cross-package READ dependency, no write:** this calls the webhook's approval endpoint over HTTP
+with `internalAuthHeaders()`, exactly as `/api/work-items/[id]/fix` already calls `/fix/trigger`.
+Nothing in `packages/webhook` was edited.
+
+**Note for the webhook lane:** `executeApproval` refuses a REJECTED approval, but until now nothing
+in the system could WRITE that status — the refusal branch was unreachable. It is now reachable from
+the dashboard. No change was needed on your side; flagged because a previously-dead branch is live.

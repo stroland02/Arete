@@ -17,6 +17,8 @@ import { IssuePanel } from "./issue-panel";
 import { WorkItemInboxSection } from "./work-item-inbox";
 import { WorkItemPanel } from "./work-item-panel";
 import type { InboxView, WorkItemView } from "@/lib/work-items";
+import type { PendingApprovalView } from "@/lib/approvals";
+import { ApprovalsSection } from "./approvals-section";
 
 /**
  * Services "Triage Inbox" workspace. Production signals from CONNECTED
@@ -83,6 +85,12 @@ export interface ServicesWorkspaceProps {
    */
   reviewGroups?: ServiceReviewGroup[];
   /**
+   * Infrastructure commands a paused agent is waiting on a human to authorize.
+   * Empty (the default) renders no section at all — see `ApprovalsSection`:
+   * an empty queue header would imply there is something to watch.
+   */
+  approvals?: PendingApprovalView[];
+  /**
    * The work-item inbox (scans + review findings + telemetry errors) for the
    * tenant's connected repos, plus the latest ScanRun for the honest scan
    * status line. Null/undefined hides the section (marketing preview or a
@@ -118,7 +126,7 @@ function useHasMounted(): boolean {
  * fabricated rows. The marketing preview passes SAMPLE_* + variant="framed"
  * to show the populated UI inside a card.
  */
-export function ServicesWorkspace({ services = [], issues = [], variant = "embedded", connected = false, containerId = null, reviewGroups, repositories = [], inbox = null }: ServicesWorkspaceProps) {
+export function ServicesWorkspace({ services = [], issues = [], variant = "embedded", connected = false, containerId = null, reviewGroups, repositories = [], inbox = null, approvals = [] }: ServicesWorkspaceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const isInView = useInView(containerRef, { margin: "-100px 0px -100px 0px" });
 
@@ -232,6 +240,9 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
     ? deriveTriage([
         ...(reviewGroups ?? []).flatMap((g) => g.reviews).map(() => ({ status: "in_flight" as TriageStatus })),
         ...(inbox?.items ?? []).map((i) => ({ status: workItemTriageStatus(i) })),
+        // A paused agent waiting on a command decision is the most literal
+        // "awaiting approval" the product has.
+        ...approvals.map(() => ({ status: "awaiting" as TriageStatus })),
       ])
     : deriveTriage(issues.map((i) => ({ status: sampleStatus(i.status) })));
 
@@ -427,6 +438,11 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
               onSelect={handleSelectItem}
             />
           )}
+
+          {/* A paused agent blocks on this, so it sits above the connect
+              affordance: it is the most urgent thing the rail can hold.
+              Renders nothing when the queue is empty. */}
+          {realMode && <ApprovalsSection approvals={approvals} />}
 
           <div className="px-3 py-3">
             <Link
