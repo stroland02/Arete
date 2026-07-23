@@ -19,6 +19,17 @@ import { WorkItemPanel } from "./work-item-panel";
 import type { InboxView, WorkItemView } from "@/lib/work-items";
 import type { PendingApprovalView } from "@/lib/approvals";
 import { ApprovalsSection } from "./approvals-section";
+// Stage 2.2 — the Agents surface becomes a LAYER of Services rather than a
+// second destination. These are imported, not moved: /agents still renders the
+// same components, so this commit adds a way in without breaking the old one.
+// Retiring /agents as a nav entry is Stage 2.3, and doing that before this
+// existed would have removed the only route to agent chat.
+import { AGENTS } from "../agents/agent-catalog";
+import { AgentConversation } from "../agents/agent-conversation";
+import { AgentConfigDrawer } from "../agents/agent-config-drawer";
+import { AgentsSection } from "./agents-section";
+import type { AgentActivityFinding } from "@/lib/queries";
+import type { ActiveModelConnection } from "@/lib/model-connections-map";
 
 /**
  * Services "Triage Inbox" workspace. Production signals from CONNECTED
@@ -97,6 +108,19 @@ export interface ServicesWorkspaceProps {
    * disconnected account).
    */
   inbox?: InboxView | null;
+  /**
+   * Stage 2.2 — what the agents layer needs. All optional: the marketing
+   * preview renders without them, and their absence degrades to an agents
+   * section with no counts rather than to a broken pane.
+   */
+  activity?: AgentActivityFinding[];
+  /** Findings per agent id, computed once by the page so the rail and the
+   *  conversation cannot disagree about a count. */
+  findingCountById?: Record<string, number>;
+  /** The model every agent actually runs on. Null = none connected. */
+  activeModel?: ActiveModelConnection | null;
+  /** The agents' real dependency — a repo alone cannot produce a review. */
+  modelConnected?: boolean;
 }
 
 // No-op store for useHasMounted below: the "store" never changes, we only
@@ -126,7 +150,7 @@ function useHasMounted(): boolean {
  * fabricated rows. The marketing preview passes SAMPLE_* + variant="framed"
  * to show the populated UI inside a card.
  */
-export function ServicesWorkspace({ services = [], issues = [], variant = "embedded", connected = false, containerId = null, reviewGroups, repositories = [], inbox = null, approvals = [] }: ServicesWorkspaceProps) {
+export function ServicesWorkspace({ services = [], issues = [], variant = "embedded", connected = false, containerId = null, reviewGroups, repositories = [], inbox = null, approvals = [], activity = [], findingCountById = {}, activeModel = null, modelConnected = false }: ServicesWorkspaceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const isInView = useInView(containerRef, { margin: "-100px 0px -100px 0px" });
 
@@ -153,9 +177,26 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
   const selectedItem: WorkItemView | null =
     inbox?.items.find((i) => i.id === activeItemId) ?? null;
+
+  // Stage 2.2 — the agents layer. `activeAgentId` is a MODE for the centre
+  // pane: an open agent replaces the Synthesizer transcript with that agent's
+  // own conversation. Selecting a work item or a review clears it, and opening
+  // an agent clears those, because two things cannot own one pane. Making them
+  // mutually exclusive is what keeps "what am I looking at" answerable.
+  const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
+  const [configAgentId, setConfigAgentId] = useState<string | null>(null);
+  const selectedAgent = AGENTS.find((a) => a.id === activeAgentId) ?? null;
+  const configAgent = AGENTS.find((a) => a.id === configAgentId) ?? null;
+
+  function handleSelectAgent(agentId: string) {
+    setActiveAgentId(agentId);
+    setActiveItemId(null);
+  }
   function handleSelectItem(it: WorkItemView) {
     setActiveItemId((cur) => (cur === it.id ? null : it.id));
     if (it.containerId) setActiveContainerId(it.containerId);
+    // Leaving agent mode: the centre pane returns to this item's transcript.
+    setActiveAgentId(null);
   }
 
   const [serviceId, setServiceId] = useState<string | null>(services[0]?.id ?? null);
@@ -444,6 +485,20 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
               Renders nothing when the queue is empty. */}
           {realMode && <ApprovalsSection approvals={approvals} />}
 
+          {/* Stage 2.2 — the specialists themselves, below the work they
+              produced. Real mode only: the marketing preview has no agent
+              activity to open, and a rail of agents that answer nothing would
+              be exactly the live-looking-but-inert control the honesty rules
+              forbid. */}
+          {realMode && (
+            <AgentsSection
+              findingCountById={findingCountById}
+              activeAgentId={activeAgentId}
+              onSelect={handleSelectAgent}
+              onConfigure={setConfigAgentId}
+            />
+          )}
+
           <div className="px-3 py-3">
             <Link
               href="/connections"
@@ -477,10 +532,29 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
           // deep-linked ?container= id. The situational-awareness board
           // (tiered comms §4) rides the same stream above the console; it
           // renders nothing until specialists report.
+          selectedAgent ? (
+            // Agent mode: this specialist's own reasoning, in the pane the
+            // Synthesizer transcript normally occupies. Keyed by agent so
+            // switching specialists starts a fresh conversation rather than
+            // showing the previous one's history under a new name.
+            <AgentConversation
+              key={selectedAgent.id}
+              agent={selectedAgent}
+              findings={activity.filter((f) => f.category === selectedAgent.id)}
+              findingCount={findingCountById[selectedAgent.id] ?? 0}
+              hasReviews={(reviewGroups?.length ?? 0) > 0}
+              repoConnected={connected}
+              modelConnected={modelConnected}
+              activeModel={activeModel}
+              containerId={activeContainerId}
+              onConfigure={setConfigAgentId}
+            />
+          ) : (
           <>
             <StatusBoardLive containerId={realMode ? activeContainerId : containerId} />
             <SynthesizerConsole containerId={realMode ? activeContainerId : containerId} connected={connected} />
           </>
+          )
         ) : (
           <IssueSynthesizerConsole issue={selected} isReplaying={isReplaying} replayStep={replayStep} />
         )}
@@ -501,6 +575,19 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
         )}
       </section>
       </div>
+
+      {/* Parameters open over the workspace rather than navigating away — that
+          is the "config controls in place" half of Stage 2.2. The drawer is
+          unchanged from /agents, including its honestly-disabled Save: making
+          it persist needs an AgentConfig model that does not exist yet
+          (roadmap 2.4), and a Save that appeared to work would be worse than
+          one that says it does not. */}
+      <AgentConfigDrawer
+        agent={configAgent}
+        findingCount={configAgent ? (findingCountById[configAgent.id] ?? 0) : 0}
+        activeModel={activeModel}
+        onClose={() => setConfigAgentId(null)}
+      />
     </div>
   );
 }
