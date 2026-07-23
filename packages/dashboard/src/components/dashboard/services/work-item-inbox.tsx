@@ -98,15 +98,30 @@ export function WorkItemInboxSection({
   // Bounded on purpose. If the run is still `running` after MAX_POLLS, we stop
   // and SAY so rather than spinning forever against a stuck or crashed worker —
   // an honest "still running" beats an animation that implies progress.
+  // An INTERVAL, not a self-re-arming timeout, and the dependency list is
+  // deliberately just [scanning, router].
+  //
+  // The first version used setTimeout with `lastScan.status`/`finishedAt` in the
+  // deps, intending each refresh to re-run the effect and arm the next tick.
+  // That only works while the data keeps CHANGING. A scan sitting in steady
+  // `running` returns an identical status and finishedAt every time, so the deps
+  // never changed, the effect never re-ran, and polling stopped dead after
+  // exactly one tick — leaving the spinner up indefinitely and never reaching
+  // MAX_POLLS, which is the precise failure this block exists to prevent.
+  // An interval is armed once when scanning starts and cleared when it stops, so
+  // it cannot depend on the data it is waiting for.
   const polls = useRef(0);
   useEffect(() => {
-    if (!scanning) {
+    // `stalled` also stops the loop: once we have given up, a server still
+    // reporting `running` would otherwise keep `scanning` true and leave the
+    // interval ticking forever, doing nothing on every tick.
+    if (!scanning || stalled) {
       polls.current = 0;
       return;
     }
     const POLL_MS = 2000;
     const MAX_POLLS = 45; // ~90s, then we stop claiming to know.
-    const timer = setTimeout(() => {
+    const timer = setInterval(() => {
       if (polls.current >= MAX_POLLS) {
         setStalled(true);
         setScanRequested(false);
@@ -115,8 +130,8 @@ export function WorkItemInboxSection({
       polls.current += 1;
       router.refresh();
     }, POLL_MS);
-    return () => clearTimeout(timer);
-  }, [scanning, router, inbox.lastScan?.status, inbox.lastScan?.finishedAt]);
+    return () => clearInterval(timer);
+  }, [scanning, stalled, router]);
 
   // Retiring the local "I asked for a scan" flag needs care, because `lastScan`
   // usually already holds an OLDER completed run at the moment you click. Just
