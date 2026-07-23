@@ -576,15 +576,15 @@
     },
     {
       "id": "sse-endpoint-unauthenticated",
-      "title": "SSE endpoint has no auth or tenant scoping, and CORS is *",
+      "title": "SSE endpoint is authenticated and tenant-safe",
       "lane": "idea",
       "area": "Partially wired",
-      "level": "partial",
-      "state": "next",
-      "importance": "critical",
+      "level": "live",
+      "state": "shipped",
+      "importance": "low",
       "rank": 60,
-      "gap": "Flagged during Lane A planning and never fixed. Needs a hardening item before any non-local deployment.",
-      "evidence": "packages/webhook/src/sse-handler.ts",
+      "gap": "",
+      "evidence": "packages/webhook/src/sse-handler.ts:10-19",
       "provenance": {
         "doc": "docs/roadmap/backlog.md",
         "note": "Discovered / unscheduled"
@@ -594,7 +594,9 @@
       "addedBy": "seed",
       "tags": [
         "honesty-security"
-      ]
+      ],
+      "works": "The route is guarded by requireInternalToken and sets no wildcard CORS header — it is consumed server-side or through an authenticated proxy.",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "agent-memory-ui",

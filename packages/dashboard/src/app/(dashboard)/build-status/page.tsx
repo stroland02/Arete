@@ -1,31 +1,42 @@
 import Link from "next/link";
 import { IconArrowRight, IconExternalLink } from "@tabler/icons-react";
-import { ReadinessBadge, type ReadinessLevel } from "@/components/ui/readiness-badge";
+import { ReadinessBadge } from "@/components/ui/readiness-badge";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 import { BuildStatusEditor } from "@/components/dashboard/build-status-editor";
 import {
-  FEATURE_READINESS,
-  PRIORITIES,
-  PRIORITY_LABELS,
-  byPriority,
-  phaseProgress,
+  IMPORTANCE,
+  IMPORTANCE_LABELS,
+  byImportance,
+  ideaGroups,
+  ideas,
+  loadTracker,
+  programmeProgress,
   readinessTotals,
-  type FeatureReadiness,
-  type Priority,
-} from "@/lib/feature-readiness";
+  verificationLabel,
+  type Importance,
+  type ProgrammeProgress,
+  type TrackerItem,
+} from "@/lib/build-tracker";
 
 export const metadata = { title: "Build status · Kuma" };
 
 /**
- * Build status — one page showing how finished every part of Kuma is.
+ * Build status — one page showing how finished every part of Kuma is, and
+ * every idea we have decided not to lose.
  *
  * This exists so unfinished work is visible in the product rather than only in
- * a doc: what is real, what is half-wired, and what is built but has no way in
- * yet. It reads a static inventory, so it can describe capabilities that have
- * no UI to inspect — precisely the category worth surfacing.
+ * a doc. It reads `data/build-tracker.json`, which can describe capabilities
+ * that have no UI to inspect — precisely the category worth surfacing.
+ *
+ * Two honesty rules are load-bearing here:
+ *  - the summary chips count the inventory lane only (see `readinessTotals`);
+ *  - nothing renders as verified, because nothing has been.
  */
 export default function BuildStatusPage() {
-  const totals = readinessTotals();
+  const tracker = loadTracker();
+  const totals = readinessTotals(tracker);
+  const groups = ideaGroups(tracker);
+  const ideaCount = ideas(tracker).length;
 
   return (
     <PageReveal className="space-y-8">
@@ -34,57 +45,73 @@ export default function BuildStatusPage() {
           <h1 className="text-3xl font-semibold text-content-primary">Build status</h1>
           <p className="text-sm text-content-secondary">
             How finished each part of Kuma actually is — including work that exists in the
-            backend but has no way in yet.
+            backend but has no way in yet, and every idea worth keeping.
           </p>
+          <p className="text-xs text-content-muted">{tracker.mission.northStar}</p>
         </header>
       </RevealItem>
 
       <RevealItem>
-        <div className="flex flex-wrap items-center gap-2">
-          <SummaryChip level="live" count={totals.live} label="working" />
-          <SummaryChip level="partial" count={totals.partial} label="partly wired" />
-          <SummaryChip level="soon" count={totals.soon} label="not wired up" />
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <SummaryChip level="live" count={totals.live} label="working" />
+            <SummaryChip level="partial" count={totals.partial} label="partly wired" />
+            <SummaryChip level="soon" count={totals.soon} label="not wired up" />
+          </div>
+          <p className="text-xs text-content-muted">
+            Across the {totals.counted} things that exist today. The {ideaCount} ideas below are
+            catalogued separately — counting them here would read as {totals.soon + ideaCount}{" "}
+            broken parts, which would not be true.
+          </p>
         </div>
       </RevealItem>
 
       {process.env.NODE_ENV !== "production" ? (
         <RevealItem>
-          <BuildStatusEditor names={FEATURE_READINESS.map((f) => f.name)} />
+          <BuildStatusEditor items={tracker.items.map((i) => ({ id: i.id, title: i.title }))} />
         </RevealItem>
       ) : null}
 
       <RevealItem>
-        <PhaseProgressStrip />
+        <ProgrammeRails programmes={programmeProgress(tracker)} />
       </RevealItem>
 
-      {[...PRIORITIES, undefined].map((priority) => {
-        const features = byPriority(priority);
-        if (features.length === 0) return null;
+      {IMPORTANCE.map((importance) => {
+        const rows = byImportance(importance, tracker);
+        if (rows.length === 0) return null;
         return (
-          <RevealItem key={priority ?? "unprioritised"}>
-            <section className="space-y-3">
-              <div className="flex items-baseline gap-2">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-content-muted">
-                  {priority ? `${priority} · ${PRIORITY_LABELS[priority]}` : "Unprioritised"}
-                </h2>
-                <span className="font-mono text-[11px] tabular-nums text-content-muted">
-                  {features.length}
-                </span>
-              </div>
-              <ul className="glass-panel divide-y divide-border-subtle overflow-hidden rounded-xl">
-                {features.map((feature) => (
-                  <FeatureRow key={feature.name} feature={feature} />
-                ))}
-              </ul>
-            </section>
+          <RevealItem key={importance}>
+            <Section
+              title={`${IMPORTANCE_LABELS[importance]}`}
+              count={rows.length}
+              items={rows}
+            />
           </RevealItem>
         );
       })}
 
       <RevealItem>
+        <div className="space-y-2 pt-2">
+          <h2 className="text-lg font-semibold text-content-primary">
+            Ideas we have not lost
+          </h2>
+          <p className="text-sm text-content-secondary">
+            {ideaCount} ideas gathered from audits, roadmaps and working sessions. These are not
+            defects — they are things worth building, kept where they can be seen.
+          </p>
+        </div>
+      </RevealItem>
+
+      {groups.map((group) => (
+        <RevealItem key={group.state}>
+          <Section title={group.label} count={group.items.length} items={group.items} />
+        </RevealItem>
+      ))}
+
+      <RevealItem>
         <p className="text-xs text-content-muted">
-          Audited 22 July 2026. Full evidence in{" "}
-          <span className="font-mono">docs/status/2026-07-22-build-status-map.md</span>.
+          Seeded {tracker.meta.seededAt} from {tracker.meta.seededFrom.length} documents. Nothing
+          on this page has been verified against running code — every row says so.
         </p>
       </RevealItem>
     </PageReveal>
@@ -96,7 +123,7 @@ function SummaryChip({
   count,
   label,
 }: {
-  level: ReadinessLevel;
+  level: "live" | "partial" | "soon";
   count: number;
   label: string;
 }) {
@@ -104,9 +131,7 @@ function SummaryChip({
     <span className="inline-flex items-center gap-2 rounded-full border border-border-subtle bg-surface-1 py-1 pl-1.5 pr-3">
       <ReadinessBadge level={level} />
       <span className="text-xs text-content-secondary">
-        <span className="font-mono font-semibold tabular-nums text-content-primary">
-          {count}
-        </span>{" "}
+        <span className="font-mono font-semibold tabular-nums text-content-primary">{count}</span>{" "}
         {label}
       </span>
     </span>
@@ -114,40 +139,63 @@ function SummaryChip({
 }
 
 /**
- * Movement between phases, not just a flat list — how much of each phase is
- * finished. "Done" means `live`; partial work deliberately does not count, so
- * the bar cannot overstate progress.
+ * Four independent rails, never one blended bar.
+ *
+ * The programmes number their phases separately and one is explicitly stale, so
+ * a combined percentage would be meaningless. Each rail shows its own caveat.
  */
-function PhaseProgressStrip() {
-  const phases = phaseProgress();
-  if (phases.length === 0) return null;
+function ProgrammeRails({ programmes }: { programmes: ProgrammeProgress[] }) {
+  if (programmes.length === 0) return null;
 
   return (
     <section className="space-y-3">
       <h2 className="text-xs font-semibold uppercase tracking-wider text-content-muted">
-        Phase progression
+        Programmes
       </h2>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {phases.map(({ phase, done, total }) => {
-          const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+      <div className="grid gap-3 sm:grid-cols-2">
+        {programmes.map((programme) => {
+          const pct = programme.total === 0 ? 0 : Math.round((programme.done / programme.total) * 100);
+          const stale = programme.standing === "stale";
           return (
-            <div key={phase} className="glass-panel rounded-xl px-3.5 py-3">
+            <div key={programme.id} className="glass-panel space-y-2 rounded-xl px-3.5 py-3">
               <div className="flex items-baseline justify-between gap-2">
-                <span className="text-xs font-semibold text-content-primary">{phase}</span>
+                <span className="text-sm font-semibold text-content-primary">
+                  {programme.label}
+                </span>
                 <span className="font-mono text-[11px] tabular-nums text-content-muted">
-                  {done}/{total}
+                  {programme.done}/{programme.total}
                 </span>
               </div>
+
               <div
-                className="mt-2 h-1.5 overflow-hidden rounded-full bg-content-primary/10"
+                className="h-1.5 overflow-hidden rounded-full bg-content-primary/10"
                 role="img"
-                aria-label={`${phase}: ${done} of ${total} finished`}
+                aria-label={`${programme.label}: ${programme.done} of ${programme.total} shipped`}
               >
                 <div
-                  className="h-full rounded-full bg-accent-primary/70"
+                  className={`h-full rounded-full ${stale ? "bg-content-muted/50" : "bg-accent-primary/70"}`}
                   style={{ width: `${pct}%` }}
                 />
               </div>
+
+              {programme.phases.length > 0 ? (
+                <p className="font-mono text-[10px] tracking-tight text-content-muted/70">
+                  phases {programme.phases.join(" · ")}
+                </p>
+              ) : null}
+
+              <p
+                className={`text-[12px] leading-5 ${
+                  stale
+                    ? "rounded-md border border-accent-warning/25 bg-accent-warning/10 px-2 py-1.5 text-content-secondary"
+                    : "text-content-muted"
+                }`}
+              >
+                {stale ? (
+                  <span className="font-semibold text-accent-warning">Stale — </span>
+                ) : null}
+                {programme.caveat}
+              </p>
             </div>
           );
         })}
@@ -156,8 +204,34 @@ function PhaseProgressStrip() {
   );
 }
 
-function FeatureRow({ feature }: { feature: FeatureReadiness }) {
-  const { name, level, href, works, gap, evidence, area, ref, needsVerification } = feature;
+function Section({
+  title,
+  count,
+  items,
+}: {
+  title: string;
+  count: number;
+  items: TrackerItem[];
+}) {
+  return (
+    <section className="space-y-3">
+      <div className="flex items-baseline gap-2">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-content-muted">
+          {title}
+        </h2>
+        <span className="font-mono text-[11px] tabular-nums text-content-muted">{count}</span>
+      </div>
+      <ul className="glass-panel divide-y divide-border-subtle overflow-hidden rounded-xl">
+        {items.map((item) => (
+          <ItemRow key={item.id} item={item} />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function ItemRow({ item }: { item: TrackerItem }) {
+  const { title, level, href, works, gap, evidence, area, blockedBy, provenance } = item;
   return (
     <li className="px-4 py-3.5">
       <div className="flex flex-wrap items-center gap-2">
@@ -166,25 +240,19 @@ function FeatureRow({ feature }: { feature: FeatureReadiness }) {
             href={href}
             className="inline-flex items-center gap-1 text-sm font-medium text-content-primary hover:text-accent-primary"
           >
-            {name}
+            {title}
             <IconExternalLink size={13} stroke={1.75} className="text-content-muted" />
           </Link>
         ) : (
-          <span className="text-sm font-medium text-content-primary">{name}</span>
+          <span className="text-sm font-medium text-content-primary">{title}</span>
         )}
         <ReadinessBadge level={level} />
-        <span className="text-[10px] uppercase tracking-wider text-content-muted/70">
-          {area}
-          {ref ? <span className="ml-1.5 font-mono normal-case">{ref}</span> : null}
+        <span className="text-[10px] uppercase tracking-wider text-content-muted/70">{area}</span>
+        {/* Absence of verifiedAt is stated outright — never rendered as a tick. */}
+        <span className="text-[10px] uppercase tracking-wider text-content-muted/50">
+          {verificationLabel(item)}
         </span>
       </div>
-
-      {needsVerification ? (
-        <p className="mt-1.5 rounded-md border border-accent-warning/25 bg-accent-warning/10 px-2 py-1.5 text-[12px] leading-5 text-content-secondary">
-          <span className="font-semibold text-accent-warning">Needs verification — </span>
-          {needsVerification}
-        </p>
-      ) : null}
 
       {works ? (
         <p className="mt-1.5 text-[12.5px] leading-5 text-content-secondary">{works}</p>
@@ -205,9 +273,15 @@ function FeatureRow({ feature }: { feature: FeatureReadiness }) {
         </p>
       ) : null}
 
-      {evidence ? (
+      {blockedBy && blockedBy.length > 0 ? (
+        <p className="mt-1.5 text-[11px] text-content-muted">
+          Blocked by <span className="font-mono">{blockedBy.join(", ")}</span>
+        </p>
+      ) : null}
+
+      {evidence || provenance?.doc ? (
         <p className="mt-1.5 font-mono text-[10px] tracking-tight text-content-muted/70">
-          {evidence}
+          {[evidence, provenance?.doc].filter(Boolean).join("  ·  ")}
         </p>
       ) : null}
     </li>
