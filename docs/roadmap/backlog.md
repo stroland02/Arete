@@ -37,8 +37,16 @@ Ranked. The first item is a live security gap, not an enhancement.
    shipped a real OAuth code exchange, replacing the fabricated `simulated_token_for_<code>`;
    `packages/agents/tests/test_mcp_auth.py` asserts that marker can never reappear.
    *Residual, not a security gap:* `INTERNAL_API_TOKEN` is still referenced in
-   `arete_agents/config.py` and `packages/internal-token/src/keyset.ts` (bootstrap/keyset paths),
-   and MCP token files still want `expires_in` persistence.
+   `arete_agents/config.py` and `packages/internal-token/src/keyset.ts` (bootstrap/keyset paths).
+   **The MCP residuals are now closed too (verified in code 2026-07-22).** `expires_in` persistence
+   shipped: `mcp/auth.py` computes `expires_at = now + expires_in` on both the code exchange (L76-81)
+   and the refresh (L130-135), `manager.py` stores it, and `get_valid_token` refreshes inside a 60s
+   skew window, raising `MCPTokenRefreshError` rather than presenting a stale token when it cannot.
+   And the store is no longer plaintext on disk: `mcp/token_crypto.py` (`5a4c202`) encrypts
+   `token`/`refresh_token` at rest under `ARETE_MCP_TOKEN_KEY`, on top of the earlier 0o600
+   atomic-create hardening, and `.agents/` is now gitignored. **So the provenance text below —
+   "persists tokens as plaintext JSON … with no file-mode hardening" — describes the ORIGINAL state,
+   not the current one.** It is kept only to explain why the work was scheduled.
    **Why this sat stale:** three sessions in a row read this entry, each knew it was closed in
    code, and each left it for "the owning session". A closed item presented as the top live
    security gap is worse than no backlog — it misdirects whoever plans next. Correcting the record
@@ -78,9 +86,17 @@ Ranked. The first item is a live security gap, not an enhancement.
 4. **Webhook-side fix failures are uncounted.** `no_repo` / `no_model` terminate before Python is
    reached, so they never appear in `arete.fix.*` — a fix drive dying before dispatch is invisible in
    the counters.
-5. **Memory row cap is check-then-create with no transaction, and nothing ever archives.** Two
+5. ~~**Memory row cap is check-then-create with no transaction, and nothing ever archives.** Two
    concurrent writes can both pass the cap check; and since no path sets `status='archived'`, a repo
-   is permanently frozen at 20 memories once it fills.
+   is permanently frozen at 20 memories once it fills.~~
+   **CLOSED 2026-07-22 (`a216b08`).** Both halves shipped together: count + archive + create now run
+   in ONE `prisma.$transaction` at `Serializable` (closing the race), and at the cap the oldest active
+   row flips to `status='archived'` — FIFO, the user's choice over LRU, which would need a
+   `lastCitedAt` column plus read-path instrumentation in the shared `@arete/db` lane and can layer
+   on later.
+   **This entry was a DUPLICATE** of the two struck bullets under "From Phase 1 final whole-branch
+   review" below (~L225–244), which describe the same defect and were struck when it was fixed. The
+   duplicate is the one that actually misdirects planning, because a ranked list gets read first.
 6. **Prose credentials still reach sinks** (`password: hunter2`) — no secret shape, and the key
    blocklist binds to object keys, not words in a string. Catching it needs an amendment to the
    frozen §5 pattern set with real false-positive risk on ordinary prose. The URL-embedded half of
