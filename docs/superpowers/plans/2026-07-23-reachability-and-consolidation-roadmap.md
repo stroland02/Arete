@@ -179,13 +179,60 @@ and their parameter controls.
 
 | # | Deliverable | Size |
 |---|---|---|
-| 2.1 | Decide and execute: revert `73e2040` (Services inbox → Agents rail, built backwards) or let 2.2 subsume it | S |
-| 2.2 | Agents layer inside Services: working-agent selection → conversation + config drawer in place | M–L |
-| 2.3 | Retire `/agents` as a nav destination; keep the route for deep-links | S |
-| 2.4 | **Agent config persistence** — parameter changes currently do not save (`agent-config-drawer.tsx:24` "deliberately NOT persisted") | M |
+| 2.1 | ✅ **DECIDED — subsume, do not revert.** Reasoning below | S |
+| 2.2 | ⏸ **NOT STARTED — the one genuinely session-sized item left** | M–L |
+| 2.3 | ⛔ **BLOCKED BY 2.2 — must not be done first** | S |
+| 2.4 | ⏸ **BLOCKED — needs a new Prisma model in another lane** | M |
 
 **Dependency:** 2.4 is what makes 2.2's "parameter changes" real rather than theatre. Do not ship 2.2
 without either 2.4 or an explicit disabled state.
+
+#### 2.1 — decision (2026-07-23): let 2.2 subsume `73e2040`, do not revert it
+
+The concern was that it built backwards — mirroring the Services work inbox into the **Agents** rail
+when the locked decision runs the other way. That reading is right about direction but wrong about
+cost, on three checks against the commit:
+
+1. **It duplicates no code.** It renders the extracted `WorkItemInboxSection` verbatim; there is no
+   second implementation to diverge.
+2. **It already hands off in the correct direction.** Selecting an item navigates to
+   `/services?container=<id>` — Agents provides visibility, Services owns the actions. That is the
+   relationship 2.2 formalises, not one it has to undo.
+3. **Reverting removes working visibility before its replacement exists** — the same mistake as
+   doing 2.3 early. 2.2 restructures that rail regardless, so the revert is wasted motion.
+
+**Therefore: no revert commit.** 2.2 absorbs it.
+
+#### 2.3 must NOT be done before 2.2 — recording this so nobody picks it up as an easy win
+
+It is labelled S and is a one-line change to `NAV_ITEMS` in `sidebar.tsx`, which makes it look like
+the cheapest item in the stage. It is a **regression** if taken out of order: agent chat (genuinely
+live) and the agent config drawer exist *only* on `/agents` today. Retiring the nav entry before 2.2
+moves them into Services leaves them reachable only by hand-typed URL — removing a destination
+before its replacement exists. The route survives for deep-links either way; it is the nav entry
+that must wait.
+
+#### 2.4 is blocked outside this lane — verified, not assumed
+
+`agent-config-drawer.tsx:24` says the controls are "deliberately NOT persisted", and the Save button
+is already disabled with an honest note — so the drawer is not lying today. Making it real needs
+somewhere to put the config: **there is no `AgentConfig` model in `packages/db/prisma/schema.prisma`**
+(grep: zero matches). That is a new model plus a migration on the Postgres shared by every worktree,
+in another engineer's lane — the same constraint as 4.5, and rule 7's declare-first is exactly for
+this.
+
+**Consequence for 2.2:** it can still ship, because the roadmap's own dependency note allows "2.4 **or**
+an explicit disabled state", and the honest disabled state already exists. 2.2 should carry that
+state forward unchanged rather than inventing a save that goes nowhere.
+
+#### Why 2.2 was not attempted in this session
+
+It is the largest remaining item and the only one that restructures two workspaces at once. Safety
+rule 1 requires characterization tests pinning today's rendered behaviour on `agents-workspace` and
+`services-workspace` *before* the move, and rule 2 forbids mixing the move with any behaviour change
+— so it is a move-only commit with its own test pass in front of it. Starting that at the tail of a
+long session, after four stages of unrelated edits, is how an unreviewable diff gets made. It wants a
+fresh session where the characterization pass is the first thing done, not the last.
 
 ### Stage 3 — Papercuts and the refresh  (Groups C + D · small, visible)
 
@@ -285,6 +332,27 @@ Both leave the dashboard lane, and neither is blocked on effort:
 ### Stage 5 — The bigger bets  (Group E · re-approve before building)
 
 **Two of these specs were never greenlit.** Confirm intent before spending a week.
+
+> **Stage 5 was deliberately NOT started (2026-07-23), and that is the roadmap's own instruction —
+> "re-approve before building".** Every other stage is now done or precisely accounted for, so this
+> is the live decision. Three findings from verifying (not restating) the table below:
+>
+> - **5.5 is the most tractable item and the roadmap undersells why.** The outbound-webhook
+>   management API is not merely unbuilt — it is **deliberately unmounted for a security reason**
+>   (`server.ts:441-447`): it trusted a client-supplied `installationId` with no authentication, so
+>   an anonymous caller could register a webhook for, or list the endpoints of, **any tenant and
+>   receive that tenant's `whsec_` secret**. The code already prescribes the remedy — "authenticated,
+>   tenant-scoped management belongs behind the dashboard's Auth.js session". That is exactly the
+>   session-scoped-proxy pattern shipped three times in this session (approvals 1.3, findings-noise
+>   1.4, incident routing 3.2). So 5.5 is M-sized, follows a proven in-repo pattern, closes a real
+>   tenancy hole, and **unblocks every Phase-2 relay** (Slack/Linear/PagerDuty) whose retry worker is
+>   already wired and now actually started (A5, closed in 4.2). **If any Stage 5 item is approved
+>   next, this is the one to pick.**
+> - **5.4 confirmed genuinely missing**: no `workspace*.py` exists anywhere in `packages/agents`. It
+>   remains the only absent plan artifact, and 5.3 stays blocked behind it.
+> - **5.6 needs a product decision, not code** — unchanged, and nothing in this session touched it.
+>
+> Note also that the Anthropic account is at **$0** (§3), which bounds 5.1/5.3 regardless of intent.
 
 | # | Deliverable | Size | Status |
 |---|---|---|---|
