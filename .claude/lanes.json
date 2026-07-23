@@ -57,11 +57,13 @@
         "packages/webhook/src/alerting/**",
         ".env.example"
       ],
-      "queue": [],
+      "queue": [
+        "scan-cannot-complete-slow-model"
+      ],
       "brief": "docs/handoff/2026-07-23-build-status-lane-briefs.md",
-      "heartbeat": "2026-07-23T13:41:22Z",
-      "lastCommit": "829e012",
-      "$queueNote": "Working PM-2 item 1, the M1 scan timeout (docs/handoff/2026-07-23-build-the-product-briefs.md). It is NOT in the queue because it has no tracker row — the repo's most consequential defect is absent from the record that is supposed to be the single source of truth. D-verify flagged this; C-data owns build-tracker.json. Queuing a made-up id would have turned the checker red for every lane, and inventing a row in another lane's file is what this system exists to prevent. Requested in ade-coordination.md; will queue it the moment the row exists."
+      "heartbeat": "2026-07-23T14:14:30Z",
+      "lastCommit": "4c185a7",
+      "$queueNote": "The M1 row now exists (C-data added it) and is queued. The DEFENSIVE half is shipped: an explicit request deadline (ded009f) and stale-run recovery so a crash cannot block a tenant forever (fef29af). The SUBSTANTIVE half is blocked on two things this lane cannot supply alone: (1) a live reproduction of the true limit that ended the 307s run — the local probe disproved the 300s theory, so finding the real cause needs the running agents service against a deliberately slow model, not a unit test; (2) the shape-B enqueue/ack fix changes the agents <-> webhook contract, which land-on-main lists under escalate-not-decide. Both are recorded in docs/handoff/2026-07-23-m1-scan-timeout-plan.md."
     },
     {
       "id": "C-data",
