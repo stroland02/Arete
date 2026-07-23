@@ -135,3 +135,19 @@ problem is on the **webhook** service (A1, A2, A4).
 3. **B8 internal-token expiry** — before building proxies that depend on it.
 4. **A1 approvals panel** — surfaces the HITL moat, the product's stated differentiator.
 5. **A2 webhook management UI** — then Slack/Linear relays become thin consumers.
+
+---
+
+## Where these ids now live (added 2026-07-22)
+
+Every id above (A1–A5, B1–B8, C1–C6) is now carried as a `ref` on a row in
+`packages/dashboard/src/lib/feature-readiness.ts`, which the product renders at `/build-status`.
+That file is the master list; this document remains the evidence behind it.
+
+Two notes recorded rather than silently applied:
+
+- §6's staleness warning is honoured by marking affected rows `needsVerification` — the original
+  claims are left unedited so a human resolves them with evidence.
+- The "Discovered / unscheduled" SSE hardening item in `docs/roadmap/backlog.md` was re-checked and
+  is **already fixed** (`packages/webhook/src/sse-handler.ts:14-16` now requires the internal token
+  and sets no wildcard CORS header), so it was deliberately not added as an open row.

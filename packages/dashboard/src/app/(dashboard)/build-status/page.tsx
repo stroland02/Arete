@@ -2,11 +2,16 @@ import Link from "next/link";
 import { IconArrowRight, IconExternalLink } from "@tabler/icons-react";
 import { ReadinessBadge, type ReadinessLevel } from "@/components/ui/readiness-badge";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
+import { BuildStatusEditor } from "@/components/dashboard/build-status-editor";
 import {
   FEATURE_READINESS,
-  READINESS_AREAS,
+  PRIORITIES,
+  PRIORITY_LABELS,
+  byPriority,
+  phaseProgress,
   readinessTotals,
   type FeatureReadiness,
+  type Priority,
 } from "@/lib/feature-readiness";
 
 export const metadata = { title: "Build status · Kuma" };
@@ -42,15 +47,25 @@ export default function BuildStatusPage() {
         </div>
       </RevealItem>
 
-      {READINESS_AREAS.map((area) => {
-        const features = FEATURE_READINESS.filter((f) => f.area === area);
+      {process.env.NODE_ENV !== "production" ? (
+        <RevealItem>
+          <BuildStatusEditor names={FEATURE_READINESS.map((f) => f.name)} />
+        </RevealItem>
+      ) : null}
+
+      <RevealItem>
+        <PhaseProgressStrip />
+      </RevealItem>
+
+      {[...PRIORITIES, undefined].map((priority) => {
+        const features = byPriority(priority);
         if (features.length === 0) return null;
         return (
-          <RevealItem key={area}>
+          <RevealItem key={priority ?? "unprioritised"}>
             <section className="space-y-3">
               <div className="flex items-baseline gap-2">
                 <h2 className="text-xs font-semibold uppercase tracking-wider text-content-muted">
-                  {area}
+                  {priority ? `${priority} · ${PRIORITY_LABELS[priority]}` : "Unprioritised"}
                 </h2>
                 <span className="font-mono text-[11px] tabular-nums text-content-muted">
                   {features.length}
@@ -98,8 +113,51 @@ function SummaryChip({
   );
 }
 
+/**
+ * Movement between phases, not just a flat list — how much of each phase is
+ * finished. "Done" means `live`; partial work deliberately does not count, so
+ * the bar cannot overstate progress.
+ */
+function PhaseProgressStrip() {
+  const phases = phaseProgress();
+  if (phases.length === 0) return null;
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-content-muted">
+        Phase progression
+      </h2>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {phases.map(({ phase, done, total }) => {
+          const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+          return (
+            <div key={phase} className="glass-panel rounded-xl px-3.5 py-3">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-xs font-semibold text-content-primary">{phase}</span>
+                <span className="font-mono text-[11px] tabular-nums text-content-muted">
+                  {done}/{total}
+                </span>
+              </div>
+              <div
+                className="mt-2 h-1.5 overflow-hidden rounded-full bg-content-primary/10"
+                role="img"
+                aria-label={`${phase}: ${done} of ${total} finished`}
+              >
+                <div
+                  className="h-full rounded-full bg-accent-primary/70"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function FeatureRow({ feature }: { feature: FeatureReadiness }) {
-  const { name, level, href, works, gap, evidence } = feature;
+  const { name, level, href, works, gap, evidence, area, ref, needsVerification } = feature;
   return (
     <li className="px-4 py-3.5">
       <div className="flex flex-wrap items-center gap-2">
@@ -115,7 +173,18 @@ function FeatureRow({ feature }: { feature: FeatureReadiness }) {
           <span className="text-sm font-medium text-content-primary">{name}</span>
         )}
         <ReadinessBadge level={level} />
+        <span className="text-[10px] uppercase tracking-wider text-content-muted/70">
+          {area}
+          {ref ? <span className="ml-1.5 font-mono normal-case">{ref}</span> : null}
+        </span>
       </div>
+
+      {needsVerification ? (
+        <p className="mt-1.5 rounded-md border border-accent-warning/25 bg-accent-warning/10 px-2 py-1.5 text-[12px] leading-5 text-content-secondary">
+          <span className="font-semibold text-accent-warning">Needs verification — </span>
+          {needsVerification}
+        </p>
+      ) : null}
 
       {works ? (
         <p className="mt-1.5 text-[12.5px] leading-5 text-content-secondary">{works}</p>
