@@ -151,9 +151,10 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
     area: "Product surfaces",
     level: "partial",
     href: "/incidents",
-    works: "Mark and unmark noise, view a linked fix run, scrubbed alert payload tables.",
-    gap: "A manually-opened investigation cannot be driven — there is no action to start a fix from it.",
-    evidence: "lib/incidents.ts:211",
+    works:
+      "Mark and unmark noise, view a linked fix run, scrubbed alert payload tables — and opening an investigation now starts a fix drive, the same way a critical alert does.",
+    gap: "The fix run it starts still halts at the human approve-and-send gate, which has no screen yet (see Approval gate below).",
+    evidence: "lib/incidents.ts, lib/fix-dispatch.ts",
   },
   {
     name: "Data connectors",
@@ -200,9 +201,9 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
     area: "Built, but unreachable",
     level: "soon",
     works:
-      "Signing, retry backoff, SSRF-guarded delivery and a delivery log — and it already fires on every persisted review.",
-    gap: "The management API is deliberately unmounted, so nobody can register an endpoint or see a delivery. Blocks every Slack/Linear/PagerDuty relay.",
-    evidence: "server.ts:408-414, persistence.ts:239-256",
+      "Signing, retry backoff, SSRF-guarded delivery and a delivery log — it already fires on every persisted review, and the management API is now mounted behind session auth (list, register, enable/disable).",
+    gap: "No Settings screen calls it yet, so registering a destination still needs a direct API call. Note for whoever builds it: the whsec_ signing secret is returned exactly once, on create — no route can read it back, so the UI must show it once and say so.",
+    evidence: "webhook-endpoints-api.ts, api/webhooks/endpoints/route.ts, outbound/management.ts",
   },
   {
     name: "Agent memory",
@@ -212,9 +213,9 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
     area: "Built, but unreachable",
     level: "soon",
     works:
-      "Kuma really does record what it learns per repository and injects it into later reviews.",
-    gap: "Nothing displays it and nothing archives it. The cap is 20 rows, so a repository silently freezes at 20 memories forever.",
-    evidence: "memory-write.ts:104,248",
+      "Kuma really does record what it learns per repository and injects it into later reviews — and at the 20-row cap it now archives the oldest instead of refusing to learn.",
+    gap: "Nothing displays it. There is no screen for what Kuma has learned about a repository, or for retiring a memory that has gone stale.",
+    evidence: "memory-write.ts",
   },
   {
     name: "Live throughput metrics",
