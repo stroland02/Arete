@@ -527,3 +527,98 @@ Nothing in `packages/webhook` was edited.
 **Note for the webhook lane:** `executeApproval` refuses a REJECTED approval, but until now nothing
 in the system could WRITE that status — the refusal branch was unreachable. It is now reachable from
 the dashboard. No change was needed on your side; flagged because a previously-dead branch is live.
+
+---
+
+### `nautilus` (branch `feat/master-build-status`) lane claim — master build status (declared 2026-07-23)
+
+**Claims: `docs` + a narrow, additive slice of `dashboard`. No schema change, no migration, no
+`packages/webhook`, no `packages/agents`, no `infra`.** Branched from `origin/main` @ `a21f956` into
+`C:\Users\strol\orca\workspaces\Arete\nautilus`. **Serves on a fresh port — `:3000` and `:3002`
+belong to other worktrees and are never touched.**
+
+**Why.** The backlog is spread across `docs/roadmap/backlog.md`, the 07-23 reachability roadmap,
+`docs/status/2026-07-22-build-status-map.md`, five close-out reports and several closed agent
+sessions. `/build-status` shows 25 of those items, statically, with no priority, no phase
+progression, and no way to edit. Items keep being recorded in a doc the next session never opens.
+This lane makes `docs/roadmap/master-build-status.json` the single source of truth — the page reads
+it, an editor route rewrites it, and every agent is pointed at it before starting work.
+
+**Files created (all NEW):**
+- `docs/roadmap/master-build-status.json` — the manifest (source of truth).
+- `docs/roadmap/master-build-status.md` — GENERATED from the JSON by the same writer; never hand-edited.
+- `docs/PRINCIPLES.md` — mission + honesty rules + HITL moat + tenancy/BYO contracts + working rules,
+  consolidated from `docs/handoff/2026-07-22-orchestration-briefs.md` §0 and the roadmap's §1.
+- `packages/dashboard/src/lib/build-status/{manifest,writer}.ts` (+ tests).
+- `packages/dashboard/src/app/api/build-status/route.ts` (+ test).
+- `packages/dashboard/src/components/build-status/*.tsx` (+ tests).
+
+**Files modified (narrow):**
+- `packages/dashboard/src/app/(dashboard)/build-status/page.tsx` — reads the manifest instead of the
+  static array. Same visual language (`PageReveal`, `glass-panel`, `ReadinessBadge`).
+- `packages/dashboard/src/lib/feature-readiness.ts` — becomes a thin re-export of the manifest,
+  **keeping every exported name and signature** (`FEATURE_READINESS`, `READINESS_AREAS`,
+  `readinessTotals`, `FeatureReadiness`, `ReadinessArea`), so no importer changes.
+- `.env.example` — documents `BUILD_STATUS_EDITABLE`.
+- `AGENTS.md`, `docs/roadmap/backlog.md` — one pointer each at the manifest.
+
+**Editing is fail-closed and local-only.** The write route requires a session AND
+`BUILD_STATUS_EDITABLE=1` AND `NODE_ENV !== 'production'`. It authors files inside the repo, so it
+must not exist in a deployed multi-tenant product. When the gate is off the UI renders the control
+`disabled` with the reason — never hidden, never a live-looking button that no-ops (honesty rule).
+
+**Explicitly NOT touched:** every file claimed by the `ridley` entries above, `services-workspace.tsx`
+and its folder, `lib/queries.ts`, `lib/trends.ts`, `packages/db`, and any running dev server.
+This lane adds nothing to the backlog's *content* beyond transcription — it does not build any of the
+items it records.
+
+#### AMENDMENT (2026-07-23, later the same day) — `nautilus` DEFERS to `pyrosome` on the schema
+
+`pyrosome`'s entry (declared **2026-07-22**) sets the tiebreak: *"First declaration wins; the tiebreak
+is the earlier `declared` date."* Theirs is earlier than this lane's **2026-07-23**. **This lane
+defers. `pyrosome` owns the schema and the seed artifact; `src/lib/build-tracker/schema.ts` is the
+contract.**
+
+That entry was not visible from this checkout when this lane started — the coordination file has
+**forked between worktrees**, exactly as `pyrosome` documented. Lines 1–341 are common; after that
+each copy carries only its own lane's claims. Whoever reconciles next must **union the tails**, not
+overwrite one with the other.
+
+**What this lane hands over instead of a second seed.** The catalogue was already authored before the
+deferral, so it is converted rather than discarded:
+
+- `packages/dashboard/scripts/seed-build-tracker.mjs` (**new**) emits
+  `packages/dashboard/data/build-tracker.json` in `pyrosome`'s `TrackerDoc` shape, from this lane's
+  documentation sweep. It self-validates against the documented rules and **refuses to write** on any
+  violation. Current output: **85 items — 24 `inventory`, 61 `idea` — 4 programmes, 8 principles,
+  0 violations.**
+- Every item carries `provenance`, every principle carries a `source` pointing at a doc that already
+  existed in this repo, and `blockedBy` resolves or is `ext:`-prefixed.
+- **`verifiedAt` is absent on every row, deliberately.** This seed transcribes the audits named in
+  each `provenance`; it did not re-confirm each claim against the code. Absence must not read as
+  verification.
+- `inventory` is **24**, not the old page's 25: "Webhook delivery retries" is folded into the outbound
+  webhooks row, because the retry worker now runs and it is no longer a separate gap. That is a
+  consolidation, not a lost row.
+
+**`pyrosome`: you do not need to author a seed.** Take `data/build-tracker.json` from
+`origin/stroland02/build-status-seed`, or re-run the script against your own edits. If you prefer your
+own item wording, take the `provenance` fields at minimum — they are what the sweep cost.
+
+**Three-way collision, recorded so nobody force-pushes.** Off the same parent `a21f956`:
+
+| Lane | Ref | Approach |
+|---|---|---|
+| `pyrosome` | `stroland02/setup-live-website-dev` @ `461b1b4` | `src/lib/build-tracker/*` — schema + pure logic + tests. **Owns the contract.** |
+| third lane | `origin/feat/master-build-status` @ `d6bf492` | extends `feature-readiness.ts` (+197) and adds `build-status-editor.tsx` |
+| `nautilus` | `origin/stroland02/build-status-seed` @ this branch | the seed, plus a working page/route/board of its own |
+
+Hard conflicts between them: `src/app/api/build-status/route.ts` (this lane and the third lane both
+create it), `src/lib/feature-readiness.ts` (this lane **deletes** it, the third lane **adds 197 lines**
+to it), `build-status/page.tsx` (all three rewrite it), and the branch name `feat/master-build-status`
+(this lane's original name collided with the third lane's pushed branch, so it was **renamed** to
+`stroland02/build-status-seed` — nothing was force-pushed and nothing of theirs was touched).
+
+**This lane's UI is NOT claimed against the others.** It is complete, tested and driven, but it lives
+on its own branch and blocks no one. Which UI merges is the product owner's call, not this lane's;
+the seed is portable to any of the three.

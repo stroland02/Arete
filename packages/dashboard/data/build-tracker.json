@@ -1,0 +1,2183 @@
+{
+  "meta": {
+    "seededFrom": [
+      "docs/roadmap/master-build-status.json",
+      "docs/status/2026-07-22-build-status-map.md",
+      "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+      "docs/roadmap/backlog.md",
+      "docs/status/2026-07-22-ridley-closeout.md",
+      "docs/status/2026-07-20-phase-wrap-up.md",
+      "docs/handoff/2026-07-22-orchestration-briefs.md"
+    ],
+    "seededAt": "2026-07-23",
+    "lastEditedAt": null,
+    "lastEditedBy": null
+  },
+  "mission": {
+    "northStar": "Kuma — your AI Software Healing Engineer.",
+    "statement": "Six specialist agents review every pull request, verify each finding against the real diff, and propose fixes a human approves. The long-term shape is a system that notices, diagnoses and heals software the way a living organism does. The review wedge is live; the platform ambitions are deliberately deferred, and recorded here with a reason so deferral stays a decision rather than a drift.",
+    "source": "docs/handoff/2026-07-22-orchestration-briefs.md §0"
+  },
+  "principles": [
+    {
+      "id": "honesty-is-the-product",
+      "title": "Honesty is the product",
+      "body": "Never fabricate data, status or a passing result. Empty states say what is actually true, null (unavailable) is never [] (none), and a control that cannot act is disabled with its reason rather than a live-looking button.",
+      "source": "docs/handoff/2026-07-22-orchestration-briefs.md §0"
+    },
+    {
+      "id": "human-in-the-loop-moat",
+      "title": "The human-in-the-loop moat",
+      "body": "Nothing merges or posts autonomously. The fix driver never advances past ready; only a human approves, only a human sends. A refusal branch nothing can trigger is dead code pretending to be a safeguard.",
+      "source": "docs/superpowers/specs/2026-07-13-issue-container-and-pr-pipeline.md"
+    },
+    {
+      "id": "tenancy-is-a-security-boundary",
+      "title": "Tenancy is a security boundary",
+      "body": "Every query is scoped by installationId, connection state is derived from getAccountState rather than re-derived locally, and a security gate has exactly one implementation - two copies are two places to drift, and drift here is a tenant leak.",
+      "source": "docs/superpowers/specs/2026-07-17-account-state-contract.md"
+    },
+    {
+      "id": "self-telemetry-is-gated",
+      "title": "Self-telemetry is gated on a database fact",
+      "body": "Access is decided by isPlatformInstallation before any query runs, and an access denial is a distinct state from a backend outage. superlog.project_id is a self-dogfooding tag, not tenant isolation.",
+      "source": "docs/superpowers/specs/2026-07-22-telemetry-tenancy-contract.md"
+    },
+    {
+      "id": "bring-your-own-model",
+      "title": "Bring your own model",
+      "body": "Every tenant action rides the tenant's own key. Keys are encrypted at rest, never logged, never returned by an API, and never destroyed as a side effect - providers do not re-issue them.",
+      "source": "docs/superpowers/specs/2026-07-16-byo-ai-models-design.md"
+    },
+    {
+      "id": "migrate-never-push",
+      "title": "prisma migrate deploy, never db push",
+      "body": "All worktrees share one Postgres. db push syncs it down to your schema and silently drops other people's columns; it has done so three times.",
+      "source": "docs/handoff/2026-07-22-orchestration-briefs.md §0"
+    },
+    {
+      "id": "separate-moving-from-fixing",
+      "title": "Separate moving from fixing",
+      "body": "Characterization tests come first on any untested surface. A refactor commit changes no behaviour and a fix commit moves no code; mixing them makes both unreviewable.",
+      "source": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md §1"
+    },
+    {
+      "id": "verify-by-driving",
+      "title": "Verify by driving the real flow",
+      "body": "A green suite is not a driven flow. Paste evidence. If you cannot verify something, say so - and never issue an unscoped DELETE against tenant data.",
+      "source": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md §1"
+    }
+  ],
+  "programmes": [
+    {
+      "id": "reachability",
+      "label": "Reachability & Consolidation",
+      "standing": "current",
+      "caveat": "The live sequencing document. Stage 1 is largely shipped; Stages 2-5 are unstarted. Its own text records that three of its items turned out to be builds rather than the wiring it predicted.",
+      "source": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+      "phases": [
+        {
+          "key": "stage-1",
+          "label": "Stage 1 - make the built product reachable",
+          "state": "in-progress",
+          "evidence": "1192d37 (1.1, 1.2); 1.3 and 1.4 shipped; 1.5 blocked on Sentry's approval"
+        },
+        {
+          "key": "stage-2",
+          "label": "Stage 2 - Agents become a layer inside Services",
+          "state": "not-started"
+        },
+        {
+          "key": "stage-3",
+          "label": "Stage 3 - papercuts and the refresh",
+          "state": "not-started"
+        },
+        {
+          "key": "stage-4",
+          "label": "Stage 4 - hygiene that keeps the map honest",
+          "state": "not-started"
+        },
+        {
+          "key": "stage-5",
+          "label": "Stage 5 - the bigger bets",
+          "state": "not-started"
+        }
+      ]
+    },
+    {
+      "id": "observability",
+      "label": "SUPERLOG observability",
+      "standing": "current",
+      "caveat": "Phases 0, 1, 2 and 4 closed with gate reports. Phase 2b was split out of Phase 2 and its first item is a live security gap, not an enhancement. Phase 3 is deliberately deferred.",
+      "source": "docs/roadmap/backlog.md",
+      "phases": [
+        {
+          "key": "0",
+          "label": "Phase 0 - foundations",
+          "state": "done"
+        },
+        {
+          "key": "1",
+          "label": "Phase 1 - observability integration",
+          "state": "done"
+        },
+        {
+          "key": "2",
+          "label": "Phase 2 - healing-agent upgrade + alerting",
+          "state": "done",
+          "evidence": ".superpowers/sdd/phase-2-gate-report.md"
+        },
+        {
+          "key": "2b",
+          "label": "Phase 2b - deferred from Phase 2",
+          "state": "not-started"
+        },
+        {
+          "key": "3",
+          "label": "Phase 3 - tenant telemetry platform",
+          "state": "deferred"
+        },
+        {
+          "key": "4",
+          "label": "Phase 4 - trustworthy CI signal + harness hardening",
+          "state": "done"
+        }
+      ]
+    },
+    {
+      "id": "product",
+      "label": "Product roadmap (P1-P4)",
+      "standing": "stale",
+      "caveat": "STALE - this numbering lists work as unstarted that is closed in code (the approval-exec consumer, memory write-back and the review-heavy queue consumer were all recorded open after shipping). Correct it before planning off any number in this row.",
+      "source": "docs/status/2026-07-22-build-status-map.md §5",
+      "phases": [
+        {
+          "key": "P1",
+          "label": "P1 - review product completeness",
+          "state": "in-progress"
+        },
+        {
+          "key": "P2",
+          "label": "P2 - relays and outbound integrations",
+          "state": "not-started"
+        },
+        {
+          "key": "P3",
+          "label": "P3 - public API and the MCP inversion",
+          "state": "not-started"
+        },
+        {
+          "key": "P4",
+          "label": "P4 - tenant telemetry platform",
+          "state": "deferred"
+        }
+      ]
+    },
+    {
+      "id": "orchestration",
+      "label": "Work-floor orchestration (A-C)",
+      "standing": "current",
+      "caveat": "Phase A shipped as packages/orchestration. Phase B is blocked on the Docker sandbox workspace agent - the one plan artifact of ~380 declared symbols that was never written.",
+      "source": "docs/superpowers/specs/2026-07-15-kuma-work-floor-orchestration-design.md",
+      "phases": [
+        {
+          "key": "A",
+          "label": "Phase A - the work floor",
+          "state": "done"
+        },
+        {
+          "key": "B",
+          "label": "Phase B - repro / root-cause / fix-author / test-author / QA agents",
+          "state": "not-started"
+        },
+        {
+          "key": "C",
+          "label": "Phase C - autonomous drive",
+          "state": "not-started"
+        }
+      ]
+    }
+  ],
+  "items": [
+    {
+      "id": "surface-agents",
+      "title": "Agents",
+      "lane": "inventory",
+      "area": "Product surfaces",
+      "level": "partial",
+      "state": "next",
+      "importance": "high",
+      "rank": 10,
+      "blockedBy": [
+        "agents-layer-inside-services",
+        "agent-config-persistence"
+      ],
+      "href": "/agents",
+      "works": "Per-agent chat is genuinely live against the connected model, with provider errors surfaced honestly. Findings come from real reviews.",
+      "gap": "Every configuration control is local-only and never saved, and the page is scheduled for absorption into Services.",
+      "evidence": "agent-config-drawer.tsx:24",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "surface-ai-models",
+      "title": "AI model connections",
+      "lane": "inventory",
+      "area": "Product surfaces",
+      "level": "live",
+      "state": "shipped",
+      "importance": "medium",
+      "rank": 10,
+      "href": "/connections/ai-models",
+      "works": "Connect, reconnect, set-active, disconnect and remove key. Ollama auto-detect with streamed model pull. Real diagnostics on failure. Re-connecting without re-entering a key preserves the stored key.",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "surface-connections",
+      "title": "Data connectors",
+      "lane": "inventory",
+      "area": "Product surfaces",
+      "level": "partial",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 20,
+      "blockedBy": [
+        "connect-sentry"
+      ],
+      "href": "/connections",
+      "works": "GitHub App install, Stripe API key, and PostHog + Vercel OAuth.",
+      "gap": "Every other connector is disabled pending its integration being published.",
+      "evidence": "connections/[id]/page.tsx:117-123",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "surface-incident-detail",
+      "title": "Incident detail",
+      "lane": "inventory",
+      "area": "Product surfaces",
+      "level": "partial",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 30,
+      "blockedBy": [
+        "manual-investigation-start-fix"
+      ],
+      "href": "/incidents",
+      "works": "Mark and unmark noise, view a linked fix run, scrubbed alert payload tables.",
+      "gap": "A manually-opened investigation cannot be driven — there is no action to start a fix from it.",
+      "evidence": "lib/incidents.ts:211",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "surface-incidents",
+      "title": "Incidents list",
+      "lane": "inventory",
+      "area": "Product surfaces",
+      "level": "live",
+      "state": "shipped",
+      "importance": "medium",
+      "rank": 40,
+      "href": "/incidents",
+      "works": "Open / Resolved / Noise / All tabs over real incidents. New investigation creates a real Incident row.",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "surface-overview",
+      "title": "Overview",
+      "lane": "inventory",
+      "area": "Product surfaces",
+      "level": "partial",
+      "state": "next",
+      "importance": "high",
+      "rank": 20,
+      "blockedBy": [
+        "connect-workspace-clone-or-folder",
+        "kuma-as-mcp-server"
+      ],
+      "href": "/overview",
+      "works": "Stat tiles, Sensorium code map, setup checklist derived from real DB facts, preset tabs, time range.",
+      "gap": "Two checklist sub-steps (the coding-agent setup prompt, MCP Kuma) are honest 'coming soon' placeholders with nothing behind them. Planned telemetry connectors are inert.",
+      "evidence": "lib/overview-setup.ts:76-84,103-107",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "surface-review-history",
+      "title": "Review history",
+      "lane": "inventory",
+      "area": "Product surfaces",
+      "level": "live",
+      "state": "shipped",
+      "importance": "medium",
+      "rank": 50,
+      "href": "/history",
+      "works": "Server-filtered risk tabs, real review rows, pagination, honest empty state.",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "surface-search-notifications",
+      "title": "Search & notifications",
+      "lane": "inventory",
+      "area": "Product surfaces",
+      "level": "soon",
+      "state": "someday",
+      "importance": "low",
+      "rank": 10,
+      "blockedBy": [
+        "topbar-search-and-notifications"
+      ],
+      "gap": "Command palette and notifications are both disabled placeholders. The breadcrumb is the only working part of the top bar.",
+      "evidence": "topbar.tsx:44-62",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "surface-services",
+      "title": "Services",
+      "lane": "inventory",
+      "area": "Product surfaces",
+      "level": "partial",
+      "state": "next",
+      "importance": "high",
+      "rank": 30,
+      "blockedBy": [
+        "scan-completion-signal",
+        "fix-dismiss-no-full-reload"
+      ],
+      "href": "/services",
+      "works": "Repo rail, live synthesizer console over SSE, status board, Scan / Fix it / Dismiss against real endpoints, and both HITL gates (approve, then post the PR) now render on the work-item panel.",
+      "gap": "Scan completion is a blind timer, and Fix/Dismiss full-page reloads and loses rail position.",
+      "evidence": "services-workspace.tsx",
+      "provenance": {
+        "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "surface-settings",
+      "title": "Settings & billing",
+      "lane": "inventory",
+      "area": "Product surfaces",
+      "level": "partial",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 60,
+      "blockedBy": [
+        "self-serve-upgrade-billing"
+      ],
+      "href": "/settings",
+      "works": "GitHub OAuth connect, a real Connections summary, real billing usage against the free-tier limit.",
+      "gap": "No self-serve upgrade — stated plainly rather than faked.",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "collector-plaintext-credentials",
+      "title": "Collector config commits plaintext ClickHouse credentials",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "next",
+      "importance": "critical",
+      "rank": 10,
+      "gap": "otel-collector-config.yaml commits `superlog/superlog` in the clear. Fine for local compose; it must not survive into any deploy path, and nothing currently stops it.",
+      "evidence": "infra otel-collector-config.yaml",
+      "provenance": {
+        "doc": "docs/roadmap/backlog.md"
+      },
+      "origin": "roadmap",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "internal-token-no-expiry",
+      "title": "INTERNAL_API_TOKEN has no expiry — and expiry is not expressible",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "next",
+      "importance": "critical",
+      "rank": 20,
+      "programmes": [
+        {
+          "programme": "observability",
+          "phase": "2b"
+        }
+      ],
+      "works": "One static shared secret authenticates every internal service-to-service call, and it does authenticate correctly.",
+      "gap": "No exp, no iat, no rotation, no revocation — and tokenMatches(header, token) takes no clock argument, so expiry is not merely absent but not expressible in the current code path. It guards every write-and-spend route on both the webhook and agents services. Needs a credential-lifecycle design (rotation window, dual-token overlap so rotation cannot break in-flight calls), not a patch. Resolve BEFORE building more dashboard proxies onto it.",
+      "evidence": "packages/webhook/src/internal-auth.ts:43",
+      "provenance": {
+        "doc": "docs/roadmap/backlog.md",
+        "note": "Phase 2b item 1"
+      },
+      "origin": "roadmap",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "mcp-token-plaintext-and-simulated-oauth",
+      "title": "MCP tokens are plaintext and the code exchange is simulated",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "next",
+      "importance": "critical",
+      "rank": 30,
+      "programmes": [
+        {
+          "programme": "observability",
+          "phase": "2b"
+        }
+      ],
+      "works": "Refresh-on-expiry now exists and fails closed; the creds file is written 0o600.",
+      "gap": "mcp/auth.py:90 never performs a real code exchange — it fabricates simulated_token_for_<code>, so there is no expires_in to store even where the schema has a slot. Tokens persist as JSON on disk. _save_config's mkdir does not retroactively tighten a pre-existing loose .agents/ directory. Decide: give MCP a real OAuth exchange, or remove the surface until it has one.",
+      "evidence": "packages/agents/src/arete_agents/mcp/auth.py:90, mcp/manager.py",
+      "provenance": {
+        "doc": "docs/roadmap/backlog.md",
+        "note": "Phase 2b item 1, Phase 4 items 6-7"
+      },
+      "origin": "roadmap",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "prose-credentials-reach-sinks",
+      "title": "Prose-shaped credentials still reach sinks",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "next",
+      "importance": "critical",
+      "rank": 40,
+      "programmes": [
+        {
+          "programme": "observability",
+          "phase": "2b"
+        }
+      ],
+      "works": "Shaped secrets (sk-*, gh?_*, Bearer, key-ish URL params) and blocklisted object keys are scrubbed; URL query stripping now fires on embedded URLs anywhere in a string.",
+      "gap": "A memory body containing a free-text credential matches no shape and no object key, and has no URL to strip. Verified stored verbatim. Fixing it means amending the frozen §5 pattern set, with real false-positive risk on ordinary prose — a decision, not a patch. Applies to every sink equally.",
+      "evidence": "scrubText / scrubSinkText, SECRET_VALUE_PATTERNS",
+      "provenance": {
+        "doc": "docs/roadmap/backlog.md",
+        "note": "Phase 2b item 6"
+      },
+      "origin": "roadmap",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "security-assessor-fabricates",
+      "title": "SecurityAssessor returns fabricated findings",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "next",
+      "importance": "critical",
+      "rank": 50,
+      "gap": "Returns simulated results, string-matched off the skill filename — the last live fabrication in packages/agents, and a direct violation of the honesty rule that is the product's differentiator. Either make it real or make it refuse. It must never reach the UI as-is.",
+      "evidence": "packages/agents/src/arete_agents/skills/security.py:12",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md",
+        "note": "§4 B7"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "sse-endpoint-unauthenticated",
+      "title": "SSE endpoint has no auth or tenant scoping, and CORS is *",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "next",
+      "importance": "critical",
+      "rank": 60,
+      "gap": "Flagged during Lane A planning and never fixed. Needs a hardening item before any non-local deployment.",
+      "evidence": "packages/webhook/src/sse-handler.ts",
+      "provenance": {
+        "doc": "docs/roadmap/backlog.md",
+        "note": "Discovered / unscheduled"
+      },
+      "origin": "roadmap",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "agent-memory-ui",
+      "title": "Agent memory has no surface",
+      "lane": "inventory",
+      "area": "Built, but unreachable",
+      "level": "soon",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 70,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-1"
+        }
+      ],
+      "blockedBy": [
+        "agent-memory-cap-and-archive"
+      ],
+      "works": "Kuma really does record what it learns per repository and injects it into later reviews.",
+      "gap": "Nothing displays it. Belongs on repository settings as 'What Kuma has learned', with an archive action.",
+      "evidence": "packages/webhook/src/memory-write.ts:104,248",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md",
+        "note": "§3 A3"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "approvals-panel",
+      "title": "Approvals panel — the safety gate is visible, and rejectable",
+      "lane": "inventory",
+      "area": "Built, but unreachable",
+      "level": "live",
+      "state": "shipped",
+      "importance": "high",
+      "rank": 40,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-1"
+        }
+      ],
+      "works": "Session-scoped approve proxy plus a genuinely new reject route. 'No' was not an answer a human could give before — executeApproval's REJECTED branch was dead code. Tenancy proven live: a prompt under a different installation did not appear.",
+      "provenance": {
+        "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+        "note": "Stage 1.3"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "approve-a-proposed-fix",
+      "title": "Approve a proposed fix",
+      "lane": "idea",
+      "area": "Built, but unreachable",
+      "level": "live",
+      "state": "shipped",
+      "importance": "high",
+      "rank": 50,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-1"
+        }
+      ],
+      "works": "The gate renders on the Services work-item panel, reading the container's stored state. No /agents URL was created, so this is a step toward the Stage 2 absorption rather than against it.",
+      "evidence": "1192d37",
+      "provenance": {
+        "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+        "note": "Stage 1.1"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "connect-sentry",
+      "title": "Connect Sentry",
+      "lane": "idea",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "blocked",
+      "importance": "medium",
+      "rank": 80,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-1"
+        }
+      ],
+      "blockedBy": [
+        "ext:blocked on Sentry's own integration approval, not on us"
+      ],
+      "works": "The connector and its tests are fully built. Flipping connector-catalog.ts status:'planned' is the whole change.",
+      "gap": "Blocked on Sentry's own integration approval, not on us.",
+      "evidence": "connector-catalog.ts",
+      "provenance": {
+        "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+        "note": "Stage 1.5"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "live-throughput-metrics",
+      "title": "Live throughput metrics — the dark wire",
+      "lane": "inventory",
+      "area": "Built, but unreachable",
+      "level": "soon",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 90,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-1"
+        }
+      ],
+      "blockedBy": [
+        "internal-token-no-expiry"
+      ],
+      "works": "The worker publishes review-lifecycle metrics to a server-sent stream.",
+      "gap": "No consumer — the source comments call it a dark wire. An Overview throughput tile needs a server-side proxy, which depends on the internal-token lifecycle decision.",
+      "evidence": "packages/webhook/src/agent-metrics.ts:4",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md",
+        "note": "§3 A4"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "post-the-approved-pr",
+      "title": "Post the approved PR",
+      "lane": "idea",
+      "area": "Built, but unreachable",
+      "level": "live",
+      "state": "shipped",
+      "importance": "high",
+      "rank": 60,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-1"
+        }
+      ],
+      "works": "Same panel as the approve gate; the dead !realMode branch is bypassed rather than revived.",
+      "evidence": "1192d37",
+      "provenance": {
+        "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+        "note": "Stage 1.2"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "silence-a-finding",
+      "title": "Silence / un-silence a finding",
+      "lane": "inventory",
+      "area": "Partially wired",
+      "level": "live",
+      "state": "shipped",
+      "importance": "high",
+      "rank": 70,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-1"
+        }
+      ],
+      "works": "POST /api/findings/[id]/noise is the dashboard's only noiseState writer. A human may assert only OPEN and SILENCED; UNDER_OBSERVATION and ESCALATED are machine-derived and render read-only, because a button asserting one would claim an observation that never happened.",
+      "gap": "Known limitation, recorded not fixed: restoring returns a finding to OPEN, never to the machine state that preceded the silence — that prior state is stored nowhere, and inventing one would be fabricated status.",
+      "provenance": {
+        "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+        "note": "Stage 1.4"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "agent-config-persistence",
+      "title": "Agent config changes are never saved",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "next",
+      "importance": "high",
+      "rank": 80,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-2"
+        }
+      ],
+      "gap": "Every parameter control in the config drawer is local-only and explicitly 'deliberately NOT persisted'. Without this, the Stage 2 agents layer ships parameter controls that are theatre — so either build it, or give them an explicit disabled state.",
+      "evidence": "agent-config-drawer.tsx:24,245",
+      "provenance": {
+        "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+        "note": "Stage 2.4"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "agents-layer-inside-services",
+      "title": "Agents layer inside Services",
+      "lane": "idea",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "next",
+      "importance": "high",
+      "rank": 90,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-2"
+        }
+      ],
+      "blockedBy": [
+        "agent-config-persistence"
+      ],
+      "works": "The locked decision, refined by the user 2026-07-22: agents are an additional layer within Services showing how they interact with the workflow; select the agents that are working to open their conversation and their parameter controls.",
+      "gap": "Not started. Spec §0/§1 is locked; the wider Investigations slice around it is not greenlit.",
+      "evidence": "docs/superpowers/specs/2026-07-22-investigations-surface-and-agent-harness-design.md §0/§1",
+      "provenance": {
+        "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+        "note": "Stage 2.2"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "retire-agents-nav",
+      "title": "Retire /agents as a nav destination",
+      "lane": "idea",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 100,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-2"
+        }
+      ],
+      "blockedBy": [
+        "agents-layer-inside-services"
+      ],
+      "gap": "Keep the route for deep-links; remove the tab once the absorption lands.",
+      "provenance": {
+        "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+        "note": "Stage 2.3"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "revert-or-subsume-agents-rail-inbox",
+      "title": "Decide the fate of the Agents-rail work inbox (built backwards)",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "next",
+      "importance": "high",
+      "rank": 100,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-2"
+        }
+      ],
+      "gap": "73e2040 put the Services work inbox INTO the Agents rail — the reverse of the locked decision. It entrenches two pages instead of consolidating to one, and duplicates a section onto a page scheduled for absorption. Small, additive, tested and harmless while /agents exists, but it points the wrong way. Revert it, or let the absorption subsume it — not yet decided.",
+      "evidence": "73e2040",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-ridley-closeout.md"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "back-to-overview-and-sample-data-copy",
+      "title": "Two links that point at the wrong place",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "someday",
+      "importance": "low",
+      "rank": 20,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-3"
+        }
+      ],
+      "gap": "'Back to Overview' goes to / (the marketing root), not /overview. 'Explore with sample data' leads to a page that never shows sample data — stale copy that should be removed rather than made true.",
+      "evidence": "reviews/[id]/page.tsx:96, connections/[id]/page.tsx:129-131",
+      "provenance": {
+        "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+        "note": "Stage 3.5"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "delete-synth-ledger",
+      "title": "Delete synth-ledger.tsx (zero importers)",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "someday",
+      "importance": "low",
+      "rank": 30,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-3"
+        }
+      ],
+      "gap": "Exported, imported by nothing.",
+      "evidence": "synth-ledger.tsx",
+      "provenance": {
+        "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+        "note": "Stage 3.6"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "fix-dismiss-no-full-reload",
+      "title": "Fix / Dismiss stops full-page reloading",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 110,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-3"
+        }
+      ],
+      "gap": "window.location.reload() is the only feedback, and it loses rail expansion, selection and stream position.",
+      "evidence": "services-workspace.tsx",
+      "provenance": {
+        "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+        "note": "Stage 3.4"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "global-refresh-kuma-logo",
+      "title": "Kuma logo becomes a true global refresh",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 120,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-3"
+        }
+      ],
+      "works": "The logo already reflects real global loading state.",
+      "gap": "Clicking it should re-pull services, connections, telemetry and scan state, turning the existing spin into honest progress. It must show real completion per source, and a source that fails must say so — a spin that resolves on a timer would be exactly the fabricated status the honesty rules forbid.",
+      "provenance": {
+        "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+        "note": "Stage 3.1"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "manual-investigation-start-fix",
+      "title": "Manual investigations can start a fix",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 130,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-3"
+        }
+      ],
+      "gap": "The alert path (receiver.ts to routeIncidentToFix) creates a WorkItem, container and fix drive. The UI path writes an Incident and never routes it, so a hand-opened investigation is a dead end that can only be marked noise. Preserve the human approve then send gate.",
+      "evidence": "lib/incidents.ts:211 createManualIncident",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md",
+        "note": "§4 B1"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "scan-completion-signal",
+      "title": "Scan completion replaces the blind timer",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 140,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-3"
+        }
+      ],
+      "gap": "setTimeout(reload, 1500) is unconnected to scan completion — a slower scan reloads into stale state and looks like it did nothing.",
+      "evidence": "services-workspace.tsx",
+      "provenance": {
+        "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+        "note": "Stage 3.3"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "topbar-search-and-notifications",
+      "title": "Top bar has zero working controls",
+      "lane": "idea",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "someday",
+      "importance": "low",
+      "rank": 40,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-3"
+        }
+      ],
+      "gap": "Command palette and notifications are disabled placeholders. Honest today, but the top bar is prime real estate doing nothing.",
+      "evidence": "topbar.tsx:44-62",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md",
+        "note": "§1"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "adopt-account-state-agents-map",
+      "title": "Adopt getAccountState on the last two ad-hoc pages",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 150,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-4"
+        }
+      ],
+      "gap": "agents/page.tsx and map/page.tsx are the last ad-hoc hasAccess users. The account-state contract says every surface derives from the one resolver.",
+      "provenance": {
+        "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+        "note": "Stage 4.3"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "agent-memory-cap-and-archive",
+      "title": "Agent memory freezes at 20 rows forever",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "next",
+      "importance": "high",
+      "rank": 110,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-4"
+        },
+        {
+          "programme": "observability",
+          "phase": "2b"
+        }
+      ],
+      "gap": "Nothing in the repo ever sets status='archived', and the read cap and write cap are the same number — so once a repo reaches 20 ACTIVE rows every later write returns cap_exceeded forever and the memory set is frozen at whatever it first learned. Separately the cap is check-then-create with no transaction, so concurrent writes can all pass it. The mechanism exists; the missing piece is the policy (age out? evict least-cited? let a human archive?) and a surface to apply it.",
+      "evidence": "packages/webhook/src/memory-write.ts",
+      "provenance": {
+        "doc": "docs/roadmap/backlog.md",
+        "note": "agent memory sink"
+      },
+      "origin": "roadmap",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "checks-update-double-retry",
+      "title": "Unguarded second checks.update re-opens the double-retry",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 160,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-4"
+        }
+      ],
+      "gap": "On BOTH worker paths, the checks.update inside the publish-failure catch is itself unguarded. If it throws (transient GitHub failure while reporting a degraded outcome) the error escapes the catch, the job re-throws, and BullMQ retries the whole pipeline despite it having already produced a usable result — the exact double-retry the two-block split was meant to prevent, one call later.",
+      "evidence": "packages/webhook/src/worker.ts:134-144, 239-249",
+      "provenance": {
+        "doc": "docs/roadmap/backlog.md",
+        "note": "Deferred from Phase 4, item 4"
+      },
+      "origin": "roadmap",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "confidence-on-review-findings",
+      "title": "Confidence is invisible on pull-request findings",
+      "lane": "inventory",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 170,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-4"
+        }
+      ],
+      "works": "Confidence is computed and shown on scan and fix work items.",
+      "gap": "ReviewComment has no confidence column at all, so PR findings show none. Schema column plus UI.",
+      "evidence": "schema.prisma (ReviewComment)",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md",
+        "note": "§4 B3"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "correct-tracking-docs",
+      "title": "Correct the tracking docs that plans are drawn from",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 180,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-4"
+        }
+      ],
+      "gap": "backlog.md records 7 entries open that are closed in code, and build-status-map.md §3 A5 / §4 B2, B8 went stale when the retry worker and internal-token work landed. Every plan is drawn off these files, so a stale entry propagates into the next plan.",
+      "provenance": {
+        "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+        "note": "Stage 4.1-4.2"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "otel-ci-and-tracing-coverage",
+      "title": "Tracing coverage gaps in CI and the webhook",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "someday",
+      "importance": "low",
+      "rank": 50,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-4"
+        }
+      ],
+      "gap": "Webhook /health is not excluded from tracing (the agents' is), so a 5s probe will dominate span volume. CI smoke-boots dist/otel.js and dist/index.js but never dist/otel-worker.js — the boot path that owns service.name=arete-worker and the whole review span tree is unsmoked.",
+      "evidence": ".github/workflows/ci.yml:91, packages/agents/.../server.py:52",
+      "provenance": {
+        "doc": "docs/roadmap/backlog.md",
+        "note": "Phase 1 final review"
+      },
+      "origin": "roadmap",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "otel-span-conventions-drift",
+      "title": "Span names and metrics drift from the spec",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "someday",
+      "importance": "low",
+      "rank": 60,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-4"
+        }
+      ],
+      "gap": "The Python lane emits agent_review:{name} / synthesize_reviews instead of spec §5's agent.review (attr agent.role) / review.synthesize, and no llm.generate span exists. arete.agent.duration has a histogram View registered in both lanes and documented in the skill, but no instrument ever records it. review.publish is wrapped on the PR path and absent on the check_run path. Either rename/record, or amend §5 to match reality — and keep debug-from-telemetry in sync.",
+      "evidence": "orchestrator.py:393,456; init.ts:64; observability.py:152; worker.ts",
+      "provenance": {
+        "doc": "docs/roadmap/backlog.md",
+        "note": "Phase 1 final review, Phase 4 item 2"
+      },
+      "origin": "roadmap",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "password-reset-and-email-verification",
+      "title": "A locked-out user has no recovery path",
+      "lane": "idea",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "next",
+      "importance": "high",
+      "rank": 120,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-4"
+        }
+      ],
+      "gap": "User.emailVerified exists in the schema and is never written. There is no password reset and no email verification, so a user who loses their password loses their account.",
+      "provenance": {
+        "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+        "note": "Stage 4.4"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "pino-log-path-unstamped",
+      "title": "The pino log path is unstamped with issue fingerprints",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "someday",
+      "importance": "low",
+      "rank": 70,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-4"
+        }
+      ],
+      "gap": "otel_exceptions_from_logs_mv and issue_activity_daily read LogAttributes['superlog.issue_fingerprint']; only the span lane is stamped so far, so the log half of those projections cannot group.",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-ridley-closeout.md",
+        "note": "Open, item 2"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "python-fingerprint-decision",
+      "title": "Decide the Python fingerprint question",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 190,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-4"
+        }
+      ],
+      "gap": "Four record_exception sites in packages/agents need the fingerprint attribute; Python's API accepts attributes=, so the mechanical part is trivial. The blocker is that it needs nine ordered regexes ported — a second implementation, which contract §5 forbids. A drifting copy would split arete-agents errors into two groups with no test able to catch it from either side. Honest options: a shared normalization service, a generated port with golden vectors asserted from both languages, or an explicit spec amendment accepting the copy. A second hand-written copy is forbidden.",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-ridley-closeout.md",
+        "note": "Open, item 1"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "review-pr-heavy-no-consumer",
+      "title": "review-pr-heavy queue has a producer and no consumer",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "next",
+      "importance": "high",
+      "rank": 130,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-4"
+        }
+      ],
+      "gap": "PRs with more than 50 changed files are routed to a queue nothing consumes — worker.ts starts a Worker only on the fast queue. Those reviews never run and their traces dead-end. Pre-existing, but it means large PRs silently get no review at all.",
+      "evidence": "webhook-handler.ts:114, backfill.ts:86, worker.ts:311",
+      "provenance": {
+        "doc": "docs/roadmap/backlog.md",
+        "note": "Phase 1 final review"
+      },
+      "origin": "roadmap",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "send-route-work-item-posted",
+      "title": "The send route never advances the work item to posted",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 200,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-4"
+        }
+      ],
+      "gap": "approve moves fixing to staged, but after a successful send the container becomes posted while its work item stays staged. Not visible locally because STAGING_SERVICE_URL is unset and send honestly 503s.",
+      "provenance": {
+        "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+        "note": "Stage 1 recorded findings"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "trends-utc-vs-local-day",
+      "title": "Trend charts are off by one day for most timezones",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 210,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-4"
+        }
+      ],
+      "gap": "lib/trends.ts buckets by LOCAL calendar day while the ClickHouse window is UTC. Every chart in the product is affected for any viewer whose timezone crosses midnight relative to UTC, so the fix needs its own change and its own verification.",
+      "evidence": "packages/dashboard/src/lib/trends.ts",
+      "provenance": {
+        "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+        "note": "Stage 1 recorded findings"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "docker-sandbox-workspace-agent",
+      "title": "Docker sandbox workspace agent — run the PR's tests for real",
+      "lane": "idea",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 220,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-5"
+        },
+        {
+          "programme": "orchestration",
+          "phase": "B"
+        }
+      ],
+      "gap": "The only genuinely missing plan artifact in the repo (workspace.py). Of ~380 symbols declared across 48 plans, this is the one that was never written. It blocks the work-floor Phase B agents.",
+      "provenance": {
+        "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+        "note": "Stage 5.4"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "glass-box-production",
+      "title": "Glass Box in production",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "blocked",
+      "importance": "medium",
+      "rank": 230,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-5"
+        }
+      ],
+      "works": "The SSE feed, provenance banner and auto-refresh work as a dev sidecar.",
+      "gap": "Structurally undeployable without an installationId filter, and inert in production by design today. Spec is awaiting approval — do not build before it is greenlit.",
+      "provenance": {
+        "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+        "note": "Stage 5.2"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "investigations-surface-and-fix-harness",
+      "title": "Investigations surface + tool-calling fix harness",
+      "lane": "idea",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "blocked",
+      "importance": "medium",
+      "rank": 240,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-5"
+        }
+      ],
+      "gap": "Spec is proposed and awaiting user review — confirm intent before spending a week. Includes giving the fix pipeline a tool loop: fix_pipeline.py makes one direct LLM call for a JSON blob, so spec §3's 'tool descriptions ARE the prompt' cannot apply to healing and rubrics necessarily live in the prompt.",
+      "evidence": "docs/superpowers/specs/2026-07-22-investigations-surface-and-agent-harness-design.md",
+      "provenance": {
+        "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+        "note": "Stage 5.1"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "outbound-webhook-management-ui",
+      "title": "Outbound webhook management API + Settings UI",
+      "lane": "inventory",
+      "area": "Built, but unreachable",
+      "level": "soon",
+      "state": "next",
+      "importance": "high",
+      "rank": 140,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-5"
+        }
+      ],
+      "works": "Signing, retry backoff with rescheduling, SSRF-guarded delivery and a delivery log all work, and it already fires on every persisted review. The retry worker now runs.",
+      "gap": "The management API is deliberately unmounted, so nobody can register an endpoint or see a delivery, and nothing surfaces delivery health — you cannot see that a delivery failed, how many attempts remain, or the last error. This is the single unblock for every Slack/Linear/PagerDuty relay.",
+      "evidence": "packages/webhook/src/server.ts:408-414, persistence.ts:239-256",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md",
+        "note": "§3 A2"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "tenant-telemetry-ingest",
+      "title": "Tenant telemetry ingestion platform",
+      "lane": "inventory",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "someday",
+      "importance": "low",
+      "rank": 80,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-5"
+        },
+        {
+          "programme": "observability",
+          "phase": "3"
+        },
+        {
+          "programme": "product",
+          "phase": "P4"
+        }
+      ],
+      "gap": "Two-tier ingest edge, ingest keys, strip-then-stamp tenancy, deterministic fingerprint grouping, rollups, background poller and snapshot history, per-tenant retention and a prompt-content consent model. Deliberately deferred — the current stack observes Kuma itself, not the customer's services. Needs a product decision, not code.",
+      "provenance": {
+        "doc": "docs/roadmap/backlog.md",
+        "note": "Later — Phase 3"
+      },
+      "origin": "roadmap",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "work-floor-phase-b-agents",
+      "title": "Work-floor Phase B agents",
+      "lane": "idea",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "blocked",
+      "importance": "low",
+      "rank": 90,
+      "programmes": [
+        {
+          "programme": "reachability",
+          "phase": "stage-5"
+        },
+        {
+          "programme": "orchestration",
+          "phase": "B"
+        }
+      ],
+      "blockedBy": [
+        "docker-sandbox-workspace-agent"
+      ],
+      "gap": "Repro / root-cause / fix-author / test-author / QA agents. Blocked on the Docker sandbox workspace agent.",
+      "provenance": {
+        "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+        "note": "Stage 5.3"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "account-state-signals-for-new-steps",
+      "title": "Real account-state signals for every new onboarding step",
+      "lane": "idea",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "next",
+      "importance": "high",
+      "rank": 150,
+      "gap": "Each new checklist step (workspace connected, install complete, MCP connected) needs a real getAccountState signal before it may show a checkmark. No fabricated ticks. Existing users must land on the correct new step rather than being reset to the start.",
+      "evidence": "packages/dashboard/src/lib/overview-setup.ts, lib/account-state.ts",
+      "provenance": {
+        "doc": "docs/status/2026-07-20-phase-wrap-up.md"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "connect-workspace-clone-or-folder",
+      "title": "Connect Workspace — clone a repo or select a local folder",
+      "lane": "idea",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "next",
+      "importance": "high",
+      "rank": 160,
+      "gap": "After the GitHub connect step, the user should be able to clone a repo URL OR point at a local folder, so Kuma has the actual working tree it needs for code and telemetry setup. Today this survives only as an honest 'coming soon' sub-step. HARD CONSTRAINT: extend the existing setup — reconcile with GitHub App connect, model connections, and the Sensorium/context-map indexing that already runs on install. Do not greenfield.",
+      "evidence": "lib/overview-setup.ts:76-84",
+      "provenance": {
+        "doc": "docs/status/2026-07-20-phase-wrap-up.md",
+        "note": "Immediate next, item 1"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "kuma-as-mcp-server",
+      "title": "Kuma as an MCP server (the inversion)",
+      "lane": "inventory",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 250,
+      "programmes": [
+        {
+          "programme": "product",
+          "phase": "P3"
+        }
+      ],
+      "gap": "Expose Kuma's findings and review judgment back into the user's coding agent. Only the client half exists today — Kuma can consume third-party MCP servers, but nothing can consume Kuma. This is the 'Connect MCP Kuma to your agent' checklist sub-step.",
+      "evidence": "lib/overview-setup.ts:103-107, packages/agents/.../mcp/manager.py",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md",
+        "note": "§5 C4"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "kuma-install-skills-and-codemap",
+      "title": "Kuma install — skills, code mapping, telemetry wiring",
+      "lane": "idea",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "next",
+      "importance": "high",
+      "rank": 170,
+      "gap": "Connecting a coding agent (Claude Code recommended) should kick off the Kuma install into the user's repo: the Kuma skills, the code graph embedded in the project, and OpenTelemetry wired up. The pieces exist separately (agents skills/loader, the context-map checkout and graph export that already run on install) — this is the flow that composes them.",
+      "evidence": "packages/agents/src/arete_agents/skills/loader.py, context_map/graph_export.py",
+      "provenance": {
+        "doc": "docs/status/2026-07-20-phase-wrap-up.md",
+        "note": "Immediate next, item 1"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "mcp-servers-no-surface",
+      "title": "MCP servers are consume-only and CLI-only",
+      "lane": "inventory",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 260,
+      "works": "Kuma can consume third-party MCP servers, driven from the CLI.",
+      "gap": "No dashboard surface to add or list them.",
+      "evidence": "packages/agents/src/arete_agents/mcp/manager.py",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md",
+        "note": "§4 B6"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "mcp-setup-from-agent",
+      "title": "MCP setup runnable from an agent here, not the IDE",
+      "lane": "idea",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "next",
+      "importance": "high",
+      "rank": 180,
+      "blockedBy": [
+        "mcp-token-plaintext-and-simulated-oauth",
+        "mcp-servers-no-surface"
+      ],
+      "gap": "The setup should run from an agent inside Kuma rather than requiring the user to do it in their IDE. Depends on the MCP surface being real — today there is no dashboard surface to add or list MCP servers, and the OAuth exchange is simulated.",
+      "provenance": {
+        "doc": "docs/status/2026-07-20-phase-wrap-up.md",
+        "note": "Immediate next, item 1"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "setup-prompt-workflow",
+      "title": "The prompt to agent to MCP/skill setup workflow",
+      "lane": "idea",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "next",
+      "importance": "high",
+      "rank": 190,
+      "gap": "The setup prompt itself — what Kuma hands the user's coding agent to run, and how the result is verified back. Named as a 'coming soon' sub-step on the onboarding checklist with nothing behind it. The user holds reference data on how this is done.",
+      "evidence": "lib/overview-setup.ts:76-84",
+      "provenance": {
+        "doc": "docs/status/2026-07-20-phase-wrap-up.md",
+        "note": "Immediate next, item 1"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "ci-for-untested-packages",
+      "title": "Four packages have no CI job",
+      "lane": "idea",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 270,
+      "gap": "orchestration, topology, net-guard and db have test suites that CI never runs, so a regression in any of them lands green.",
+      "provenance": {
+        "doc": "docs/status/2026-07-20-phase-wrap-up.md",
+        "note": "Immediate next, item 5"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "deploy-pipeline-and-prod-runbook",
+      "title": "Deploy pipeline, hosted Postgres, production runbook",
+      "lane": "idea",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "next",
+      "importance": "high",
+      "rank": 200,
+      "gap": "There is no deploy path. Everything runs on a local dogfood server against a shared local Postgres. Needs a pipeline, a hosted database, and a runbook for the three services (dashboard, webhook, agents).",
+      "provenance": {
+        "doc": "docs/status/2026-07-20-phase-wrap-up.md",
+        "note": "Immediate next, item 5"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "google-oauth-client-missing",
+      "title": "The Google OAuth client no longer exists",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "blocked",
+      "importance": "medium",
+      "rank": 280,
+      "blockedBy": [
+        "ext:the Google OAuth client was deleted upstream in Google Cloud Console"
+      ],
+      "gap": "Deleted upstream in Google Cloud Console. Email/password login is the working path. Either recreate the client or remove the sign-in option rather than leaving a button that cannot succeed.",
+      "provenance": {
+        "doc": "docs/handoff/2026-07-22-orchestration-briefs.md",
+        "note": "§1"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "lane-to-preview-governance",
+      "title": "Feature commits keep bypassing the integration gate",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 290,
+      "gap": "Commits have repeatedly landed directly on a serving branch instead of going lane to integration-preview to a reviewed merge, each time requiring a reverse-merge and suite repair. Duplicate parallel work has also shipped three times (agent-statuses, the healing loop, model switching). A process gap, not a code gap — but it costs real hours.",
+      "provenance": {
+        "doc": "docs/status/2026-07-20-phase-wrap-up.md",
+        "note": "Manual intervention, item 3"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "managed-env-template",
+      "title": "Managed environment template",
+      "lane": "idea",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "someday",
+      "importance": "low",
+      "rank": 100,
+      "gap": "Env setup is hand-rolled per worktree. A template that a new environment can be provisioned from, covering OAuth, the internal token, encryption keys and service URLs.",
+      "provenance": {
+        "doc": "docs/status/2026-07-20-phase-wrap-up.md"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "root-aggregate-test-script",
+      "title": "No single command runs every suite",
+      "lane": "idea",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "someday",
+      "importance": "low",
+      "rank": 110,
+      "gap": "Each package is invoked separately, which is how a red suite hid behind a green one before. One root script that runs everything and reports per-package.",
+      "provenance": {
+        "doc": "docs/status/2026-07-20-phase-wrap-up.md",
+        "note": "Immediate next, item 5"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "typed-debt-ratchets",
+      "title": "Lint ratchets held at warn so CI can be green",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "someday",
+      "importance": "low",
+      "rank": 120,
+      "gap": "packages/dashboard holds 51 no-explicit-any at warn; packages/webhook holds 78 no-console at warn and turns no-explicit-any off entirely at the Octokit boundary; packages/agents sets ruff line-length to 120. Each is a deliberate, documented ratchet — flip back to error once paid. Also descoped and never rescheduled: vitest/pytest coverage reporting, advisory only.",
+      "provenance": {
+        "doc": "docs/roadmap/backlog.md",
+        "note": "Typed debt"
+      },
+      "origin": "roadmap",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "anthropic-catalog-default-tier",
+      "title": "New Anthropic connections default to the slowest model",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 300,
+      "works": "Fast tiers exist and the agent role defaults were re-tiered for speed (chat/quality/test_coverage/performance/ci = haiku, security/business_logic/deployment_safety/synthesizer = sonnet).",
+      "gap": "The connect UI still lists claude-opus-4-8 first, so a new connection gets the slowest model by default — and the BYO path runs ALL roles on the one model the user picked, so that choice is not softened by the role tiers.",
+      "evidence": "packages/dashboard/src/lib/model-catalog.ts:56",
+      "provenance": {
+        "doc": "docs/status/2026-07-20-phase-wrap-up.md",
+        "note": "Immediate next, item 3"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "public-api-and-keys",
+      "title": "Public API & API keys",
+      "lane": "inventory",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "someday",
+      "importance": "low",
+      "rank": 130,
+      "programmes": [
+        {
+          "programme": "product",
+          "phase": "P3"
+        }
+      ],
+      "gap": "No key issuance, no read or management REST surface.",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md",
+        "note": "§5 C2"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "relays-slack-linear-pagerduty",
+      "title": "Slack / Linear / PagerDuty relays",
+      "lane": "inventory",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "blocked",
+      "importance": "medium",
+      "rank": 310,
+      "programmes": [
+        {
+          "programme": "product",
+          "phase": "P2"
+        }
+      ],
+      "blockedBy": [
+        "outbound-webhook-management-ui"
+      ],
+      "gap": "Each relay is a thin consumer once outbound webhook management lands. The retry worker is already running, so this is the last dependency.",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md",
+        "note": "§5 C1"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "review-pr-url-and-reason-codes",
+      "title": "Review.prUrl + resolve / noise reason codes",
+      "lane": "idea",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "someday",
+      "importance": "low",
+      "rank": 140,
+      "programmes": [
+        {
+          "programme": "product",
+          "phase": "P1"
+        }
+      ],
+      "gap": "A review does not store a link back to its pull request, and resolving or silencing a finding records no reason.",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md",
+        "note": "§5 C5"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "review-scope-filters",
+      "title": "Review scope filters",
+      "lane": "inventory",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 320,
+      "programmes": [
+        {
+          "programme": "product",
+          "phase": "P1"
+        }
+      ],
+      "gap": "No way to say which paths Kuma should or should not review. Every PR is reviewed whole.",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md",
+        "note": "§5 C3"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "self-serve-upgrade-billing",
+      "title": "No self-serve upgrade",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 330,
+      "works": "Real billing usage is shown against the free-tier limit, and the absence of an upgrade path is stated plainly rather than faked.",
+      "gap": "A user who hits the limit cannot pay. Stripe groundwork exists in packages/webhook.",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md",
+        "note": "§1"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "telemetry-freshness-poller",
+      "title": "Telemetry snapshots go stale with no indication",
+      "lane": "inventory",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 340,
+      "programmes": [
+        {
+          "programme": "observability",
+          "phase": "3"
+        }
+      ],
+      "href": "/grid",
+      "works": "The grid reads a real telemetry snapshot per repository.",
+      "gap": "Snapshots are captured only during a review and there is no background poller, so a quiet repo shows arbitrarily stale data with nothing but fetchedAt to say so. TelemetrySnapshotRecord is a latest-value row, not a history table.",
+      "evidence": "schema.prisma:367-374",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md",
+        "note": "§4 B5"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "tracing-and-log-search",
+      "title": "OpenTelemetry is 95% dark to the UI",
+      "lane": "inventory",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "someday",
+      "importance": "medium",
+      "rank": 350,
+      "programmes": [
+        {
+          "programme": "observability",
+          "phase": "2b"
+        }
+      ],
+      "works": "Full OpenTelemetry instrumentation flows into ClickHouse and Jaeger, and Jaeger trace deep-links exist.",
+      "gap": "Exactly one metric reaches the UI. No trace view, no span drill-down, no log search. This is what blocks telemetry-fed investigations — the healing agent cannot read an incident's own trace context.",
+      "evidence": "packages/dashboard/src/lib/queries.ts getAgentEventsPerMinute",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-build-status-map.md",
+        "note": "§4 B2"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "parked-anthropic-zero-balance",
+      "title": "The Anthropic account is at $0",
+      "lane": "idea",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "blocked",
+      "importance": "critical",
+      "rank": 70,
+      "blockedBy": [
+        "ext:the Anthropic account is at $0 - add credits or run on Ollama"
+      ],
+      "gap": "Not a code problem and not fixable from here. Agent work runs on local Ollama until credits are added. Several other parked items are gated on this, because they need a funded key to measure. A lost provider key must be regenerated — providers do not re-issue them.",
+      "provenance": {
+        "doc": "docs/handoff/2026-07-22-orchestration-briefs.md",
+        "note": "§1"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "parked-clickhouse-ttl-verification",
+      "title": "ClickHouse TTLs are configured but unverified live",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "blocked",
+      "importance": "low",
+      "rank": 150,
+      "blockedBy": [
+        "ext:needs real aged data - every row here is hours old"
+      ],
+      "gap": "30d raw / 90d rollup with ttl_only_drop_parts=1 is correct on paper, but every row in this ClickHouse is hours old — nowhere near the retention window. Needs real aged data to confirm parts actually drop.",
+      "provenance": {
+        "doc": "docs/roadmap/backlog.md",
+        "note": "efficiency review"
+      },
+      "origin": "roadmap",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "parked-code-map-browser-qa",
+      "title": "Browser QA on the code-map reading panel",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "blocked",
+      "importance": "low",
+      "rank": 160,
+      "blockedBy": [
+        "ext:a human browser pass a unit suite cannot stand in for"
+      ],
+      "gap": "A real browser pass that a unit suite cannot stand in for. A human task, not an agent one.",
+      "provenance": {
+        "doc": "docs/status/2026-07-20-phase-wrap-up.md"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "parked-error-severity-log",
+      "title": "End-to-end ERROR-severity log path is unexercised",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "blocked",
+      "importance": "low",
+      "rank": 170,
+      "blockedBy": [
+        "ext:needs an ERROR-severity row to exist; the dashboard exports traces only"
+      ],
+      "gap": "otel_logs has zero rows at ERROR+ because the dashboard exports traces only. Blocked on such a row existing, not on code — the SQL, timestamp format and column projection are already verified against real rows at a lowered threshold.",
+      "provenance": {
+        "doc": "docs/status/2026-07-22-ridley-closeout.md"
+      },
+      "origin": "audit",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "parked-haiku-fix-authoring-adequacy",
+      "title": "Is haiku adequate to AUTHOR fixes?",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "blocked",
+      "importance": "medium",
+      "rank": 360,
+      "blockedBy": [
+        "parked-anthropic-zero-balance",
+        "ext:needs a funded provider key plus a regression corpus to measure"
+      ],
+      "gap": "Fix authoring reuses each dimension's configured REVIEW tier, and performance/quality/test_coverage default to haiku. Haiku's original job is critiquing a diff, not generating a complete file replacement. Do NOT change the tier blind: needs a funded key plus a regression corpus of known-fixable issues to measure haiku-vs-sonnet patch pass rate first.",
+      "evidence": "fix_pipeline.py:313, config.py:49-51",
+      "provenance": {
+        "doc": "docs/roadmap/backlog.md",
+        "note": "Deferred from Phase 3, item 1"
+      },
+      "origin": "roadmap",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "parked-mcp-rfc8414-discovery",
+      "title": "MCP RFC 8414 discovery + dynamic client registration",
+      "lane": "idea",
+      "area": "Not built yet",
+      "level": "soon",
+      "state": "blocked",
+      "importance": "low",
+      "rank": 180,
+      "blockedBy": [
+        "ext:speculative until a real MCP server with no static token_url needs it"
+      ],
+      "gap": "Speculative until a real MCP server that hands out no static token_url needs it, and nothing in this environment validates such a flow.",
+      "provenance": {
+        "doc": "docs/roadmap/backlog.md",
+        "note": "Deferred from Phase 4, item 1"
+      },
+      "origin": "roadmap",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "parked-review-comment-indexes",
+      "title": "ReviewComment index choices",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "needs-decision",
+      "importance": "low",
+      "rank": 190,
+      "blockedBy": [
+        "ext:needs EXPLAIN ANALYZE at scale before any index is added"
+      ],
+      "gap": "May still be missing indexes on severity, category and noiseState. The reviewId index cut 25-66% off the four hottest queries at synthetic scale, but that number entangles the join index with these per-column filters. Measure each individually with EXPLAIN ANALYZE before adding any — do not guess.",
+      "provenance": {
+        "doc": "docs/roadmap/backlog.md",
+        "note": "efficiency review"
+      },
+      "origin": "roadmap",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "parked-review-concurrency-tuning",
+      "title": "Review LLM fan-out is unbounded per review",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "blocked",
+      "importance": "medium",
+      "rank": 370,
+      "blockedBy": [
+        "parked-anthropic-zero-balance",
+        "ext:needs a real large PR and a funded key to measure"
+      ],
+      "gap": "LangGraph fans out one node per (file x agent) pair. A 20-file PR reviewed by 6 agents is ~120 concurrent LLM calls for ONE review; five concurrent reviews is up to ~600 simultaneous provider calls. The real throughput bottleneck is likely the provider's rate limit, not REVIEW_QUEUE_CONCURRENCY=5. The max_concurrency default is also untuned. Both need a real large PR and a funded key to measure.",
+      "evidence": "orchestrator.py:353-381",
+      "provenance": {
+        "doc": "docs/roadmap/backlog.md",
+        "note": "efficiency review"
+      },
+      "origin": "roadmap",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "parked-review-job-double-retry",
+      "title": "Review job retries duplicate the per-agent retry",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "blocked",
+      "importance": "medium",
+      "rank": 380,
+      "blockedBy": [
+        "ext:needs a real induced transient provider failure mid-review"
+      ],
+      "gap": "processGitHubPullRequest re-throws any pipeline failure and BullMQ's attempts:3 then re-runs the ENTIRE multi-file multi-agent review from scratch, on top of each agent's own retry. Needs a real induced transient provider failure mid-review to count the actual duplicated calls. Likely fix once measured: distinguish 'some agents failed, partial result produced' from 'the pipeline crashed for an infra reason'.",
+      "evidence": "packages/webhook/src/worker.ts:94-113, queue.ts:152-157",
+      "provenance": {
+        "doc": "docs/roadmap/backlog.md",
+        "note": "efficiency review"
+      },
+      "origin": "roadmap",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    },
+    {
+      "id": "parked-signals-visibly-render",
+      "title": "Make Signals visibly render",
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "blocked",
+      "importance": "low",
+      "rank": 200,
+      "blockedBy": [
+        "ext:needs a real Alertmanager alert - synthetic seeds are forbidden"
+      ],
+      "gap": "Needs a real Alertmanager alert. Synthetic seeds are forbidden — seeding one would be fabricated data on the exact surface whose job is to be trustworthy.",
+      "provenance": {
+        "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
+        "note": "§3"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "seed"
+    }
+  ]
+}
