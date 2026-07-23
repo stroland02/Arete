@@ -90,16 +90,14 @@
         "scripts/smoke-localhost.mjs",
         ".claude/skills/land-on-main/**",
         "infra/**",
-        ".github/workflows/**",
-        "packages/webhook/src/scan/**",
-        "packages/webhook/src/review-bridge.ts"
+        ".github/workflows/**"
       ],
       "avoid": [],
       "queue": [],
       "brief": "docs/handoff/2026-07-23-parallel-agent-workflow.md",
       "$note": "Owning nothing is the point. A lane that both builds and signs off on its own work is not verification. It files findings against the tracker and against whichever lane owns the file; it does not fix them.",
-      "heartbeat": "2026-07-23T12:53:35Z",
-      "lastCommit": "47802aa"
+      "heartbeat": "2026-07-23T12:55:16Z",
+      "lastCommit": "4933050"
     }
   ]
 }
