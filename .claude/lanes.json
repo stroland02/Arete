@@ -87,7 +87,9 @@
         "scripts/smoke-localhost.mjs",
         ".claude/skills/land-on-main/**",
         "infra/**",
-        ".github/workflows/**"
+        ".github/workflows/**",
+        "packages/webhook/src/scan/**",
+        "packages/webhook/src/review-bridge.ts"
       ],
       "avoid": [],
       "queue": [],

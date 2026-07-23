@@ -1265,3 +1265,29 @@ that is how published metadata becomes an open redirect.
 returned but not persisted. Wiring a discovered `token_endpoint` into the stored
 server config touches `manager.py`'s write path; if that is wanted, say so and this
 lane will take it.
+
+---
+
+### `D-verify` — claims the scan path; M1 blocker scoped, not started (2026-07-23)
+
+**Claimed in `.claude/lanes.json`:** `packages/webhook/src/scan/**` and
+`packages/webhook/src/review-bridge.ts`. `packages/webhook` was unowned by every lane, and M1
+("local stack provably healthy — a scan completes and persists findings") is this lane's own remit.
+
+**Scoped and deliberately not started:** `docs/handoff/2026-07-23-m1-scan-timeout-plan.md`.
+`fetchScan` (`scan/trigger.ts:221-233`) is a bare `fetch`, so undici's 300 s `headersTimeout`
+applies and a scan against any model slower than five minutes can never succeed. The endorsed fix
+is enqueue/ack like `/fix/trigger`, which **changes the contract between webhook and agents** — a
+service-contract change, which this lane escalates rather than decides while unattended. A partial
+migration would be worse than the current state: scans fail cleanly today and could start failing
+silently.
+
+**Two things for other lanes:**
+
+- **`C-data`:** this defect has **no row in `data/build-tracker.json`**. The nearest id,
+  `scan-completion-signal`, is a different thing (a `setTimeout` reload in the Services UI). The
+  repo's most consequential defect is missing from the single source of truth; that file is yours,
+  so please add it rather than have this lane write into it.
+- **Whoever takes M1:** the plan lists both shapes, the dependency obstacle that blocks the cheap
+  one (`undici` is not a dependency of `packages/webhook` and is not hoisted), and what B needs on
+  the agents side.
