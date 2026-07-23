@@ -22,8 +22,22 @@ selectors in `src/lib/build-tracker.ts`; never re-derive its rules in a componen
 - In development, `/build-status` can add and remove entries; it writes back to this file,
   so the change arrives as a reviewable git diff.
 
-`src/lib/feature-readiness.ts` is the retired predecessor — nothing imports it. Do not add
-to it, and do not treat it as current.
+`src/lib/feature-readiness.ts` was the predecessor. It is **deleted** — it had drifted into a
+second, stale answer to the same question, which is the failure the tracker exists to prevent.
+Git has what it used to claim, if you need it.
+
+## Reading the tracker
+
+- `isOpen(item)` is the test for "still real work" — neither `shipped` nor `dropped`.
+- `focusRail(tracker, n)` answers *what next*, across both lanes, by importance then rank.
+- `resolveBlockers(item, tracker)` turns `blockedBy` ids into titles. It returns an `"unknown"`
+  entry for an id nothing matches rather than filtering it out — a broken reference must not
+  make a blocked item look unblocked.
+- `nextRank(tracker)` is how a new row gets a rank. Ranks are sparse (step of 10) so inserting
+  between two rows never renumbers the rest.
+- **Removing an item means `state: "dropped"` with a `droppedAt` and a `droppedReason`**, not
+  deletion — for anything except a row a person added by hand. Dropped rows leave both lanes and
+  every count derived from them, and are shown by `droppedItems()`.
 <!-- END:nextjs-agent-rules -->
 
 # NEVER run `next build` into the dev server's directory

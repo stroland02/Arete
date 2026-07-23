@@ -9,6 +9,7 @@ import {
   byImportance,
   ideaGroups,
   ideas,
+  isVerified,
   loadTracker,
   programmeProgress,
   readinessTotals,
@@ -37,6 +38,7 @@ export default function BuildStatusPage() {
   const totals = readinessTotals(tracker);
   const groups = ideaGroups(tracker);
   const ideaCount = ideas(tracker).length;
+  const verifiedCount = tracker.items.filter(isVerified).length;
 
   return (
     <PageReveal className="space-y-8">
@@ -110,8 +112,16 @@ export default function BuildStatusPage() {
 
       <RevealItem>
         <p className="text-xs text-content-muted">
-          Seeded {tracker.meta.seededAt} from {tracker.meta.seededFrom.length} documents. Nothing
-          on this page has been verified against running code — every row says so.
+          Seeded {tracker.meta.seededAt} from {tracker.meta.seededFrom.length} documents.{" "}
+          {/*
+            Counted, not asserted. This read "nothing on this page has been
+            verified" — which stopped being true the moment the first row was
+            checked against the code, and a page whose whole point is honest
+            self-reporting cannot carry a claim that decays on its own.
+          */}
+          {verifiedCount === 0
+            ? "Nothing on this page has been verified against running code — every row says so."
+            : `${verifiedCount} of ${tracker.items.length} rows have been checked against running code; every other row says “Never verified” and means it.`}
         </p>
       </RevealItem>
     </PageReveal>

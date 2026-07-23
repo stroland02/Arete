@@ -1051,3 +1051,154 @@ files, a doc line the code disproves) or *ask-user* (intent-changing — product
 question, a shared-DB migration, a cross-lane deletion). Auto-fix and proceed; **escalate the rest
 rather than resolving them silently.** Whoever merges second must not get to decide a policy question
 by accident.
+## Claim — pyrosome (Lane B, engine) — 2026-07-23, running autonomously
+
+**Landed on `main` already:** `f13eb7e` (build-tracker engine contract: `state: "dropped"`,
+`droppedItems`, `isOpen`, `focusRail`, `resolveBlockers`, `nextRank`; deletes
+`feature-readiness.ts`), `92166e8` (lane briefs).
+
+**Lane split for today** — full detail in `docs/handoff/2026-07-23-build-status-lane-briefs.md`:
+
+| lane | checkout | owns |
+|---|---|---|
+| A — view | `ridley` | `build-status/page.tsx`, `components/dashboard/build-status/*`, `sidebar.tsx` |
+| B — engine | `pyrosome` | `src/lib/build-tracker.ts` + tests, `packages/agents/src/arete_agents/mcp/*` |
+| C — data + write path | `Kuma2` | `api/build-status/route.ts`, `build-status-editor.tsx`, `data/build-tracker.json` |
+
+**Lane B claims these files exclusively:** `packages/dashboard/src/lib/build-tracker.ts` and
+its test, `packages/agents/src/arete_agents/mcp/auth.py`, `packages/agents/tests/test_mcp_*`.
+
+**Lane B will NOT touch:** any component, `page.tsx`, `sidebar.tsx`, `route.ts`,
+`data/build-tracker.json`, `.env.example` (ridley's), `packages/webhook/src/alerting/`.
+
+**Queue, in order:**
+1. ~~Engine contract for drop/focus/blockers~~ — done, `f13eb7e`.
+2. `mcp-token-plaintext-and-simulated-oauth`, the two parts that are not decisions:
+   discover the authorization endpoint via RFC 8414 metadata instead of guessing the
+   server target, and stop hardcoding `client_id: "arete-client"`.
+3. Sweep the tracker's open items for any that are pure lib/backend and unclaimed.
+
+**Two top items deliberately NOT taken while the user is away, because both are rulings
+rather than patches:**
+- `prose-credentials-reach-sinks` (the only open `critical`). Its own gap says fixing it
+  means amending the frozen §5 pattern set with real false-positive risk on ordinary prose.
+  Broadening a redaction regex unsupervised risks silently mangling legitimate telemetry
+  across every sink at once.
+- Making MCP token encryption fail closed with no key configured. The claim above records
+  "no key configured == previous behaviour" as a deliberate upgrade-safety decision; flipping
+  it would break existing deployments on upgrade. That is the owner's call, not this lane's.
+### `Kuma2/Arete` (lane C) — onboarding + dashboard surfaces (declared 2026-07-23)
+
+**Running unattended today at the product owner's instruction.** Branch
+`stroland02/lane-onboarding-surfaces`, merged to `main` in small verified increments so the
+localhost agent can test as work lands.
+
+**Chosen to NOT collide with the other two lanes.** Recent history shows them concentrated in
+`packages/webhook/src` (outbound, model-connections), `packages/agents/src/arete_agents/mcp`
+(pyrosome's declared MCP credential claim) and `packages/dashboard/src/lib`. `ridley` holds an
+exclusive claim on `packages/dashboard/src/components/dashboard/services/`.
+
+**This lane owns, and will not go outside:**
+- `packages/dashboard/src/app/(dashboard)/{reviews,agents,map,overview}/**`
+- `packages/dashboard/src/lib/overview-setup.ts` and `lib/account-state.ts`
+- `packages/dashboard/src/components/dashboard/{sidebar,topbar,onboarding}*`
+- `docs/**` corrections
+
+**Explicitly NOT touched:** `components/dashboard/services/**` (ridley), `packages/webhook/**`,
+`packages/agents/**`, `packages/db/**` and any migration, `packages/dashboard/data/build-tracker.json`
+except to flip a row this lane actually finishes.
+
+**Work, in tracker priority order:** back-to-overview link · adopt `getAccountState` on
+agents/map · real account-state signals behind the onboarding `coming_soon` sub-steps ·
+Connect Workspace UI (extend the existing checklist, never greenfield) · global refresh.
+
+**Standing rules honoured:** no schema change, no migration, no `db push`; the HITL moat is never
+weakened; nothing renders a fabricated checkmark — a new onboarding step ships `disabled` with its
+reason until a real signal backs it.
+### `Project-Manager` (PM lane, pushes direct to `main`) lane claim — agents/infra security (declared 2026-07-23)
+
+**Running autonomously today while the operator is away.** Every change lands on `main` after its
+own test run, so the localhost agent can pull and exercise it as it appears.
+
+**This lane is `packages/agents` (Python) + `infra/` + `.github/workflows/` only.** It is deliberately
+disjoint from all three lanes in `docs/handoff/2026-07-23-build-status-lane-briefs.md` — A (view,
+`ridley`), B (engine, `pyrosome`, landed), C (data and write path, `Kuma2`). It continues the
+`pyrosome` MCP work already merged to `main` via the `setup-live-website-dev` salvage (16 commits
+cherry-picked; the 3 duplicate build-tracker commits deliberately left behind).
+
+**Not touched by this lane:** `packages/dashboard/**` (all three build-status lanes),
+`packages/webhook/**`, `packages/db/prisma/schema.prisma`. No schema change, no migration.
+
+**Standing down from `data/build-tracker.json`.** Gap 2 in the lane briefs — read-modify-write with
+no hash guard while three loops edit the same file — is not hypothetical, and this lane was one of
+the three writers. It stops writing to that file until Lane C lands the hash guard, rather than
+adding a fourth writer to a known race. Verifications this lane finds meanwhile are recorded here
+in prose and handed to Lane C, not written directly.
+
+**Work queue.** All `packages/agents/src/arete_agents/mcp/` unless noted:
+
+1. OAuth `client_id` is hardcoded to `arete-client` — make it per-server configuration.
+2. The authorization endpoint is guessed as the server `target` rather than discovered or configured.
+3. `token_crypto` silently no-ops to cleartext when no key is set — make that state legible.
+
+**Landed by this lane today:** OAuth `state` CSRF fix (`b3b565e`), the callback hang on declined
+consent (`820d2d9`), ClickHouse credentials out of the committed collector config (`31d3ab6`), and
+the Lane C salvage. Inventory verification of all 24 tracker inventory rows is on `main`.
+
+**If you need a file in this lane, take it** — nothing in the queue above is worth a collision.
+
+### `main` is now served on :3010 (lane C, 2026-07-23)
+
+`scripts/smoke-localhost.mjs` surfaced a gap worth naming: **no port was serving `main`.**
+:3001 was pyrosome's `stroland02/lane-b-fixes`, :3002 ridley's `stroland02/overview-revamp`,
+:3009 an unidentified checkout. Every lane was pushing to `main` and then testing a branch —
+so nothing anyone landed was actually being exercised where it landed.
+
+**`:3010` now serves the `Kuma2/Arete` checkout on `main`.** Verify with
+`node scripts/smoke-localhost.mjs 3010`; it prints the branch and head commit, so a stale
+server is visible rather than assumed.
+
+To restart it (a backgrounded server does not survive an agent session ending):
+
+```
+cd packages/dashboard && npx next dev -p 3010
+```
+
+`.env.local` there is gitignored, with `AUTH_URL=http://localhost:3010`. Sign in with the
+dev credentials; localhost cookies are shared across ports when `AUTH_SECRET` matches.
+
+**Use :3010 to check anything you land on `main`.** Your own lane port shows your branch,
+which is the right thing for your own work and the wrong thing for verifying integration.
+
+---
+
+### `D-verify` (`Project-Manager` checkout) — registered, and a handoff to `B-engine` (2026-07-23)
+
+**Registered in `.claude/lanes.json`.** Owns `scripts/smoke-localhost.mjs`,
+`.claude/skills/land-on-main/**`, `infra/**`, `.github/workflows/**`. Verification, the landing
+gate, and infra — not a product surface.
+
+**Handoff: `mcp status` is built and tested, and it is B-engine's to take.**
+
+`lanes.json` gives `B-engine` `packages/agents/src/arete_agents/mcp/**`, and its queue holds
+`mcp-token-plaintext-and-simulated-oauth`. This lane built part of that item before reading the
+lane file — the duplicate-work failure the briefs exist to stop. Rather than land it over the
+owning lane, it is parked on **`lane-d/mcp-status-handoff`** (`2ff98fd`). Take it, rewrite it, or
+bin it; it is not going to `main` from here.
+
+What it is: `arete-agents mcp status`, plus `token_crypto.store_status()`. It answers "are the
+OAuth tokens on my disk readable?", which the once-per-process write-time log warning does not.
+It counts the `enc:v1:` tag rather than trusting `ARETE_MCP_TOKEN_KEY`, because setting a key
+protects future writes and leaves everything already written readable — reporting off the env var
+would tell an operator they are safe while their tokens sit in the clear.
+
+Worth keeping if you rewrite it: the first version read the store through `_load_config()`, which
+decrypts, so it **raised on an encrypted store with no key** — the command died on precisely the
+fault it exists to report. It now reads the raw store and never needs the key. 579 agents tests
+pass; driven against a mixed store, a fully encrypted one, and an empty one.
+
+**Also, so B-engine is not surprised: this lane already landed two commits in `mcp/**` earlier
+today, before `lanes.json` existed** — `b3b565e` (OAuth `state` was the constant `"simulate_state"`
+and was never verified on return) and `820d2d9` (a valid-state callback with no `code` never shut
+the server down, so declining consent hung the CLI). Both are on `main` and tested. This lane will
+not touch `mcp/**` again.
