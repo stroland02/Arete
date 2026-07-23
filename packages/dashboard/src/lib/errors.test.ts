@@ -22,11 +22,34 @@ import { resetPlatformInstallationDiagnostics } from './platform-installation';
 const PLATFORM = 'inst-platform';
 const CUSTOMER = 'inst-customer';
 
-/** ISO-8601 UTC, exactly the shape the SQL's formatDateTime('%FT%TZ') emits. */
+/** Frozen at module load so two calls with the same arguments always return the
+ *  identical instant — several assertions compare a row's timestamp against a
+ *  second call of this helper, which a live `new Date()` would make racy. */
+const NOW = new Date();
+
+/** "N days ago at `hour`", rendered as the ISO-8601 UTC string the SQL's
+ *  formatDateTime('%FT%TZ') emits.
+ *
+ *  The day offset and hour are applied on the LOCAL calendar, because that is
+ *  the frame the code under test bins by: `bucketByDay` (lib/trends.ts) derives
+ *  its buckets from `getFullYear/getMonth/getDate`, i.e. local days. Doing the
+ *  arithmetic in UTC instead made every assertion depend on the machine's
+ *  offset from UTC and on the time of day — a "today" event built at 12:00Z is
+ *  in the FUTURE for the whole 00:00–12:00Z half of each day, which drops it
+ *  out of both the daily buckets and every window that runs up to now. The
+ *  suite then went red for half of each day with nothing wrong in the product.
+ *
+ *  (That local-vs-UTC split is itself a real, if minor, product inconsistency:
+ *  the ClickHouse window is UTC while the bucketing is local. It is recorded as
+ *  its own item rather than changed here — it would shift every trend chart.)
+ *
+ *  The clamp guarantees the result is never in the future even if `hour` is
+ *  later than the current local hour. */
 function isoDaysAgo(days: number, hour = 12): string {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() - days);
-  d.setUTCHours(hour, 0, 0, 0);
+  const d = new Date(NOW);
+  d.setDate(d.getDate() - days);
+  d.setHours(hour, 0, 0, 0);
+  if (d.getTime() > NOW.getTime()) d.setTime(NOW.getTime() - 60_000);
   return d.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
