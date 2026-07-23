@@ -600,3 +600,33 @@ progress — so a slow run is *slow*, not *failed*.
 answers 503 until a keyset is added to all three processes. And `uv run --env-file` **fails to parse
 this `.env` at all** (it chokes on the escaped multi-line `GITHUB_PRIVATE_KEY` and loads nothing
 silently), so the agents service must receive those vars explicitly rather than via `--env-file`.
+
+## Discovered 2026-07-23 — PR reviews have NEVER worked: octokit.rest is undefined
+
+**This is why the Overview dashboards are blank**, and it is a deeper cause than "no PR event
+happened." A PR review has been ATTEMPTED and fails every time, so `Review`/`ReviewComment` stay at 0
+and every review-derived surface (Pull requests reviewed, Critical issues caught, Reviews this week,
+Review Activity, Reviews over time, Recent reviews) renders its honest empty state.
+
+**Root cause, traced end to end:**
+- `createApp()` (`packages/webhook/src/github-auth.ts:5`) builds `new App({...})` from `@octokit/app`
+  v15; its `getInstallationOctokit` returns a **bare `@octokit/core` Octokit with no REST plugin**.
+- `fetchPRContext` (`pr-fetcher.ts:113`) — and **24 call sites across the webhook** — call
+  `octokit.rest.pulls.get` / `.pulls.list` / `.repos.getContent`. `octokit.rest` is `undefined`, so
+  the first call throws `TypeError: Cannot read properties of undefined (reading 'pulls')` before any
+  review logic runs. Confirmed by a standalone probe AND the live review worker.
+
+**The fix (webhook lane — needs a shared dependency, so NOT patched here):**
+- Add `@octokit/plugin-rest-endpoint-methods` (not currently in the store) and build the App with a
+  rest-enabled Octokit: `App.defaults({ Octokit: Octokit.plugin(restEndpointMethods) })` in
+  `createApp` — one point of change covers all 24 sites.
+- No-new-dep alternative: convert the `.rest.*` calls to `octokit.request('GET /repos/...')` (works on
+  bare core Octokit) — but that is 24 edits, not 1.
+
+**Not fixed by A-view:** `packages/webhook` is not the dashboard lane, and this needs a shared-lockfile
+dependency add — both escalate-not-patch. Should be **critical**: the product's named feature has
+never once succeeded here.
+
+**Verify the fix:** a real open PR (#1, head 9a577c4b) exists on the connected repo. Enqueue a review
+for it with the worker under a correct env (`node --env-file`, which parses the multi-line key that
+bash-sourcing truncates), and confirm a `Review` row lands and Overview populates.
