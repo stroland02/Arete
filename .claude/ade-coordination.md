@@ -737,3 +737,53 @@ on its rows.
 **Still open and NOT claimed by `ridley`** (so no one blocks on this lane): roadmap 2.2 (Agents layer
 inside Services), 2.3 (blocked by 2.2 — retiring the nav first is a regression), 2.4 and 4.5 (both
 need `packages/db` schema in another lane), 4.4 (needs email infrastructure), and all of Stage 5.
+
+---
+
+### ⚠️ URGENT (2026-07-23, `ridley`) — `stroland02/setup-live-website-dev` is 20 commits ahead of main and is NOT merged
+
+**Nothing is lost.** Every commit below is pushed to `origin`. This entry exists because the work is
+*invisible from `main`*, and at least one item has already been built twice as a result.
+
+The user reported a localhost that had "way more features … the code map actually working … setup
+complete", then appeared to revert. Two independent causes, both now understood:
+
+1. **Port roulette.** `"dev": "next dev"` pins no port; Next defaults to 3000 and auto-increments.
+   With four worktrees running dev servers, `:3002` was served by whichever one started in the right
+   order. `ridley` is now pinned (`-p 3002`, commit `9da1086`). **Every other lane should pin too** —
+   otherwise a browser tab silently shows another lane's branch.
+2. **The richer app was `setup-live-website-dev`.** 20 commits, 66 files, none in `main`.
+
+**DUPLICATED WORK — the thing to fix first.** `8c99d75 feat(incidents): a manual investigation can
+reach a fix` and `ridley`'s Stage 3.2 (`98562e8`) implement the SAME feature, independently, with
+different designs:
+
+| | `8c99d75` (setup-live-website-dev) | `98562e8` (ridley) |
+|---|---|---|
+| Approach | `createManualIncident` opens the WorkItem and **auto-starts** the run, mirroring the alert path | thin webhook route `POST /incidents/:id/route` **transporting** the existing `routeIncidentToFix` |
+| Policy | auto-starts authoring immediately | obeys `routeIncidentToFix`'s critical+firing rule; a `warning` deliberately does not start |
+| HITL | preserved — container born unapproved, halts at `ready` | untouched — routing only |
+
+Both preserve the HITL moat. **This is a design decision, not a merge-order accident** — resolve it
+deliberately rather than letting whoever merges second win.
+
+**Also on that branch, and currently recorded as OPEN in docs `ridley` corrected earlier today —
+those corrections are now themselves incomplete:**
+
+| Commit | Closes |
+|---|---|
+| `a552718` + `a5f2d9f` | outbound webhook **endpoint management behind real auth** — roadmap **5.5**, which `ridley` had just recommended as the next item to build |
+| `63f1ad3` | MCP OAuth store no longer cleartext/committable — the "worse half" backlog Phase-2b item 1 says is open |
+| `4789bdb` | `SecurityAssessor` refuses instead of fabricating — build-status-map §4 **B7** |
+| `a216b08` | memory FIFO archive — the "frozen at 20 memories" backlog item |
+| `07a5a13` | telemetry-fed healing — backlog Phase 2b item **2** |
+| `461b1b4`, `eaf447f`, `2f67fd2` | the build-tracker contract + seed the other lanes are collaborating on |
+
+**Recommended order:** (a) every lane pins its dev port; (b) decide the manual-investigation design
+above; (c) merge `setup-live-website-dev` to `main` — it is the largest body of unmerged, tested work
+and its absence is actively causing duplicate builds; (d) re-run the doc corrections afterwards,
+since several "open" entries close on merge.
+
+**Overlap if merged with `ridley`:** 8 files — `.claude/ade-coordination.md`, `.gitignore`,
+`docs/roadmap/backlog.md`, `packages/dashboard/AGENTS.md`, `incidents/actions.ts`, `lib/incidents.ts`,
+`lib/queries.ts`, `webhook/src/server.ts`. Only the two `incidents` files carry the real conflict.
