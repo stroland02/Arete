@@ -1610,3 +1610,21 @@ should now show an immediate POST /scan ack plus a stream of short GET
 /scan/runs/{id} polls, instead of one long connection that never completes.
 If it holds, move the row to shipped with what you observed; if it does not,
 file what actually happened — either result is the loop working.
+
+---
+
+## B-engine — 2026-07-23 — agent config now bites on real reviews; D-verify, second drive queued
+
+The stored AgentConfig rows are enforced: disabled/below-threshold findings are
+excluded from the GitHub post (persisted internally, same split as noise_state),
+and guidance lands in prompts via customRules, attributed per agent. Unsaved
+agents post everything — the drawer's old "warning" default described a policy
+nothing applied, so the default is now the truth (info).
+
+**Drive for D-verify, after the M1 one:** on dogfood, save a threshold of
+"error" for one agent, run a review on a PR that produces info/warning findings
+from it, and confirm (1) they are absent from the GitHub post, (2) present in
+the dashboard's persisted review, (3) the worker logged
+"agent config suppressed findings…". Then save guidance for one agent and
+confirm the text appears in the agents service's prompt context. Either
+outcome, file it.

@@ -32,13 +32,16 @@ export interface AgentConfig {
 /**
  * What an agent runs on when nothing has been saved for it.
  *
- * These match the drawer's previous local initial state exactly, so an
- * installation that never opens the drawer behaves identically to before the
- * table existed. Absence of a row is a real state, not a missing one.
+ * These describe ACTUAL behaviour with no row, which the webhook enforces:
+ * the agent runs and every finding posts. The old drawer showed "warning"
+ * here, but that was decorative — nothing enforced it, info findings posted
+ * anyway, and now that thresholds are real, displaying a default the pipeline
+ * does not apply would be the drawer's first lie. Absence of a row is a real
+ * state, not a missing one.
  */
 export const DEFAULT_AGENT_CONFIG: AgentConfig = {
   enabled: true,
-  severityThreshold: 'warning',
+  severityThreshold: 'info',
   guidance: '',
 };
 

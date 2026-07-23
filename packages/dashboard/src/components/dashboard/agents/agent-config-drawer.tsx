@@ -74,7 +74,7 @@ function DrawerPanel({
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [enabled, setEnabled] = useState(true);
-  const [severity, setSeverity] = useState("warning");
+  const [severity, setSeverity] = useState("info");
   const [guidance, setGuidance] = useState("");
   // "loading" until the saved config arrives, so the controls never briefly
   // show defaults that are not what is stored — a flash of the wrong value is
@@ -243,7 +243,12 @@ function DrawerPanel({
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-medium text-content-primary">Enabled</p>
-            <p className="text-xs text-content-muted">Run this agent on every pull request.</p>
+            {/* Post, not run: enforcement filters what reaches the PR. The
+                agent still runs and its findings persist internally — saying
+                "run" here would promise a spend saving that does not happen. */}
+            <p className="text-xs text-content-muted">
+              Post this agent&apos;s findings to pull requests. Off keeps them internal only.
+            </p>
           </div>
           <button
             type="button"

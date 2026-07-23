@@ -112,7 +112,7 @@ describe('getAgentConfig', () => {
       severityThreshold: 'renamed-later',
       guidance: '',
     });
-    expect((await getAgentConfig('security')).severityThreshold).toBe('warning');
+    expect((await getAgentConfig('security')).severityThreshold).toBe('info');
   });
 });
 

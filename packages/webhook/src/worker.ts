@@ -17,6 +17,7 @@ import { startApprovalWorker } from './approval-worker.js'
 import { startFixWorker } from './fix/queue-consumer.js'
 import { startOutboundRetryWorker } from './outbound/retry-worker.js'
 import { postReview } from './comment-poster.js'
+import { filterResultForPosting, guidanceRules, loadAgentConfigs } from './agent-config.js'
 import { postGitLabReview, type DiffRefs } from './gitlab-comment-poster.js'
 import { persistReview, persistTelemetrySnapshots, fetchProjectMemories } from './persistence.js'
 import { ARETE_CHECK_RUN_NAME } from './constants.js'
@@ -139,6 +140,14 @@ async function processGitHubPullRequest(octokit: Octokit, installationToken: str
     return ctx
   })
 
+  // Per-agent config (enabled / severity threshold / guidance). Loaded once
+  // per review; an unreadable config enforces nothing rather than failing or
+  // quietly reshaping the review. Guidance rides the existing customRules
+  // channel, so it reaches real prompts with no contract change.
+  const agentConfigs = await loadAgentConfigs(installationId)
+  const guidance = guidanceRules(agentConfigs)
+  if (guidance.length > 0) prContext.customRules = [...(prContext.customRules ?? []), ...guidance]
+
   const checkRun = await (octokit as any).rest.checks.create({
     owner,
     repo,
@@ -175,7 +184,11 @@ async function processGitHubPullRequest(octokit: Octokit, installationToken: str
   }
 
   try {
-    await withChildSpan('review.publish', () => postReview(octokit, owner, repo, prNumber, result))
+    // What the tenant asked to see on the PR. persistReview below stores the
+    // UNFILTERED result — the same posted/persisted split noise_state uses.
+    const { result: postable, suppressed } = filterResultForPosting(result, agentConfigs)
+    if (suppressed > 0) log.info({ suppressed, owner, repo, prNumber }, 'agent config suppressed findings from the GitHub post (still persisted internally)')
+    await withChildSpan('review.publish', () => postReview(octokit, owner, repo, prNumber, postable))
   } catch (err) {
     // The pipeline DID produce a usable result here (findings/summary exist
     // -- runReviewPipeline resolved) — only publishing it to GitHub failed.
@@ -252,6 +265,9 @@ async function processGitHubCheckRun(octokit: Octokit, installationToken: string
   const { owner, repo, prNumber, headSha, installationId, repositoryExternalId, fullName, ciLogs } = data
 
   const prContext = await fetchPRContext(octokit, owner, repo, prNumber)
+  const agentConfigs = await loadAgentConfigs(installationId)
+  const guidance = guidanceRules(agentConfigs)
+  if (guidance.length > 0) prContext.customRules = [...(prContext.customRules ?? []), ...guidance]
   prContext.ciLogs = ciLogs
   prContext.projectMemories = await fetchProjectMemories('github', repositoryExternalId)
   Object.assign(prContext, buildCloneContext(fullName, installationId, installationToken))
@@ -287,7 +303,9 @@ async function processGitHubCheckRun(octokit: Octokit, installationToken: string
   }
 
   try {
-    await postReview(octokit, owner, repo, prNumber, result)
+    const { result: postable, suppressed } = filterResultForPosting(result, agentConfigs)
+    if (suppressed > 0) log.info({ suppressed, owner, repo, prNumber }, 'agent config suppressed findings from the GitHub post (still persisted internally)')
+    await postReview(octokit, owner, repo, prNumber, postable)
   } catch (err) {
     // The pipeline DID produce a usable result — only publishing to GitHub
     // failed. Re-throwing would make BullMQ redo the entire CI-diagnosis

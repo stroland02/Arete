@@ -818,7 +818,7 @@
           "phase": "stage-2"
         }
       ],
-      "gap": "The model picker in that drawer is still read-only, deliberately — the provider/model is chosen once under AI Models and applies to every agent, so a per-agent control there would be theatre. Nothing consumes the saved config in the review pipeline yet: it is stored and shown, not yet enforced on a run.",
+      "gap": "Two honest remainders: \"Enabled: off\" keeps findings off the PR but the agent still runs and spends — skipping the run needs an agents-side contract field, and the drawer label now says \"post\", not \"run\", so it promises only what happens. And guidance reaches every specialist's prompt context (customRules is shared), attributed by agent id rather than scoped to one agent.",
       "evidence": "packages/dashboard/src/lib/agent-config.ts; api/agents/[id]/config/route.ts; AgentConfig verified in Postgres — second upsert updated the row rather than inserting a second",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
@@ -828,7 +828,7 @@
       "addedAt": "2026-07-23",
       "addedBy": "seed",
       "verifiedAt": "2026-07-23",
-      "works": "Enabled, severity threshold and custom guidance persist per installation through /api/agents/[id]/config, backed by the AgentConfig table (migration 20260723120000). A save is an upsert on (installationId, agentId); the panel renders what the server returns, and a save that cannot happen answers non-2xx and changes nothing."
+      "works": "Enabled, severity threshold and custom guidance persist per installation through /api/agents/[id]/config, backed by the AgentConfig table (migration 20260723120000). A save is an upsert on (installationId, agentId); the panel renders what the server returns, and a save that cannot happen answers non-2xx and changes nothing. ENFORCED as of this commit: the worker loads the tenant rows per review; findings from a disabled agent or below its severity threshold are excluded from the GitHub post (still persisted internally — the same split noise_state uses), and guidance rides the existing customRules channel into real prompts, attributed per agent. Unsaved agents default to info/post-everything, which is the true pre-feature behaviour; the drawer no longer displays a \"warning\" default nothing applied."
     },
     {
       "id": "agents-layer-inside-services",
