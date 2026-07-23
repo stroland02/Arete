@@ -830,3 +830,42 @@ private-method change is behaviour-preserving.
 because that file is claimed by the `ridley` lane (see its telemetry-queries entry above). Whoever owns
 `.env.example` next should add it; the generator is
 `python -c "from arete_agents.mcp.token_crypto import generate_key; print(generate_key())"`.
+
+---
+
+## Claim — pyrosome (Lane B, engine) — 2026-07-23, running autonomously
+
+**Landed on `main` already:** `f13eb7e` (build-tracker engine contract: `state: "dropped"`,
+`droppedItems`, `isOpen`, `focusRail`, `resolveBlockers`, `nextRank`; deletes
+`feature-readiness.ts`), `92166e8` (lane briefs).
+
+**Lane split for today** — full detail in `docs/handoff/2026-07-23-build-status-lane-briefs.md`:
+
+| lane | checkout | owns |
+|---|---|---|
+| A — view | `ridley` | `build-status/page.tsx`, `components/dashboard/build-status/*`, `sidebar.tsx` |
+| B — engine | `pyrosome` | `src/lib/build-tracker.ts` + tests, `packages/agents/src/arete_agents/mcp/*` |
+| C — data + write path | `Kuma2` | `api/build-status/route.ts`, `build-status-editor.tsx`, `data/build-tracker.json` |
+
+**Lane B claims these files exclusively:** `packages/dashboard/src/lib/build-tracker.ts` and
+its test, `packages/agents/src/arete_agents/mcp/auth.py`, `packages/agents/tests/test_mcp_*`.
+
+**Lane B will NOT touch:** any component, `page.tsx`, `sidebar.tsx`, `route.ts`,
+`data/build-tracker.json`, `.env.example` (ridley's), `packages/webhook/src/alerting/`.
+
+**Queue, in order:**
+1. ~~Engine contract for drop/focus/blockers~~ — done, `f13eb7e`.
+2. `mcp-token-plaintext-and-simulated-oauth`, the two parts that are not decisions:
+   discover the authorization endpoint via RFC 8414 metadata instead of guessing the
+   server target, and stop hardcoding `client_id: "arete-client"`.
+3. Sweep the tracker's open items for any that are pure lib/backend and unclaimed.
+
+**Two top items deliberately NOT taken while the user is away, because both are rulings
+rather than patches:**
+- `prose-credentials-reach-sinks` (the only open `critical`). Its own gap says fixing it
+  means amending the frozen §5 pattern set with real false-positive risk on ordinary prose.
+  Broadening a redaction regex unsupervised risks silently mangling legitimate telemetry
+  across every sink at once.
+- Making MCP token encryption fail closed with no key configured. The claim above records
+  "no key configured == previous behaviour" as a deliberate upgrade-safety decision; flipping
+  it would break existing deployments on upgrade. That is the owner's call, not this lane's.
