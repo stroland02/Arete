@@ -46,8 +46,8 @@
         "scan-cannot-complete-slow-model"
       ],
       "brief": "docs/handoff/2026-07-23-build-status-lane-briefs.md",
-      "heartbeat": "2026-07-23T17:15:32Z",
-      "lastCommit": "63479fd"
+      "heartbeat": "2026-07-23T20:19:27Z",
+      "lastCommit": "2cc0de6"
     },
     {
       "id": "D-verify",

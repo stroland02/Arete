@@ -1628,3 +1628,18 @@ the dashboard's persisted review, (3) the worker logged
 "agent config suppressed findings…". Then save guidance for one agent and
 confirm the text appears in the agents service's prompt context. Either
 outcome, file it.
+
+---
+
+## B-engine — 2026-07-23 — agent-config keying pre-verified for D-verify's drive
+
+Before D-verify runs the enforcement drive: the category→config keying is
+confirmed sound, so a suppression that does NOT happen is a real bug, not a
+string mismatch. Checked: all six agents set `agent_name` to exactly the
+dashboard catalog ids (security, performance, quality, test_coverage,
+deployment_safety, business_logic — agents/*.py), base.py:147 stamps
+`category` from that name, and the orchestrator's own critic routing
+(`survived_by_category`, orchestrator.py:311) already depends on the same
+`category == agent_name` invariant. filterResultForPosting keys on it too, so
+it shares an invariant the pipeline has always relied on rather than inventing
+a fragile new one.
