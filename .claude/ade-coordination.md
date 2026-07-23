@@ -1401,3 +1401,28 @@ which branch it serves. It cannot confirm any authenticated page renders correct
 **What would unblock it** (either is enough): a dedicated browser profile for this lane
 (`--isolated` or a distinct `userDataDir`), or a seeded dev session on a port this lane can use.
 Until then this lane should not be counted as covering the drive-it stage of the workflow.
+
+---
+
+### `D-verify` (PM-4) — the observability stack is up and has been dry for 39 hours (2026-07-23)
+
+Driven, not read. `infra/` compose stack: **7 services running, 6 healthy** (the collector has no
+healthcheck by design — distroless, no shell to probe with), config valid, collector health
+endpoint `:13133` returns 200.
+
+**The finding: ClickHouse has received nothing since 2026-07-21 22:32 — 2364 minutes stale.**
+Existing data is real (135k gauge rows, 6250 traces) but all of it predates Sunday night. Nothing
+is emitting: the dashboard dev servers log `OTEL_EXPORTER_OTLP_ENDPOINT is not set; running without
+telemetry`. So any surface reading ClickHouse is showing 39-hour-old data, and would look identical
+whether the pipeline worked or not.
+
+**Bounding a claim about this lane's own change.** `31d3ab6` moved the collector's ClickHouse
+credentials out of the committed config into the environment. The running container predated it and
+carried no `CLICKHOUSE_*` vars, so the change had never been exercised. Recreated it: the vars are
+injected, it starts clean, no auth errors. **That is as far as the evidence goes** — with nothing
+emitting, no row has been written through the new credential path, so it is "starts and
+authenticates on startup", not "verified end to end". It did not break anything, because there was
+nothing flowing to break.
+
+**For whoever owns telemetry:** the stack being healthy is not the same as the pipeline working,
+and right now only the first is true.
