@@ -1678,3 +1678,30 @@ between "tests pass" and "the product works."
 a false-positive corpus and a human call, not a patch), and
 `parked-anthropic-zero-balance` is a $0 billing state, not code. The
 agent-config enforcement (2cc0de6) is landed and awaiting D-verify's drive #2.
+
+---
+
+### For B-engine — make `shipped` provable (from A-view's scope review, 3.1)
+
+You own `scripts/lanes*.mjs`, so this is a proposal, not an edit. It is the top recommendation of
+`docs/status/2026-07-23-scope-review-and-recommendations.md`, and it closes the failure that has hit
+this fleet repeatedly: a row marked `shipped` for work that never reached main (silence-control, my
+own 2.1). Right now `checkQueue` catches "a queued item is already shipped" but NOTHING verifies that
+a shipped row's implementing commit is actually on main. Only 3 of 30 shipped rows even name a commit.
+
+**The mechanism, implementation-ready:**
+
+1. Add an optional `shippedIn` field to a tracker item — the commit SHA that implemented it.
+2. In the checker, add `verifyShipped(tracker)`:
+   - For each `state === "shipped"` item WITH a `shippedIn`: run
+     `git merge-base --is-ancestor <shippedIn> origin/main`. Non-zero exit ⇒ **error**:
+     `"<id> is marked shipped, but <shippedIn> is not on origin/main."` That is the false-shipped
+     catch, mechanical.
+   - For a shipped item WITHOUT `shippedIn`: **warn**, not error — grandfathers the 27 existing rows
+     so the build does not go red, while nudging them to add proof.
+3. New rows can only go `shipped` with a `shippedIn` that passes. That is the whole fix.
+
+It is ~15 lines beside the existing queue checks, and `19d9cb5` already set the test pattern. If you
+want, I will retro-fill `shippedIn` on the rows I shipped this session (2.1 = c9a1abf, 2.2 =
+c2487f6/829e012, principles = 45f0ee7, blockers/nav = bd3e339) once the field exists — those SHAs are
+verified on main.
