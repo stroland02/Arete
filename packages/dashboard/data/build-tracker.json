@@ -215,7 +215,7 @@
       "href": "/agents",
       "works": "Per-agent chat is genuinely live against the connected model, with provider errors surfaced honestly. Findings come from real reviews.",
       "gap": "Every configuration control is local-only and never saved, and the page is scheduled for absorption into Services.",
-      "evidence": "agent-config-drawer.tsx:24",
+      "evidence": "packages/dashboard/src/components/dashboard/agents/agent-config-drawer.tsx:24,149,249 — Save disabled with a \"Not saved yet\" badge; the absorption-into-Services half is a plan, not something code can confirm",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md"
       },
@@ -224,7 +224,8 @@
       "addedBy": "seed",
       "tags": [
         "surface"
-      ]
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "surface-ai-models",
@@ -340,7 +341,7 @@
       "href": "/overview",
       "works": "Stat tiles, Sensorium code map, setup checklist derived from real DB facts, preset tabs, time range.",
       "gap": "Two checklist sub-steps (the coding-agent setup prompt, MCP Kuma) are honest 'coming soon' placeholders with nothing behind them. Planned telemetry connectors are inert.",
-      "evidence": "lib/overview-setup.ts:76-84,103-107",
+      "evidence": "packages/dashboard/src/lib/overview-setup.ts:12,80,104-105 — both steps are declared not-yet-shipped and render as honest placeholders",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md"
       },
@@ -349,7 +350,8 @@
       "addedBy": "seed",
       "tags": [
         "surface"
-      ]
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "surface-review-history",
@@ -1971,7 +1973,9 @@
       "addedBy": "seed",
       "tags": [
         "product-commercial"
-      ]
+      ],
+      "evidence": "No implementation exists: the only Slack/Linear/PagerDuty mentions in packages/webhook/src and packages/dashboard/src are comments in outbound/management.ts:10 and outbound/payload.ts:4 describing the future feature",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "review-pr-url-and-reason-codes",
