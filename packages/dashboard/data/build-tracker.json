@@ -10,7 +10,7 @@
     ],
     "seededAt": "2026-07-23",
     "lastEditedAt": "2026-07-23",
-    "lastEditedBy": "lane-c salvage verification",
+    "lastEditedBy": "autonomous loop",
     "seededNote": "Seeded 2026-07-23 from the docs above. A working file (docs/roadmap/master-build-status.json) was used to assemble this and was retired in 476b7e8 so only one record exists; it is not listed here because a provenance path a reader cannot open is not provenance. Every item carries its own provenance to a doc that still exists."
   },
   "mission": {
@@ -509,9 +509,9 @@
           "phase": "2b"
         }
       ],
-      "works": "The fabricated simulated_token_for_<code> is gone: _complete_auth performs a real code exchange, fails closed with an honest message when token_url is unset, and stores nothing unless a genuine access_token comes back. Config is encrypted at rest and the file is created atomically at 0o600.",
-      "gap": "Two things remain. The authorization URL is still constructed with a constant state (\"simulate_state\") and a hardcoded client_id, which defeats OAuth CSRF protection, and the auth endpoint is guessed as the target rather than discovered. Encryption also no-ops to cleartext when no key is configured.",
-      "evidence": "packages/agents/src/arete_agents/mcp/auth.py:214-222 (constant state), mcp/manager.py:39-52 (encrypt, 0o600)",
+      "works": "The fabricated simulated_token_for_<code> is gone: _complete_auth performs a real code exchange, fails closed when token_url is unset, and stores nothing without a genuine access_token. Config is encrypted at rest and created atomically at 0o600. The OAuth state is now secrets.token_urlsafe(32), fresh per flow, and verified with compare_digest on BOTH the local callback and the manual-paste fallback — an unverified code is discarded before it is ever stored.",
+      "gap": "Remaining, and smaller than it was: client_id is still hardcoded to \"arete-client\", the authorization endpoint is still guessed as the server target rather than discovered, and encryption no-ops to cleartext when no key is configured.",
+      "evidence": "packages/agents/src/arete_agents/mcp/auth.py state_is_valid + start_oauth_flow; tests/test_mcp_auth.py::TestCallbackStateVerification",
       "provenance": {
         "doc": "docs/roadmap/backlog.md",
         "note": "Phase 2b item 1, Phase 4 items 6-7"

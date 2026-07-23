@@ -234,3 +234,55 @@ class TestExchangeRefreshToken:
                 "old-refresh",
                 post=lambda u, d, h: self._resp(json_body={"expires_in": 3600}),
             )
+
+
+class TestCallbackStateVerification:
+    """The `state` parameter is OAuth's CSRF defence.
+
+    Before this, `start_oauth_flow` sent the constant `state="simulate_state"`
+    and the callback handler never looked at `state` at all — so the local
+    callback would accept an authorization code from any page that could reach
+    it, binding an attacker's account to the victim's MCP server. These tests
+    fail against that behaviour.
+    """
+
+    def test_state_is_rejected_when_missing(self):
+        assert mcp_auth.state_is_valid("expected", None) is False
+
+    def test_state_is_rejected_when_no_flow_is_in_progress(self):
+        assert mcp_auth.state_is_valid(None, "anything") is False
+
+    def test_state_is_rejected_when_it_does_not_match(self):
+        assert mcp_auth.state_is_valid("expected", "attacker-supplied") is False
+
+    def test_state_is_accepted_only_when_it_matches_exactly(self):
+        assert mcp_auth.state_is_valid("s3cr3t-state", "s3cr3t-state") is True
+
+    def test_the_retired_constant_state_no_longer_authorises_anything(self):
+        # The old value must not be a skeleton key for a live flow.
+        assert mcp_auth.state_is_valid("simulate_state", "simulate_state") is True
+        assert mcp_auth.state_is_valid(mcp_auth.secrets.token_urlsafe(32), "simulate_state") is False
+
+    def test_generated_state_is_unguessable_and_fresh_per_flow(self, manager, monkeypatch):
+        """Two flows must not share a state, and it must not be a constant."""
+        seen = []
+
+        def fake_server(*args, **kwargs):
+            raise RuntimeError("no socket in tests")
+
+        monkeypatch.setattr(mcp_auth, "HTTPServer", fake_server)
+        monkeypatch.setattr(mcp_auth.webbrowser, "open", lambda *a, **k: None)
+        # The manual fallback prompts; refuse the paste so the flow ends.
+        monkeypatch.setattr("builtins.input", lambda *a, **k: "")
+
+        _add_server(manager)
+        for _ in range(2):
+            printed = []
+            monkeypatch.setattr("builtins.print", lambda *a, **k: printed.append(" ".join(map(str, a))))
+            mcp_auth.start_oauth_flow("srv", manager)
+            url_line = next(line for line in printed if "state=" in line)
+            seen.append(url_line.split("state=")[1].split("&")[0])
+
+        assert "simulate_state" not in seen
+        assert seen[0] != seen[1], "state must be regenerated per flow"
+        assert all(len(s) >= 32 for s in seen), "state must be long enough to be unguessable"

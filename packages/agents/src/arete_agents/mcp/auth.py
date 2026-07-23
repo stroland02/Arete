@@ -1,3 +1,4 @@
+import secrets
 import threading
 import time
 import urllib.parse
@@ -174,15 +175,51 @@ def _complete_auth(name: str, manager, code: str) -> None:
     print(f"Authentication complete! {name} is now ready to use.")
 
 
+def state_is_valid(expected: Optional[str], received: Optional[str]) -> bool:
+    """Whether a callback's `state` proves it belongs to the flow we started.
+
+    The `state` parameter is OAuth's CSRF defence: an attacker who can make the
+    victim's browser hit our callback with an authorization code of the
+    attacker's choosing would otherwise bind the attacker's account to the
+    victim's MCP server. Only a value we generated ourselves is acceptable, so a
+    missing or mismatched `state` fails closed.
+
+    Compared with `secrets.compare_digest` so the check does not leak the
+    expected value through timing.
+    """
+    if not expected or not received:
+        return False
+    return secrets.compare_digest(expected, received)
+
+
 class OAuthCallbackHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed_path = urlparse(self.path)
         if parsed_path.path == "/callback":
             query_params = parse_qs(parsed_path.query)
+            received_state = (query_params.get("state") or [None])[0]
+            expected_state = getattr(self.server, "expected_state", None)
+
+            # Check state BEFORE looking at the code: an unverified code must
+            # never be stored, or the CSRF check is decorative.
+            if not state_is_valid(expected_state, received_state):
+                self.server.oauth_error = (
+                    "callback state did not match the value this flow generated"
+                )
+                self.send_response(400)
+                self.send_header("Content-type", "text/html")
+                self.end_headers()
+                self.wfile.write(
+                    b"<html><body><h1>Authentication Failed!</h1><p>The callback could not be "
+                    b"verified as belonging to this login attempt, so it was rejected.</p></body></html>"
+                )
+                threading.Thread(target=self.server.shutdown, daemon=True).start()
+                return
+
             if "code" in query_params:
                 code = query_params["code"][0]
                 self.server.oauth_code = code
-                
+
                 self.send_response(200)
                 self.send_header("Content-type", "text/html")
                 self.end_headers()
@@ -190,7 +227,7 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
                     b"<html><body><h1>Authentication Successful!</h1><p>You can close this tab "
                     b"and return to the terminal.</p></body></html>"
                 )
-                
+
                 # Signal the server to stop
                 threading.Thread(target=self.server.shutdown, daemon=True).start()
             else:
@@ -215,9 +252,12 @@ def start_oauth_flow(name: str, manager) -> None:
         return
         
     target_url = server_info.get("target")
-    
-    # Construct a simulated OAuth URL
-    state = "simulate_state"
+
+    # A fresh, unguessable state per flow. This was previously the constant
+    # "simulate_state" and was never checked on the way back, so the callback
+    # accepted any authorization code any page could send it — the CSRF hole
+    # `state` exists to close.
+    state = secrets.token_urlsafe(32)
     client_id = "arete-client"
     redirect_uri = urllib.parse.quote("http://localhost:3118/callback")
     
@@ -248,11 +288,15 @@ def start_oauth_flow(name: str, manager) -> None:
     try:
         server = HTTPServer(("localhost", port), OAuthCallbackHandler)
         server.oauth_code = None
-        
+        server.oauth_error = None
+        server.expected_state = state
+
         # Start serving in the main thread (blocks until shutdown is called)
         server.serve_forever()
-        
-        if server.oauth_code:
+
+        if server.oauth_error:
+            print(f"Authentication rejected: {server.oauth_error}. Nothing was stored.")
+        elif server.oauth_code:
             print("Successfully received authorization code.")
             _complete_auth(name, manager, server.oauth_code)
         else:
@@ -262,7 +306,14 @@ def start_oauth_flow(name: str, manager) -> None:
         manual_url = input("Paste the redirected callback URL here: ")
         parsed = urlparse(manual_url)
         params = parse_qs(parsed.query)
-        if "code" in params:
+        # The pasted URL gets the same check as the automatic callback — a
+        # fallback that skipped it would be the same hole by another door.
+        if not state_is_valid(state, (params.get("state") or [None])[0]):
+            print(
+                "That callback URL does not carry the state this flow generated, "
+                "so it was rejected. Nothing was stored."
+            )
+        elif "code" in params:
             _complete_auth(name, manager, params["code"][0])
         else:
             print("Invalid URL provided. Authentication failed.")
