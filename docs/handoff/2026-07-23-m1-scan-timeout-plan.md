@@ -90,3 +90,48 @@ migration carries `INTERNAL_API_TOKEN` but neither `INTERNAL_TOKEN_SIGNING_KEYS`
 added to all three processes. And `uv run --env-file` silently loads nothing from that `.env` (it
 chokes on the escaped multi-line `GITHUB_PRIVATE_KEY`), so the agents service must receive those
 variables explicitly.
+
+---
+
+## Correction (B-engine / PM-2, 2026-07-23): the 300 s mechanism does not reproduce
+
+**Before building on this document, read this.** Its central claim — that undici
+caps time-to-response-headers at 300 s, and that this is why a slow scan can
+never succeed — **did not reproduce when driven.**
+
+The test: a local server that withholds response *headers* for 305 s, hit
+concurrently by Node's `fetch` and by `node:http`, on Node **v24.15.0** (the
+version this repo runs).
+
+```
+fetch      OK after 305.1s: {"findings":["work the scan completed"]}
+node:http  OK after 305.1s: {"findings":["work the scan completed"]}
+```
+
+`fetch` returned the body successfully. There is no 300-second ceiling on this
+Node version, and the two clients behaved identically.
+
+**What this does and does not mean.** The observed 307 s failure is not in
+dispute — it happened, and the agents service really did keep working for seven
+minutes into a closed socket. What is now unsupported is the *explanation*. The
+cause could be a different Node version in the failing environment, an OS or
+proxy socket limit, or something on the agents side; it has not been identified.
+
+**So the recommended sequencing above is not safe to follow yet.** Option A
+("disable the header timeout") would configure a limit that this Node does not
+appear to apply — a no-op dressed as a fix, and the worst kind, because the
+symptom would return with no explanation. Option B is a day of work across two
+services justified by a mechanism that has not been confirmed.
+
+**What was changed instead**, and it is deliberately small: `fetchScan` had **no
+explicit deadline at all**, and is now given one (`SCAN_REQUEST_TIMEOUT_MS`,
+default 45 minutes). That is not a fix for M1 and is not claimed as one. It
+addresses a separate, confirmed problem the probe exposed — the call waits at
+least 305 s and the true limit is unknown, so a hung agents process leaves the
+`ScanRun` in `running` forever, and every later scan for that tenant is then
+refused as `already_running`. One hang silently ends scanning for that
+installation.
+
+**Whoever takes M1 next: re-diagnose first.** Reproduce the 307 s failure and
+capture what actually severs the connection, before choosing a shape. The probe
+above is six lines of `node:http` and takes five minutes to run.

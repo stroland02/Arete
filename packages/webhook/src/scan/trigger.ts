@@ -26,6 +26,15 @@ import { internalAuthHeaders } from '../internal-auth.js'
 
 const log = logger.child({ component: 'scan' })
 
+/**
+ * Whole-request deadline for the agents `/scan` call, in ms.
+ *
+ * Deliberately large: a repo-wide scan is an unbounded LLM workload, so five
+ * minutes is a normal duration for it rather than a pathological one. This
+ * exists to bound a *hang*, not to bound slowness. 45 minutes.
+ */
+const SCAN_REQUEST_TIMEOUT_MS = Number(process.env.SCAN_REQUEST_TIMEOUT_MS ?? 45 * 60 * 1000)
+
 export interface ScanFindingBody {
   kind: 'issue' | 'opportunity'
   title: string
@@ -224,6 +233,20 @@ export function defaultScanTriggerDeps(): ScanTriggerDeps {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(await internalAuthHeaders()) },
         body: JSON.stringify(body),
+        // An explicit deadline, because there was none and the inherited one is
+        // not what the docs say. Node's undici is documented to cap
+        // time-to-headers at 300 s, and `/scan` sends no headers until the whole
+        // scan is done — but driven on Node 24.15.0 against a server that
+        // withheld headers for 305 s, `fetch` returned the body successfully.
+        // So whatever ended the observed 307 s scan failure, it was not this
+        // ceiling, and the real limit here is unknown and version-dependent.
+        //
+        // Unknown is the problem. Without a deadline a hung agents process
+        // leaves this awaiting forever, the ScanRun stays `running`, and every
+        // later scan for that tenant is refused as `already_running` — one hang
+        // silently ends scanning for that installation. A stated, generous,
+        // configurable limit fails honestly instead.
+        signal: AbortSignal.timeout(SCAN_REQUEST_TIMEOUT_MS),
       })
       if (!res.ok) {
         const text = await res.text().catch(() => '')
