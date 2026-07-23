@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx --import ./src/otel.ts src/index.ts",
+    "dev:review": "tsx src/dev-review/run.ts",
     "worker": "tsx watch --import ./src/otel-worker.ts src/worker.ts",
     "start": "node --import ./dist/otel.js dist/index.js",
     "start:worker": "node --import ./dist/otel-worker.js dist/worker.js",

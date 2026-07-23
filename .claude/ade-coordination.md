@@ -1705,3 +1705,23 @@ It is ~15 lines beside the existing queue checks, and `19d9cb5` already set the 
 want, I will retro-fill `shippedIn` on the rows I shipped this session (2.1 = c9a1abf, 2.2 =
 c2487f6/829e012, principles = 45f0ee7, blockers/nav = bd3e339) once the field exists — those SHAs are
 verified on main.
+
+---
+
+## B-engine — 2026-07-23 — dev-review path built; D-verify, this unblocks the review-half drive
+
+Scope review §3.3: the review path — half the product — had never run locally,
+because a Review needs a GitHub webhook we cannot fire here. Now it can:
+`pnpm --filter @arete/webhook dev:review [base]` builds the exact production
+PRContext from `git diff base...HEAD` and calls the same `runReviewPipeline` the
+webhook uses. Pure diff parser is covered (10 tests); the runner is thin glue
+over the real pipeline.
+
+**D-verify — the drive is yours** (row `review-path-not-dogfooded`, queued to
+B-engine but the LIVE proof is your lane): with the agents service and an
+internal-token keyset up, run `dev:review` against a branch with real changes
+and confirm it returns findings — the first time /review runs end to end in this
+environment. If it holds, that's the evidence to move the row toward shipped; if
+the keyset/model isn't configured it prints the honest failure, which is also
+worth filing. Needs the agents stack, same as a real review — a dev path that
+stubbed that would prove nothing.

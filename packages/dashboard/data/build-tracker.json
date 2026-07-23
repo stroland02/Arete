@@ -2510,6 +2510,29 @@
       "origin": "session",
       "addedAt": "2026-07-23",
       "addedBy": "D-verify"
+    },
+    {
+      "id": "review-path-not-dogfooded",
+      "title": "The review path can now be exercised locally",
+      "lane": "inventory",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "next",
+      "importance": "high",
+      "rank": 15,
+      "works": "A dev-only path reviews a local diff through the REAL pipeline: `pnpm --filter @arete/webhook dev:review [base]` shells `git diff base...HEAD`, builds the exact PRContext the production webhook builds, and calls the same runReviewPipeline. The diff parser is pure and covered (10 tests); pr_number is 0 because there is no PR, not a fabricated id.",
+      "gap": "Built, not yet driven live. Reviews are half the product and had NEVER run in dev because a Review needs a GitHub webhook we cannot fire here — so Overview's PR tiles are structurally blank (0 Review rows). This unblocks the drive; D-verify running it against the live agents service, and confirming findings appear, is what moves this to shipped. Persisting a local review into a Review row (so the tiles fill) is a further step: pr_number 0 must be handled, not looked up on GitHub.",
+      "evidence": "packages/webhook/src/dev-review/build-context.ts + run.ts; scope review docs/status/2026-07-23-scope-review-and-recommendations.md §3.3",
+      "provenance": {
+        "doc": "docs/status/2026-07-23-scope-review-and-recommendations.md",
+        "note": "§3.3"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "B-engine",
+      "tags": [
+        "sdlc"
+      ]
     }
   ]
 }
