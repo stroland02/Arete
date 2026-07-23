@@ -603,6 +603,9 @@ silently), so the agents service must receive those vars explicitly rather than 
 
 ## Discovered 2026-07-23 — PR reviews have NEVER worked: octokit.rest is undefined
 
+**RESOLVED 2026-07-23 (`cdf2cd2`), on the user's explicit authorization.** `createApp` now builds the App with `Octokit.plugin(restEndpointMethods)` (new dep `@octokit/plugin-rest-endpoint-methods@^13`). Proven at runtime: before, every review of the real open PR #1 threw `reading 'pulls'` immediately; after, 0 such errors and the agents `/review` endpoint received the call — the review pipeline flows end to end for the first time. The review runs against the slow local model; the Review row and populated Overview dashboards follow on completion.
+
+
 **This is why the Overview dashboards are blank**, and it is a deeper cause than "no PR event
 happened." A PR review has been ATTEMPTED and fails every time, so `Review`/`ReviewComment` stay at 0
 and every review-derived surface (Pull requests reviewed, Critical issues caught, Reviews this week,
