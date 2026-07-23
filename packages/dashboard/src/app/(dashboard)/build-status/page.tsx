@@ -82,6 +82,10 @@ export default function BuildStatusPage() {
         <ProgrammeRails programmes={programmeProgress(tracker)} />
       </RevealItem>
 
+      <RevealItem>
+        <Principles principles={tracker.principles} />
+      </RevealItem>
+
       {IMPORTANCE.map((importance) => {
         const rows = byImportance(importance, tracker);
         if (rows.length === 0) return null;
@@ -155,6 +159,53 @@ function SummaryChip({
         {label}
       </span>
     </span>
+  );
+}
+
+/**
+ * The rules this project holds itself to.
+ *
+ * These eight have been in `build-tracker.json` since it was seeded and were
+ * rendered nowhere — dead data in the one file that is supposed to be the
+ * single source of truth, on the one page whose whole job is honest
+ * self-reporting. They belong here specifically: the rows below say how
+ * finished each part is, and these say what "finished" is allowed to mean.
+ *
+ * Rendered above the status rows on purpose — they are the reading
+ * instructions for everything under them, not an appendix.
+ *
+ * NOTE for the lane that owns `src/lib/build-tracker.ts`: each principle in the
+ * JSON also carries a `source` (the doc it was drawn from), but the
+ * `principles` type omits it, so it cannot be rendered type-safely from here.
+ * Adding `source?: string` to that type would let this show provenance, which
+ * is exactly what the rest of the page does for every other claim.
+ */
+function Principles({
+  principles,
+}: {
+  principles: { id: string; title: string; body: string }[];
+}) {
+  if (principles.length === 0) return null;
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-baseline gap-2">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-content-muted">
+          How we build
+        </h2>
+        <span className="font-mono text-[11px] tabular-nums text-content-muted">
+          {principles.length}
+        </span>
+      </div>
+      <ul className="grid gap-3 sm:grid-cols-2">
+        {principles.map((principle) => (
+          <li key={principle.id} className="glass-panel space-y-1.5 rounded-xl px-3.5 py-3">
+            <h3 className="text-sm font-semibold text-content-primary">{principle.title}</h3>
+            <p className="text-[12.5px] leading-5 text-content-secondary">{principle.body}</p>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
