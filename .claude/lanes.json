@@ -48,7 +48,10 @@
         "packages/dashboard/src/lib/trends.ts",
         "packages/dashboard/src/lib/trends.test.ts",
         "packages/webhook/src/scan/trigger.ts",
-        "packages/webhook/src/scan/trigger.test.ts"
+        "packages/webhook/src/scan/trigger.test.ts",
+        "packages/dashboard/src/lib/agent-config*.ts",
+        "packages/dashboard/src/app/api/agents/*/config/route.ts",
+        "packages/dashboard/src/components/dashboard/agents/agent-config-drawer.tsx"
       ],
       "avoid": [
         "packages/dashboard/src/components/**",
@@ -58,12 +61,12 @@
         ".env.example"
       ],
       "queue": [
+        "agent-config-persistence",
         "scan-cannot-complete-slow-model"
       ],
       "brief": "docs/handoff/2026-07-23-build-status-lane-briefs.md",
-      "heartbeat": "2026-07-23T14:14:30Z",
-      "lastCommit": "4c185a7",
-      "$queueNote": "The M1 row now exists (C-data added it) and is queued. The DEFENSIVE half is shipped: an explicit request deadline (ded009f) and stale-run recovery so a crash cannot block a tenant forever (fef29af). The SUBSTANTIVE half is blocked on two things this lane cannot supply alone: (1) a live reproduction of the true limit that ended the 307s run — the local probe disproved the 300s theory, so finding the real cause needs the running agents service against a deliberately slow model, not a unit test; (2) the shape-B enqueue/ack fix changes the agents <-> webhook contract, which land-on-main lists under escalate-not-decide. Both are recorded in docs/handoff/2026-07-23-m1-scan-timeout-plan.md."
+      "heartbeat": "2026-07-23T16:45:05Z",
+      "lastCommit": "ef698af"
     },
     {
       "id": "C-data",
