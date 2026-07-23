@@ -1,6 +1,19 @@
 import { App } from '@octokit/app'
-import type { Octokit } from '@octokit/core'
+import { Octokit } from '@octokit/core'
+import { restEndpointMethods } from '@octokit/plugin-rest-endpoint-methods'
 import { getConfig } from './config.js'
+
+// @octokit/app's default Octokit is the BARE @octokit/core client, which has no
+// `.rest` namespace. But 24 call sites across this package (pr-fetcher,
+// backfill, comment-poster, chat-handler, context-map, …) call
+// `octokit.rest.pulls.*` / `.repos.*`, so with the default client every one of
+// them throws `Cannot read properties of undefined (reading 'pulls')` before any
+// review logic runs. That is why PR reviews had never once succeeded — the
+// product's headline feature failed at fetchPRContext's first line, leaving
+// Review/ReviewComment empty and every Overview dashboard blank.
+//
+// Building the App with a rest-enabled Octokit fixes all 24 sites at one point.
+const RestOctokit = Octokit.plugin(restEndpointMethods)
 
 export function createApp(): App {
   const config = getConfig()
@@ -8,6 +21,7 @@ export function createApp(): App {
     appId: config.appId,
     privateKey: config.privateKey,
     webhooks: { secret: config.webhookSecret },
+    Octokit: RestOctokit,
   })
 }
 
