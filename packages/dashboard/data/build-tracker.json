@@ -265,7 +265,7 @@
       "href": "/connections",
       "works": "GitHub App install, Stripe API key, and PostHog + Vercel OAuth.",
       "gap": "Every other connector is disabled pending its integration being published.",
-      "evidence": "connections/[id]/page.tsx:117-123",
+      "evidence": "packages/dashboard/src/app/(dashboard)/connections/[id]/page.tsx:51-59,118 — connectors without a connectHref render \"Not available yet\" behind a disabled CTA",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md"
       },
@@ -274,7 +274,8 @@
       "addedBy": "seed",
       "tags": [
         "surface"
-      ]
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "surface-incident-detail",
@@ -282,16 +283,16 @@
       "lane": "inventory",
       "area": "Product surfaces",
       "level": "partial",
-      "state": "someday",
+      "state": "next",
       "importance": "medium",
       "rank": 30,
       "blockedBy": [
         "manual-investigation-start-fix"
       ],
       "href": "/incidents",
-      "works": "Mark and unmark noise, view a linked fix run, scrubbed alert payload tables.",
-      "gap": "A manually-opened investigation cannot be driven — there is no action to start a fix from it.",
-      "evidence": "lib/incidents.ts:211",
+      "works": "Mark and unmark noise, view a linked fix run, scrubbed alert payload tables — and opening an investigation by hand now dispatches a fix container, the same route a critical alert takes.",
+      "gap": "The fix it starts still halts at the human approve-and-send gate. The row previously said a hand-opened investigation could only be marked noise; that is no longer true.",
+      "evidence": "packages/dashboard/src/lib/incidents.ts:10,245 (openFixContainer / routeIncidentToFix fallback), lib/fix-dispatch.ts",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md"
       },
@@ -300,7 +301,8 @@
       "addedBy": "seed",
       "tags": [
         "surface"
-      ]
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "surface-incidents",
@@ -389,7 +391,7 @@
         "topbar-search-and-notifications"
       ],
       "gap": "Command palette and notifications are both disabled placeholders. The breadcrumb is the only working part of the top bar.",
-      "evidence": "topbar.tsx:44-62",
+      "evidence": "packages/dashboard/src/components/dashboard/topbar.tsx:45-46,56-57 — both controls are disabled with \"coming soon\" titles",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md"
       },
@@ -398,7 +400,8 @@
       "addedBy": "seed",
       "tags": [
         "surface"
-      ]
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "surface-services",
@@ -451,7 +454,9 @@
       "addedBy": "seed",
       "tags": [
         "surface"
-      ]
+      ],
+      "evidence": "packages/dashboard/src/app/(dashboard)/settings/page.tsx:266 states the missing self-serve upgrade outright rather than faking a checkout",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "collector-plaintext-credentials",
@@ -633,14 +638,15 @@
       ],
       "works": "Kuma really does record what it learns per repository and injects it into later reviews.",
       "gap": "Nothing displays it. Belongs on repository settings as 'What Kuma has learned', with an archive action.",
-      "evidence": "packages/webhook/src/memory-write.ts:104,248",
+      "evidence": "No dashboard component references AgentMemory; the write path exists with no surface",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§3 A3"
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "approvals-panel",
@@ -1552,7 +1558,9 @@
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "evidence": "No OTLP ingest route or ingest-key handling in packages/webhook/src/server.ts",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "work-floor-phase-b-agents",
@@ -1644,7 +1652,7 @@
         }
       ],
       "gap": "Expose Kuma's findings and review judgment back into the user's coding agent. Only the client half exists today — Kuma can consume third-party MCP servers, but nothing can consume Kuma. This is the 'Connect MCP Kuma to your agent' checklist sub-step.",
-      "evidence": "lib/overview-setup.ts:103-107, packages/agents/.../mcp/manager.py",
+      "evidence": "Only the client half exists (packages/agents/src/arete_agents/mcp/); nothing serves Kuma as an MCP server",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§5 C4"
@@ -1654,7 +1662,8 @@
       "addedBy": "seed",
       "tags": [
         "onboarding-install"
-      ]
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "kuma-install-skills-and-codemap",
@@ -1689,7 +1698,7 @@
       "rank": 260,
       "works": "Kuma can consume third-party MCP servers, driven from the CLI.",
       "gap": "No dashboard surface to add or list them.",
-      "evidence": "packages/agents/src/arete_agents/mcp/manager.py",
+      "evidence": "No route or component under packages/dashboard/src references MCP servers — still CLI-only",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§4 B6"
@@ -1699,7 +1708,8 @@
       "addedBy": "seed",
       "tags": [
         "onboarding-install"
-      ]
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "mcp-setup-from-agent",
@@ -1945,7 +1955,9 @@
       "addedBy": "seed",
       "tags": [
         "product-commercial"
-      ]
+      ],
+      "evidence": "No ApiKey model, issuance path or management route exists",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "relays-slack-linear-pagerduty",
@@ -2031,7 +2043,9 @@
       "addedBy": "seed",
       "tags": [
         "product-commercial"
-      ]
+      ],
+      "evidence": "No review-scope or path-filter implementation exists",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "self-serve-upgrade-billing",
