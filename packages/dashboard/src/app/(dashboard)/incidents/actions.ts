@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { resolveSelectedInstallationIds } from '@/lib/queries';
-import { createManualIncident, setIncidentNoise } from '@/lib/incidents';
+import { createManualIncident, requestIncidentRouting, setIncidentNoise } from '@/lib/incidents';
 import {
   ERROR_STATUSES,
   attachErrorGroupToIncident,
@@ -68,6 +68,19 @@ export async function createInvestigationAction(
     severity,
     summary: summary.trim(),
   });
+
+  // Stage 3.2: /incidents used to end here. The incident was recorded and then
+  // nothing happened to it — `routeIncidentToFix` existed but was reachable
+  // only from the Alertmanager receiver, so a hand-opened investigation could
+  // never start a fix.
+  //
+  // The routing VERDICT is the webhook's, not ours, and it is deliberately not
+  // allowed to fail this action: the incident is already durably created, so
+  // throwing here would lose a record the user can see was made. A refusal
+  // (`not_critical` — the router only opens fixes for critical+firing) or an
+  // unreachable webhook both leave the incident intact and un-routed, which is
+  // exactly what the detail page then shows.
+  await requestIncidentRouting(id);
 
   revalidatePath('/incidents');
   redirect(`/incidents/${id}`);

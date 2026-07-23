@@ -545,6 +545,34 @@ Roadmap: `docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadm
   filter is what makes silencing mean something on the map.
 - `packages/dashboard/src/app/(dashboard)/reviews/[id]/page.tsx` — renders the control.
 
+### `ridley` CROSS-LANE claim — Stage 3.2 manual investigations start a fix (declared 2026-07-23, BEFORE editing)
+
+**This one crosses into `packages/webhook`.** Flagging prominently because the rest of my Stage 1/3
+work was dashboard-only.
+
+Roadmap: `docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md` Stage 3.2 —
+`/incidents` is a dead end: `createManualIncident` never calls `routeIncidentToFix`.
+
+**Why the edit has to be in your package.** `routeIncidentToFix` lives at
+`packages/webhook/src/alerting/incident.ts:135` and is called from exactly one place —
+`alerting/receiver.ts:451`, the Alertmanager path. There is no HTTP entry point, so a
+hand-opened investigation can never reach it. The alternative was reimplementing it dashboard-side,
+which would fork its P2002 unique-violation handling, its `already_routed` fast path and its
+cooldown check — a second copy of concurrency-sensitive logic, which is precisely what the
+contracts forbid.
+
+**What I am adding to `packages/webhook`:** ONE thin route in `server.ts`,
+`POST /incidents/:id/route`, guarded by the existing `requireInternalToken`, whose body is a call
+to your `routeIncidentToFix(id, defaultRouteIncidentDeps())` and a JSON echo of its
+`RouteIncidentResult`. **No change to `incident.ts`, `receiver.ts`, or any existing route.** It is
+modelled line-for-line on `/fix/trigger` (`server.ts:298`).
+
+**Policy I am deliberately NOT changing:** `routeIncidentToFix` routes only `severity === 'critical'`
+AND `status === 'firing'`. A manual investigation opened as `warning` therefore will NOT start a fix,
+and the UI says so rather than implying otherwise. Making manual incidents bypass that rule would
+give hand-opened incidents more power than alert-driven ones, which is a policy decision, not a
+wiring fix — if you want it, it is yours to make.
+
 ### `ridley` lane claim — Stage 3 papercuts 3.3-3.6 (declared 2026-07-23, BEFORE editing)
 
 **Entirely within the `dashboard` lane. No schema change, no migration, no cross-package edit.**

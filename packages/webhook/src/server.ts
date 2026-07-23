@@ -312,6 +312,39 @@ export async function createServer(): Promise<express.Application> {
     res.status(202).json({ started: true })
   })
 
+  // Route ONE incident to its WorkItem/fix-drive (Stage 3.2).
+  //
+  // routeIncidentToFix has always existed and has always been correct; it was
+  // reachable from exactly one caller — the Alertmanager receiver — so an
+  // incident a human opened by hand in the dashboard ("New investigation")
+  // could never start a fix. /incidents was a dead end.
+  //
+  // This route adds NO logic. It is a transport for the existing function, so
+  // manual and alert-driven incidents route through identical code: the same
+  // severity/status policy (critical + firing only), the same already_routed
+  // fast path, the same unique-constraint handling. Reimplementing any of that
+  // dashboard-side would have forked concurrency-sensitive logic.
+  //
+  // The result is echoed VERBATIM, refusals included: the caller is told
+  // `not_critical` or `already_routed` rather than a generic success, because
+  // the dashboard has to report which of those happened instead of implying a
+  // fix started. Guarded by requireInternalToken, like /fix/trigger above.
+  server.post('/incidents/:id/route', requireInternalToken, express.json(), async (req, res) => {
+    const incidentId = typeof req.params?.id === 'string' ? req.params.id : ''
+    if (!incidentId) {
+      res.status(400).json({ error: 'incident id required' })
+      return
+    }
+    try {
+      const { routeIncidentToFix, defaultRouteIncidentDeps } = await import('./alerting/incident.js')
+      const result = await routeIncidentToFix(incidentId, defaultRouteIncidentDeps())
+      res.status(200).json(result)
+    } catch (err) {
+      logFix.error({ err, incidentId }, 'manual incident routing failed')
+      res.status(500).json({ error: 'internal_error' })
+    }
+  })
+
   // Alertmanager receiver (healing-loop observability, Phase 2 Task 3). Uses
   // the DEDICATED static guard (requireAlertmanagerToken), not the signed
   // internal-token verifier used by the rest of this surface — Alertmanager

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useTransition } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { IconChevronLeft, IconChevronRight, IconCpu } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
@@ -43,8 +44,28 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, onToggleCollapsed, installations, userName, userEmail, activeModel, signOutSlot }: SidebarProps) {
   const pathname = usePathname();
-  const { isLoading, setIsLoading } = useGlobalLoading();
+  const router = useRouter();
+  const { isLoading } = useGlobalLoading();
   const initial = userName.charAt(0).toUpperCase();
+
+  // Stage 3.1 — the logo is a REAL global refresh, not decoration.
+  //
+  // `router.refresh()` re-runs every server component on the current route.
+  // That is not a partial reload: on any dashboard page it re-executes the
+  // page's own data reads — services, connections, telemetry, scan state,
+  // whatever that route actually loads — against the live database. So the
+  // refresh is global in the only sense that matters, and it stays correct as
+  // pages change, because it re-runs whatever a page reads rather than a
+  // hand-maintained list of sources that would silently drift.
+  //
+  // Completion is REAL: `isRefreshing` is the transition's own pending flag,
+  // which stays true until the re-rendered server output commits. Nothing is
+  // on a timer. And because the page simply re-renders, a source that fails
+  // renders its own honest error/empty state — the refresh never reports a
+  // success the data does not support. It also cannot report a failure it did
+  // not observe, which is why the control claims nothing beyond "done".
+  const [isRefreshing, startRefresh] = useTransition();
+  const busy = isLoading || isRefreshing;
   // The model every AI-processing page/service runs on (newest = active,
   // matching the review resolver). Shown on every page so "which model am I
   // running" is answered globally, not just on the AI Models card.
@@ -59,8 +80,17 @@ export function Sidebar({ collapsed, onToggleCollapsed, installations, userName,
         collapsed ? "w-20" : "w-64"
       )}
     >
-      {/* The logo reflects real global loading state; it is not clickable. */}
-      <div className="p-6 h-[68px] flex items-center overflow-hidden group">
+      {/* The logo refreshes the page's real data. The spin is the transition's
+          own pending state, so it ends when the new server render commits. */}
+      <button
+        type="button"
+        onClick={() => startRefresh(() => router.refresh())}
+        disabled={busy}
+        aria-label={isRefreshing ? "Refreshing data" : "Refresh data"}
+        aria-busy={busy}
+        title="Refresh this page's data"
+        className="p-6 h-[68px] w-full flex items-center overflow-hidden group cursor-pointer text-left disabled:cursor-wait"
+      >
         <AnimatePresence mode="wait" initial={false}>
           {collapsed ? (
             <motion.div
@@ -71,7 +101,7 @@ export function Sidebar({ collapsed, onToggleCollapsed, installations, userName,
               transition={collapseTransition}
               className="flex items-center text-accent-primary drop-shadow-[0_0_8px_rgba(0,212,255,0.4)]"
             >
-              <KumaLogo size={28} isLoading={isLoading} />
+              <KumaLogo size={28} isLoading={busy} />
             </motion.div>
           ) : (
             <motion.div
@@ -83,7 +113,7 @@ export function Sidebar({ collapsed, onToggleCollapsed, installations, userName,
               className="flex items-center gap-2 text-accent-primary"
             >
               <span className="drop-shadow-[0_0_8px_rgba(0,212,255,0.4)]">
-                <KumaLogo size={28} isLoading={isLoading} />
+                <KumaLogo size={28} isLoading={busy} />
               </span>
               <span className="text-2xl font-semibold font-serif text-content-primary tracking-tight whitespace-nowrap">
                 Kuma
@@ -91,7 +121,7 @@ export function Sidebar({ collapsed, onToggleCollapsed, installations, userName,
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
+      </button>
 
       {!collapsed && installations.length > 1 && (
         <div className="px-4 mb-2">

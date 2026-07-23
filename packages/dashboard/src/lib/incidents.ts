@@ -238,6 +238,57 @@ export async function createManualIncident(
  * Empty `installationIds` => no query, returns false. Returns whether a row
  * was actually updated.
  */
+/**
+ * Asks the webhook to route an incident to a fix drive (Stage 3.2).
+ *
+ * The routing decision is NOT made here. `routeIncidentToFix`
+ * (packages/webhook/src/alerting/incident.ts) owns it and this only reaches it
+ * — the same reason /api/work-items/[id]/fix calls /fix/trigger rather than
+ * enqueueing itself. Manual and alert-driven incidents therefore obey one
+ * policy, and a second copy of its concurrency handling never comes to exist.
+ *
+ * Returns the webhook's own verdict so the caller can be specific about what
+ * happened. NEVER throws and never invents a result: an unconfigured or
+ * unreachable webhook returns `unavailable`, which is honestly different from
+ * "the router declined" — the incident exists either way, and pretending a fix
+ * started would be the worst available answer.
+ */
+export type IncidentRouteOutcome =
+  | { routed: true; workItemId?: string }
+  | { routed: false; reason: string };
+
+export async function requestIncidentRouting(incidentId: string): Promise<IncidentRouteOutcome> {
+  const base = process.env.WEBHOOK_SERVICE_URL;
+  if (!base) return { routed: false, reason: 'unavailable' };
+
+  try {
+    const { internalAuthHeaders } = await import('./internal-auth');
+    const res = await fetch(
+      `${base.replace(/\/$/, '')}/incidents/${encodeURIComponent(incidentId)}/route`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await internalAuthHeaders()) },
+        body: '{}',
+      },
+    );
+    if (!res.ok) return { routed: false, reason: 'unavailable' };
+
+    const body = (await res.json()) as { routed?: unknown; reason?: unknown; workItemId?: unknown };
+    if (body.routed === true) {
+      return {
+        routed: true,
+        workItemId: typeof body.workItemId === 'string' ? body.workItemId : undefined,
+      };
+    }
+    return {
+      routed: false,
+      reason: typeof body.reason === 'string' ? body.reason : 'declined',
+    };
+  } catch {
+    return { routed: false, reason: 'unavailable' };
+  }
+}
+
 export async function setIncidentNoise(
   db: IncidentMutationsDb | PrismaClient,
   installationIds: string[],

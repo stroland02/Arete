@@ -15,8 +15,13 @@ simply clobbered. (This happened on 2026-07-23 and cost real confusion.)
 Verification builds therefore go somewhere else:
 
 ```bash
-NEXT_DIST_DIR=.next-verify pnpm --filter @arete/dashboard exec next build
+NEXT_DIST_DIR=.next-verify pnpm --filter @arete/dashboard exec next build && rm -rf packages/dashboard/.next-verify
 ```
+
+Clean it up afterward (the `&& rm -rf` above): `.next-verify` is throwaway build
+output, and if it lingers, `pnpm run lint` will lint the generated bundles as if
+they were source and fail. ESLint's ignore list is config-protected, so removing
+the directory is the right fix, not adding an ignore.
 
 `next.config.ts` reads `NEXT_DIST_DIR` and falls back to `.next`, so CI and the
 Docker image are unaffected. If you do clobber it, restart the dev server — it
