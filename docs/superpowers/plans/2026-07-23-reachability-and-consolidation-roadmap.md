@@ -57,8 +57,8 @@ Ordered by *value per unit risk*, and by what unblocks what. Each stage is a coh
 
 | # | Deliverable (what the USER gets) | Size | Notes |
 |---|---|---|---|
-| 1.1 | **Approve a proposed fix** — make `ApproveSolutionButton` reachable ⚠️ **see the Stage 1↔2 conflict below** | S | One link unlocks ~128 lines of built, tested feature |
-| 1.2 | **Post the approved PR** — render the send affordance in `realMode` with a real `activeContainerId` | S–M | Currently behind a permanently-false branch |
+| 1.1 | ✅ **DONE** (`1192d37`) **Approve a proposed fix** — resolved per option (a) below | S | Gate lives on the Services work-item panel; no `/agents` URL created |
+| 1.2 | ✅ **DONE** (`1192d37`) **Post the approved PR** | S–M | Same panel; the `!realMode` dead branch is bypassed, not revived |
 | 1.3 | **Approvals panel** — surface `ApprovalPrompt` so the safety gate is visible | M | Needs a session-scoped server proxy; `ApprovalPrompt` has zero dashboard references today |
 | 1.4 | **Silence / un-silence a finding** — the noise loop closed at the human end | M | Backend already escalates and counts; dashboard hardcodes `noiseState:'OPEN'` (`queries.ts:765`) |
 | 1.5 | **Connect Sentry** — flip `connector-catalog.ts` `status:"planned"` once the integration is approved | S | Connector + tests fully built; UI gate only. **Blocked on Sentry's own approval**, not on us |
@@ -82,6 +82,33 @@ headline differentiator.
 >
 > Do **not** implement 1.1 as a `/agents?container=` link. That was the naive reading, and it is the same
 > class of mistake as `73e2040` — building toward a page that the locked decision is removing.
+>
+> **RESOLVED as (a) in `1192d37`.** Both gates now render on the Services work-item panel, which already
+> holds the container. `ApproveSolutionButton` is *imported* from the agents directory, not moved — the
+> move is Stage 2's, and mixing a move with a fix makes both unreviewable. No `/agents` URL was created.
+
+#### What 1.1/1.2 turned out to actually be
+
+The audit's shorthand ("one link unlocks the feature") was wrong in a way worth recording, because the
+same mistake is available in 1.3 and 1.4. There is no single link: `ServiceReviewRow.id` is a **Review**
+id, and its doc comment claiming it "IS the container id" is true only for the SSE stream, which projects
+a Review into an in-memory container. `approve`/`send` read the **`IssueContainer` table**, whose rows are
+created by the work-item Fix route with generated ids. Wiring a review id into the approve button would
+have produced a control that 404s on every review.
+
+The real unit of work was therefore: carry the container's **stored state** to the surface, and let that
+state — not the work-item state — decide which gate may be offered. Whoever picks up 1.3/1.4 should
+confirm the identity of every id they wire before assuming a link is all that is missing.
+
+#### Recorded while doing Stage 1 — not fixed, deliberately
+
+- **`lib/trends.ts` buckets by LOCAL calendar day while the ClickHouse window is UTC.** A trend chart is
+  off by one for any viewer whose timezone crosses midnight relative to UTC. Fixing it shifts every chart
+  in the product, so it needs its own change and its own verification. (Surfaced because `errors.test.ts`
+  had been failing for the whole 00:00–12:00Z half of every day; that flake *was* fixed, in `26fc554`.)
+- **The send route does not advance the work item to `posted`.** `approve` moves `fixing → staged`, but
+  after a successful send the container becomes `posted` while its work item stays `staged`. Not visible
+  in this environment (`STAGING_SERVICE_URL` is unset, so send honestly 503s), and it belongs with 1.3.
 
 ### Stage 2 — Agents become a layer inside Services  (Group B · the locked decision)
 
