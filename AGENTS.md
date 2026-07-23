@@ -46,6 +46,13 @@ title, so a row can be reworded without losing its history. A duplicate `id` mea
 the same thing: reconcile the entries, do not append. A `blockedBy` entry must resolve to another
 item id, or carry an `ext:` prefix if the blocker is outside the tracker.
 
+**`shipped` must be proven, not asserted.** A row you mark `shipped` needs `shippedIn` — the commit
+that shipped it — and `pnpm lanes` runs `git merge-base --is-ancestor` on it: a shipped row whose
+commit is not on `main` is a hard error. This exists because rows were shipped from close-out notes
+describing work that never merged, and a wrongly-shipped row means nobody looks again. A shipped row
+with no `shippedIn` is a warning, not an error, so existing rows can be backfilled over time — but do
+not add new ones without it.
+
 Do not add a second catalogue file. That has already happened once and had to be undone.
 
 ---

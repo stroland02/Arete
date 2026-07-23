@@ -828,7 +828,8 @@
       "addedAt": "2026-07-23",
       "addedBy": "seed",
       "verifiedAt": "2026-07-23",
-      "works": "Enabled, severity threshold and custom guidance persist per installation through /api/agents/[id]/config, backed by the AgentConfig table (migration 20260723120000). A save is an upsert on (installationId, agentId); the panel renders what the server returns, and a save that cannot happen answers non-2xx and changes nothing. ENFORCED as of this commit: the worker loads the tenant rows per review; findings from a disabled agent or below its severity threshold are excluded from the GitHub post (still persisted internally — the same split noise_state uses), and guidance rides the existing customRules channel into real prompts, attributed per agent. Unsaved agents default to info/post-everything, which is the true pre-feature behaviour; the drawer no longer displays a \"warning\" default nothing applied."
+      "works": "Enabled, severity threshold and custom guidance persist per installation through /api/agents/[id]/config, backed by the AgentConfig table (migration 20260723120000). A save is an upsert on (installationId, agentId); the panel renders what the server returns, and a save that cannot happen answers non-2xx and changes nothing. ENFORCED as of this commit: the worker loads the tenant rows per review; findings from a disabled agent or below its severity threshold are excluded from the GitHub post (still persisted internally — the same split noise_state uses), and guidance rides the existing customRules channel into real prompts, attributed per agent. Unsaved agents default to info/post-everything, which is the true pre-feature behaviour; the drawer no longer displays a \"warning\" default nothing applied.",
+      "shippedIn": "dab4956"
     },
     {
       "id": "agents-layer-inside-services",
@@ -1170,7 +1171,8 @@
       "addedAt": "2026-07-23",
       "addedBy": "seed",
       "verifiedAt": "2026-07-23",
-      "works": "Both publish-failure paths now route through reportDegradedOutcome, which wraps the checks.update in its own try/catch and logs instead of rethrowing. A transient GitHub failure while reporting a degraded outcome can no longer escape the catch and send BullMQ round the whole files-x-agents pipeline again. The stakes were highest on the PR path, where the review is already posted, so a retry meant duplicate comments. The two remaining unguarded updates are in the infra-crash catches, where rethrowing is correct because nothing was produced."
+      "works": "Both publish-failure paths now route through reportDegradedOutcome, which wraps the checks.update in its own try/catch and logs instead of rethrowing. A transient GitHub failure while reporting a degraded outcome can no longer escape the catch and send BullMQ round the whole files-x-agents pipeline again. The stakes were highest on the PR path, where the review is already posted, so a retry meant duplicate comments. The two remaining unguarded updates are in the infra-crash catches, where rethrowing is correct because nothing was produced.",
+      "shippedIn": "cf13087"
     },
     {
       "id": "confidence-on-review-findings",
@@ -2427,7 +2429,8 @@
       "origin": "session",
       "verifiedAt": "2026-07-23",
       "works": "The ack-and-poll shape (63479fd) is verified live, not just in unit tests: A-view drove a real scan against the slow local Ollama that ran 2002s (~33 min) and reached complete — the first scan ever to survive the ~307s ceiling that killed all three prior runs (306.9s, 306.1s, 307.3s). It produced 10 real findings from our own repo, and Services now renders \"Opportunities (10)\". POST /scan mode:\"async\" acks in milliseconds, the scan runs on a daemon thread, and the webhook polls GET /scan/runs/{id}, so no connection has to outlive the scan and whatever severs long connections stops mattering.",
-      "evidence": "packages/agents/src/arete_agents/scan_runs.py; server.py /scan mode=async + GET /scan/runs/{id}; packages/webhook/src/scan/trigger.ts executeScanRequest; VERIFIED LIVE 2026-07-23 — 2002s scan completed, 10 findings, Services \"Opportunities (10)\" (A-view, ade-coordination.md)"
+      "evidence": "packages/agents/src/arete_agents/scan_runs.py; server.py /scan mode=async + GET /scan/runs/{id}; packages/webhook/src/scan/trigger.ts executeScanRequest; VERIFIED LIVE 2026-07-23 — 2002s scan completed, 10 findings, Services \"Opportunities (10)\" (A-view, ade-coordination.md)",
+      "shippedIn": "63479fd"
     },
     {
       "lane": "idea",
@@ -2448,7 +2451,8 @@
         "note": "found while making provenance required on the build-status write route"
       },
       "verifiedAt": "2026-07-23",
-      "works": "provenance is now { doc?, note?, session? } and a test pins the declared keys to the keys the real tracker stores, so the type cannot narrow away from the data again."
+      "works": "provenance is now { doc?, note?, session? } and a test pins the declared keys to the keys the real tracker stores, so the type cannot narrow away from the data again.",
+      "shippedIn": "09244af"
     },
     {
       "lane": "idea",

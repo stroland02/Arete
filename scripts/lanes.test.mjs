@@ -19,6 +19,7 @@ import {
   checkHeartbeats,
   checkOverlap,
   checkQueue,
+  checkShipped,
   checkTrespass,
   detectLane,
   globToRegExp,
@@ -251,5 +252,51 @@ describe("detectLane", () => {
       ],
     };
     assert.equal(detectLane(doc), undefined);
+  });
+});
+
+describe("checkShipped — shipped must be provable, not assertable", () => {
+  const tracker = (items) => ({ items });
+  const onMain = () => true;
+  const notOnMain = () => false;
+  const errors = (ps) => ps.filter((p) => p.level === "error");
+  const warnings = (ps) => ps.filter((p) => p.level === "warn");
+
+  it("is an ERROR when a shipped row's commit is not on main", () => {
+    // The exact failure the review named: a row shipped for work that never
+    // merged, so the product advertises a capability it lacks and nobody looks
+    // again. This is the whole reason the check exists.
+    const ps = checkShipped({}, tracker([{ id: "x", state: "shipped", shippedIn: "deadbeef" }]), notOnMain);
+    assert.equal(errors(ps).length, 1);
+    assert.match(errors(ps)[0].text, /NOT on main/);
+  });
+
+  it("is silent for a shipped row whose commit IS on main", () => {
+    const ps = checkShipped({}, tracker([{ id: "x", state: "shipped", shippedIn: "63479fd" }]), onMain);
+    assert.deepEqual(ps, []);
+  });
+
+  it("summarises unproven shipped rows into ONE warning, not one per row", () => {
+    // 26 identical warnings would bury every other signal — that is its own
+    // dishonesty. The count is the signal; three ids are a sample.
+    const items = Array.from({ length: 5 }, (_, i) => ({ id: `r${i}`, state: "shipped" }));
+    const ps = checkShipped({}, tracker(items), onMain);
+    assert.equal(warnings(ps).length, 1);
+    assert.equal(errors(ps).length, 0);
+    assert.match(warnings(ps)[0].text, /5 shipped row/);
+  });
+
+  it("ignores rows that are not shipped", () => {
+    const ps = checkShipped({}, tracker([
+      { id: "a", state: "next" },
+      { id: "b", state: "dropped" },
+    ]), notOnMain);
+    assert.deepEqual(ps, []);
+  });
+
+  it("treats an unresolvable shippedIn as unproven, via the real git default returning false", () => {
+    // A garbage ref cannot prove anything; "cannot prove" is the failing case.
+    const ps = checkShipped({}, tracker([{ id: "x", state: "shipped", shippedIn: "not-a-real-ref-xyz" }]), () => false);
+    assert.equal(errors(ps).length, 1);
   });
 });

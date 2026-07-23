@@ -266,6 +266,80 @@ export function checkQueue(doc, trackerDoc = null) {
   return problems;
 }
 
+/**
+ * Whether `ref` is an ancestor of `origin/main` — i.e. actually merged.
+ *
+ * The default asks git; injectable so the check can be tested without a repo in
+ * a known state. A ref git cannot resolve returns false, not an exception: an
+ * unrecognisable `shippedIn` cannot prove anything, and "cannot prove" is the
+ * failing case here.
+ */
+function mergedToMain(ref) {
+  try {
+    execFileSync("git", ["merge-base", "--is-ancestor", ref, "origin/main"], {
+      cwd: ROOT,
+      stdio: "ignore",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `shipped` must be provable, not assertable (scope review §3.1).
+ *
+ * A row went `shipped` from a close-out note written in a worktree, and twice
+ * that described work that never reached main — the product then advertised a
+ * capability it lacked, and because the row read shipped, nobody looked again.
+ * A wrongly-open row costs minutes; a wrongly-shipped one costs the trust the
+ * whole tracker exists to hold.
+ *
+ * So a shipped row carrying `shippedIn` is PROVEN against main: a commit that is
+ * not an ancestor of origin/main is a hard error, the exact "shipped for unmerged
+ * work" case. A shipped row WITHOUT `shippedIn` is only a warning — unprovable is
+ * not disproven — so the rule can land without retroactively erroring on every
+ * existing shipped row, and each backfill drains one warning.
+ */
+export function checkShipped(doc, trackerDoc = null, isAncestor = mergedToMain) {
+  let tracker = trackerDoc;
+  try {
+    tracker ??= readJson(TRACKER_PATH);
+  } catch {
+    return [{ level: "warn", text: "build-tracker.json is unreadable; shipped rows not proven." }];
+  }
+
+  const problems = [];
+  const unproven = [];
+  for (const item of tracker.items) {
+    if (item.state !== "shipped") continue;
+    if (!item.shippedIn) {
+      unproven.push(item.id);
+      continue;
+    }
+    // A provably-false ship is rare and load-bearing, so it stays a per-row
+    // error naming the row and the commit. The unproven set is common and gets
+    // one summary line below — 26 identical warnings would bury every other
+    // signal the checker emits, which is its own kind of dishonesty.
+    if (!isAncestor(item.shippedIn)) {
+      problems.push({
+        level: "error",
+        text: `"${item.id}" is shipped, but its commit ${item.shippedIn} is NOT on main. A row shipped for unmerged work advertises a capability that does not exist.`,
+      });
+    }
+  }
+
+  if (unproven.length > 0) {
+    problems.push({
+      level: "warn",
+      text:
+        `${unproven.length} shipped row(s) carry no shippedIn, so "shipped" is asserted not proven ` +
+        `(e.g. ${unproven.slice(0, 3).join(", ")}). Backfill the commit to make each provable.`,
+    });
+  }
+  return problems;
+}
+
 /** A lane that has gone quiet. */
 export function checkHeartbeats(doc, now) {
   const problems = [];
@@ -297,6 +371,7 @@ function check(laneId) {
     ...checkEmptyClaims(doc, files),
     ...checkTrespass(doc, files, laneId),
     ...checkQueue(doc),
+    ...checkShipped(doc),
     ...checkHeartbeats(doc, Date.now()),
   ];
 

@@ -72,6 +72,15 @@ export interface TrackerItem {
   programmes?: ProgrammeRef[];
   /** Absent on every item today. Absence must render as "never verified". */
   verifiedAt?: string;
+  /**
+   * The commit that shipped this row. Required to PROVE `shipped` rather than
+   * assert it: `scripts/lanes.mjs check` runs `git merge-base --is-ancestor`
+   * against it, so a row marked shipped for work that never reached main is a
+   * hard error, not a claim nobody rechecks. A shipped row without it is only
+   * a warning — unprovable, not disproven — so this can be backfilled without
+   * retroactively breaking the checker. See the scope review §3.1.
+   */
+  shippedIn?: string;
   /** Set together with `state: "dropped"`. A drop with no reason is not a record. */
   droppedAt?: string;
   droppedReason?: string;
