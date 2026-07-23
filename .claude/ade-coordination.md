@@ -819,3 +819,211 @@ collapses three near-identical "open an IssueContainer, flip the WorkItem to `fi
 hand-opened incidents should bypass the critical+firing rule, say so in the spec — right now the two
 paths disagree and nothing records which is intended. `ridley` will drop its
 `requestIncidentRouting` + `POST /incidents/:id/route` if the policy answer is "yes, any severity".
+### `pyrosome` (PM lane) cross-lane claim — incident-signal reads move to `@arete/db`; healing path consumes them (declared 2026-07-22)
+
+**Cross-lane declaration per coordination rule 4 + "declare cross-package changes in the ledger before
+editing".** This closes **Phase 2b item 2** (`docs/roadmap/backlog.md`) — *"Telemetry-fed investigations,
+the one unshipped spec §3 Phase 2 bullet: the healing agent should read the incident's own trace/log
+context."* Phase 2 deferred it for one stated reason — *"blocked on an internal query surface"* — and that
+surface shipped in `a6afc14`. The blocker is gone; the bullet is not.
+
+**The defect being closed:** an alert fires → `Incident` → `WorkItem` → the fix pipeline authors a patch,
+and at no point does the healing agent see the error spans, logs, or exceptions that *are the incident*.
+It reads the repository and the work item's static code evidence only. The dashboard can now show a human
+that runtime context (Signals panel, `incidents/[id]/page.tsx`); the agent asked to actually fix the thing
+still cannot see it. Grep confirms it: zero telemetry reads anywhere in `packages/webhook/src` or
+`packages/agents/src`.
+
+**Design decision — one implementation, not two (following contract §2's "one resolver, one truth", and
+the precedent set by the `platform-installation.ts` move immediately above).** The incident-signal reads
+move **down** into `@arete/db`, already a `workspace:*` dependency of BOTH `@arete/dashboard` and
+`@arete/webhook`, and already the owner of the ClickHouse schema and migrations
+(`packages/db/clickhouse/`). The alternative — giving `@arete/webhook` its own `@clickhouse/client` and a
+second copy of the three queries — would duplicate a **platform-gated** read. That is the exact thing the
+tenancy contract forbids: *"for a security gate two copies are two places to drift, and drift here is a
+tenant leak."* The gate (`isPlatformInstallation`) already lives in `@arete/db`; the queries it guards
+belong beside it.
+
+**Files claimed by this worktree:**
+- **db (additive — new modules + one `export *`; no schema, migration, or generated file touched):**
+  `packages/db/src/incident-signals.ts` (**new** — the single implementation, moved verbatim from
+  `telemetry-queries.ts`; one import path changes), `packages/db/src/clickhouse.ts` (**new** — the client,
+  moved from the dashboard and made **lazy** so importing `@arete/db` in a service with no ClickHouse
+  configured constructs nothing), `packages/db/src/incident-signals.test.ts` (**moved** from the dashboard
+  with `git mv`, preserving history — it injects a `db` fake rather than mocking Prisma, so it moves
+  intact), `packages/db/src/index.ts` (one added `export *`), `packages/db/package.json` +
+  `packages/db/vitest.config.ts` (a test harness, mirroring `packages/telemetry`'s — the shared package had
+  none, and gated queries must not land somewhere they cannot be tested).
+- **dashboard (delegation only, no caller changes):**
+  `packages/dashboard/src/lib/telemetry-queries.ts` — becomes a thin re-export of the `@arete/db`
+  implementation, **keeping every exported name, signature and type** so
+  `app/(dashboard)/incidents/[id]/page.tsx` and every other importer are untouched.
+  `packages/dashboard/src/lib/clickhouse.ts` — re-exports the shared client so any other dashboard caller
+  keeps working.
+- **webhook (primary lane):** `packages/webhook/src/fix/incident-signals.ts` (**new**) + test — resolves
+  the `Incident` linked to a `WorkItem`, takes the platform gate, and shapes the signals for the wire;
+  `packages/webhook/src/fix/trigger.ts` — attaches them to the existing `FixRequestBody`.
+- **agents (primary lane):** `packages/agents/src/arete_agents/models/fix.py` (an **optional** `signals`
+  field — absent means "no incident context", exactly as today), `fix_pipeline.py` (the signals reach the
+  findings prompt as runtime evidence), plus tests.
+
+**Why this is safe/additive:** nothing is removed and no signature changes. The dashboard's public surface
+is name-for-name identical. `signals` is optional on the wire in both directions, so a webhook and an
+agents service at different versions interoperate unchanged — a WorkItem with no incident behind it
+produces exactly today's request. The platform gate is taken by the same single resolver, so a
+non-platform incident yields `access: 'denied'` and ClickHouse is never contacted.
+
+**Honest scope limit, stated because it will otherwise read as a bug:** the gate means telemetry-fed
+healing works **only for platform incidents** — Kuma healing Kuma. That is not a shortcut, it is the whole
+truth of the current stack: nothing ingests customer telemetry until Phase 3
+(`docs/roadmap/2026-07-15-superlog-phased-roadmap.md`), so for a customer incident there is genuinely no
+telemetry to read. The agent must be told "no signals" rather than shown an empty list that reads as
+"nothing was wrong" — the §4 distinction, carried through to the prompt.
+
+**Explicitly NOT touched:** `packages/webhook/src/alerting/` (ceded to the `ridley` lane while its
+receiver work was in flight), `packages/dashboard/src/lib/platform-installation.ts` beyond leaving it as
+the re-export ridley made it, and any `packages/db` schema, migration, or generated client file.
+
+---
+
+### `pyrosome` (PM lane) cross-lane claim — manual investigations can reach a fix (declared 2026-07-22)
+
+**Cross-lane declaration per coordination rule 4.** These are `packages/dashboard` files (the `dashboard`
+lane), edited from the PM worktree. All four are **server-side** (`lib/`, a server action, an API route) —
+**no UI component, page, or styling is touched**, so this does not collide with the dashboard-UI work.
+
+**The defect being closed:** an `Incident` row on its own is **inert** — only a `WorkItem` enters the fix
+pipeline. The Alertmanager path knows this and routes accordingly (`webhook alerting/incident.ts`
+`routeIncidentToFix`: open WorkItem → link → open container → dispatch). The **manual** path
+(`lib/incidents.ts::createManualIncident`, reached from the "New investigation" form) created the Incident
+and **stopped**. So a hand-opened investigation had nothing to press "Fix it" on and could never be driven
+to a fix at all — an automation asymmetry, not a missing button.
+
+**Approved behavior (user decision, 2026-07-22): auto-start on creation** — opening an investigation opens
+the WorkItem *and* dispatches the fix drive, mirroring the critical-alert path. **HITL is preserved
+(Global Constraint 5):** the container is born UNAPPROVED (`gates.solutionApprovedAt: null`) and the drive
+halts at `ready` for the human approve→send gate. Auto-start begins *authoring* a patch; nothing merges,
+applies, or posts.
+
+**Design decision — extract, don't triplicate.** "Open an IssueContainer at `detecting`, flip the WorkItem
+to `fixing`, POST `/fix/trigger`" existed in two places (the "Fix it" route and webhook's alerting path).
+Adding a third copy for the manual path is exactly the drift the tenancy contract warns about, so the two
+**dashboard** copies now share one module. Webhook's copy stays put — it is a different service, and
+`alerting/` remains ceded.
+
+**Files claimed by this worktree:**
+- **dashboard (server-side only):** `packages/dashboard/src/lib/fix-dispatch.ts` (**new** — `openFixContainer`
+  + `dispatchFixTrigger`, the shared run-start primitives) + `fix-dispatch.test.ts` (**new**);
+  `packages/dashboard/src/lib/incidents.ts` (`createManualIncident` now opens the linked WorkItem and
+  auto-starts the run; returns `{incidentId, workItemId, containerId}` instead of a bare id) +
+  `incidents.test.ts`; `packages/dashboard/src/app/(dashboard)/incidents/actions.ts` (consumes the new
+  result, fires the trigger); `packages/dashboard/src/app/api/work-items/[id]/fix/route.ts` (**refactor
+  only** — delegates to the shared primitives; its external contract, status codes and `{containerId}`
+  response are byte-identical, proven by its 6 pre-existing tests still passing untouched).
+
+**Why this is safe:** the only breaking change is `createManualIncident`'s return type, and it has exactly
+one caller (the server action), updated in the same commit. No schema, migration, or generated file is
+touched. With no connected repository the WorkItem is still opened and left `open` (nothing to fix
+against yet) — the same best-effort fallback `routeIncidentToFix` makes, never a silent failure.
+
+**Verification:** dashboard `vitest` **609/609 green** (91 files, incl. the 6 untouched fix-route tests),
+`tsc --noEmit` clean.
+
+---
+
+### `pyrosome` (PM lane) cross-lane claim — outbound-webhook endpoint management, re-enabled behind auth (declared 2026-07-22)
+
+**Cross-lane declaration per coordination rule 4.** Touches `packages/webhook` (primary PM lane) **and**
+`packages/dashboard` server-side files (the `dashboard` lane). All dashboard files are `lib/` + API routes —
+**no UI component, page, or styling**, so this does not collide with the dashboard-UI work. **The UI for this
+feature is explicitly left to the `ridley`/dashboard-UI lane.**
+
+**The defect being closed:** `POST/GET /api/webhooks/endpoints` was deleted from the webhook service for a
+real vulnerability — it trusted a client-supplied `installationId` with NO authentication, so an anonymous
+caller could register a webhook for, or list the endpoints of, ANY tenant, and the response handed back that
+tenant's `whsec_` signing secret (with which payloads can be forged that pass a receiver's signature check).
+The feature has been dark since, and with it every "send findings to Slack/Linear/PagerDuty" story.
+Two further flaws were found in the existing code while building the replacement:
+`WebhookStore.listEndpoints` returns rows **including `secret`**, and `WebhookStore.setEnabled(id, enabled)`
+is **not tenant-scoped** — it will disable any row in the table given only an id.
+
+**Design — the dashboard AUTHENTICATES, the webhook service EXECUTES.** The webhook service owns the data
+and the SSRF guard but has no session; the dashboard has the session but must not fetch customer-supplied
+URLs from the Next.js server. This is the **exact split `model-connections-api.ts` already uses** for its
+provider probe, followed deliberately rather than inventing a second pattern. Notably the dashboard does
+**NOT** gain an `@arete/net-guard` dependency — that would mean a `pnpm-lock.yaml` change, which
+coordination rule 3 forbids doing from two worktrees at once.
+
+**Files claimed by this worktree:**
+- **webhook (primary lane):** `src/outbound/management.ts` (**new** — the tenant-scoped core: secret stripped
+  on read via the existing `toPublicEndpoint`, returned once on create; toggle ownership-resolved first;
+  SSRF via the delivery path's own `assertPublicWebhookUrl`) + `management.test.ts` (**new**, 8 adversarial
+  tests); `src/server.ts` (**additive** — `GET/POST /internal/webhooks/endpoints` and
+  `PATCH /internal/webhooks/endpoints/:id`; `/internal` is ALREADY blanket-guarded by `requireInternalToken`
+  at `server.ts:174`, so no new auth code); `src/server.test.ts` (stale "fast-follow" comment corrected +
+  an unauthenticated-probe assertion for the new routes).
+- **dashboard (server-side only):** `src/lib/webhook-endpoints-api.ts` (**new** — session scope via
+  `requireScope()`, client-supplied `installationId` verified against the session's own, proxy with
+  `internalAuthHeaders()`) + `webhook-endpoints-api.test.ts` (**new**, 8 tests);
+  `src/app/api/webhooks/endpoints/route.ts` + `.../[id]/route.ts` (**new**).
+
+**Why this is safe:** the old unauthenticated routes stay deleted — `server.test.ts:55-68` still asserts they
+404 and never emit `whsec_`, untouched and passing. The new internal routes trust their `installationId`
+**only** because nothing can reach them without a signed internal token, and that is pinned by its own test.
+Cross-tenant attempts are `404`, never `403` (a 403 would confirm the installation exists). No schema,
+migration, or generated file is touched.
+
+**Verification:** webhook **523/523**, dashboard **617/617**, `tsc --noEmit` clean in both.
+(`src/tenancy.test.ts` fails intermittently under full parallel load — pre-existing, unrelated to this
+change, passes 7/7 in isolation.)
+
+---
+
+### `pyrosome` (PM lane) — MCP credential store hardened (declared 2026-07-22)
+
+**No cross-lane claim needed: entirely `packages/agents` (Python) + the root `.gitignore`.** Declared
+anyway so the concurrent dashboard-UI lane can see it did NOT touch `packages/dashboard`,
+`packages/db`, `packages/webhook`, `.env.example`, or `pnpm-lock.yaml`.
+
+**Two defects closed in `.agents/mcp_servers.json`, which holds real OAuth access AND refresh tokens:**
+
+1. **The store was not gitignored.** No pattern in the root `.gitignore` covered `.agents/`, so a
+   `git add .` would have committed live third-party OAuth credentials. **Verified it never happened**
+   — `git ls-files` and `git log --all --diff-filter=A -- '.agents/*'` are both empty, so this is
+   preventive, not a cleanup. Fixed by adding `.agents/` to `.gitignore`.
+2. **Tokens were stored in cleartext.** The file was already created 0o600 atomically (a prior fix),
+   which stops another *user* on the box — but does nothing about the ways credential files actually
+   escape: a backup, a disk image, a copied workspace, a crash dump. `mcp/token_crypto.py` (**new**)
+   encrypts the two credential fields with a Fernet key held outside the file in
+   **`ARETE_MCP_TOKEN_KEY`**.
+
+**Design decisions, and their reasons:**
+- **Only `token` and `refresh_token` are encrypted.** Encrypting the whole document would make the
+  store undiagnosable; an operator must still see which servers exist, where they point, and their state.
+- **Ciphertext is tagged `enc:v1:`.** Untagged values are legacy plaintext and are returned as-is, so a
+  store written before this change keeps working and upgrades in place on the next write.
+- **No key configured == previous behaviour** (plaintext + a one-time structlog warning). Existing
+  deployments must not break on upgrade.
+- **A tagged value that will not decrypt raises `MCPTokenDecryptError`.** Returning `None` would read as
+  "never authenticated" and silently restart an OAuth flow; returning raw bytes would present garbage to
+  the server as a bearer token. Both hide a key-management failure — so it fails closed and loud.
+  Decryption sits deliberately OUTSIDE `_load_config`'s `except`, which otherwise swallows everything.
+- **Honest limit:** this is defence-in-depth against the *file* leaving the machine, not against an
+  attacker already executing as this user — they read the same env var the process does.
+
+**Files:** `.gitignore`; `packages/agents/src/arete_agents/mcp/token_crypto.py` (new);
+`packages/agents/src/arete_agents/mcp/manager.py` (`_load_config`/`_save_config` only — both **private**;
+`add_server`/`get_server`/`update_server_token`/`get_valid_token` keep identical signatures and still see
+plaintext); `packages/agents/tests/test_mcp_token_crypto.py` (new, 10 tests);
+`packages/agents/pyproject.toml` + `packages/agents/uv.lock` (`cryptography>=44` promoted from transitive
+to direct — a security control must not rest on someone else's dependency surviving an upgrade; the lock
+diff is **2 added lines**, no version churn, since it already resolved to 49.0.0).
+
+**Verification:** agents **561 passed, 1 skipped** (the skip is the POSIX file-mode test on Windows),
+`ruff check` clean. The 6 pre-existing `test_mcp_manager.py` tests pass **untouched** — the evidence the
+private-method change is behaviour-preserving.
+
+**Follow-up left undone on purpose:** `ARETE_MCP_TOKEN_KEY` is **not** documented in `.env.example`,
+because that file is claimed by the `ridley` lane (see its telemetry-queries entry above). Whoever owns
+`.env.example` next should add it; the generator is
+`python -c "from arete_agents.mcp.token_crypto import generate_key; print(generate_key())"`.

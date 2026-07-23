@@ -1,7 +1,6 @@
 {
   "meta": {
     "seededFrom": [
-      "docs/roadmap/master-build-status.json",
       "docs/status/2026-07-22-build-status-map.md",
       "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
       "docs/roadmap/backlog.md",
@@ -10,8 +9,9 @@
       "docs/handoff/2026-07-22-orchestration-briefs.md"
     ],
     "seededAt": "2026-07-23",
-    "lastEditedAt": null,
-    "lastEditedBy": null
+    "lastEditedAt": "2026-07-23",
+    "lastEditedBy": "autonomous loop",
+    "seededNote": "Seeded 2026-07-23 from the docs above. A working file (docs/roadmap/master-build-status.json) was used to assemble this and was retired in 476b7e8 so only one record exists; it is not listed here because a provenance path a reader cannot open is not provenance. Every item carries its own provenance to a doc that still exists."
   },
   "mission": {
     "northStar": "Kuma — your AI Software Healing Engineer.",
@@ -215,13 +215,17 @@
       "href": "/agents",
       "works": "Per-agent chat is genuinely live against the connected model, with provider errors surfaced honestly. Findings come from real reviews.",
       "gap": "Every configuration control is local-only and never saved, and the page is scheduled for absorption into Services.",
-      "evidence": "agent-config-drawer.tsx:24",
+      "evidence": "packages/dashboard/src/components/dashboard/agents/agent-config-drawer.tsx:24,149,249 — Save disabled with a \"Not saved yet\" badge; the absorption-into-Services half is a plan, not something code can confirm",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md"
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "surface"
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "surface-ai-models",
@@ -239,7 +243,12 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "surface"
+      ],
+      "evidence": "packages/dashboard/src/app/(dashboard)/connections/ai-models/page.tsx",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "surface-connections",
@@ -256,13 +265,17 @@
       "href": "/connections",
       "works": "GitHub App install, Stripe API key, and PostHog + Vercel OAuth.",
       "gap": "Every other connector is disabled pending its integration being published.",
-      "evidence": "connections/[id]/page.tsx:117-123",
+      "evidence": "packages/dashboard/src/app/(dashboard)/connections/[id]/page.tsx:51-59,118 — connectors without a connectHref render \"Not available yet\" behind a disabled CTA",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md"
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "surface"
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "surface-incident-detail",
@@ -270,22 +283,26 @@
       "lane": "inventory",
       "area": "Product surfaces",
       "level": "partial",
-      "state": "someday",
+      "state": "next",
       "importance": "medium",
       "rank": 30,
       "blockedBy": [
         "manual-investigation-start-fix"
       ],
       "href": "/incidents",
-      "works": "Mark and unmark noise, view a linked fix run, scrubbed alert payload tables.",
-      "gap": "A manually-opened investigation cannot be driven — there is no action to start a fix from it.",
-      "evidence": "lib/incidents.ts:211",
+      "works": "Mark and unmark noise, view a linked fix run, scrubbed alert payload tables — and opening an investigation by hand now dispatches a fix container, the same route a critical alert takes.",
+      "gap": "The fix it starts still halts at the human approve-and-send gate. The row previously said a hand-opened investigation could only be marked noise; that is no longer true.",
+      "evidence": "packages/dashboard/src/lib/incidents.ts:10,245 (openFixContainer / routeIncidentToFix fallback), lib/fix-dispatch.ts",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md"
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "surface"
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "surface-incidents",
@@ -303,7 +320,12 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "surface"
+      ],
+      "evidence": "packages/dashboard/src/app/(dashboard)/incidents/page.tsx",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "surface-overview",
@@ -321,13 +343,17 @@
       "href": "/overview",
       "works": "Stat tiles, Sensorium code map, setup checklist derived from real DB facts, preset tabs, time range.",
       "gap": "Two checklist sub-steps (the coding-agent setup prompt, MCP Kuma) are honest 'coming soon' placeholders with nothing behind them. Planned telemetry connectors are inert.",
-      "evidence": "lib/overview-setup.ts:76-84,103-107",
+      "evidence": "packages/dashboard/src/lib/overview-setup.ts:12,80,104-105 — both steps are declared not-yet-shipped and render as honest placeholders",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md"
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "surface"
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "surface-review-history",
@@ -345,7 +371,12 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "surface"
+      ],
+      "evidence": "packages/dashboard/src/app/(dashboard)/history/page.tsx",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "surface-search-notifications",
@@ -360,13 +391,17 @@
         "topbar-search-and-notifications"
       ],
       "gap": "Command palette and notifications are both disabled placeholders. The breadcrumb is the only working part of the top bar.",
-      "evidence": "topbar.tsx:44-62",
+      "evidence": "packages/dashboard/src/components/dashboard/topbar.tsx:45-46,56-57 — both controls are disabled with \"coming soon\" titles",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md"
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "surface"
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "surface-services",
@@ -383,14 +418,18 @@
       ],
       "href": "/services",
       "works": "Repo rail, live synthesizer console over SSE, status board, Scan / Fix it / Dismiss against real endpoints, and both HITL gates (approve, then post the PR) now render on the work-item panel.",
-      "gap": "Scan completion is a blind timer, and Fix/Dismiss full-page reloads and loses rail position.",
-      "evidence": "services-workspace.tsx",
+      "gap": "Scan completion is a blind timer, and Fix/Dismiss still trigger a full-page reload that loses rail position. A fix exists on stroland02/overview-revamp (e0a3f65) but is NOT merged to main, so the behaviour is unchanged here.",
+      "evidence": "packages/dashboard/src/components/dashboard/services/work-item-panel.tsx:45,136 and work-item-inbox.tsx:63 (window.location.reload)",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md"
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "surface"
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "surface-settings",
@@ -412,34 +451,44 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "surface"
+      ],
+      "evidence": "packages/dashboard/src/app/(dashboard)/settings/page.tsx:266 states the missing self-serve upgrade outright rather than faking a checkout",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "collector-plaintext-credentials",
-      "title": "Collector config commits plaintext ClickHouse credentials",
+      "title": "Collector credentials come from the environment, not the committed config",
       "lane": "idea",
       "area": "Partially wired",
-      "level": "partial",
-      "state": "next",
-      "importance": "critical",
+      "level": "live",
+      "state": "shipped",
+      "importance": "low",
       "rank": 10,
-      "gap": "otel-collector-config.yaml commits `superlog/superlog` in the clear. Fine for local compose; it must not survive into any deploy path, and nothing currently stops it.",
-      "evidence": "infra otel-collector-config.yaml",
+      "gap": "",
+      "evidence": "infra/otel-collector-config.yaml (exporters.clickhouse), infra/docker-compose.yml:37-39,69-71, .github/workflows/ci.yml validate step",
       "provenance": {
         "doc": "docs/roadmap/backlog.md"
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "honesty-security"
+      ],
+      "works": "otel-collector-config.yaml carries no credential literal — database/username/password resolve from CLICKHOUSE_DB/USER/PASSWORD. docker-compose supplies throwaway local defaults so `docker compose up` still works with no .env, and .env.example documents them. Verified by running the same validate the CI step runs.",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "internal-token-no-expiry",
-      "title": "INTERNAL_API_TOKEN has no expiry — and expiry is not expressible",
+      "title": "Internal service-to-service auth is a short-lived signed token with a rotatable keyset",
       "lane": "idea",
       "area": "Partially wired",
-      "level": "partial",
-      "state": "next",
-      "importance": "critical",
+      "level": "live",
+      "state": "shipped",
+      "importance": "low",
       "rank": 20,
       "programmes": [
         {
@@ -447,25 +496,29 @@
           "phase": "2b"
         }
       ],
-      "works": "One static shared secret authenticates every internal service-to-service call, and it does authenticate correctly.",
-      "gap": "No exp, no iat, no rotation, no revocation — and tokenMatches(header, token) takes no clock argument, so expiry is not merely absent but not expressible in the current code path. It guards every write-and-spend route on both the webhook and agents services. Needs a credential-lifecycle design (rotation window, dual-token overlap so rotation cannot break in-flight calls), not a patch. Resolve BEFORE building more dashboard proxies onto it.",
-      "evidence": "packages/webhook/src/internal-auth.ts:43",
+      "works": "The static shared secret is retired. Callers present a short-lived HS256 JWT minted by @arete/internal-token with claims {iss, aud: arete-internal, iat, exp} and a kid header; the default TTL is 120s. Verification rejects missing, malformed, unknown-kid, bad-signature, expired and wrong-audience tokens with an undifferentiated 401, and answers 503 when the keyset is unconfigured rather than running open. The keyset maps kid -> secret with a separate activeKid, so a rotation can overlap (old kids keep verifying while new tokens mint with the new one) and dropping a kid revokes everything signed with it.",
+      "gap": "",
+      "evidence": "packages/internal-token/src/mint.ts:5,15-16 (TTL 120s, iat/exp/kid), src/keyset.ts:7-39 (kid map + activeKid), packages/webhook/src/internal-auth.ts:43-68 (401/503 posture)",
       "provenance": {
         "doc": "docs/roadmap/backlog.md",
         "note": "Phase 2b item 1"
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "honesty-security"
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "mcp-token-plaintext-and-simulated-oauth",
-      "title": "MCP tokens are plaintext and the code exchange is simulated",
+      "title": "MCP OAuth: exchange is real, but the authorization request is not",
       "lane": "idea",
       "area": "Partially wired",
       "level": "partial",
       "state": "next",
-      "importance": "critical",
+      "importance": "high",
       "rank": 30,
       "programmes": [
         {
@@ -473,16 +526,20 @@
           "phase": "2b"
         }
       ],
-      "works": "Refresh-on-expiry now exists and fails closed; the creds file is written 0o600.",
-      "gap": "mcp/auth.py:90 never performs a real code exchange — it fabricates simulated_token_for_<code>, so there is no expires_in to store even where the schema has a slot. Tokens persist as JSON on disk. _save_config's mkdir does not retroactively tighten a pre-existing loose .agents/ directory. Decide: give MCP a real OAuth exchange, or remove the surface until it has one.",
-      "evidence": "packages/agents/src/arete_agents/mcp/auth.py:90, mcp/manager.py",
+      "works": "The fabricated simulated_token_for_<code> is gone: _complete_auth performs a real code exchange, fails closed when token_url is unset, and stores nothing without a genuine access_token. Config is encrypted at rest and created atomically at 0o600. The OAuth state is now secrets.token_urlsafe(32), fresh per flow, and verified with compare_digest on BOTH the local callback and the manual-paste fallback — an unverified code is discarded before it is ever stored.",
+      "gap": "Remaining, and smaller than it was: client_id is still hardcoded to \"arete-client\", the authorization endpoint is still guessed as the server target rather than discovered, and encryption no-ops to cleartext when no key is configured.",
+      "evidence": "packages/agents/src/arete_agents/mcp/auth.py state_is_valid + start_oauth_flow; tests/test_mcp_auth.py::TestCallbackStateVerification",
       "provenance": {
         "doc": "docs/roadmap/backlog.md",
         "note": "Phase 2b item 1, Phase 4 items 6-7"
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "honesty-security"
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "prose-credentials-reach-sinks",
@@ -508,45 +565,58 @@
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "honesty-security"
+      ]
     },
     {
       "id": "security-assessor-fabricates",
-      "title": "SecurityAssessor returns fabricated findings",
+      "title": "SecurityAssessor refuses instead of fabricating verdicts",
       "lane": "idea",
       "area": "Partially wired",
-      "level": "partial",
-      "state": "next",
-      "importance": "critical",
+      "level": "live",
+      "state": "shipped",
+      "importance": "low",
       "rank": 50,
-      "gap": "Returns simulated results, string-matched off the skill filename — the last live fabrication in packages/agents, and a direct violation of the honesty rule that is the product's differentiator. Either make it real or make it refuse. It must never reach the UI as-is.",
-      "evidence": "packages/agents/src/arete_agents/skills/security.py:12",
+      "gap": "",
+      "evidence": "packages/agents/src/arete_agents/skills/security.py:5-30",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§4 B7"
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "honesty-security"
+      ],
+      "works": "assess_skill returns {status: \"unavailable\"} for every skill and carries no rating vocabulary, so no caller can render it as a score. The filename-substring Gen/Socket/Snyk verdicts are gone.",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "sse-endpoint-unauthenticated",
-      "title": "SSE endpoint has no auth or tenant scoping, and CORS is *",
+      "title": "SSE endpoint is authenticated and tenant-safe",
       "lane": "idea",
       "area": "Partially wired",
-      "level": "partial",
-      "state": "next",
-      "importance": "critical",
+      "level": "live",
+      "state": "shipped",
+      "importance": "low",
       "rank": 60,
-      "gap": "Flagged during Lane A planning and never fixed. Needs a hardening item before any non-local deployment.",
-      "evidence": "packages/webhook/src/sse-handler.ts",
+      "gap": "",
+      "evidence": "packages/webhook/src/sse-handler.ts:10-19",
       "provenance": {
         "doc": "docs/roadmap/backlog.md",
         "note": "Discovered / unscheduled"
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "honesty-security"
+      ],
+      "works": "The route is guarded by requireInternalToken and sets no wildcard CORS header — it is consumed server-side or through an authenticated proxy.",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "agent-memory-ui",
@@ -568,14 +638,15 @@
       ],
       "works": "Kuma really does record what it learns per repository and injects it into later reviews.",
       "gap": "Nothing displays it. Belongs on repository settings as 'What Kuma has learned', with an archive action.",
-      "evidence": "packages/webhook/src/memory-write.ts:104,248",
+      "evidence": "No dashboard component references AgentMemory; the write path exists with no surface",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§3 A3"
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "approvals-panel",
@@ -599,7 +670,9 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "evidence": "packages/dashboard/src/components/dashboard/services/approvals-section.tsx:39 posts to /api/approvals/{id}/{approve|reject}; both route handlers exist under src/app/api/approvals/[id]/",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "approve-a-proposed-fix",
@@ -675,14 +748,15 @@
       ],
       "works": "The worker publishes review-lifecycle metrics to a server-sent stream.",
       "gap": "No consumer — the source comments call it a dark wire. An Overview throughput tile needs a server-side proxy, which depends on the internal-token lifecycle decision.",
-      "evidence": "packages/webhook/src/agent-metrics.ts:4",
+      "evidence": "No dashboard consumer of /metrics/stream. The only EventSource uses target /api/containers/[id]/stream (the synthesizer console), not the metrics wire",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§3 A4"
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "post-the-approved-pr",
@@ -732,7 +806,9 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "evidence": "packages/dashboard/src/components/dashboard/incidents/error-list.tsx:174-177 (silence action, hidden once silenced), covered by error-list.test.tsx and incidents-workspace.test.tsx",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "agent-config-persistence",
@@ -750,14 +826,15 @@
         }
       ],
       "gap": "Every parameter control in the config drawer is local-only and explicitly 'deliberately NOT persisted'. Without this, the Stage 2 agents layer ships parameter controls that are theatre — so either build it, or give them an explicit disabled state.",
-      "evidence": "agent-config-drawer.tsx:24,245",
+      "evidence": "packages/dashboard/src/components/dashboard/agents/agent-config-drawer.tsx:24,149,249 (Save disabled, \"Not saved yet\" badge)",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
         "note": "Stage 2.4"
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "agents-layer-inside-services",
@@ -831,13 +908,14 @@
         }
       ],
       "gap": "73e2040 put the Services work inbox INTO the Agents rail — the reverse of the locked decision. It entrenches two pages instead of consolidating to one, and duplicates a section onto a page scheduled for absorption. Small, additive, tested and harmless while /agents exists, but it points the wrong way. Revert it, or let the absorption subsume it — not yet decided.",
-      "evidence": "73e2040",
+      "evidence": "packages/dashboard/src/components/dashboard/agents/agent-rail.tsx:7,143 imports and renders WorkItemInboxSection from components/dashboard/services/work-item-inbox",
       "provenance": {
         "doc": "docs/status/2026-07-22-ridley-closeout.md"
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "back-to-overview-and-sample-data-copy",
@@ -1040,12 +1118,12 @@
     },
     {
       "id": "agent-memory-cap-and-archive",
-      "title": "Agent memory freezes at 20 rows forever",
+      "title": "A repository at its memory cap can still learn (FIFO archive)",
       "lane": "idea",
       "area": "Partially wired",
-      "level": "partial",
-      "state": "next",
-      "importance": "high",
+      "level": "live",
+      "state": "shipped",
+      "importance": "low",
       "rank": 110,
       "programmes": [
         {
@@ -1057,15 +1135,17 @@
           "phase": "2b"
         }
       ],
-      "gap": "Nothing in the repo ever sets status='archived', and the read cap and write cap are the same number — so once a repo reaches 20 ACTIVE rows every later write returns cap_exceeded forever and the memory set is frozen at whatever it first learned. Separately the cap is check-then-create with no transaction, so concurrent writes can all pass it. The mechanism exists; the missing piece is the policy (age out? evict least-cited? let a human archive?) and a surface to apply it.",
-      "evidence": "packages/webhook/src/memory-write.ts",
+      "gap": "",
+      "evidence": "packages/webhook/src/memory-write.ts:34-37,270-297 (archive in $transaction), :82 (shared read-side cap)",
       "provenance": {
         "doc": "docs/roadmap/backlog.md",
         "note": "agent memory sink"
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "works": "At the cap the oldest active rows are set to status=archived to make room, inside a serializable transaction — so the old check-then-create race that made the cap advisory is closed too. Read and write caps are the same constant by construction, so they cannot drift.",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "checks-update-double-retry",
@@ -1109,14 +1189,15 @@
       ],
       "works": "Confidence is computed and shown on scan and fix work items.",
       "gap": "ReviewComment has no confidence column at all, so PR findings show none. Schema column plus UI.",
-      "evidence": "schema.prisma (ReviewComment)",
+      "evidence": "packages/db/prisma/schema.prisma ReviewComment has no confidence field; the confidence Float at :186 belongs to WorkItem, which is why scan and fix show one and PR findings do not",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§4 B3"
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "correct-tracking-docs",
@@ -1214,7 +1295,9 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "evidence": "emailVerified appears only at packages/db/prisma/schema.prisma:464 and is never written; no reset/verify route exists under packages/dashboard/src/app",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "pino-log-path-unstamped",
@@ -1266,12 +1349,12 @@
     },
     {
       "id": "review-pr-heavy-no-consumer",
-      "title": "review-pr-heavy queue has a producer and no consumer",
+      "title": "The heavy review lane has a consumer",
       "lane": "idea",
       "area": "Partially wired",
-      "level": "partial",
-      "state": "next",
-      "importance": "high",
+      "level": "live",
+      "state": "shipped",
+      "importance": "low",
       "rank": 130,
       "programmes": [
         {
@@ -1279,15 +1362,17 @@
           "phase": "stage-4"
         }
       ],
-      "gap": "PRs with more than 50 changed files are routed to a queue nothing consumes — worker.ts starts a Worker only on the fast queue. Those reviews never run and their traces dead-end. Pre-existing, but it means large PRs silently get no review at all.",
-      "evidence": "webhook-handler.ts:114, backfill.ts:86, worker.ts:311",
+      "gap": "",
+      "evidence": "packages/webhook/src/worker.ts:419-423 (both lanes), :436 (called at entry)",
       "provenance": {
         "doc": "docs/roadmap/backlog.md",
         "note": "Phase 1 final review"
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "works": "startReviewWorkers() starts a separate lower-concurrency Worker for review-pr-heavy alongside the fast lane, and is invoked when worker.ts runs as the entry script. PRs over 50 changed files are no longer routed to a queue nothing drains.",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "send-route-work-item-posted",
@@ -1431,16 +1516,17 @@
           "phase": "stage-5"
         }
       ],
-      "works": "Signing, retry backoff with rescheduling, SSRF-guarded delivery and a delivery log all work, and it already fires on every persisted review. The retry worker now runs.",
-      "gap": "The management API is deliberately unmounted, so nobody can register an endpoint or see a delivery, and nothing surfaces delivery health — you cannot see that a delivery failed, how many attempts remain, or the last error. This is the single unblock for every Slack/Linear/PagerDuty relay.",
-      "evidence": "packages/webhook/src/server.ts:408-414, persistence.ts:239-256",
+      "works": "The tenant-scoped management API is now mounted and authenticated — endpoints can be listed and registered over HTTP, and delivery records exist with signing and retry behind them.",
+      "gap": "What is missing is only the dashboard surface: there is still no screen to register an endpoint or inspect deliveries, so this remains reachable by API alone. The previous claim that the API is \"deliberately unmounted\" is no longer true.",
+      "evidence": "packages/webhook/src/server.ts:414-446 (management API mounted); no dashboard route or component references webhook endpoints",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§3 A2"
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "tenant-telemetry-ingest",
@@ -1472,7 +1558,9 @@
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "evidence": "No OTLP ingest route or ingest-key handling in packages/webhook/src/server.ts",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "work-floor-phase-b-agents",
@@ -1521,7 +1609,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "onboarding-install"
+      ]
     },
     {
       "id": "connect-workspace-clone-or-folder",
@@ -1540,7 +1631,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "onboarding-install"
+      ]
     },
     {
       "id": "kuma-as-mcp-server",
@@ -1558,14 +1652,18 @@
         }
       ],
       "gap": "Expose Kuma's findings and review judgment back into the user's coding agent. Only the client half exists today — Kuma can consume third-party MCP servers, but nothing can consume Kuma. This is the 'Connect MCP Kuma to your agent' checklist sub-step.",
-      "evidence": "lib/overview-setup.ts:103-107, packages/agents/.../mcp/manager.py",
+      "evidence": "Only the client half exists (packages/agents/src/arete_agents/mcp/); nothing serves Kuma as an MCP server",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§5 C4"
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "onboarding-install"
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "kuma-install-skills-and-codemap",
@@ -1584,7 +1682,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "onboarding-install"
+      ]
     },
     {
       "id": "mcp-servers-no-surface",
@@ -1597,14 +1698,18 @@
       "rank": 260,
       "works": "Kuma can consume third-party MCP servers, driven from the CLI.",
       "gap": "No dashboard surface to add or list them.",
-      "evidence": "packages/agents/src/arete_agents/mcp/manager.py",
+      "evidence": "No route or component under packages/dashboard/src references MCP servers — still CLI-only",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§4 B6"
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "onboarding-install"
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "mcp-setup-from-agent",
@@ -1626,7 +1731,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "onboarding-install"
+      ]
     },
     {
       "id": "setup-prompt-workflow",
@@ -1645,7 +1753,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "onboarding-install"
+      ]
     },
     {
       "id": "ci-for-untested-packages",
@@ -1663,7 +1774,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "sdlc"
+      ]
     },
     {
       "id": "deploy-pipeline-and-prod-runbook",
@@ -1681,7 +1795,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "sdlc"
+      ]
     },
     {
       "id": "google-oauth-client-missing",
@@ -1702,7 +1819,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "sdlc"
+      ]
     },
     {
       "id": "lane-to-preview-governance",
@@ -1720,7 +1840,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "sdlc"
+      ]
     },
     {
       "id": "managed-env-template",
@@ -1737,7 +1860,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "sdlc"
+      ]
     },
     {
       "id": "root-aggregate-test-script",
@@ -1755,7 +1881,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "sdlc"
+      ]
     },
     {
       "id": "typed-debt-ratchets",
@@ -1773,7 +1902,10 @@
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "sdlc"
+      ]
     },
     {
       "id": "anthropic-catalog-default-tier",
@@ -1793,7 +1925,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "product-commercial"
+      ]
     },
     {
       "id": "public-api-and-keys",
@@ -1817,7 +1952,12 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "product-commercial"
+      ],
+      "evidence": "No ApiKey model, issuance path or management route exists",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "relays-slack-linear-pagerduty",
@@ -1844,7 +1984,12 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "product-commercial"
+      ],
+      "evidence": "No implementation exists: the only Slack/Linear/PagerDuty mentions in packages/webhook/src and packages/dashboard/src are comments in outbound/management.ts:10 and outbound/payload.ts:4 describing the future feature",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "review-pr-url-and-reason-codes",
@@ -1868,7 +2013,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "product-commercial"
+      ]
     },
     {
       "id": "review-scope-filters",
@@ -1892,7 +2040,12 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "product-commercial"
+      ],
+      "evidence": "No review-scope or path-filter implementation exists",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "self-serve-upgrade-billing",
@@ -1911,7 +2064,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "product-commercial"
+      ]
     },
     {
       "id": "telemetry-freshness-poller",
@@ -1931,14 +2087,18 @@
       "href": "/grid",
       "works": "The grid reads a real telemetry snapshot per repository.",
       "gap": "Snapshots are captured only during a review and there is no background poller, so a quiet repo shows arbitrarily stale data with nothing but fetchedAt to say so. TelemetrySnapshotRecord is a latest-value row, not a history table.",
-      "evidence": "schema.prisma:367-374",
+      "evidence": "No background poller in packages/webhook/src/telemetry — snapshots are still captured only during a review",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§4 B5"
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "product-commercial"
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "tracing-and-log-search",
@@ -1956,15 +2116,19 @@
         }
       ],
       "works": "Full OpenTelemetry instrumentation flows into ClickHouse and Jaeger, and Jaeger trace deep-links exist.",
-      "gap": "Exactly one metric reaches the UI. No trace view, no span drill-down, no log search. This is what blocks telemetry-fed investigations — the healing agent cannot read an incident's own trace context.",
-      "evidence": "packages/dashboard/src/lib/queries.ts getAgentEventsPerMinute",
+      "gap": "Still no in-product trace view, no span drill-down and no log search. One correction: deep-linking is no longer missing — the Errors list and an incident's Signals rows turn real trace ids into Jaeger links when NEXT_PUBLIC_JAEGER_UI_URL is set, and render plain text when it is not.",
+      "evidence": "packages/dashboard/src/lib/trace-links.ts and components/dashboard/incidents/error-list.tsx:7,29 (deep-links present); no trace/span/log-search surface exists",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§4 B2"
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "product-commercial"
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "parked-anthropic-zero-balance",
@@ -1985,7 +2149,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "parked"
+      ]
     },
     {
       "id": "parked-clickhouse-ttl-verification",
@@ -2006,7 +2173,10 @@
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "parked"
+      ]
     },
     {
       "id": "parked-code-map-browser-qa",
@@ -2026,7 +2196,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "parked"
+      ]
     },
     {
       "id": "parked-error-severity-log",
@@ -2046,7 +2219,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "parked"
+      ]
     },
     {
       "id": "parked-haiku-fix-authoring-adequacy",
@@ -2069,7 +2245,10 @@
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "parked"
+      ]
     },
     {
       "id": "parked-mcp-rfc8414-discovery",
@@ -2090,7 +2269,10 @@
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "parked"
+      ]
     },
     {
       "id": "parked-review-comment-indexes",
@@ -2111,7 +2293,10 @@
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "parked"
+      ]
     },
     {
       "id": "parked-review-concurrency-tuning",
@@ -2134,7 +2319,10 @@
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "parked"
+      ]
     },
     {
       "id": "parked-review-job-double-retry",
@@ -2156,7 +2344,10 @@
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "parked"
+      ]
     },
     {
       "id": "parked-signals-visibly-render",
@@ -2177,7 +2368,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "parked"
+      ]
     }
   ]
 }

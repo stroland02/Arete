@@ -1,3 +1,4 @@
+import secrets
 import threading
 import time
 import urllib.parse
@@ -174,35 +175,85 @@ def _complete_auth(name: str, manager, code: str) -> None:
     print(f"Authentication complete! {name} is now ready to use.")
 
 
+def state_is_valid(expected: Optional[str], received: Optional[str]) -> bool:
+    """Whether a callback's `state` proves it belongs to the flow we started.
+
+    The `state` parameter is OAuth's CSRF defence: an attacker who can make the
+    victim's browser hit our callback with an authorization code of the
+    attacker's choosing would otherwise bind the attacker's account to the
+    victim's MCP server. Only a value we generated ourselves is acceptable, so a
+    missing or mismatched `state` fails closed.
+
+    Compared with `secrets.compare_digest` so the check does not leak the
+    expected value through timing.
+    """
+    if not expected or not received:
+        return False
+    return secrets.compare_digest(expected, received)
+
+
+def callback_result(
+    query_params: dict, expected_state: Optional[str]
+) -> tuple[Optional[str], Optional[str]]:
+    """Decide a callback's outcome as `(code, error)` — exactly one is set.
+
+    Pure, so the branches can be tested without binding a socket. The order
+    matters: `state` is checked before the code is even looked at, because an
+    unverified code must never reach the caller.
+
+    A callback carrying a valid `state` but no `code` is a *failure*, not a
+    non-event — the usual cause is the provider redirecting with
+    `?error=access_denied` when someone declines consent. It gets an error so
+    the caller stops waiting; see the shutdown note in `do_GET`.
+    """
+    received = (query_params.get("state") or [None])[0]
+    if not state_is_valid(expected_state, received):
+        return None, "callback state did not match the value this flow generated"
+
+    code = (query_params.get("code") or [None])[0]
+    if code:
+        return code, None
+
+    provider_error = (query_params.get("error") or [None])[0]
+    return None, provider_error or "callback carried no authorization code"
+
+
 class OAuthCallbackHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed_path = urlparse(self.path)
-        if parsed_path.path == "/callback":
-            query_params = parse_qs(parsed_path.query)
-            if "code" in query_params:
-                code = query_params["code"][0]
-                self.server.oauth_code = code
-                
-                self.send_response(200)
-                self.send_header("Content-type", "text/html")
-                self.end_headers()
-                self.wfile.write(
-                    b"<html><body><h1>Authentication Successful!</h1><p>You can close this tab "
-                    b"and return to the terminal.</p></body></html>"
-                )
-                
-                # Signal the server to stop
-                threading.Thread(target=self.server.shutdown, daemon=True).start()
-            else:
-                self.send_response(400)
-                self.send_header("Content-type", "text/html")
-                self.end_headers()
-                self.wfile.write(
-                    b"<html><body><h1>Authentication Failed!</h1><p>Missing authorization code.</p></body></html>"
-                )
-        else:
+        if parsed_path.path != "/callback":
             self.send_response(404)
             self.end_headers()
+            return
+
+        code, error = callback_result(
+            parse_qs(parsed_path.query), getattr(self.server, "expected_state", None)
+        )
+
+        if code:
+            self.server.oauth_code = code
+            body = (
+                b"<html><body><h1>Authentication Successful!</h1><p>You can close this tab "
+                b"and return to the terminal.</p></body></html>"
+            )
+            self.send_response(200)
+        else:
+            self.server.oauth_error = error
+            body = (
+                b"<html><body><h1>Authentication Failed!</h1><p>This callback was rejected "
+                b"and nothing was stored. Return to the terminal for the reason.</p></body></html>"
+            )
+            self.send_response(400)
+
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+        self.wfile.write(body)
+
+        # Every /callback outcome stops the server, success or not. Failing to
+        # shut down on the failure paths left serve_forever() blocking with
+        # nothing left to wait for, so declining consent hung the CLI until
+        # Ctrl-C.
+        threading.Thread(target=self.server.shutdown, daemon=True).start()
 
     def log_message(self, format, *args):
         # Suppress logging to keep the terminal clean
@@ -215,9 +266,12 @@ def start_oauth_flow(name: str, manager) -> None:
         return
         
     target_url = server_info.get("target")
-    
-    # Construct a simulated OAuth URL
-    state = "simulate_state"
+
+    # A fresh, unguessable state per flow. This was previously the constant
+    # "simulate_state" and was never checked on the way back, so the callback
+    # accepted any authorization code any page could send it — the CSRF hole
+    # `state` exists to close.
+    state = secrets.token_urlsafe(32)
     client_id = "arete-client"
     redirect_uri = urllib.parse.quote("http://localhost:3118/callback")
     
@@ -248,11 +302,15 @@ def start_oauth_flow(name: str, manager) -> None:
     try:
         server = HTTPServer(("localhost", port), OAuthCallbackHandler)
         server.oauth_code = None
-        
+        server.oauth_error = None
+        server.expected_state = state
+
         # Start serving in the main thread (blocks until shutdown is called)
         server.serve_forever()
-        
-        if server.oauth_code:
+
+        if server.oauth_error:
+            print(f"Authentication rejected: {server.oauth_error}. Nothing was stored.")
+        elif server.oauth_code:
             print("Successfully received authorization code.")
             _complete_auth(name, manager, server.oauth_code)
         else:
@@ -262,7 +320,14 @@ def start_oauth_flow(name: str, manager) -> None:
         manual_url = input("Paste the redirected callback URL here: ")
         parsed = urlparse(manual_url)
         params = parse_qs(parsed.query)
-        if "code" in params:
+        # The pasted URL gets the same check as the automatic callback — a
+        # fallback that skipped it would be the same hole by another door.
+        if not state_is_valid(state, (params.get("state") or [None])[0]):
+            print(
+                "That callback URL does not carry the state this flow generated, "
+                "so it was rejected. Nothing was stored."
+            )
+        elif "code" in params:
             _complete_auth(name, manager, params["code"][0])
         else:
             print("Invalid URL provided. Authentication failed.")

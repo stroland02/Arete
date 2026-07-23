@@ -5,7 +5,8 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { resolveSelectedInstallationIds } from '@/lib/queries';
-import { createManualIncident, requestIncidentRouting, setIncidentNoise } from '@/lib/incidents';
+import { createManualIncident, setIncidentNoise } from '@/lib/incidents';
+import { dispatchFixTrigger } from '@/lib/fix-dispatch';
 import {
   ERROR_STATUSES,
   attachErrorGroupToIncident,
@@ -63,27 +64,25 @@ export async function createInvestigationAction(
     return { error: 'Pick a severity.' };
   }
 
-  const id = await createManualIncident(db, installationId, {
-    alertName: trimmedTitle,
-    severity,
-    summary: summary.trim(),
-  });
+  // Opens the incident, the WorkItem that makes it healable, and (when a repo
+  // is connected) the fix run itself.
+  const { incidentId, workItemId, containerId } = await createManualIncident(
+    db,
+    installationId,
+    { alertName: trimmedTitle, severity, summary: summary.trim() },
+  );
 
-  // Stage 3.2: /incidents used to end here. The incident was recorded and then
-  // nothing happened to it — `routeIncidentToFix` existed but was reachable
-  // only from the Alertmanager receiver, so a hand-opened investigation could
-  // never start a fix.
-  //
-  // The routing VERDICT is the webhook's, not ours, and it is deliberately not
-  // allowed to fail this action: the incident is already durably created, so
-  // throwing here would lose a record the user can see was made. A refusal
-  // (`not_critical` — the router only opens fixes for critical+firing) or an
-  // unreachable webhook both leave the incident intact and un-routed, which is
-  // exactly what the detail page then shows.
-  await requestIncidentRouting(id);
+  // Auto-start: the container exists and the WorkItem is already `fixing`, so
+  // kick the drive. Fire-and-forget by contract — a dispatch failure leaves a
+  // retriable run, never a failed investigation. No container (tenant has no
+  // connected repository) means there is nothing to fix against yet, so the
+  // WorkItem stays `open` and nothing is dispatched.
+  if (containerId) {
+    await dispatchFixTrigger(workItemId);
+  }
 
   revalidatePath('/incidents');
-  redirect(`/incidents/${id}`);
+  redirect(`/incidents/${incidentId}`);
 }
 
 /**

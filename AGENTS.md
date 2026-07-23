@@ -6,17 +6,21 @@ Read these three before writing any code.
 | Read | Why |
 |---|---|
 | [`docs/PRINCIPLES.md`](docs/PRINCIPLES.md) | The mission, the honesty rules, the HITL moat, the tenancy and BYO-model contracts, and the working rules. **What never to do.** |
-| [`docs/roadmap/master-build-status.json`](docs/roadmap/master-build-status.json) | The catalogue of what is built, what is half-wired and what remains — 85 items, ranked by priority, grouped into stages, each with provenance. **What to do.** ([generated markdown view](docs/roadmap/master-build-status.md).) |
+| [`packages/dashboard/data/build-tracker.json`](packages/dashboard/data/build-tracker.json) | **The single record** of what is built, what is half-wired and what remains — 85 items, each with provenance, importance and phase. **What to do.** Contract and selectors: `packages/dashboard/src/lib/build-tracker.ts`. |
 | [`.claude/ade-coordination.md`](.claude/ade-coordination.md) | Who owns which package right now. Claim one, and declare cross-package edits **before** editing. |
 
-> **Two build-status records exist right now, and that is a known, temporary split.**
-> The `/build-status` **page** renders `packages/dashboard/src/lib/feature-readiness.ts`.
-> The **catalogue** above — and `packages/dashboard/data/build-tracker.json`, its conversion
-> into the `build-tracker` schema — is the fuller record: it holds the ~60 never-started
-> ideas the page does not yet show. Three lanes built a tracker in parallel; converging
-> them is tracked in `.claude/ade-coordination.md` and
-> `docs/status/2026-07-23-nautilus-closeout.md`. Read the catalogue for *what is left*,
-> the page for *what ships today*, and assume neither is complete on its own.
+> **One record, deliberately.** Three lanes built a build-status tracker in parallel and a
+> second record (`docs/roadmap/master-build-status.json`) briefly existed alongside this one.
+> It is **retired** — two records drift, and the drift always wins. Its curated themes survive
+> as `tags` on the items (`honesty-security`, `onboarding-install`, `sdlc`,
+> `product-commercial`, `surface`, `parked`). If you are about to author a second catalogue:
+> don't. Extend this one. History in `docs/status/2026-07-23-nautilus-closeout.md`.
+>
+> Two things not to misread: an item with **no `verifiedAt` has never been verified** — the
+> seed transcribed the audits it cites rather than re-confirming each against the code, so
+> absence must never render as a tick. And **`programmes` is an array**, because four
+> numbering systems run here at once; an item outside all four carries none rather than an
+> invented one.
 
 ## The three rules that have already cost hours
 
@@ -34,10 +38,14 @@ what is still open, and what you deliberately did not do.
 
 ## Changing the backlog
 
-Edit `docs/roadmap/master-build-status.json` — it is checked in, so the build log's history is git
-history. Every item needs a `source` (the doc, commit or `file:line` it came from) and an `addedBy`.
-A duplicate `id` means two lanes recorded the same thing: reconcile the entries, do not append.
-The `.md` beside it is **generated** — never edit it by hand.
+Edit `packages/dashboard/data/build-tracker.json` — it is checked in, so the build log's history is
+git history. Every item needs `provenance` (the doc, commit or session it came from); the parser
+rejects a row without one unless its `origin` is `user`. `id` is frozen kebab-case and is never the
+title, so a row can be reworded without losing its history. A duplicate `id` means two lanes recorded
+the same thing: reconcile the entries, do not append. A `blockedBy` entry must resolve to another
+item id, or carry an `ext:` prefix if the blocker is outside the tracker.
+
+Do not add a second catalogue file. That has already happened once and had to be undone.
 
 ---
 

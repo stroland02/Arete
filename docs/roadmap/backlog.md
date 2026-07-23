@@ -42,6 +42,28 @@ Ranked. The first item is a live security gap, not an enhancement.
    **The MCP half is still OPEN and is still the worse half** — left in full below because nothing
    about it has changed.
    *Original entry, kept for the record:*
+   **CLOSED 2026-07-22 (verified in code).** The internal half shipped: `@arete/internal-token`
+   issues HS256 tokens carrying `exp` and `kid` (`9399330`), and `packages/webhook/src/internal-auth.ts`
+   now calls `verifyInternalToken`, failing closed (503 when unset, 401 when invalid). The MCP half
+   shipped a real OAuth code exchange, replacing the fabricated `simulated_token_for_<code>`;
+   `packages/agents/tests/test_mcp_auth.py` asserts that marker can never reappear.
+   *Residual, not a security gap:* `INTERNAL_API_TOKEN` is still referenced in
+   `arete_agents/config.py` and `packages/internal-token/src/keyset.ts` (bootstrap/keyset paths).
+   **The MCP residuals are now closed too (verified in code 2026-07-22).** `expires_in` persistence
+   shipped: `mcp/auth.py` computes `expires_at = now + expires_in` on both the code exchange (L76-81)
+   and the refresh (L130-135), `manager.py` stores it, and `get_valid_token` refreshes inside a 60s
+   skew window, raising `MCPTokenRefreshError` rather than presenting a stale token when it cannot.
+   And the store is no longer plaintext on disk: `mcp/token_crypto.py` (`63f1ad3`) encrypts
+   `token`/`refresh_token` at rest under `ARETE_MCP_TOKEN_KEY`, on top of the earlier 0o600
+   atomic-create hardening, and `.agents/` is now gitignored. **So the provenance text below —
+   "persists tokens as plaintext JSON … with no file-mode hardening" — describes the ORIGINAL state,
+   not the current one.** It is kept only to explain why the work was scheduled.
+   **Why this sat stale:** three sessions in a row read this entry, each knew it was closed in
+   code, and each left it for "the owning session". A closed item presented as the top live
+   security gap is worse than no backlog — it misdirects whoever plans next. Correcting the record
+   is the coordinator's job, not the implementer's.
+
+   *Original description kept below for provenance:*
    `INTERNAL_API_TOKEN` is one static shared secret read from the environment per request
    (`packages/webhook/src/internal-auth.ts:43`): no `exp`, no `iat`, no rotation, no revocation.
    Probed — the middleware authenticates the identical token with the system clock set ten years
@@ -60,18 +82,32 @@ Ranked. The first item is a live security gap, not an enhancement.
    real OAuth exchange or is removed until it does).
    *For contrast, the credential that reaches a customer repo — the GitHub App installation token —
    does expire (~1h, GitHub-enforced) and is minted fresh per fix drive.*
-2. **Telemetry-fed investigations** (the one unshipped spec §3 Phase 2 bullet). The healing agent
-   should read the incident's own trace/log context. Blocked on an internal query surface: today only
-   `getAgentEventsPerMinute` (`queries.ts:781-815`) reaches ClickHouse at all.
+2. ~~**Telemetry-fed investigations** (the one unshipped spec §3 Phase 2 bullet). The healing agent
+   should read the incident's own trace/log context.~~ **DONE (2026-07-22).** The blocking query
+   surface shipped (`a6afc14`); the gated incident reads moved into `@arete/db/telemetry`, and the
+   fix drive now collects an incident's spans/logs/exceptions (`webhook/src/fix/incident-signals.ts`,
+   `fix.signals.collect` span), attaches them to the `FixRequest`, and renders them into the author
+   prompt (`agents/.../fix_signals.py`). Optional in both directions, fail-soft, and honest about the
+   three empty-states (denied ≠ unavailable ≠ quiet). **Scope limit carried forward:** platform-gated,
+   so it only heals platform incidents until Phase 3 ingests customer telemetry — for a customer
+   incident there is nothing to read, and the agent is told "unknown" rather than "nothing was wrong".
 3. **Give the fix pipeline a tool loop.** `fix_pipeline.py` makes one direct LLM call for a JSON
    blob; tool-calling exists only on the review side. Until then, rubrics necessarily live in the
    prompt, and spec §3's "tool descriptions ARE the prompt" cannot apply to healing.
 4. **Webhook-side fix failures are uncounted.** `no_repo` / `no_model` terminate before Python is
    reached, so they never appear in `arete.fix.*` — a fix drive dying before dispatch is invisible in
    the counters.
-5. **Memory row cap is check-then-create with no transaction, and nothing ever archives.** Two
+5. ~~**Memory row cap is check-then-create with no transaction, and nothing ever archives.** Two
    concurrent writes can both pass the cap check; and since no path sets `status='archived'`, a repo
-   is permanently frozen at 20 memories once it fills.
+   is permanently frozen at 20 memories once it fills.~~
+   **CLOSED 2026-07-22 (`a216b08`).** Both halves shipped together: count + archive + create now run
+   in ONE `prisma.$transaction` at `Serializable` (closing the race), and at the cap the oldest active
+   row flips to `status='archived'` — FIFO, the user's choice over LRU, which would need a
+   `lastCitedAt` column plus read-path instrumentation in the shared `@arete/db` lane and can layer
+   on later.
+   **This entry was a DUPLICATE** of the two struck bullets under "From Phase 1 final whole-branch
+   review" below (~L225–244), which describe the same defect and were struck when it was fixed. The
+   duplicate is the one that actually misdirects planning, because a ranked list gets read first.
 6. **Prose credentials still reach sinks** (`password: hunter2`) — no secret shape, and the key
    blocklist binds to object keys, not words in a string. Catching it needs an amendment to the
    frozen §5 pattern set with real false-positive risk on ordinary prose. The URL-embedded half of
@@ -165,6 +201,11 @@ leak, missing CI gate) were fixed on the phase branch before merge.
   (`queue.ts:18` = `review-pr-heavy`) at `worker.ts:422`; the code's own comment at `:411` records
   that oversized PRs had always been routed there with nothing consuming them. The
   "use a small PR for the end-to-end exit criterion" workaround is no longer required.
+- ~~`review-pr-heavy` queue has a producer but **no consumer**~~ — **CLOSED (verified
+  2026-07-22).** `startReviewWorkers()` starts both lanes (`worker.ts`: `fast:
+  startReviewWorker(REVIEW_QUEUE_NAME, …)`, `heavy: startReviewWorker(REVIEW_QUEUE_HEAVY_NAME,
+  …)`), so large PRs are consumed and their traces complete. The "use a small PR for the
+  end-to-end exit criterion" workaround no longer applies.
 - Span-name convention drift (Python lane): `orchestrator.py:393,456` emit
   `agent_review:{name}` / `synthesize_reviews` with `pr_number`/`agent_name` attributes
   instead of spec §5's `agent.review` (attr `agent.role`) / `review.synthesize`. No
@@ -212,21 +253,31 @@ Everything blocking was fixed in that round. These are the reviewer-verified
 leftovers, kept here with their evidence rather than fixed, because each needs
 a design decision or a schema change rather than a patch:
 
-- **Row cap is check-then-create, with no transaction and no DB constraint.**
-  `memory-write.ts` counts active rows and then creates, so N concurrent writes
-  for one repo can all observe `count == 19` and all insert — a repo can exceed
-  `MAX_MEMORIES_PER_REPO` (20). Not exploitable for unbounded growth (each racer
-  still inserts exactly one row, so the overshoot is bounded by concurrency),
-  but the cap is advisory rather than enforced. Correct fix is a serializable
-  transaction or a DB-level constraint/trigger, not a wider read.
-- **No eviction path: nothing in the repo ever sets `status='archived'`.** The
-  read cap (`fetchProjectMemories`, 20 most recent) and the write cap are the
-  same number, so once a repo reaches 20 ACTIVE rows every subsequent write
-  returns `cap_exceeded` forever and the memory set is frozen at whatever it
-  first learned. `status` exists and is honoured by both the count and the read,
-  so the mechanism is there — what is missing is the policy (age out? evict
-  least-recently-cited? let a human archive from the dashboard?) and a surface
-  to apply it.
+- ~~**Row cap is check-then-create, with no transaction and no DB constraint.**~~
+  **CLOSED 2026-07-22** — `memory-write.ts` counted active rows and then
+  created, so N concurrent writes for one repo could all observe `count == 19`
+  and all insert; the cap was advisory rather than enforced. The count, the
+  archive and the create now run in ONE `prisma.$transaction` at
+  `isolationLevel: 'Serializable'`, which is the "serializable transaction"
+  option this entry called for. A repo that is already over the cap (from the
+  old racy path) is drained back to it on the next write rather than staying
+  permanently over.
+- ~~**No eviction path: nothing in the repo ever sets `status='archived'`.**~~
+  **CLOSED 2026-07-22** — this was the "silently stops learning" defect: the
+  read cap (`fetchProjectMemories`, 20 most recent) and the write cap were the
+  same number, so once a repo reached 20 ACTIVE rows every subsequent write
+  returned `cap_exceeded` **forever** and the memory set froze at whatever it
+  first learned. **Policy chosen (user decision): archive the OLDEST (FIFO).**
+  At the cap, the oldest active row flips to `status='archived'` — retained,
+  never deleted — to make room for the new one. Deliberately not LRU: that
+  needs a `lastCitedAt` column and read-path instrumentation (a schema change in
+  the shared `@arete/db` lane), and it can layer on later without undoing this.
+  FIFO needed **no schema change** and is exactly what the read path already
+  implies, since it only ever surfaces the 20 most recent — so this makes
+  storage agree with what the model actually sees rather than inventing a new
+  policy. Evictions are logged (`archived` count + cap) and set an
+  `arete.memory.archived` span attribute; a memory leaving the active set is
+  never silent.
 - ~~**`scrubSinkText`'s query-string stripping only fired when the ENTIRE
   value was a bare URL.**~~ **CLOSED in `d0f4e1b`** — `URL_LIKE`
   was anchored `^…\S+$`, so `see https://x.io/a?password=topsecret for

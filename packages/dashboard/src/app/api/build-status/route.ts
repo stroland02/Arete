@@ -1,168 +1,141 @@
 import { readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { NextResponse } from "next/server";
+import { TRACKER_PATH, type Tracker, type TrackerItem } from "@/lib/build-tracker";
 
 /**
- * Dev-only write-back for the build-status list.
+ * Dev-only write-back for the master build tracker.
  *
- * The master list stays a hand-authored TypeScript file (see
- * `lib/feature-readiness.ts`) — that is deliberate, so it can describe
- * capabilities with no UI to inspect, and so every edit lands as a reviewable
- * git diff rather than invisible database state.
+ * The tracker stays a hand-authored JSON file (`data/build-tracker.json`) —
+ * that is deliberate, so it can describe capabilities with no UI to inspect,
+ * and so every edit lands as a reviewable git diff rather than invisible
+ * database state.
  *
- * This route therefore performs *surgical* inserts and removals rather than
- * re-serialising the whole array: rewriting the array wholesale would delete
- * the file's section comments and evidence annotations, which are the point of
- * it being hand-authored.
+ * Editing JSON rather than a TypeScript literal means add-then-remove restores
+ * the file byte for byte; the only care needed is line endings, which git
+ * checks out as CRLF on Windows.
  *
  * Not mounted in production — editing your own source at runtime is a
- * local-development affordance only.
+ * local-development affordance only. Note this route also sits behind the
+ * session gate in `proxy.ts`, so it is never anonymously reachable either.
  */
 
-const FILE = path.join(process.cwd(), "src", "lib", "feature-readiness.ts");
-
-/**
- * Line endings are detected from the file rather than assumed. On Windows git
- * checks this file out as CRLF, and matching on a bare "\n" finds nothing —
- * every edit would fail with "file shape changed". Detecting keeps the inserted
- * text consistent with the file instead of mixing endings.
- */
-function eolOf(source: string) {
-  return source.includes("\r\n") ? "\r\n" : "\n";
-}
-
-/** Closing line of the FEATURE_READINESS array literal, either line ending. */
-const ARRAY_END = /\r?\n\];\r?\n/;
+const LANES = ["inventory", "idea"];
+const LEVELS = ["live", "preview", "partial", "soon"];
+const STATES = ["shipped", "next", "blocked", "someday", "needs-decision"];
+const IMPORTANCES = ["critical", "high", "medium", "low"];
+const AREAS = ["Product surfaces", "Built, but unreachable", "Partially wired", "Not built yet"];
 
 function isProduction() {
   return process.env.NODE_ENV === "production";
 }
 
-interface ItemInput {
-  name: string;
-  area: string;
-  level: string;
-  priority?: string;
-  phase?: string;
-  href?: string;
-  works?: string;
-  gap?: string;
-  evidence?: string;
+/** Preserve the file's existing line endings; git checks this out as CRLF. */
+function serialize(tracker: Tracker, eol: string): string {
+  return JSON.stringify(tracker, null, 2).replace(/\n/g, eol) + eol;
 }
 
-const AREAS = ["Product surfaces", "Built, but unreachable", "Partially wired", "Not built yet"];
-const LEVELS = ["live", "preview", "partial", "soon"];
-const PRIORITIES = ["P0", "P1", "P2", "P3"];
-const PHASES = ["P1", "P2", "P2b", "P3", "P4"];
-
-/** Render one entry as TypeScript, matching the file's existing style. */
-function serialize(item: ItemInput, eol: string): string {
-  const line = (k: string, v?: string) => (v ? `    ${k}: ${JSON.stringify(v)},${eol}` : "");
-  return (
-    `  {${eol}` +
-    line("name", item.name) +
-    line("area", item.area) +
-    line("level", item.level) +
-    line("priority", item.priority) +
-    line("phase", item.phase) +
-    line("href", item.href) +
-    line("works", item.works) +
-    line("gap", item.gap) +
-    line("evidence", item.evidence) +
-    `  },${eol}`
-  );
+function eolOf(source: string) {
+  return source.includes("\r\n") ? "\r\n" : "\n";
 }
 
-/**
- * Find the entry whose `name` matches and return its [start, end) bounds, so it
- * can be cut out without disturbing its neighbours or the surrounding comments.
- */
-function findEntry(source: string, name: string): [number, number] | null {
-  const eol = eolOf(source);
-  const needle = `    name: ${JSON.stringify(name)},`;
-  const at = source.indexOf(needle);
-  if (at === -1) return null;
+async function read(): Promise<{ raw: string; tracker: Tracker; eol: string }> {
+  const raw = await readFile(TRACKER_PATH, "utf8");
+  return { raw, tracker: JSON.parse(raw) as Tracker, eol: eolOf(raw) };
+}
 
-  const open = `${eol}  {${eol}`;
-  const start = source.lastIndexOf(open, at);
-  if (start === -1) return null;
-
-  const close = `${eol}  },${eol}`;
-  const end = source.indexOf(close, at);
-  if (end === -1) return null;
-
-  return [start + eol.length, end + close.length];
+function slugify(title: string) {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
 }
 
 export async function POST(request: Request) {
   if (isProduction()) return new NextResponse("Not found", { status: 404 });
 
-  let body: ItemInput;
+  let body: Partial<TrackerItem>;
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Body must be JSON." }, { status: 400 });
   }
 
-  if (!body?.name?.trim()) {
-    return NextResponse.json({ error: "A name is required." }, { status: 400 });
-  }
-  if (!AREAS.includes(body.area)) {
-    return NextResponse.json({ error: `area must be one of: ${AREAS.join(", ")}` }, { status: 400 });
-  }
-  if (!LEVELS.includes(body.level)) {
-    return NextResponse.json({ error: `level must be one of: ${LEVELS.join(", ")}` }, { status: 400 });
-  }
-  if (body.priority && !PRIORITIES.includes(body.priority)) {
-    return NextResponse.json(
-      { error: `priority must be one of: ${PRIORITIES.join(", ")}` },
-      { status: 400 }
-    );
-  }
-  if (body.phase && !PHASES.includes(body.phase)) {
-    return NextResponse.json({ error: `phase must be one of: ${PHASES.join(", ")}` }, { status: 400 });
+  const title = body.title?.trim();
+  if (!title) return NextResponse.json({ error: "A title is required." }, { status: 400 });
+
+  const checks: [string, string | undefined, string[]][] = [
+    ["lane", body.lane, LANES],
+    ["level", body.level, LEVELS],
+    ["state", body.state, STATES],
+    ["importance", body.importance, IMPORTANCES],
+    ["area", body.area, AREAS],
+  ];
+  for (const [field, value, allowed] of checks) {
+    if (!value || !allowed.includes(value)) {
+      return NextResponse.json(
+        { error: `${field} must be one of: ${allowed.join(", ")}` },
+        { status: 400 }
+      );
+    }
   }
 
-  const source = await readFile(FILE, "utf8");
+  const { tracker, eol } = await read();
 
-  if (findEntry(source, body.name)) {
+  const id = body.id?.trim() || slugify(title);
+  if (tracker.items.some((i) => i.id === id)) {
     return NextResponse.json(
-      { error: `"${body.name}" is already on the list. Remove it first to replace it.` },
+      { error: `"${id}" is already tracked. Remove it first to replace it.` },
       { status: 409 }
     );
   }
 
-  const match = ARRAY_END.exec(source);
-  if (!match) {
-    return NextResponse.json(
-      { error: "Could not locate the end of FEATURE_READINESS — file shape changed." },
-      { status: 500 }
-    );
-  }
+  const today = new Date().toISOString().slice(0, 10);
+  // verifiedAt is deliberately never set here — a new row has not been verified,
+  // and the page must be able to say so truthfully.
+  const item: TrackerItem = {
+    id,
+    title,
+    lane: body.lane!,
+    area: body.area!,
+    level: body.level!,
+    state: body.state!,
+    importance: body.importance!,
+    rank: tracker.items.reduce((max, i) => Math.max(max, i.rank ?? 0), 0) + 1,
+    ...(body.href ? { href: body.href } : {}),
+    ...(body.works ? { works: body.works } : {}),
+    ...(body.gap ? { gap: body.gap } : {}),
+    ...(body.evidence ? { evidence: body.evidence } : {}),
+    origin: "session",
+    addedAt: today,
+    addedBy: "build-status editor",
+  };
 
-  const eol = eolOf(source);
-  const at = match.index + eol.length; // insert just before the closing "];"
-  await writeFile(FILE, source.slice(0, at) + serialize(body, eol) + source.slice(at), "utf8");
+  tracker.items.push(item);
+  tracker.meta.lastEditedAt = today;
+  tracker.meta.lastEditedBy = "build-status editor";
 
-  return NextResponse.json({ ok: true, added: body.name });
+  await writeFile(TRACKER_PATH, serialize(tracker, eol), "utf8");
+  return NextResponse.json({ ok: true, added: id });
 }
 
 export async function DELETE(request: Request) {
   if (isProduction()) return new NextResponse("Not found", { status: 404 });
 
-  const name = new URL(request.url).searchParams.get("name");
-  if (!name) {
-    return NextResponse.json({ error: "Pass ?name=<item name>." }, { status: 400 });
+  const id = new URL(request.url).searchParams.get("id");
+  if (!id) return NextResponse.json({ error: "Pass ?id=<item id>." }, { status: 400 });
+
+  const { tracker, eol } = await read();
+  const before = tracker.items.length;
+  tracker.items = tracker.items.filter((i) => i.id !== id);
+
+  if (tracker.items.length === before) {
+    return NextResponse.json({ error: `No item with id "${id}".` }, { status: 404 });
   }
 
-  const source = await readFile(FILE, "utf8");
-  const bounds = findEntry(source, name);
-  if (!bounds) {
-    return NextResponse.json({ error: `No entry named "${name}".` }, { status: 404 });
-  }
+  tracker.meta.lastEditedAt = new Date().toISOString().slice(0, 10);
+  tracker.meta.lastEditedBy = "build-status editor";
 
-  const [start, end] = bounds;
-  await writeFile(FILE, source.slice(0, start) + source.slice(end), "utf8");
-
-  return NextResponse.json({ ok: true, removed: name });
+  await writeFile(TRACKER_PATH, serialize(tracker, eol), "utf8");
+  return NextResponse.json({ ok: true, removed: id });
 }

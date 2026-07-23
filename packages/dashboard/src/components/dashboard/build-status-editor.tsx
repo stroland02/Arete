@@ -5,14 +5,15 @@ import { useRouter } from "next/navigation";
 import { IconPlus, IconTrash } from "@tabler/icons-react";
 
 /**
- * Local-development editor for the build-status list.
+ * Local-development editor for the master build tracker.
  *
- * Writes through to `lib/feature-readiness.ts`, so every change you make here
- * shows up as a git diff you review and commit — the list stays hand-authored
- * and stays the one thing both this page and the agents read. Rendered only in
- * development; the route behind it 404s in production.
+ * Writes through to `data/build-tracker.json`, so every change you make here
+ * shows up as a git diff you review and commit — the tracker stays
+ * hand-authored and stays the one thing both this page and the agents read.
+ * Rendered only in development; the route behind it 404s in production.
  */
 
+const LANES = ["inventory", "idea"] as const;
 const AREAS = [
   "Product surfaces",
   "Built, but unreachable",
@@ -20,21 +21,22 @@ const AREAS = [
   "Not built yet",
 ] as const;
 const LEVELS = ["live", "preview", "partial", "soon"] as const;
-const PRIORITIES = ["P0", "P1", "P2", "P3"] as const;
-const PHASES = ["P1", "P2", "P2b", "P3", "P4"] as const;
+const STATES = ["shipped", "next", "blocked", "someday", "needs-decision"] as const;
+const IMPORTANCES = ["critical", "high", "medium", "low"] as const;
 
 const EMPTY = {
-  name: "",
+  title: "",
+  lane: "idea" as string,
   area: "Not built yet" as string,
   level: "soon" as string,
-  priority: "P2" as string,
-  phase: "" as string,
+  state: "someday" as string,
+  importance: "medium" as string,
   works: "",
   gap: "",
   evidence: "",
 };
 
-export function BuildStatusEditor({ names }: { names: string[] }) {
+export function BuildStatusEditor({ items }: { items: { id: string; title: string }[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY);
@@ -80,7 +82,7 @@ export function BuildStatusEditor({ names }: { names: string[] }) {
 
   async function remove() {
     if (!removing) return;
-    const ok = await send(`/api/build-status?name=${encodeURIComponent(removing)}`, {
+    const ok = await send(`/api/build-status?id=${encodeURIComponent(removing)}`, {
       method: "DELETE",
     });
     if (ok) setRemoving("");
@@ -107,9 +109,9 @@ export function BuildStatusEditor({ names }: { names: string[] }) {
     <section className="glass-panel space-y-4 rounded-xl p-4">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h2 className="text-sm font-semibold text-content-primary">Edit the list</h2>
+          <h2 className="text-sm font-semibold text-content-primary">Edit the tracker</h2>
           <p className="mt-0.5 text-xs text-content-muted">
-            Writes to <span className="font-mono">lib/feature-readiness.ts</span> — review the diff
+            Writes to <span className="font-mono">data/build-tracker.json</span> — review the diff
             before committing. Development only.
           </p>
         </div>
@@ -131,40 +133,62 @@ export function BuildStatusEditor({ names }: { names: string[] }) {
       <form onSubmit={add} className="space-y-3">
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <label className={label} htmlFor="bs-name">What it is</label>
+            <label className={label} htmlFor="bs-title">What it is</label>
             <input
-              id="bs-name"
+              id="bs-title"
               className={field}
-              value={form.name}
-              onChange={set("name")}
-              placeholder="In the user's words, e.g. Self-serve plan upgrade"
+              value={form.title}
+              onChange={set("title")}
+              placeholder="In your own words, e.g. Self-serve plan upgrade"
               required
             />
           </div>
 
           <div>
-            <label className={label} htmlFor="bs-area">Area</label>
-            <select id="bs-area" className={field} value={form.area} onChange={set("area")}>
-              {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
+            <label className={label} htmlFor="bs-lane">Lane</label>
+            <select id="bs-lane" className={field} value={form.lane} onChange={set("lane")}>
+              {LANES.map((l) => (
+                <option key={l} value={l}>
+                  {l === "inventory" ? "inventory — it exists today" : "idea — worth building"}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={label} htmlFor="bs-importance">Importance</label>
+            <select
+              id="bs-importance"
+              className={field}
+              value={form.importance}
+              onChange={set("importance")}
+            >
+              {IMPORTANCES.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={label} htmlFor="bs-state">State</label>
+            <select id="bs-state" className={field} value={form.state} onChange={set("state")}>
+              {STATES.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
             </select>
           </div>
           <div>
             <label className={label} htmlFor="bs-level">How finished</label>
             <select id="bs-level" className={field} value={form.level} onChange={set("level")}>
-              {LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
+              {LEVELS.map((l) => (
+                <option key={l} value={l}>{l}</option>
+              ))}
             </select>
           </div>
-          <div>
-            <label className={label} htmlFor="bs-priority">Importance</label>
-            <select id="bs-priority" className={field} value={form.priority} onChange={set("priority")}>
-              {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className={label} htmlFor="bs-phase">Phase</label>
-            <select id="bs-phase" className={field} value={form.phase} onChange={set("phase")}>
-              <option value="">— none —</option>
-              {PHASES.map((p) => <option key={p} value={p}>{p}</option>)}
+          <div className="sm:col-span-2">
+            <label className={label} htmlFor="bs-area">Area</label>
+            <select id="bs-area" className={field} value={form.area} onChange={set("area")}>
+              {AREAS.map((a) => (
+                <option key={a} value={a}>{a}</option>
+              ))}
             </select>
           </div>
 
@@ -194,7 +218,7 @@ export function BuildStatusEditor({ names }: { names: string[] }) {
           className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent-primary px-3 text-sm font-medium text-white disabled:opacity-50"
         >
           <IconPlus size={14} stroke={2} aria-hidden />
-          Add to the list
+          Add to the tracker
         </button>
       </form>
 
@@ -208,7 +232,9 @@ export function BuildStatusEditor({ names }: { names: string[] }) {
             onChange={(e) => setRemoving(e.target.value)}
           >
             <option value="">— pick one —</option>
-            {names.map((n) => <option key={n} value={n}>{n}</option>)}
+            {items.map((i) => (
+              <option key={i.id} value={i.id}>{i.title}</option>
+            ))}
           </select>
           <button
             type="button"

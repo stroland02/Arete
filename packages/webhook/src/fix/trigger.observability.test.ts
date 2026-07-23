@@ -61,6 +61,9 @@ describe('driveFix span tree (webhook-side fix.run root)', () => {
       },
       resolveModel: async () => ({ provider: 'ollama', model: 'qwen2.5-coder', baseUrl: 'http://127.0.0.1:11434' }),
       mintToken: async () => 'ghs_token',
+      // No incident behind this work item, so fix.signals.collect wraps a
+      // no-op and the span tree below is the scan-born shape.
+      collectSignals: async () => null,
       fetchFix: async () => ({ status: 'fixed', patch: [{ path: 'app/api/reports.ts', content: 'safe();' }] }),
       ...overrides,
     }
@@ -81,6 +84,11 @@ describe('driveFix span tree (webhook-side fix.run root)', () => {
       'fix.container.settle',
       'fix.resolve',
       'fix.run',
+      // Reading the incident's runtime context. Emitted even for a scan-born
+      // work item, where it resolves to "no incident" — the span records that
+      // we looked, which is what makes a missing signal read visible in a trace
+      // rather than indistinguishable from one that returned nothing.
+      'fix.signals.collect',
       'fix.token.mint',
     ])
 

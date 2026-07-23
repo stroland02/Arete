@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireScope } from '@/lib/model-connections-api';
-import { internalAuthHeaders } from '@/lib/internal-auth';
 import { computeFixCooldown } from '@/lib/fix-cooldown';
+import { openFixContainer, dispatchFixTrigger } from '@/lib/fix-dispatch';
 
 // Session-scoped; never statically prerendered.
 export const dynamic = 'force-dynamic';
@@ -60,30 +60,18 @@ export async function POST(
   const [owner, ...rest] = repo.fullName.split('/');
   const target = { owner: owner ?? '', repo: rest.join('/') };
 
-  const branch = `kuma/${item.kind}-${item.id.slice(0, 8)}`;
-  const container = await db.issueContainer.create({
-    data: {
-      installationId: item.installationId,
-      // The pipeline's REAL initial state — the fix drive advances it from here
-      // (detecting → fanning_out → ready). `open` is not a ContainerState and
-      // could never reach `ready`/approval.
-      state: 'detecting',
-      gates: { solutionApprovedAt: null },
-      target,
-      pr: {
-        base: 'main',
-        branch,
-        title: item.title,
-        body: item.detail,
-      },
-      patch: [],
-      findings: item.evidence ?? [],
-    },
-  });
-
-  await db.workItem.update({
-    where: { id: item.id },
-    data: { state: 'fixing', containerId: container.id },
+  // Open the container + flip the item to `fixing` (shared with the manual-
+  // investigation auto-start — see lib/fix-dispatch.ts). The container is born
+  // from the item's REAL evidence and starts unapproved; the HITL moat is
+  // untouched.
+  const { containerId } = await openFixContainer(db, {
+    installationId: item.installationId,
+    kind: item.kind,
+    workItemId: item.id,
+    target,
+    title: item.title,
+    detail: item.detail,
+    findings: (item.evidence ?? []) as unknown[],
   });
 
   // Dispatch the fix drive (fire-and-forget): the webhook authors + verifies a
@@ -91,19 +79,7 @@ export async function POST(
   // live transcript the console streams. A drive failure lands the container in
   // fix_failed on its own — never surfaced as a fix-route error, so the UI can
   // open the live stream immediately with the containerId below.
-  const base = process.env.WEBHOOK_SERVICE_URL;
-  if (base) {
-    try {
-      await fetch(`${base}/fix/trigger`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(await internalAuthHeaders()) },
-        body: JSON.stringify({ workItemId: item.id }),
-      });
-    } catch (err) {
-      // The container exists and the item is `fixing`; the drive can be retried.
-      console.error(`[work-items/fix] dispatch to /fix/trigger failed for ${item.id}:`, err);
-    }
-  }
+  await dispatchFixTrigger(item.id);
 
-  return NextResponse.json({ containerId: container.id }, { status: 200 });
+  return NextResponse.json({ containerId }, { status: 200 });
 }

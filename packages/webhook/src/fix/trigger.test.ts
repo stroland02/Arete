@@ -49,6 +49,10 @@ function baseDeps(
     },
     resolveModel: async () => ({ provider: 'ollama', model: 'qwen2.5-coder', baseUrl: 'http://127.0.0.1:11434' }),
     mintToken: async () => 'ghs_token',
+    // Scan-born work item: no incident opened it, so there is no runtime
+    // context to fetch. That is the default here because it is the default in
+    // production — these cases are about the drive, not about telemetry.
+    collectSignals: async () => null,
     fetchFix: async () => ({ status: 'fixed', patch: [{ path: 'app/api/reports.ts', content: 'safe();' }] }),
     ...overrides,
   }

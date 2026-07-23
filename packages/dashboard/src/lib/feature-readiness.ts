@@ -151,9 +151,15 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
     level: "partial",
     href: "/incidents",
     works:
-      "Mark and unmark noise, view a linked fix run, scrubbed alert payload tables. A manually-opened investigation now routes to a fix through the SAME routeIncidentToFix the Alertmanager path uses, reached via a thin internal-token webhook route — a transport, not a second implementation.",
-    gap: "Routing obeys the shared critical+firing policy, so a warning investigation deliberately does not start a fix. An unreachable webhook is reported as unavailable and never fails the action, since the incident is already durably created.",
-    evidence: "lib/incidents.ts (requestIncidentRouting), webhook server.ts POST /incidents/:id/route",
+      "Mark and unmark noise, view a linked fix run, scrubbed alert payload tables — and opening an investigation now starts a fix drive, the same way a critical alert does.",
+    // The run halts at the human approve-and-send gate, as it must. That gate
+    // DOES have a screen now (Services work-item panel + the approvals rail), so
+    // the older "no screen yet" wording is not carried forward.
+    // Open question, recorded in .claude/ade-coordination.md: this path starts a
+    // fix for ANY severity, while the Alertmanager path routes only
+    // critical+firing. Nothing records which is intended.
+    gap: "Starts a fix run for any severity, unlike the alert path which routes only critical+firing — the two disagree and the intended rule is unrecorded.",
+    evidence: "lib/incidents.ts, lib/fix-dispatch.ts",
   },
   {
     name: "Data connectors",
@@ -198,9 +204,9 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
     area: "Built, but unreachable",
     level: "soon",
     works:
-      "Signing, retry backoff, SSRF-guarded delivery and a delivery log — and it already fires on every persisted review.",
-    gap: "The management API is deliberately unmounted, so nobody can register an endpoint or see a delivery. Blocks every Slack/Linear/PagerDuty relay.",
-    evidence: "server.ts:408-414, persistence.ts:239-256",
+      "Signing, retry backoff, SSRF-guarded delivery and a delivery log — it already fires on every persisted review, and the management API is now mounted behind session auth (list, register, enable/disable).",
+    gap: "No Settings screen calls it yet, so registering a destination still needs a direct API call. Note for whoever builds it: the whsec_ signing secret is returned exactly once, on create — no route can read it back, so the UI must show it once and say so.",
+    evidence: "webhook-endpoints-api.ts, api/webhooks/endpoints/route.ts, outbound/management.ts",
   },
   {
     name: "Agent memory",
@@ -210,9 +216,9 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
     area: "Built, but unreachable",
     level: "soon",
     works:
-      "Kuma really does record what it learns per repository and injects it into later reviews.",
-    gap: "Nothing displays it and nothing archives it. The cap is 20 rows, so a repository silently freezes at 20 memories forever.",
-    evidence: "memory-write.ts:104,248",
+      "Kuma really does record what it learns per repository and injects it into later reviews — and at the 20-row cap it now archives the oldest instead of refusing to learn.",
+    gap: "Nothing displays it. There is no screen for what Kuma has learned about a repository, or for retiring a memory that has gone stale.",
+    evidence: "memory-write.ts",
   },
   {
     name: "Live throughput metrics",
@@ -292,9 +298,10 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
     ref: "B6",
     area: "Partially wired",
     level: "partial",
-    works: "Kuma can consume third-party MCP servers, driven from the CLI.",
-    gap: "No dashboard surface to add or list them, and tokens are stored as plaintext JSON on disk.",
-    evidence: "arete_agents/mcp/manager.py",
+    works:
+      "Kuma can consume third-party MCP servers, driven from the CLI. OAuth tokens are encrypted at rest under ARETE_MCP_TOKEN_KEY, and the credential store is gitignored.",
+    gap: "No dashboard surface to add or list them — connecting a server is still a CLI-only operation.",
+    evidence: "arete_agents/mcp/manager.py, arete_agents/mcp/token_crypto.py",
   },
 
   // ------------------------------------------------------------ not built

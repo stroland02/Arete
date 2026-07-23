@@ -3,6 +3,10 @@
 .env.local
 *.env
 
+# MCP credential store — holds real OAuth access + refresh tokens.
+# Written by arete_agents.mcp.manager at 0o600; must never be committed.
+.agents/
+
 # Python
 __pycache__/
 *.pyc

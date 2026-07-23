@@ -7,6 +7,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { PrismaClient } from '@arete/db';
+import { openFixContainer } from './fix-dispatch';
 
 export interface IncidentView {
   id: string;
@@ -196,27 +197,89 @@ type IncidentMutationsDb = {
   };
 };
 
+/** Prisma delegates the manual-investigation path touches. Structural so tests
+ *  inject a fake and the server action passes the real client. Wider than
+ *  `IncidentMutationsDb` because opening an investigation now also opens the
+ *  WorkItem + fix run it is healed by. */
+type ManualIncidentDb = {
+  incident: {
+    create(args: unknown): Promise<{ id: string }>;
+    update(args: unknown): Promise<unknown>;
+  };
+  workItem: {
+    create(args: unknown): Promise<{ id: string }>;
+    update(args: unknown): Promise<unknown>;
+  };
+  repository: {
+    findFirst(args: unknown): Promise<{ fullName: string } | null>;
+  };
+  issueContainer: {
+    create(args: unknown): Promise<{ id: string }>;
+  };
+};
+
+// The WorkItem a manual investigation opens. These mirror the alert-born
+// WorkItem the Alertmanager path creates (webhook alerting/incident.ts) so the
+// two kinds of incident are healed by the same machinery — except `source`,
+// which is honestly `manual`: a human opened this, it was not observed from
+// telemetry.
+const MANUAL_WORK_ITEM_KIND = 'error';
+/** One of the six review dimensions the model requires (schema.prisma). An
+ *  investigation into live behaviour maps to the same operational-health
+ *  dimension the alert path uses. */
+const MANUAL_WORK_ITEM_DIMENSION = 'deployment_safety';
+/** 0-1 scale (this codebase never uses 0-10). A human deliberately opened this
+ *  investigation, so it sits at the top of the band — the same place the alert
+ *  path puts an observed firing alert. */
+const MANUAL_WORK_ITEM_CONFIDENCE = 0.9;
+
+export interface ManualIncidentResult {
+  incidentId: string;
+  /** The WorkItem opened for this investigation. ALWAYS created — it is the
+   *  only thing the fix pipeline can act on, and without it a hand-opened
+   *  investigation is a dead end that can never be healed. */
+  workItemId: string;
+  /** The IssueContainer the fix drive runs in, when auto-start found a
+   *  connected repository. Null when the tenant has none: there is nothing to
+   *  fix against, so the WorkItem is left `open` for a later "Fix it" — the
+   *  same best-effort fallback routeIncidentToFix makes. */
+  containerId: string | null;
+}
+
 /**
- * Opens a MANUAL incident (a "New investigation") for one installation. The
- * caller is responsible for having already verified `installationId` belongs
- * to the signed-in session (see the server action) — this function trusts the
- * id it is given, exactly like the connection actions' write path.
+ * Opens a MANUAL incident (a "New investigation") for one installation, opens
+ * the WorkItem that makes it healable, and auto-starts the fix run. The caller
+ * is responsible for having already verified `installationId` belongs to the
+ * signed-in session (see the server action) — this function trusts the id it is
+ * given, exactly like the connection actions' write path.
  *
  * A manual incident carries `source: "manual"` and a `manual-<uuid>`
  * fingerprint (the Alertmanager path uses Alertmanager's own fingerprint; a
  * hand-opened one has none, so we synthesize a collision-free one to satisfy
  * the `@@unique([installationId, fingerprint])` constraint). It starts
  * `firing` and un-triaged, so it lands in the Open tab immediately.
+ *
+ * WHY THE WORKITEM: an Incident row on its own is inert. Only a WorkItem enters
+ * the fix pipeline, so until now a hand-opened investigation could never be
+ * driven to a fix at all, while an Alertmanager-born one was routed
+ * automatically. This closes that asymmetry through the SAME steps the alert
+ * path takes (open WorkItem → link → open container → dispatch).
+ *
+ * HITL (Global Constraint 5) is preserved: auto-start means the drive begins
+ * AUTHORING a patch, and it halts at `ready` for the human approve→send gate.
+ * Nothing here merges, applies, or posts. The dispatch itself is the caller's
+ * (`dispatchFixTrigger`) so this function stays DB-only and testable.
  */
 export async function createManualIncident(
-  db: IncidentMutationsDb | PrismaClient,
+  db: ManualIncidentDb | PrismaClient,
   installationId: string,
   input: { alertName: string; severity: string; summary: string },
-): Promise<string> {
-  const created = (await (db as IncidentMutationsDb).incident.create({
+): Promise<ManualIncidentResult> {
+  const fingerprint = `manual-${randomUUID()}`;
+  const incident = (await (db as ManualIncidentDb).incident.create({
     data: {
       installationId,
-      fingerprint: `manual-${randomUUID()}`,
+      fingerprint,
       alertName: input.alertName,
       severity: input.severity,
       status: 'firing',
@@ -226,7 +289,54 @@ export async function createManualIncident(
       startsAt: new Date(),
     },
   })) as { id: string };
-  return created.id;
+
+  // Namespaced `incident:<fp>` exactly like the alert path's WorkItem
+  // fingerprint, so an investigation-born item can never collide with a
+  // scan-born one that happens to hash to the same string.
+  const workItem = (await (db as ManualIncidentDb).workItem.create({
+    data: {
+      installationId,
+      kind: MANUAL_WORK_ITEM_KIND,
+      source: 'manual',
+      title: input.alertName,
+      detail: input.summary,
+      // A hand-opened investigation has no code evidence yet — that is what the
+      // fix run goes and finds. Empty, never fabricated.
+      evidence: [],
+      dimension: MANUAL_WORK_ITEM_DIMENSION,
+      confidence: MANUAL_WORK_ITEM_CONFIDENCE,
+      state: 'open',
+      fingerprint: `incident:${fingerprint}`,
+    },
+  })) as { id: string };
+
+  await (db as ManualIncidentDb).incident.update({
+    where: { id: incident.id },
+    data: { workItemId: workItem.id },
+  });
+
+  const repo = await (db as ManualIncidentDb).repository.findFirst({
+    where: { installationId },
+    orderBy: { createdAt: 'asc' },
+    select: { fullName: true },
+  });
+
+  let containerId: string | null = null;
+  if (repo) {
+    const [owner, ...rest] = repo.fullName.split('/');
+    const opened = await openFixContainer(db, {
+      installationId,
+      kind: MANUAL_WORK_ITEM_KIND,
+      workItemId: workItem.id,
+      target: { owner: owner ?? '', repo: rest.join('/') },
+      title: input.alertName,
+      detail: input.summary,
+      findings: [],
+    });
+    containerId = opened.containerId;
+  }
+
+  return { incidentId: incident.id, workItemId: workItem.id, containerId };
 }
 
 /**
@@ -238,57 +348,6 @@ export async function createManualIncident(
  * Empty `installationIds` => no query, returns false. Returns whether a row
  * was actually updated.
  */
-/**
- * Asks the webhook to route an incident to a fix drive (Stage 3.2).
- *
- * The routing decision is NOT made here. `routeIncidentToFix`
- * (packages/webhook/src/alerting/incident.ts) owns it and this only reaches it
- * — the same reason /api/work-items/[id]/fix calls /fix/trigger rather than
- * enqueueing itself. Manual and alert-driven incidents therefore obey one
- * policy, and a second copy of its concurrency handling never comes to exist.
- *
- * Returns the webhook's own verdict so the caller can be specific about what
- * happened. NEVER throws and never invents a result: an unconfigured or
- * unreachable webhook returns `unavailable`, which is honestly different from
- * "the router declined" — the incident exists either way, and pretending a fix
- * started would be the worst available answer.
- */
-export type IncidentRouteOutcome =
-  | { routed: true; workItemId?: string }
-  | { routed: false; reason: string };
-
-export async function requestIncidentRouting(incidentId: string): Promise<IncidentRouteOutcome> {
-  const base = process.env.WEBHOOK_SERVICE_URL;
-  if (!base) return { routed: false, reason: 'unavailable' };
-
-  try {
-    const { internalAuthHeaders } = await import('./internal-auth');
-    const res = await fetch(
-      `${base.replace(/\/$/, '')}/incidents/${encodeURIComponent(incidentId)}/route`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(await internalAuthHeaders()) },
-        body: '{}',
-      },
-    );
-    if (!res.ok) return { routed: false, reason: 'unavailable' };
-
-    const body = (await res.json()) as { routed?: unknown; reason?: unknown; workItemId?: unknown };
-    if (body.routed === true) {
-      return {
-        routed: true,
-        workItemId: typeof body.workItemId === 'string' ? body.workItemId : undefined,
-      };
-    }
-    return {
-      routed: false,
-      reason: typeof body.reason === 'string' ? body.reason : 'declined',
-    };
-  } catch {
-    return { routed: false, reason: 'unavailable' };
-  }
-}
-
 export async function setIncidentNoise(
   db: IncidentMutationsDb | PrismaClient,
   installationIds: string[],

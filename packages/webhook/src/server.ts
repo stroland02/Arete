@@ -312,39 +312,6 @@ export async function createServer(): Promise<express.Application> {
     res.status(202).json({ started: true })
   })
 
-  // Route ONE incident to its WorkItem/fix-drive (Stage 3.2).
-  //
-  // routeIncidentToFix has always existed and has always been correct; it was
-  // reachable from exactly one caller — the Alertmanager receiver — so an
-  // incident a human opened by hand in the dashboard ("New investigation")
-  // could never start a fix. /incidents was a dead end.
-  //
-  // This route adds NO logic. It is a transport for the existing function, so
-  // manual and alert-driven incidents route through identical code: the same
-  // severity/status policy (critical + firing only), the same already_routed
-  // fast path, the same unique-constraint handling. Reimplementing any of that
-  // dashboard-side would have forked concurrency-sensitive logic.
-  //
-  // The result is echoed VERBATIM, refusals included: the caller is told
-  // `not_critical` or `already_routed` rather than a generic success, because
-  // the dashboard has to report which of those happened instead of implying a
-  // fix started. Guarded by requireInternalToken, like /fix/trigger above.
-  server.post('/incidents/:id/route', requireInternalToken, express.json(), async (req, res) => {
-    const incidentId = typeof req.params?.id === 'string' ? req.params.id : ''
-    if (!incidentId) {
-      res.status(400).json({ error: 'incident id required' })
-      return
-    }
-    try {
-      const { routeIncidentToFix, defaultRouteIncidentDeps } = await import('./alerting/incident.js')
-      const result = await routeIncidentToFix(incidentId, defaultRouteIncidentDeps())
-      res.status(200).json(result)
-    } catch (err) {
-      logFix.error({ err, incidentId }, 'manual incident routing failed')
-      res.status(500).json({ error: 'internal_error' })
-    }
-  })
-
   // Alertmanager receiver (healing-loop observability, Phase 2 Task 3). Uses
   // the DEDICATED static guard (requireAlertmanagerToken), not the signed
   // internal-token verifier used by the rest of this surface — Alertmanager
@@ -433,18 +400,98 @@ export async function createServer(): Promise<express.Application> {
   // read or delete any tenant's connections — the exact vuln that pulled /api/webhooks/
   // endpoints. The Test ping additionally makes an outbound call to a client-supplied
   // baseUrl (SSRF-shaped) — net-guard hardens it, but it must not be an open proxy.
-  // The tenant-scoped core lives in ./model-connections/ (store.ts: saveModelConnection/
-  // list/get/delete, all installationId-scoped, key-free views; test-connection.ts:
-  // testModelConnection). The authenticated surface belongs behind the dashboard's
-  // Auth.js session, which supplies a session-derived installationId (fast-follow).
+  // That fast-follow SHIPPED, and not by mounting anything here: the authenticated
+  // surface is the dashboard's own /api/model-connections (route.ts, [id]/route.ts,
+  // test/route.ts) over lib/model-connections-api.ts, which derives installationId
+  // from the Auth.js session and reads/writes ModelConnection through Prisma directly.
+  // What survives in ./model-connections/ is only the half the dashboard genuinely
+  // cannot do: test-connection.ts's outbound probe, mounted above as
+  // /internal/model-connections/test, because the SSRF guard lives in this service.
+  // The CRUD half (store.ts) was deleted rather than left lying here — an unmounted
+  // second implementation of tenant-scoped CRUD is two places for a tenancy rule to
+  // drift, and the next reader would reasonably mistake it for the canonical store.
   //
-  // NOTE: the outbound-webhook *management* API (POST/GET /api/webhooks/endpoints)
-  // is deliberately NOT mounted here. It trusted a client-supplied installationId
-  // with no authentication — an anonymous caller could register a webhook for, or
-  // list the endpoints of, any tenant and receive that tenant's whsec_ secret.
-  // Authenticated, tenant-scoped management belongs behind the dashboard's
-  // Auth.js session (fast-follow). Endpoints are created internally / seeded via
-  // PrismaWebhookStore; the delivery engine (persistence.ts) is unaffected.
+  // The outbound-webhook *management* API. The public, unauthenticated
+  // POST/GET /api/webhooks/endpoints stays GONE (server.test.ts pins that): it
+  // trusted a client-supplied installationId with no authentication, so an
+  // anonymous caller could register a webhook for — or list the endpoints of —
+  // any tenant and receive that tenant's whsec_ secret.
+  //
+  // What replaces it lives HERE, under `/internal`, which is blanket-guarded by
+  // requireInternalToken above. So the only caller that can reach these routes
+  // holds a signed internal token — in practice the dashboard, the one service
+  // with a session (Auth.js), which authenticates the human and derives
+  // installationId from that session rather than from the request body. These
+  // handlers therefore TRUST the installationId they are given, exactly like
+  // /internal/memory does; the tenant-scoping and secret-stripping rules are
+  // enforced in outbound/management.ts.
+  const webhookManagementDeps = async () => {
+    const { prisma } = await import('./db.js')
+    const { PrismaWebhookStore } = await import('./outbound/prisma-store.js')
+    type WebhookPrismaClient = ConstructorParameters<typeof PrismaWebhookStore>[0]
+    return { store: new PrismaWebhookStore(prisma as unknown as WebhookPrismaClient) }
+  }
+
+  /** invalid_* is the caller's fault, not_found is a miss (or another tenant's
+   *  row — deliberately identical), everything else is ours. */
+  const managementStatus = (reason: string): number =>
+    reason === 'not_found' ? 404 : reason === 'internal_error' ? 500 : 400
+
+  server.get('/internal/webhooks/endpoints', async (req, res) => {
+    const installationId = req.query.installationId
+    if (typeof installationId !== 'string' || !installationId) {
+      res.status(400).json({ ok: false, reason: 'invalid_input', detail: 'installationId is required' })
+      return
+    }
+    const { listTenantEndpoints } = await import('./outbound/management.js')
+    const result = await listTenantEndpoints(installationId, await webhookManagementDeps())
+    if (result.ok) {
+      // Secrets already stripped by listTenantEndpoints.
+      res.status(200).json({ ok: true, endpoints: result.data })
+      return
+    }
+    res.status(managementStatus(result.reason)).json({ ok: false, reason: result.reason, detail: result.detail })
+  })
+
+  server.post('/internal/webhooks/endpoints', express.json(), async (req, res) => {
+    const { installationId, url, events } = (req.body ?? {}) as Record<string, unknown>
+    if (typeof installationId !== 'string' || !installationId) {
+      res.status(400).json({ ok: false, reason: 'invalid_input', detail: 'installationId is required' })
+      return
+    }
+    const { createTenantEndpoint } = await import('./outbound/management.js')
+    const result = await createTenantEndpoint(
+      { installationId, url: String(url ?? ''), events: Array.isArray(events) ? (events as string[]) : [] },
+      await webhookManagementDeps(),
+    )
+    if (result.ok) {
+      // THE ONLY response that ever carries the secret. The caller must show it
+      // once; there is no route that can read it back.
+      res.status(201).json({ ok: true, endpoint: result.data.endpoint, secret: result.data.secret })
+      return
+    }
+    res.status(managementStatus(result.reason)).json({ ok: false, reason: result.reason, detail: result.detail })
+  })
+
+  server.patch('/internal/webhooks/endpoints/:id', express.json(), async (req, res) => {
+    const { installationId, enabled } = (req.body ?? {}) as Record<string, unknown>
+    if (typeof installationId !== 'string' || !installationId || typeof enabled !== 'boolean') {
+      res
+        .status(400)
+        .json({ ok: false, reason: 'invalid_input', detail: 'installationId and boolean enabled are required' })
+      return
+    }
+    const { setTenantEndpointEnabled } = await import('./outbound/management.js')
+    const result = await setTenantEndpointEnabled(
+      { installationId, id: req.params.id, enabled },
+      await webhookManagementDeps(),
+    )
+    if (result.ok) {
+      res.status(200).json({ ok: true, endpoint: result.data })
+      return
+    }
+    res.status(managementStatus(result.reason)).json({ ok: false, reason: result.reason, detail: result.detail })
+  })
 
   // Mount at root and let createNodeMiddleware own the path matching —
   // Express strips the mount prefix from req.url, so mounting at '/webhook'

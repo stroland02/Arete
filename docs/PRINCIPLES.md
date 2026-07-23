@@ -8,8 +8,8 @@ The rules that decide what we build and what we refuse to build. They were scatt
 account-state and telemetry-tenancy specs. This is their one address.
 
 Read this before starting work. The companion is
-[`docs/roadmap/master-build-status.json`](roadmap/master-build-status.json) — *what* to build.
-This file is *how*, and *what never to do*.
+[`packages/dashboard/data/build-tracker.json`](../packages/dashboard/data/build-tracker.json) —
+*what* to build. This file is *how*, and *what never to do*.
 
 ---
 
@@ -123,20 +123,27 @@ Every tenant action rides the tenant's own key and their own bill.
 
 ## 7. How this connects to the build status
 
-[`docs/roadmap/master-build-status.json`](roadmap/master-build-status.json) is the single source of
-truth for what remains. `/build-status` in the app renders it, and it is editable there when
-`BUILD_STATUS_EDITABLE=1` is set locally.
+[`packages/dashboard/data/build-tracker.json`](../packages/dashboard/data/build-tracker.json) is the
+**single** source of truth for what remains, and `/build-status` renders it. Its contract lives in
+`packages/dashboard/src/lib/build-tracker/schema.ts`.
 
-Three conventions keep the list honest:
+There was briefly a second record (`docs/roadmap/master-build-status.json`) while three lanes built
+this in parallel. It is **retired** — two records drift, and the drift always wins. Its curated
+themes survive as `tags` on the items themselves (`honesty-security`, `onboarding-install`, `sdlc`,
+`product-commercial`, `surface`, `parked`).
 
-- **Every item carries a `source`** — the doc, commit or file:line it came from — so no claim on the
-  page is unfalsifiable.
-- **Every item carries an `addedBy`** — the lane or session that recorded it. Several agents survey
-  this codebase in parallel; when two manifests merge, `addedBy` shows who found what and a
-  duplicate `id` is the signal to reconcile rather than append.
-- **`not_schedulable` is its own status.** Work that needs a funded API key, production volume, aged
-  data or an external approval is *parked with its reason*, never quietly dropped and never dressed
-  up as a plan.
+Four conventions keep the list honest:
 
-Stage 0 exists because of §2 and §4: while any item in it is open, the product is asserting something
-about itself that is not true. Those come first.
+- **Every item carries `provenance`** — the doc, commit or session it came from — and the parser
+  *enforces* it for anything whose `origin` is not `user`. No claim on the page is unfalsifiable.
+- **`verifiedAt` absent means never verified, and the page must say so.** Absence must never render
+  as a tick. The seed transcribed the audits it cites; it did not re-confirm each against the code.
+- **`programmes` is an array of refs, not one value.** Four numbering systems run here at once, and
+  merging them would invent a progression that does not exist. An item outside all four carries no
+  programme rather than a fabricated one.
+- **Parked work keeps its reason.** Anything needing a funded key, production volume, aged data or
+  someone else's approval is blocked with an `ext:` blocker naming why — never quietly dropped, and
+  never dressed up as a plan.
+
+The `honesty-security` items exist because of §2 and §4: while any of them is open, the product is
+asserting something about itself that is not true. Those come first.

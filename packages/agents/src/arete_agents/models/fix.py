@@ -50,6 +50,80 @@ class FixItem(BaseModel):
     evidence: list[FixEvidenceRef]
 
 
+class FixSignalSpan(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    timestamp: str
+    service: str
+    span_name: str = Field(alias="spanName")
+    trace_id: str = Field(alias="traceId")
+    status_message: str = Field(alias="statusMessage")
+    duration_ms: float = Field(alias="durationMs")
+
+
+class FixSignalLog(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    timestamp: str
+    service: str
+    severity: str
+    body: str
+    trace_id: str = Field(alias="traceId")
+
+
+class FixSignalException(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    exception_type: str = Field(alias="exceptionType")
+    exception_message: str = Field(alias="exceptionMessage")
+    service: str
+    occurrences: int
+    last_seen: str = Field(alias="lastSeen")
+
+
+class FixSignalOmitted(BaseModel):
+    """How many rows the webhook's prompt-budget caps dropped, per kind. Sent so
+    the agent is never shown a truncated sample that looks complete."""
+
+    spans: int = 0
+    logs: int = 0
+    exceptions: int = 0
+
+
+class FixSignals(BaseModel):
+    """Runtime context from the incident that opened this work item — the error
+    spans, logs and exceptions around the alert.
+
+    Produced by packages/webhook/src/fix/incident-signals.ts. Timestamps arrive
+    as ISO-8601 strings and stay strings: they are rendered into a prompt, never
+    computed with, and parsing them here would only add a failure mode.
+
+    `availability` carries WHY the lists are empty, and the three values are not
+    interchangeable: "denied" (not the platform installation, so nothing was
+    queried), "unavailable" (the telemetry backend could not answer), "granted"
+    (we looked — empty really means the window was quiet). Collapsing these
+    would tell the author model "nothing was wrong" when the truth is "nobody
+    looked", which is exactly how a confident patch gets written for a problem
+    that was never observed.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    incident_id: str = Field(alias="incidentId")
+    alert_name: str = Field(alias="alertName")
+    severity: str
+    status: str
+    summary: str
+    starts_at: str = Field(alias="startsAt")
+    resolved_at: str | None = Field(default=None, alias="resolvedAt")
+    service: str | None = None
+    availability: str  # "granted" | "denied" | "unavailable"
+    spans: list[FixSignalSpan] = Field(default_factory=list)
+    logs: list[FixSignalLog] = Field(default_factory=list)
+    exceptions: list[FixSignalException] = Field(default_factory=list)
+    omitted: FixSignalOmitted = Field(default_factory=FixSignalOmitted)
+
+
 class FixRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, protected_namespaces=())
 
@@ -57,6 +131,11 @@ class FixRequest(BaseModel):
     installation_id: int = Field(alias="installationId")  # see module docstring
     repo: FixRepo
     item: FixItem
+    # Optional in BOTH directions. Most work items are scan-born and have no
+    # incident behind them, so its absence is the normal case, not a degraded
+    # one — and a webhook and an agents service at different versions keep
+    # interoperating during a rollout.
+    signals: FixSignals | None = None
     llm: LLMConfig | None = None
 
 

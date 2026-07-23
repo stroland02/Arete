@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 
 // saveAgentMemory is the pure business-logic core behind POST
 // /internal/memory (route wiring + the auth-rejection mutation test live in
@@ -15,17 +15,25 @@ interface FakeMemoryRow {
   title: string
   body: string
   status: string
+  /** Insertion order stands in for wall-clock age, so the FIFO archive policy
+   *  is asserted deterministically without sleeping. */
+  createdAt: number
 }
 
 function makeFakeStore(opts: {
   installations?: Array<{ id: string; externalId: number }>
   repositories?: Array<{ id: string; installationId: string; fullName: string }>
-  existingMemories?: FakeMemoryRow[]
+  existingMemories?: Array<Omit<FakeMemoryRow, 'createdAt'> & { createdAt?: number }>
   createShouldThrow?: boolean
 } = {}) {
   const installations = opts.installations ?? []
   const repositories = opts.repositories ?? []
-  const memories: FakeMemoryRow[] = [...(opts.existingMemories ?? [])]
+  // Fixtures declare rows oldest-first; index stands in for age unless a
+  // fixture pins createdAt explicitly.
+  const memories: FakeMemoryRow[] = (opts.existingMemories ?? []).map((m, i) => ({
+    ...m,
+    createdAt: m.createdAt ?? i,
+  }))
   let seq = memories.length
 
   const installation = {
@@ -42,26 +50,61 @@ function makeFakeStore(opts: {
       )
     }),
   }
+  let clock = memories.length
   const agentMemory = {
     count: vi.fn(async (args: any) => {
       const { repositoryId, status } = args.where
       return memories.filter((m) => m.repositoryId === repositoryId && m.status === status).length
+    }),
+    findMany: vi.fn(async (args: any) => {
+      const { repositoryId, status } = args.where
+      const rows = memories
+        .filter((m) => m.repositoryId === repositoryId && m.status === status)
+        .sort((a, b) => a.createdAt - b.createdAt)
+      return (args.take != null ? rows.slice(0, args.take) : rows).map((m) => ({ id: m.id }))
+    }),
+    updateMany: vi.fn(async (args: any) => {
+      const ids: string[] = args.where.id.in
+      let count = 0
+      for (const m of memories) {
+        if (ids.includes(m.id)) {
+          Object.assign(m, args.data)
+          count += 1
+        }
+      }
+      return { count }
     }),
     create: vi.fn(async (args: any) => {
       if (opts.createShouldThrow) {
         throw new Error('connection terminated unexpectedly')
       }
       seq += 1
-      const row: FakeMemoryRow = { id: `mem-${seq}`, status: 'active', ...args.data }
+      clock += 1
+      const row: FakeMemoryRow = { id: `mem-${seq}`, status: 'active', createdAt: clock, ...args.data }
       memories.push(row)
       return { id: row.id }
     }),
   }
-  return { installation, repository, agentMemory, memories }
+  // The real client runs the callback against a transactional client exposing
+  // the same delegates; the fake store is already the single source of truth,
+  // so handing back the same delegates models it faithfully enough to assert
+  // ordering and atomic-failure behavior.
+  // `_opts` is declared but unused: the fake ignores the isolation level, yet
+  // the tests assert it was REQUESTED, so the parameter must exist for the
+  // recorded call to have a second element.
+  const $transaction = vi.fn(async (fn: any, _opts?: any) => fn({ agentMemory }))
+  return { installation, repository, agentMemory, $transaction, memories }
 }
 
 async function loadModule(store: ReturnType<typeof makeFakeStore>) {
-  vi.doMock('./db.js', () => ({ prisma: { installation: store.installation, repository: store.repository, agentMemory: store.agentMemory } }))
+  vi.doMock('./db.js', () => ({
+    prisma: {
+      installation: store.installation,
+      repository: store.repository,
+      agentMemory: store.agentMemory,
+      $transaction: store.$transaction,
+    },
+  }))
   return import('./memory-write.js')
 }
 
@@ -80,6 +123,22 @@ function baseParams(overrides: Record<string, unknown> = {}) {
     ...overrides,
   }
 }
+
+// Warm vite's transform cache before any test is timed — same fix, and same
+// reasoning, as tenancy.test.ts. loadModule() must run inside each test (it
+// installs a per-test ./db.js mock), and its FIRST call pays the cold transform
+// of memory-write.js and its dependency chain: 1425ms in isolation, 3421ms in
+// the full suite under CPU contention. Later calls are nearly free, because
+// vi.resetModules() clears the module registry, not vite's transform cache.
+//
+// Charged to the first test that left ~1.6s under vitest's 5s testTimeout, which
+// is the same landmine tenancy.test.ts stepped on — just further from going off.
+// Paying it in beforeAll charges setup work to setup (hookTimeout, 10s) and
+// leaves each test measuring only its own behaviour.
+beforeAll(async () => {
+  await loadModule(makeFakeStore({}))
+  vi.resetModules()
+})
 
 describe('saveAgentMemory', () => {
   beforeEach(() => {
@@ -153,7 +212,12 @@ describe('saveAgentMemory', () => {
     expect(result).toMatchObject({ ok: true })
   })
 
-  it('rejects once the repository is at its active-memory row cap', async () => {
+  // THE DEFECT THIS POLICY CLOSES: nothing in the codebase ever set
+  // status='archived', so a repo that reached the cap stopped learning
+  // FOREVER — every later write returned cap_exceeded and the memory set froze
+  // at whatever it happened to know first. A repo at its cap must still be able
+  // to learn.
+  it('archives the OLDEST memory to make room once the repository is at its row cap', async () => {
     // Hardcoded (not imported mid-test): a separate import of memory-write.js
     // before loadModule()'s vi.doMock resolves against the real (unmocked)
     // db.js and would bind saveAgentMemory to a different module instance
@@ -173,10 +237,55 @@ describe('saveAgentMemory', () => {
 
     const result = await saveAgentMemory(baseParams())
 
-    expect(result).toMatchObject({ ok: false, reason: 'cap_exceeded' })
-    expect(store.agentMemory.create).not.toHaveBeenCalled()
-    expect(store.memories).toHaveLength(MAX_MEMORIES_PER_REPO)
+    expect(result).toMatchObject({ ok: true })
+    expect(store.agentMemory.create).toHaveBeenCalled()
+
+    // Exactly one retired, and it is the OLDEST — not an arbitrary one.
+    const archived = store.memories.filter((m) => m.status === 'archived')
+    expect(archived.map((m) => m.id)).toEqual(['existing-0'])
+
+    // The active set is back at the cap, not over it.
+    const active = store.memories.filter((m) => m.status === 'active')
+    expect(active).toHaveLength(MAX_MEMORIES_PER_REPO)
+
+    // ARCHIVED, never deleted — the row is still there.
+    expect(store.memories).toHaveLength(MAX_MEMORIES_PER_REPO + 1)
+
+    // Asserted here rather than in its own case because it belongs to this
+    // scenario: counting outside the transaction is precisely the
+    // check-then-create race that made the cap advisory rather than enforced,
+    // and eviction-at-the-cap is the case that exercises it. (An earlier version
+    // of this comment justified the folding by re-import cost — "an extra case
+    // costs a real second of wall clock". The beforeAll warm-up above removed
+    // that cost, so the reason no longer holds; the placement still does.)
+    expect(store.$transaction).toHaveBeenCalledTimes(1)
+    expect(store.$transaction.mock.calls[0][1]).toMatchObject({ isolationLevel: 'Serializable' })
   })
+
+  it('drains a pre-existing overshoot from the old racy path back to the cap', async () => {
+    // The cap used to be check-then-create with no transaction, so concurrent
+    // writes could push a repo OVER 20. Such a repo must converge, not stay
+    // permanently over.
+    const MAX_MEMORIES_PER_REPO = 20
+    const existingMemories = Array.from({ length: MAX_MEMORIES_PER_REPO + 3 }, (_, i) => ({
+      id: `existing-${i}`,
+      repositoryId: REPO_A.id,
+      kind: 'project',
+      title: `t${i}`,
+      body: `b${i}`,
+      status: 'active',
+    }))
+    const store = makeFakeStore({ installations: [INST_A], repositories: [REPO_A], existingMemories })
+    const { saveAgentMemory } = await loadModule(store)
+
+    const result = await saveAgentMemory(baseParams())
+
+    expect(result).toMatchObject({ ok: true })
+    const archived = store.memories.filter((m) => m.status === 'archived').map((m) => m.id)
+    expect(archived).toEqual(['existing-0', 'existing-1', 'existing-2', 'existing-3'])
+    expect(store.memories.filter((m) => m.status === 'active')).toHaveLength(MAX_MEMORIES_PER_REPO)
+  })
+
 
   it('does not count archived rows against the active cap', async () => {
     const MAX_MEMORIES_PER_REPO = 20 // mirrors memory-write.ts's exported constant (== persistence.ts's MAX_PROJECT_MEMORIES)
