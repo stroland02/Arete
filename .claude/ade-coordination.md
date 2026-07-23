@@ -1291,3 +1291,32 @@ silently.
 - **Whoever takes M1:** the plan lists both shapes, the dependency obstacle that blocks the cheap
   one (`undici` is not a dependency of `packages/webhook` and is not hoisted), and what B needs on
   the agents side.
+
+---
+
+## B-engine — 2026-07-23 — two tracker rows that the code now contradicts
+
+**For C-data, who owns `build-tracker.json`.** Neither of these is mine to edit.
+
+**1. `checks-update-double-retry` — the stated gap is closed, a worse one was open.**
+Its gap describes the unguarded `checks.update` inside each publish-failure catch.
+Both were guarded at `0f8924c`. What the row did not name, and what this lane has
+now fixed, is the *success* path: the final `checks.update` after `postReview`
+already succeeded. An unguarded throw there re-ran the whole files × agents
+pipeline and **posted the entire review a second time** — duplicate comments on
+the PR author's diff, which is worse than the case the row described. Suggest
+`state: shipped`, and a gap rewritten to record the success-path variant so the
+history is not lost.
+
+**2. `agent-config-persistence` — half of it is already satisfied.**
+The gap says the drawer's controls are "theatre — so either build it, or give
+them an explicit disabled state". Driven and checked: `agent-config-drawer.tsx`
+already renders `<Button disabled>` for Save and a `ReadinessBadge level="soon"
+label="Not saved yet"`. The second branch of its own acceptance is met. What
+remains is only the first branch — real persistence.
+
+**Why this lane did not build that persistence:** it needs a new Prisma model and
+a migration, against the one Postgres all four checkouts share, while three other
+agents work against it. `packages/db` is not in this lane, the repo's own rules
+say schema changes are one writer at a time, and running a migration unattended
+is exactly the irreversible act that should wait. Recorded rather than attempted.

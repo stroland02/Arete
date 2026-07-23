@@ -84,7 +84,22 @@ export function buildCloneContext(
  */
 async function reportDegradedOutcome(
   octokit: Octokit,
-  params: { owner: string; repo: string; checkRunId: number; title: string; summary: string },
+  params: {
+    owner: string
+    repo: string
+    checkRunId: number
+    title: string
+    summary: string
+    /** Defaults to `failure`; the success path passes the review's real verdict. */
+    conclusion?: string
+    /**
+     * Why this job must not be retried, for the log line. The callers have
+     * genuinely different reasons — one produced a result it could not publish,
+     * the other published one — and a single message would be false for one of
+     * them.
+     */
+    whyNotRetrying: string
+  },
 ): Promise<void> {
   try {
     await (octokit as any).rest.checks.update({
@@ -92,13 +107,13 @@ async function reportDegradedOutcome(
       repo: params.repo,
       check_run_id: params.checkRunId,
       status: 'completed',
-      conclusion: 'failure',
+      conclusion: params.conclusion ?? 'failure',
       output: { title: params.title, summary: params.summary },
     })
   } catch (err) {
     log.error(
       { err, owner: params.owner, repo: params.repo, checkRunId: params.checkRunId },
-      'Failed to annotate the check run with a degraded outcome; the check run may be left in_progress. Not retrying — the review itself succeeded.',
+      `Failed to update the check run; it may be left in_progress. Not retrying — ${params.whyNotRetrying}`,
     )
   }
 }
@@ -178,17 +193,25 @@ async function processGitHubPullRequest(octokit: Octokit, installationToken: str
       checkRunId,
       title: 'Review Post Failed',
       summary: `Areté completed the review but failed to post it to GitHub: ${err instanceof Error ? err.message : String(err)}`,
+      whyNotRetrying: 'the review itself succeeded.',
     })
     return
   }
 
-  await (octokit as any).rest.checks.update({
+  // Guarded for the same reason as the publish-failure path, and the stakes
+  // here are higher: the review has ALREADY been posted to the PR by this
+  // point. An unguarded throw would send BullMQ round the entire files x
+  // agents pipeline again and post the whole review a second time, so the PR
+  // author gets duplicate comments. A check run left `in_progress` is a
+  // visible degradation; a duplicated review is worse and harder to undo.
+  await reportDegradedOutcome(octokit, {
     owner,
     repo,
-    check_run_id: checkRunId,
-    status: 'completed',
+    checkRunId,
     conclusion: reviewConclusion(result),
-    output: { title: 'Review Complete', summary: result.overall_summary },
+    title: 'Review Complete',
+    summary: result.overall_summary,
+    whyNotRetrying: 'the review was already produced AND posted; retrying would post it twice.',
   })
 
   try {
@@ -279,17 +302,22 @@ async function processGitHubCheckRun(octokit: Octokit, installationToken: string
       checkRunId,
       title: 'Review Post Failed',
       summary: `Areté completed the CI diagnosis but failed to post it to GitHub: ${err instanceof Error ? err.message : String(err)}`,
+      whyNotRetrying: 'the CI diagnosis itself succeeded.',
     })
     return
   }
 
-  await (octokit as any).rest.checks.update({
+  // Same guard, same reason as the review path: the CI diagnosis has already
+  // been posted to the PR, so a throw here would re-run the whole pipeline and
+  // post it a second time.
+  await reportDegradedOutcome(octokit, {
     owner,
     repo,
-    check_run_id: checkRunId,
-    status: 'completed',
+    checkRunId,
     conclusion: reviewConclusion(result),
-    output: { title: 'Review Complete', summary: result.overall_summary },
+    title: 'Review Complete',
+    summary: result.overall_summary,
+    whyNotRetrying: 'the CI diagnosis was already produced AND posted; retrying would post it twice.',
   })
 
   try {

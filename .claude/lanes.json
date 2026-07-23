@@ -42,6 +42,8 @@
         "packages/dashboard/src/lib/build-tracker.test.ts",
         "packages/agents/src/arete_agents/mcp/**",
         "packages/agents/tests/test_mcp_*.py",
+        "packages/webhook/src/worker.ts",
+        "packages/webhook/src/pipeline.integration.test.ts",
         "scripts/lanes.mjs"
       ],
       "avoid": [
@@ -51,13 +53,11 @@
         "packages/webhook/src/alerting/**",
         ".env.example"
       ],
-      "queue": [
-        "agent-config-persistence"
-      ],
-      "$queueNote": "mcp-token-plaintext-and-simulated-oauth was cleared on 2026-07-23 at c7ddd54: client_id resolution and RFC 8414 discovery are done. Its one remaining part \u2014 encryption no-opping to cleartext with no key configured \u2014 is a ruling, not a patch (the ledger records that fallback as a deliberate upgrade-safety decision), so it waits for a human rather than sitting here making this lane look busy. agent-config-persistence is the next open item this lane can actually finish alone: it needs a persistence path, which is library work, and A-view owns the drawer that consumes it.",
+      "queue": [],
+      "$queueNote": "Empty as of 2026-07-23 cf13087, and honestly so. agent-config-persistence needs a new Prisma model and a migration against the one Postgres all four checkouts share; packages/db is not this lane and the repo's rules say schema changes are one writer at a time, so it waits for a human rather than being run unattended. Its other half \u2014 'or give them an explicit disabled state' \u2014 is already satisfied (agent-config-drawer.tsx renders a disabled Save and a 'Not saved yet' badge). live-throughput-metrics is blocked on the internal-token lifecycle decision and needs an Overview tile, which is not this lane either. Next: tests for scripts/lanes.mjs, which enforces discipline on four agents and has no test of its own \u2014 its error paths have only ever been proven by hand against a scratch fixture.",
       "brief": "docs/handoff/2026-07-23-build-status-lane-briefs.md",
-      "heartbeat": "2026-07-23T12:07:02Z",
-      "lastCommit": "8179749"
+      "heartbeat": "2026-07-23T12:34:22Z",
+      "lastCommit": "cf13087"
     },
     {
       "id": "C-data",
