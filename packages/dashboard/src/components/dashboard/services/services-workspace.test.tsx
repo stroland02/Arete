@@ -320,6 +320,64 @@ describe('ServicesWorkspace — work-item inbox', () => {
     expect(postedHtml).not.toContain('Dismiss');
   });
 
+  // ── The two human gates (Stage 1.1 / 1.2) ─────────────────────────────────
+  // Before this, a `fixing` item was a dead end: the approve control was only
+  // reachable via a /agents?container= URL nothing generated, and the send
+  // control rendered only inside a permanently-false branch. These pin that
+  // each gate appears exactly when the CONTAINER's stored state allows the
+  // server to honour it — and never otherwise.
+
+  it('gate 1: a fixing item whose container is ready offers Approve solution', () => {
+    const html = renderToStaticMarkup(
+      <WorkItemPanel item={item({ state: 'fixing', containerId: 'cont-7', containerState: 'ready' })} />,
+    );
+    expect(html).toContain('Approve solution');
+    // Approving is gate 1 only — it must not also offer to post.
+    expect(html).not.toContain('Post pull request');
+  });
+
+  it('gate 1: a fixing item still composing offers NO gate — the approve route would 409', () => {
+    for (const containerState of ['detecting', 'fanning_out', 'verifying', 'composing']) {
+      const html = renderToStaticMarkup(
+        <WorkItemPanel item={item({ state: 'fixing', containerId: 'cont-7', containerState })} />,
+      );
+      expect(html).not.toContain('Approve solution');
+      expect(html).not.toContain('Post pull request');
+      // the honest in-progress affordance is still there
+      expect(html).toContain('Open the live stream');
+    }
+  });
+
+  it('gate 1: an unknown container state offers no gate rather than guessing one', () => {
+    const html = renderToStaticMarkup(
+      <WorkItemPanel item={item({ state: 'fixing', containerId: 'cont-7', containerState: null })} />,
+    );
+    expect(html).not.toContain('Approve solution');
+    expect(html).not.toContain('Post pull request');
+  });
+
+  it('a failed fix run says so and offers no gate', () => {
+    const html = renderToStaticMarkup(
+      <WorkItemPanel item={item({ state: 'fixing', containerId: 'cont-7', containerState: 'fix_failed' })} />,
+    );
+    expect(html).toContain('finished without a verified patch');
+    expect(html).not.toContain('Approve solution');
+    expect(html).not.toContain('Post pull request');
+  });
+
+  it('gate 2: a staged item offers Post pull request and no longer offers Approve', () => {
+    const html = renderToStaticMarkup(
+      <WorkItemPanel item={item({ state: 'staged', containerId: 'cont-7', containerState: 'solution_approved' })} />,
+    );
+    expect(html).toContain('Post pull request');
+    expect(html).not.toContain('Approve solution');
+  });
+
+  it('gate 2: a staged item with no container offers nothing — the control could not act', () => {
+    const html = renderToStaticMarkup(<WorkItemPanel item={item({ state: 'staged', containerId: null })} />);
+    expect(html).not.toContain('Post pull request');
+  });
+
   it('fix-run cooldown: a cooling-down item shows a "retry available in Xm" badge and disables Fix it', () => {
     const html = renderToStaticMarkup(
       <WorkItemPanel item={item({ fixCooldown: { allowed: false, retryAfterSeconds: 296 } })} />,

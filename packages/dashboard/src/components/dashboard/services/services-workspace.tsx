@@ -8,7 +8,7 @@ import { useInView } from "framer-motion";
 import { IconBrandGithub, IconChevronDown, IconPlus } from "@tabler/icons-react";
 import type { ServiceReviewGroup, ServiceReviewRow } from "@/lib/queries";
 import { TriageBar } from "./triage-bar";
-import { deriveTriage, type TriageStatus } from "./triage";
+import { deriveTriage, workItemTriageStatus, type TriageStatus } from "./triage";
 import type { Issue, Service, Severity } from "./types";
 import { SEV_DOT, SEV_PILL, riskDot } from "./presentation";
 import { IssueSynthesizerConsole } from "./issue-synthesizer-console";
@@ -224,9 +224,15 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
   const sampleStatus = (s: string): TriageStatus =>
     s === "Fix proposed" ? "awaiting" : s === "Agent fixing" || s === "Triaging" ? "in_flight" : "clear";
   const triageCounts = realMode
-    // Real reviews carry no lifecycle field yet → each open review is in-flight;
-    // awaiting/blocked stay 0 until container state reaches this surface.
-    ? deriveTriage((reviewGroups ?? []).flatMap((g) => g.reviews).map(() => ({ status: "in_flight" as TriageStatus })))
+    // Real reviews still carry no lifecycle field → each open review is
+    // in-flight. Work items DO carry their container's state now, so awaiting
+    // and blocked are real: they are derived by the same rule the panel uses to
+    // pick a gate, which is what keeps this bar from reading "Awaiting
+    // approval 0" while an Approve button is visible beside it.
+    ? deriveTriage([
+        ...(reviewGroups ?? []).flatMap((g) => g.reviews).map(() => ({ status: "in_flight" as TriageStatus })),
+        ...(inbox?.items ?? []).map((i) => ({ status: workItemTriageStatus(i) })),
+      ])
     : deriveTriage(issues.map((i) => ({ status: sampleStatus(i.status) })));
 
   return (

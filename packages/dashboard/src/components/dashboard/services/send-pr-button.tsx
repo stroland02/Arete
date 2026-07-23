@@ -110,7 +110,7 @@ export function SendPrButton({ containerId }: { containerId: string }) {
       </button>
       {state.kind === "not-approved" && (
         <p className="text-[10px] leading-4 text-accent-warning">
-          Approve the solution on the Agents page first — the server holds this gate until it&apos;s approved.
+          Approve the solution first — the server holds this gate until it&apos;s approved.
         </p>
       )}
       {state.kind === "message" && (

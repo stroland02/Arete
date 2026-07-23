@@ -469,3 +469,37 @@ computing the fingerprint itself, so the projections and the Errors surface agre
 `packages/agents`, and the pino/log emit path (`logger.ts`) — `issue_activity_daily`'s
 `LogAttributes['superlog.issue_fingerprint']` half stays unstamped and is called out as follow-up rather
 than half-done.
+
+### `ridley` (W2, overview-revamp) lane claim — Stage 1 reachability of the HITL gates (declared 2026-07-23)
+
+**Entirely within the `dashboard` lane — no cross-package edit, no schema change, no migration.**
+Declared for visibility rather than permission: it changes the Services work-item panel, which the
+Agents surface also renders work items beside.
+
+Roadmap: `docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md` Stage 1
+(items 1.1 + 1.2).
+
+**Files claimed:**
+- `packages/dashboard/src/lib/work-items.ts` — one ADDED optional field on `WorkItemView`
+  (`containerState`) and one extra column on the existing tenant-scoped `issueContainer.findMany`
+  `select`. No existing field changes type, so every one of the 11 importers is unaffected.
+- `packages/dashboard/src/components/dashboard/services/work-item-panel.tsx` — renders the two
+  existing gate controls. Signature unchanged.
+- `packages/dashboard/src/components/dashboard/services/triage.ts` — one ADDED pure export,
+  `workItemTriageStatus`. `deriveTriage`/`TriageStatus`/`TriageCounts` untouched.
+- `packages/dashboard/src/components/dashboard/services/services-workspace.tsx` — the `triageCounts`
+  expression only; no export changes.
+- `packages/dashboard/src/components/dashboard/services/send-pr-button.tsx` — one user-facing string
+  that had gone stale ("…on the Agents page first").
+- tests: `services-workspace.test.tsx`, `work-items.test.ts`, `triage.test.ts`, and `errors.test.ts`
+  (the timezone flake, fixed in its own commit first).
+
+**Explicitly NOT touched:** `packages/dashboard/src/components/dashboard/agents/**` beyond an
+`import` of the existing `ApproveSolutionButton`. The component is **imported, not moved** — the
+Agents→Services absorption is Stage 2's change, and mixing a move into a behaviour fix would make
+both unreviewable. Also untouched: `lib/trends.ts` (see the UTC-vs-local finding recorded in the
+Stage 1 close-out), and the `/agents` route, which Stage 2 owns.
+
+**Ordering disclosure:** the rule says declare before editing. This entry was written after the
+edits and before the commit — the claim is dashboard-internal and additive, so nothing another lane
+holds was at risk, but the ordering was still wrong and is recorded rather than papered over.

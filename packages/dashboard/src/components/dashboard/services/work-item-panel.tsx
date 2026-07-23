@@ -2,10 +2,15 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { IconGitPullRequest, IconHourglassHigh, IconLoader2 } from "@tabler/icons-react";
+import { IconAlertTriangle, IconGitPullRequest, IconHourglassHigh, IconLoader2 } from "@tabler/icons-react";
 import type { WorkItemView } from "@/lib/work-items";
 import { PanelSection } from "./presentation";
 import { KIND_LABEL, KIND_CHIP } from "./work-item-inbox";
+import { SendPrButton } from "./send-pr-button";
+// Gate 1 still lives in the Agents directory. It is IMPORTED, not moved: the
+// Agents→Services absorption is its own change, and mixing a move into a
+// behaviour fix would make both unreviewable. Co-location happens there.
+import { ApproveSolutionButton } from "../agents/approve-solution-button";
 
 /**
  * Right pane for a selected work item: the discovered problem/opportunity with
@@ -13,6 +18,12 @@ import { KIND_LABEL, KIND_CHIP } from "./work-item-inbox";
  * Triage v1 is exactly two actions (spec ruling): Fix it (issues/errors) or
  * Implement it (opportunities) → the pipeline; Dismiss → dismissed. Only a
  * human triggers either — nothing here auto-starts or auto-sends.
+ *
+ * It is also where the pipeline's two human gates are crossed — approve the
+ * composed solution, then post the pull request — because this is the surface
+ * that already holds the container the gates act on. Both controls are backed
+ * by routes that re-check the gate against stored state, so neither can post
+ * anything the server has not independently agreed to.
  * Exported for the state-matrix tests.
  */
 export function WorkItemPanel({ item }: { item: WorkItemView }) {
@@ -108,9 +119,49 @@ export function WorkItemPanel({ item }: { item: WorkItemView }) {
           ) : null}
         </div>
 
-        {/* Triage: only an OPEN item offers actions — everything later is
-            driven from the pipeline surfaces (approve on Agents, send on
-            Services), keeping one decision per stage. */}
+        {/* The two human gates, offered HERE — where the container this item
+            started already lives. Previously they were reachable only from
+            surfaces nothing linked to, which left a `fixing` item a dead end.
+            One decision per stage still holds; the stage just has a door now.
+
+            Which gate appears is decided by the container's REAL stored state,
+            never by the work-item state alone: the approve route enforces
+            `ready` server-side, so rendering Approve on a still-composing
+            container would be a control that cannot act. An unknown state
+            (read failed / no container) offers nothing. */}
+        {item.state === "fixing" && item.containerId && item.containerState === "ready" && (
+          <footer className="shrink-0 space-y-1.5 border-t border-border-subtle px-3 py-3">
+            <ApproveSolutionButton
+              containerId={item.containerId}
+              onApproved={() => window.location.reload()}
+            />
+            <p className="text-[10px] leading-4 text-content-muted/80">
+              Kuma has a verified patch ready. Approving stages it — posting the pull request is a
+              second, separate decision.
+            </p>
+          </footer>
+        )}
+
+        {item.state === "fixing" && item.containerState === "fix_failed" && (
+          <footer className="shrink-0 border-t border-border-subtle px-3 py-3">
+            <p className="flex items-start gap-1.5 rounded-lg border border-accent-danger/30 bg-accent-danger/10 px-2.5 py-1.5 text-[11px] leading-4 text-accent-danger">
+              <IconAlertTriangle size={13} stroke={2} className="mt-px shrink-0" aria-hidden />
+              This fix run finished without a verified patch. Nothing was staged — the transcript on
+              the left shows how far it got.
+            </p>
+          </footer>
+        )}
+
+        {item.state === "staged" && item.containerId && (
+          <footer className="shrink-0 space-y-1.5 border-t border-border-subtle px-3 py-3">
+            <SendPrButton containerId={item.containerId} />
+            <p className="text-[10px] leading-4 text-content-muted/80">
+              The solution is approved. Posting opens the pull request on your repository.
+            </p>
+          </footer>
+        )}
+
+        {/* Triage: an OPEN item is where the pipeline starts. */}
         {item.state === "open" && (
           <footer className="shrink-0 space-y-1.5 border-t border-border-subtle px-3 py-3">
             {cooldownActive && (

@@ -18,6 +18,15 @@ export interface WorkItemView {
   state: 'open' | 'fixing' | 'staged' | 'posted' | 'dismissed';
   /** Set once Fix started — deep-links the live container stream / PR panel. */
   containerId?: string | null;
+  /**
+   * The linked container's REAL persisted lifecycle state, when it could be
+   * read. This is what decides which human gate the panel may offer: the
+   * approve route enforces `ready` against stored state server-side, so
+   * offering Approve on a container still at `detecting` would be a control
+   * that cannot act. `null` means "not known" (no container, or the read
+   * failed) — distinct from any actual state, and it offers no gate at all.
+   */
+  containerState?: string | null;
   /** The posted PR's URL, when the container's pr JSON carries one. */
   prUrl?: string | null;
   /**
@@ -74,10 +83,12 @@ export async function getWorkItemInbox(
     }),
   ]);
 
-  // PR links for posted items: read from the linked containers' pr JSON when
-  // present (tenant-scoped). Optional — a store without the delegate (older
-  // fakes) simply yields no links, never an error.
+  // Linked-container facts: the PR url for posted items, and the container's
+  // real lifecycle state (which human gate, if any, the panel may offer).
+  // Tenant-scoped. Optional — a store without the delegate (older fakes)
+  // simply yields neither, never an error; an unknown state offers no gate.
   const prUrls = new Map<string, string>();
+  const containerStates = new Map<string, string>();
   const containerIds = (rows as Array<{ containerId?: string | null }>)
     .map((r) => r.containerId)
     .filter((v): v is string => typeof v === 'string' && v.length > 0);
@@ -86,14 +97,17 @@ export async function getWorkItemInbox(
     try {
       const containers = (await issueContainer.findMany({
         where: { id: { in: containerIds }, ...scope },
-        select: { id: true, pr: true },
-      })) as Array<{ id: string; pr: unknown }>;
+        select: { id: true, pr: true, state: true },
+      })) as Array<{ id: string; pr: unknown; state?: unknown }>;
       for (const c of containers) {
         const url = (c.pr as { url?: unknown } | null)?.url;
         if (typeof url === 'string') prUrls.set(c.id, url);
+        if (typeof c.state === 'string' && c.state.length > 0) containerStates.set(c.id, c.state);
       }
     } catch {
-      // Links are an enhancement — the inbox itself must never fail on them.
+      // These are an enhancement — the inbox itself must never fail on them.
+      // Failing here leaves every containerState null, so the panel falls back
+      // to offering no gate rather than guessing one.
     }
   }
 
@@ -110,6 +124,8 @@ export async function getWorkItemInbox(
       confidence: Number(r.confidence),
       state: r.state as WorkItemView['state'],
       containerId: (r.containerId ?? null) as string | null,
+      containerState:
+        typeof r.containerId === 'string' ? containerStates.get(r.containerId) ?? null : null,
       prUrl: typeof r.containerId === 'string' ? prUrls.get(r.containerId) ?? null : null,
       fixCooldown: computeFixCooldown(fixFailureCount, fixFailureAt),
     };
