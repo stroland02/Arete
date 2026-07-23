@@ -1076,12 +1076,14 @@
     },
     {
       "id": "checks-update-double-retry",
-      "title": "Unguarded second checks.update re-opens the double-retry",
+      "title": "Annotating a degraded outcome can no longer re-open the double-retry",
       "lane": "idea",
       "area": "Partially wired",
-      "level": "partial",
-      "state": "someday",
+      "level": "live",
+      "state": "shipped",
       "importance": "medium",
+      "works": "Both publish-failure catches now report through reportDegradedOutcome(), which swallows-and-logs a failure to annotate rather than letting it escape. The retry decision is made once — a usable result exists, so do not retry — and failing to annotate can no longer reverse it. Proven by regression test: with the guard temporarily removed the new case fails with 'promise rejected \"GitHub API unavailable\" instead of resolving', which is the job re-throwing and BullMQ redoing the whole files x agents review to retry one GitHub call.",
+      "verifiedAt": "2026-07-23",
       "rank": 160,
       "programmes": [
         {
