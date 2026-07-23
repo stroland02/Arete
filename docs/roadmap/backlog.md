@@ -42,7 +42,7 @@ Ranked. The first item is a live security gap, not an enhancement.
    shipped: `mcp/auth.py` computes `expires_at = now + expires_in` on both the code exchange (L76-81)
    and the refresh (L130-135), `manager.py` stores it, and `get_valid_token` refreshes inside a 60s
    skew window, raising `MCPTokenRefreshError` rather than presenting a stale token when it cannot.
-   And the store is no longer plaintext on disk: `mcp/token_crypto.py` (`5a4c202`) encrypts
+   And the store is no longer plaintext on disk: `mcp/token_crypto.py` (`63f1ad3`) encrypts
    `token`/`refresh_token` at rest under `ARETE_MCP_TOKEN_KEY`, on top of the earlier 0o600
    atomic-create hardening, and `.agents/` is now gitignored. **So the provenance text below —
    "persists tokens as plaintext JSON … with no file-mode hardening" — describes the ORIGINAL state,

@@ -295,9 +295,10 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
     ref: "B6",
     area: "Partially wired",
     level: "partial",
-    works: "Kuma can consume third-party MCP servers, driven from the CLI.",
-    gap: "No dashboard surface to add or list them, and tokens are stored as plaintext JSON on disk.",
-    evidence: "arete_agents/mcp/manager.py",
+    works:
+      "Kuma can consume third-party MCP servers, driven from the CLI. OAuth tokens are encrypted at rest under ARETE_MCP_TOKEN_KEY, and the credential store is gitignored.",
+    gap: "No dashboard surface to add or list them — connecting a server is still a CLI-only operation.",
+    evidence: "arete_agents/mcp/manager.py, arete_agents/mcp/token_crypto.py",
   },
 
   // ------------------------------------------------------------ not built
