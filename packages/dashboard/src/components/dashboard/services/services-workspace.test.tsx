@@ -1,5 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+
+// The inbox and the work-item panel now use router.refresh() instead of
+// window.location.reload() — a soft refresh keeps the rail's selection and
+// scroll position. A stub is all a static render needs.
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: () => {} }) }));
+
 import { ServicesWorkspace, WorkItemPanel } from './services-workspace';
 import { ApprovalsSection } from './approvals-section';
 import type { Issue, Service } from './services-workspace';

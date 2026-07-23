@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { IconLoader2 } from "@tabler/icons-react";
 import type { InboxView, WorkItemView } from "@/lib/work-items";
 
@@ -29,6 +30,19 @@ export const KIND_CHIP: Record<WorkItemView["kind"], string> = {
   pr_finding: "text-accent-info border-accent-info/30 bg-accent-info/10",
 };
 
+/**
+ * Identity of the scan run currently on screen.
+ *
+ * `lastScan` carries no id, so a run is identified by (status, finishedAt).
+ * This exists because clicking Scan almost always happens while an OLDER
+ * completed run is displayed: without comparing identity, "status is no longer
+ * running" is already true on arrival and the spinner would stop instantly,
+ * reporting a previous scan's completion as this one's. Exported for tests.
+ */
+export function scanIdentity(lastScan: InboxView["lastScan"]): string {
+  return `${lastScan?.status ?? "none"}|${lastScan?.finishedAt ?? ""}`;
+}
+
 /** The honest scan-status line: real ScanRun status only, never invented. */
 function scanStatusLine(lastScan: InboxView["lastScan"]): string {
   if (!lastScan) return "Not scanned yet.";
@@ -48,26 +62,74 @@ export function WorkItemInboxSection({
   activeItemId: string | null;
   onSelect: (item: WorkItemView) => void;
 }) {
+  const router = useRouter();
   const [scanRequested, setScanRequested] = useState(false);
+  const [stalled, setStalled] = useState(false);
   const openIssues = inbox.items.filter((i) => i.state === "open" && i.kind !== "opportunity").length;
   const openOpportunities = inbox.items.filter((i) => i.state === "open" && i.kind === "opportunity").length;
-  const scanning = scanRequested || inbox.lastScan?.status === "running";
+  const running = inbox.lastScan?.status === "running";
+  const scanning = scanRequested || running;
 
   async function handleScan() {
+    scanKeyAtRequest.current = scanKey;
     setScanRequested(true);
+    setStalled(false);
     try {
-      // 202 started / 409 already running — both mean a run is (now) live, so
-      // refresh shortly to pick up its ScanRun row. Anything else resets.
+      // 202 started / 409 already running — both mean a run is (now) live.
+      // Anything else is a refusal and resets the control.
       const res = await fetch("/api/scan", { method: "POST" });
-      if (res.status === 202 || res.status === 409) {
-        setTimeout(() => window.location.reload(), 1500);
-      } else {
+      if (res.status !== 202 && res.status !== 409) {
         setScanRequested(false);
       }
     } catch {
       setScanRequested(false);
     }
   }
+
+  // Watch the REAL ScanRun row until it stops running.
+  //
+  // This replaced `setTimeout(() => window.location.reload(), 1500)`, which was
+  // a lie in both directions: a scan slower than 1.5s came back still showing
+  // "Scanning…" with no further updates, and the reload fired whether or not
+  // anything had actually happened. The status line below renders the row's own
+  // status, so refreshing until the row leaves `running` makes the spinner mean
+  // exactly what it says.
+  //
+  // Bounded on purpose. If the run is still `running` after MAX_POLLS, we stop
+  // and SAY so rather than spinning forever against a stuck or crashed worker —
+  // an honest "still running" beats an animation that implies progress.
+  const polls = useRef(0);
+  useEffect(() => {
+    if (!scanning) {
+      polls.current = 0;
+      return;
+    }
+    const POLL_MS = 2000;
+    const MAX_POLLS = 45; // ~90s, then we stop claiming to know.
+    const timer = setTimeout(() => {
+      if (polls.current >= MAX_POLLS) {
+        setStalled(true);
+        setScanRequested(false);
+        return;
+      }
+      polls.current += 1;
+      router.refresh();
+    }, POLL_MS);
+    return () => clearTimeout(timer);
+  }, [scanning, router, inbox.lastScan?.status, inbox.lastScan?.finishedAt]);
+
+  // Retiring the local "I asked for a scan" flag needs care, because `lastScan`
+  // usually already holds an OLDER completed run at the moment you click. Just
+  // checking `status !== "running"` would clear the flag on that stale row and
+  // stop the spinner immediately, reporting a completion that belongs to a
+  // previous scan. `lastScan` carries no id, so identity is (status, finishedAt)
+  // — the flag drops only once that pair actually CHANGES from what was on
+  // screen when the scan was requested.
+  const scanKey = scanIdentity(inbox.lastScan);
+  const scanKeyAtRequest = useRef(scanKey);
+  useEffect(() => {
+    if (scanKey !== scanKeyAtRequest.current) setScanRequested(false);
+  }, [scanKey]);
 
   return (
     <div className="border-b border-border-subtle">
@@ -124,8 +186,16 @@ export function WorkItemInboxSection({
       {/* Honest status line + manual re-scan. A scanned-clean repo is
           connected_idle: populated ("no issues found"), never blank. */}
       <div className="flex items-center gap-2 px-3 pb-3 pt-1">
-        <p className="min-w-0 flex-1 text-[10.5px] leading-4 text-content-muted">
-          {scanRequested ? "Scanning…" : scanStatusLine(inbox.lastScan)}
+        <p
+          className={`min-w-0 flex-1 text-[10.5px] leading-4 ${
+            stalled ? "text-accent-warning" : "text-content-muted"
+          }`}
+        >
+          {stalled
+            ? "Still running after 90s — Kuma stopped watching. Scan again to re-check."
+            : scanning
+              ? "Scanning…"
+              : scanStatusLine(inbox.lastScan)}
         </p>
         <button
           type="button"

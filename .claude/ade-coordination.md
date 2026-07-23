@@ -545,6 +545,29 @@ Roadmap: `docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadm
   filter is what makes silencing mean something on the map.
 - `packages/dashboard/src/app/(dashboard)/reviews/[id]/page.tsx` — renders the control.
 
+### `ridley` lane claim — Stage 3 papercuts 3.3-3.6 (declared 2026-07-23, BEFORE editing)
+
+**Entirely within the `dashboard` lane. No schema change, no migration, no cross-package edit.**
+
+Roadmap: `docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md` Stage 3.
+
+**Files claimed:**
+- `components/dashboard/services/work-item-panel.tsx` — 3.4, two `window.location.reload()` calls
+  become `router.refresh()`.
+- `components/dashboard/services/work-item-inbox.tsx` — 3.3, the blind
+  `setTimeout(reload, 1500)` becomes a bounded poll of the REAL `ScanRun` status.
+- `app/(dashboard)/reviews/[id]/page.tsx` — 3.5, one `href="/"` → `/overview`.
+- `app/(dashboard)/connections/[id]/page.tsx` — 3.5, removes the
+  "Explore the dashboard with sample data first" link, which promises something the target
+  page does not have.
+- DELETE `components/dashboard/agents/synthesizer/synth-ledger.tsx` — 3.6, zero importers.
+
+**Note for whoever owns the Synthesizer spec:** `specs/2026-07-13-synthesizer-component-and-critic.md`
+§141 gives `synth-ledger` the "Ready for your approval" card. That card was never wired to anything,
+and as of Stage 1.1/1.2 the approve gate is live on the Services work-item panel instead. The
+component is being deleted as superseded, not merely as unused — if the spec is still authoritative,
+say so and it comes back.
+
 **Note for the webhook / agents lanes — a boundary I am deliberately NOT crossing:**
 the human control writes only `OPEN` and `SILENCED`. `UNDER_OBSERVATION` and `ESCALATED` stay owned
 by the machine (`persistence.ts` escalation loop, `orchestrator.py`). A human un-silencing a finding

@@ -124,10 +124,15 @@ export default async function ConnectorDetailPage({
           )}
         </div>
 
+        {/* The old copy here offered to "explore the dashboard with sample data
+            first". /overview has no sample data — a disconnected account gets
+            honest empty states — so the link promised something that does not
+            exist. Reworded rather than deleted: the escape hatch back out of a
+            connector page is worth keeping; the false promise is not. */}
         <p className="text-xs text-content-muted text-center mt-8">
           Not ready yet?{" "}
           <Link href="/overview" className="text-accent-primary hover:text-accent-primary/80">
-            Explore the dashboard with sample data first →
+            Back to your dashboard →
           </Link>
         </p>
       </RevealItem>

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { IconAlertTriangle, IconGitPullRequest, IconHourglassHigh, IconLoader2 } from "@tabler/icons-react";
 import type { WorkItemView } from "@/lib/work-items";
 import { PanelSection } from "./presentation";
@@ -27,7 +28,19 @@ import { ApproveSolutionButton } from "../agents/approve-solution-button";
  * Exported for the state-matrix tests.
  */
 export function WorkItemPanel({ item }: { item: WorkItemView }) {
-  const [busy, setBusy] = useState<null | 'fix' | 'dismiss'>(null);
+  const router = useRouter();
+  // A full page reload used to unmount this panel, which is what "reset the
+  // busy state" silently relied on. A soft refresh keeps it mounted, so the
+  // spinner has to cover BOTH phases: the POST (`pending`) and the re-render
+  // that follows it (`refreshing`). Composing them from a transition rather
+  // than a second flag means there is no state in which the control can get
+  // stuck — when the refresh commits, `refreshing` goes false on its own.
+  const [pending, setPending] = useState<null | 'fix' | 'dismiss'>(null);
+  const [refreshing, startRefresh] = useTransition();
+  // State, not a ref: this is read during render to choose the spinner, and a
+  // ref read during render is untracked (and a lint error here, correctly).
+  const [lastAction, setLastAction] = useState<null | 'fix' | 'dismiss'>(null);
+  const busy = pending ?? (refreshing ? lastAction : null);
   // Fix-run cooldown (Phase 3 Task 8): item.fixCooldown is computed
   // server-side by computeFixCooldown (fix-cooldown.ts) — the SAME pure
   // policy the fix API route enforces. Surfacing it here lets the user see
@@ -38,17 +51,24 @@ export function WorkItemPanel({ item }: { item: WorkItemView }) {
     : 0;
 
   async function act(action: 'fix' | 'dismiss') {
-    setBusy(action);
+    setLastAction(action);
+    setPending(action);
     try {
       const res = await fetch(`/api/work-items/${item.id}/${action}`, { method: 'POST' });
       if (res.ok) {
-        window.location.reload();
+        // A soft refresh, not a page reload. The rail's selection is client
+        // state (`activeItemId` in services-workspace) and the selected item is
+        // re-derived from refreshed server props by id, so the user keeps their
+        // place and their scroll position while the item's new state arrives.
+        // A full reload threw all of that away on every Fix and every Dismiss.
+        setPending(null);
+        startRefresh(() => router.refresh());
         return;
       }
     } catch {
       // fall through to reset
     }
-    setBusy(null);
+    setPending(null);
   }
 
   return (
@@ -133,7 +153,7 @@ export function WorkItemPanel({ item }: { item: WorkItemView }) {
           <footer className="shrink-0 space-y-1.5 border-t border-border-subtle px-3 py-3">
             <ApproveSolutionButton
               containerId={item.containerId}
-              onApproved={() => window.location.reload()}
+              onApproved={() => router.refresh()}
             />
             <p className="text-[10px] leading-4 text-content-muted/80">
               Kuma has a verified patch ready. Approving stages it — posting the pull request is a

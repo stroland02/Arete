@@ -102,7 +102,7 @@ export default async function ReviewDetailPage({
     <PageReveal className="max-w-5xl space-y-6">
       <RevealItem>
         <Link
-          href="/"
+          href="/overview"
           className="inline-flex items-center gap-1.5 text-sm text-content-muted hover:text-content-secondary transition-colors mb-4"
         >
           <IconArrowLeft className="w-4 h-4" />
