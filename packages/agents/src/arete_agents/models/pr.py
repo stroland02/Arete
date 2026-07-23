@@ -46,6 +46,13 @@ class ScanRequest(BaseModel):
     installation_id: int = Field(alias="installationId")
     repo_slug: str = Field(alias="repoSlug")
     llm: LLMConfig | None = None
+    # "sync" (default) answers with the findings in this response, exactly as
+    # before — every existing caller is unchanged. "async" acks with a run id
+    # and the caller polls GET /scan/runs/{id}, so no HTTP connection has to
+    # stay open for the scan's whole duration. That shape exists because
+    # something unidentified severs long-lived connections to this service
+    # (observed at 307 s), and an ack removes the dependency on it.
+    mode: str = "sync"
 
 
 class ScanFinding(BaseModel):

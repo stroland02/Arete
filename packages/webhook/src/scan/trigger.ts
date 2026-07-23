@@ -45,6 +45,116 @@ const SCAN_REQUEST_TIMEOUT_MS = Number(process.env.SCAN_REQUEST_TIMEOUT_MS ?? 45
  */
 const SCAN_STALE_AFTER_MS = SCAN_REQUEST_TIMEOUT_MS + 5 * 60 * 1000
 
+/** How often to ask the agents service whether an async scan has finished. */
+const SCAN_POLL_INTERVAL_MS = Number(process.env.SCAN_POLL_INTERVAL_MS ?? 5_000)
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+
+export interface ScanHttpOptions {
+  fetchFn?: typeof fetch
+  pollIntervalMs?: number
+  deadlineMs?: number
+}
+
+/**
+ * Run a scan against the agents service without any connection having to
+ * outlive it (M1).
+ *
+ * Submits with `mode: "async"`, gets an ack `{ runId }`, then polls
+ * `GET /scan/runs/{id}` until the run is terminal. The shape exists because
+ * something unidentified severs long-lived connections to the agents service —
+ * observed at 307 s, and NOT undici's documented 300 s header cap, which was
+ * disproved by driving it. With the mechanism unknown, the durable fix is to
+ * remove the dependency on it: the submit returns in milliseconds and each
+ * poll is a fresh, short request, so nothing is left open for the unknown to
+ * kill.
+ *
+ * Reversible on purpose: an agents service that predates `mode` ignores the
+ * field and answers synchronously with the findings, and that response is
+ * returned as-is. The submit keeps the whole-request deadline for exactly that
+ * case — it may be the entire scan.
+ *
+ * `headersFn` is called per request, not once: internal tokens are short-lived
+ * and a scan can outlive one, so each poll mints fresh auth.
+ */
+export async function executeScanRequest(
+  baseUrl: string,
+  body: ScanRequestBody,
+  headersFn: () => Promise<Record<string, string>>,
+  opts: ScanHttpOptions = {},
+): Promise<ScanResponseBody> {
+  const fetchFn = opts.fetchFn ?? fetch
+  const deadlineMs = opts.deadlineMs ?? SCAN_REQUEST_TIMEOUT_MS
+  const pollIntervalMs = opts.pollIntervalMs ?? SCAN_POLL_INTERVAL_MS
+  const startedAt = Date.now()
+
+  const submit = await fetchFn(`${baseUrl}/scan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(await headersFn()) },
+    body: JSON.stringify({ ...body, mode: 'async' }),
+    ...(deadlineMs > 0 ? { signal: AbortSignal.timeout(deadlineMs) } : {}),
+  })
+  if (!submit.ok) {
+    const text = await submit.text().catch(() => '')
+    throw new Error(`agents /scan responded ${submit.status}: ${text}`)
+  }
+  const ack = (await submit.json()) as {
+    status?: string
+    runId?: string
+    findings?: ScanFindingBody[]
+  }
+
+  // No runId: an agents service that predates async mode answered with the
+  // findings themselves. Pass them through unchanged — this is the fallback
+  // that makes the migration reversible.
+  if (!ack.runId) {
+    if (ack.status === 'complete' || ack.status === 'no_findings') {
+      return ack as ScanResponseBody
+    }
+    throw new Error(
+      `agents /scan returned neither an ack nor a result: ${JSON.stringify(ack).slice(0, 300)}`,
+    )
+  }
+
+  for (;;) {
+    if (deadlineMs > 0 && Date.now() - startedAt >= deadlineMs) {
+      throw new Error(
+        `scan run ${ack.runId} exceeded the ${deadlineMs}ms deadline; the agents service may ` +
+          `still finish it, but this ScanRun is recorded failed rather than left running forever`,
+      )
+    }
+    await sleep(pollIntervalMs)
+
+    let res: Response
+    try {
+      res = await fetchFn(`${baseUrl}/scan/runs/${ack.runId}`, { headers: await headersFn() })
+    } catch {
+      // One failed poll is not a failed scan — the run is still progressing on
+      // the agents side. Keep polling until the deadline says otherwise.
+      continue
+    }
+    if (res.status === 404) {
+      // The registry is in-memory over there. A 404 for a run we were given
+      // means the service restarted and the run died with it — report that,
+      // never "still running".
+      throw new Error(
+        'agents service no longer knows this scan run — it likely restarted mid-scan',
+      )
+    }
+    if (!res.ok) continue
+
+    const state = (await res.json()) as
+      | { status: 'running' }
+      | { status: 'failed'; error?: string }
+      | ScanResponseBody
+    if (state.status === 'running') continue
+    if (state.status === 'failed') {
+      throw new Error(`scan failed on the agents side: ${state.error ?? 'no reason recorded'}`)
+    }
+    return state
+  }
+}
+
 export interface ScanFindingBody {
   kind: 'issue' | 'opportunity'
   title: string
@@ -269,30 +379,11 @@ export function defaultScanTriggerDeps(): ScanTriggerDeps {
       resolveModelConnectionForReview(externalId, defaultResolveModelDeps()),
     fetchScan: async (body) => {
       const { getServiceConfig } = await import('../config.js')
-      const res = await fetch(`${getServiceConfig().pythonServiceUrl}/scan`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(await internalAuthHeaders()) },
-        body: JSON.stringify(body),
-        // An explicit deadline, because there was none and the inherited one is
-        // not what the docs say. Node's undici is documented to cap
-        // time-to-headers at 300 s, and `/scan` sends no headers until the whole
-        // scan is done — but driven on Node 24.15.0 against a server that
-        // withheld headers for 305 s, `fetch` returned the body successfully.
-        // So whatever ended the observed 307 s scan failure, it was not this
-        // ceiling, and the real limit here is unknown and version-dependent.
-        //
-        // Unknown is the problem. Without a deadline a hung agents process
-        // leaves this awaiting forever, the ScanRun stays `running`, and every
-        // later scan for that tenant is refused as `already_running` — one hang
-        // silently ends scanning for that installation. A stated, generous,
-        // configurable limit fails honestly instead.
-        signal: AbortSignal.timeout(SCAN_REQUEST_TIMEOUT_MS),
-      })
-      if (!res.ok) {
-        const text = await res.text().catch(() => '')
-        throw new Error(`agents /scan responded ${res.status}: ${text}`)
-      }
-      return (await res.json()) as ScanResponseBody
+      return executeScanRequest(
+        getServiceConfig().pythonServiceUrl,
+        body,
+        () => internalAuthHeaders(),
+      )
     },
   }
 }

@@ -1594,3 +1594,19 @@ not started here. It is a good finding — evidence strings are prose re-run by
 hand, and a grep matching a comment rather than code has caused wrong calls
 three times in a day. Not taken yet because it is a convention change across 88
 rows, not a patch.
+
+---
+
+## B-engine — 2026-07-23 — M1 shape B is landed; D-verify, the live drive is yours
+
+The ack-and-poll scan shape is on both sides (see the tracker row
+`scan-cannot-complete-slow-model` for the full contract). What this lane
+deliberately did NOT do is mark it shipped: the unit tests pin the protocol,
+not the socket, and the severing mechanism was never identified. **The drive
+that proves it is exactly your lane:** trigger a scan on the dogfood instance
+against a deliberately slow model (the local Ollama qualifies) and confirm the
+findings persist past ~307 s, where the old shape died. `uvicorn` access logs
+should now show an immediate POST /scan ack plus a stream of short GET
+/scan/runs/{id} polls, instead of one long connection that never completes.
+If it holds, move the row to shipped with what you observed; if it does not,
+file what actually happened — either result is the loop working.

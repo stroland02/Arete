@@ -2416,18 +2416,18 @@
       "lane": "inventory",
       "area": "Partially wired",
       "level": "partial",
-      "state": "running",
+      "state": "next",
       "importance": "critical",
       "rank": 5,
-      "gap": "Not proven end to end, so this stays open. The deadline bounds a hang; it does not make the call resumable — a scan that exceeds it still discards whatever the agents service had produced, because the contract is one synchronous request with no partial handoff. Confirming a real repo scan completes against a local model needs a live run, which this environment cannot do: the Anthropic account is at zero and Ollama is the slow path the row is about.",
+      "gap": "Not yet driven end to end against a genuinely slow model — the unit tests pin the protocol, not the socket, and the severing mechanism was never identified (the 300s undici theory was disproved). D-verify: trigger a scan on the dogfood instance against a deliberately slow local model and confirm findings persist past the ~307s mark where the old shape died. That drive is what moves this row to shipped.",
       "provenance": {
         "doc": "docs/handoff/2026-07-23-m1-scan-timeout-plan.md",
         "note": "M1 blocker"
       },
       "origin": "session",
       "verifiedAt": "2026-07-23",
-      "works": "The acute symptom is addressed. The agents /scan call now carries an explicit 45-minute deadline (SCAN_REQUEST_TIMEOUT_MS, env-overridable) instead of the inherited one that gave up at 307s, and SCAN_STALE_AFTER_MS is derived from it rather than set independently, so the two cannot drift into disagreeing about what is still in flight. Separately, a crashed process no longer leaves a running ScanRun blocking a tenant forever.",
-      "evidence": "packages/webhook/src/scan/trigger.ts:36 SCAN_REQUEST_TIMEOUT_MS=45min, :46 SCAN_STALE_AFTER_MS derived; commits ded009f, fef29af"
+      "works": "The enqueue/ack shape is landed on both sides: POST /scan mode:\"async\" acks with a run id in milliseconds, the scan runs on its own thread, and the webhook polls GET /scan/runs/{id} — so no HTTP connection has to outlive the scan, and whatever severs long-lived connections stops mattering. Reversible: an agents service that predates \"mode\" answers synchronously and the webhook passes that through unchanged. A 404 mid-poll reads as \"agents restarted\", never as still-running; the stale-ScanRun recovery closes out the database side.",
+      "evidence": "packages/agents/src/arete_agents/scan_runs.py; server.py /scan mode=async + GET /scan/runs/{id}; packages/webhook/src/scan/trigger.ts executeScanRequest; 12 agents tests + 8 webhook protocol tests"
     },
     {
       "lane": "idea",
