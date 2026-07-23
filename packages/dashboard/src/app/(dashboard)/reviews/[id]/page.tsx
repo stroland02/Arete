@@ -92,8 +92,11 @@ export default async function ReviewDetailPage({
   return (
     <PageReveal className="max-w-5xl space-y-6">
       <RevealItem>
+        {/* /overview, not / — the root is the marketing page, and a link
+            labelled "Back to Overview" that leaves the product is a lie about
+            where it goes. The not-found branch above already pointed here. */}
         <Link
-          href="/"
+          href="/overview"
           className="inline-flex items-center gap-1.5 text-sm text-content-muted hover:text-content-secondary transition-colors mb-4"
         >
           <IconArrowLeft className="w-4 h-4" />

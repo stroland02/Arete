@@ -869,3 +869,31 @@ rather than patches:**
 - Making MCP token encryption fail closed with no key configured. The claim above records
   "no key configured == previous behaviour" as a deliberate upgrade-safety decision; flipping
   it would break existing deployments on upgrade. That is the owner's call, not this lane's.
+### `Kuma2/Arete` (lane C) — onboarding + dashboard surfaces (declared 2026-07-23)
+
+**Running unattended today at the product owner's instruction.** Branch
+`stroland02/lane-onboarding-surfaces`, merged to `main` in small verified increments so the
+localhost agent can test as work lands.
+
+**Chosen to NOT collide with the other two lanes.** Recent history shows them concentrated in
+`packages/webhook/src` (outbound, model-connections), `packages/agents/src/arete_agents/mcp`
+(pyrosome's declared MCP credential claim) and `packages/dashboard/src/lib`. `ridley` holds an
+exclusive claim on `packages/dashboard/src/components/dashboard/services/`.
+
+**This lane owns, and will not go outside:**
+- `packages/dashboard/src/app/(dashboard)/{reviews,agents,map,overview}/**`
+- `packages/dashboard/src/lib/overview-setup.ts` and `lib/account-state.ts`
+- `packages/dashboard/src/components/dashboard/{sidebar,topbar,onboarding}*`
+- `docs/**` corrections
+
+**Explicitly NOT touched:** `components/dashboard/services/**` (ridley), `packages/webhook/**`,
+`packages/agents/**`, `packages/db/**` and any migration, `packages/dashboard/data/build-tracker.json`
+except to flip a row this lane actually finishes.
+
+**Work, in tracker priority order:** back-to-overview link · adopt `getAccountState` on
+agents/map · real account-state signals behind the onboarding `coming_soon` sub-steps ·
+Connect Workspace UI (extend the existing checklist, never greenfield) · global refresh.
+
+**Standing rules honoured:** no schema change, no migration, no `db push`; the HITL moat is never
+weakened; nothing renders a fabricated checkmark — a new onboarding step ships `disabled` with its
+reason until a real signal backs it.
