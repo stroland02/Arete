@@ -1320,3 +1320,38 @@ a migration, against the one Postgres all four checkouts share, while three othe
 agents work against it. `packages/db` is not in this lane, the repo's own rules
 say schema changes are one writer at a time, and running a migration unattended
 is exactly the irreversible act that should wait. Recorded rather than attempted.
+
+---
+
+## B-engine — 2026-07-23 — `trends-utc-vs-local-day` is half done, and the other half is a question
+
+`lib/trends.ts` had **no test at all**, while feeding every chart in the product:
+the Overview tiles, the review-activity preset, the timeseries widget, and the
+error grouping in `lib/errors.ts`. It has 15 now.
+
+**Fixed, because it needs no ruling:** `cumulativeByDay` seeded its running total
+with `dates.length - countedInWindow` — everything the window did not bucket.
+That swept **future-dated** rows into the pre-window baseline, so a row dated
+tomorrow was indistinguishable from one dated last year and the chart drew it as
+already present on day one. Clock skew on a writer is enough to produce one. The
+baseline now counts only rows that start before the window opens.
+
+**Not fixed, and this is the actual tracker item — it needs a product decision.**
+The gap says trends bucket by *local* calendar day while the ClickHouse window is
+*UTC*. Both candidate fixes change what every chart shows:
+
+- **Bucket in UTC** to match the query window. Internally consistent, and rows
+  stop falling outside the window edge. But a viewer in UTC-5 sees "today" begin
+  at 19:00 the previous evening, which will read as a bug to them.
+- **Query in the viewer's timezone.** Correct for the reader, but these are
+  server components — the server does not know the viewer's timezone without
+  being told, so this is a wider change than `trends.ts`.
+
+Being wrong here is **silent**: every chart keeps rendering, with different
+numbers. That is the test this lane uses for what waits for a human, so it waits.
+Whoever decides: the window arithmetic is now isolated in `startOfLocalDay` and
+`startOfWindow`, so the change is those two functions plus the tests.
+
+Both functions are also now written around DST — two local midnights can be 23 or
+25 hours apart, so the window rolls the day-of-month instead of subtracting
+milliseconds.

@@ -44,7 +44,9 @@
         "packages/agents/tests/test_mcp_*.py",
         "packages/webhook/src/worker.ts",
         "packages/webhook/src/pipeline.integration.test.ts",
-        "scripts/lanes*.mjs"
+        "scripts/lanes*.mjs",
+        "packages/dashboard/src/lib/trends.ts",
+        "packages/dashboard/src/lib/trends.test.ts"
       ],
       "avoid": [
         "packages/dashboard/src/components/**",
@@ -53,11 +55,12 @@
         "packages/webhook/src/alerting/**",
         ".env.example"
       ],
-      "queue": [],
-      "$queueNote": "Empty as of 2026-07-23 cf13087, and honestly so. agent-config-persistence needs a new Prisma model and a migration against the one Postgres all four checkouts share; packages/db is not this lane and the repo's rules say schema changes are one writer at a time, so it waits for a human rather than being run unattended. Its other half — 'or give them an explicit disabled state' — is already satisfied (agent-config-drawer.tsx renders a disabled Save and a 'Not saved yet' badge). live-throughput-metrics is blocked on the internal-token lifecycle decision and needs an Overview tile, which is not this lane either. Next: tests for scripts/lanes.mjs, which enforces discipline on four agents and has no test of its own — its error paths have only ever been proven by hand against a scratch fixture.",
+      "queue": [
+        "trends-utc-vs-local-day"
+      ],
       "brief": "docs/handoff/2026-07-23-build-status-lane-briefs.md",
-      "heartbeat": "2026-07-23T13:05:23Z",
-      "lastCommit": "4933050"
+      "heartbeat": "2026-07-23T13:10:13Z",
+      "lastCommit": "19d9cb5"
     },
     {
       "id": "C-data",
