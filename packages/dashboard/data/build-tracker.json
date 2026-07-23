@@ -536,22 +536,24 @@
     },
     {
       "id": "sse-endpoint-unauthenticated",
-      "title": "SSE endpoint has no auth or tenant scoping, and CORS is *",
+      "title": "The metrics stream is one global channel — any consumer must scope it",
       "lane": "idea",
       "area": "Partially wired",
       "level": "partial",
       "state": "next",
-      "importance": "critical",
+      "importance": "high",
       "rank": 60,
-      "gap": "Flagged during Lane A planning and never fixed. Needs a hardening item before any non-local deployment.",
-      "evidence": "packages/webhook/src/sse-handler.ts",
+      "works": "Auth and CORS are closed, verified in code rather than from the comment claiming it: server.ts:428 mounts GET /metrics/stream behind requireInternalToken (the signed short-lived internal token), and the only two Access-Control-Allow-Origin strings left in the package are comments describing the world-readable state it used to be in.",
+      "gap": "Tenant scoping is genuinely still open, and narrower than the original wording suggested. agent_metrics is a SINGLE global PubSub channel and every event carries repo and prNumber, so the stream mixes all tenants together by construction. Nothing leaks today because there is still no consumer — but whoever builds one (see live-throughput-metrics) must filter server-side before a byte reaches a signed-in user, or the first tenant to open the tile sees every other tenant's repository names.",
+      "evidence": "packages/webhook/src/server.ts:428, sse-handler.ts, agent-metrics.ts:15-24 (AgentMetricsEvent carries repo + prNumber)",
       "provenance": {
         "doc": "docs/roadmap/backlog.md",
-        "note": "Discovered / unscheduled"
+        "note": "Discovered / unscheduled. Re-checked against the code 2026-07-23: two of the three claims (no auth, CORS *) were already closed as a Phase-1 hardening item and were still being rendered as a live critical. Narrowed to the part that is true and dropped from critical to high."
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "agent-memory-ui",
@@ -679,8 +681,8 @@
         "internal-token-no-expiry"
       ],
       "works": "The worker publishes review-lifecycle metrics to a server-sent stream.",
-      "gap": "No consumer — the source comments call it a dark wire. An Overview throughput tile needs a server-side proxy, which depends on the internal-token lifecycle decision.",
-      "evidence": "packages/webhook/src/agent-metrics.ts:4",
+      "gap": "No consumer — the source comments call it a dark wire. An Overview throughput tile needs a server-side proxy holding the internal token. TWO CONSTRAINTS for whoever builds it: the internal-token dependency this row used to wait on is CLOSED (9399330, signed short-lived tokens with exp+kid), so it is no longer a blocker; and agent_metrics is a SINGLE global channel whose events carry repo and prNumber, so the proxy must filter by the caller's own installations server-side before anything reaches the browser — otherwise the first tenant to open the tile sees every other tenant's repositories.",
+      "evidence": "packages/webhook/src/agent-metrics.ts:4,15-24; server.ts:428",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§3 A4"
