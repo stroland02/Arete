@@ -55,7 +55,7 @@ const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
  * whole subtree including its root: `packages/**\/mcp/*.py` matches both
  * `packages/agents/mcp/auth.py` and `packages/mcp/auth.py`.
  */
-function globToRegExp(glob) {
+export function globToRegExp(glob) {
   let out = "";
   for (let i = 0; i < glob.length; i++) {
     const c = glob[i];
@@ -85,7 +85,7 @@ function globToRegExp(glob) {
 const trackedFiles = () => git("ls-files").split("\n").filter(Boolean);
 
 /** Every tracked file a lane claims. Empty means the claim matches nothing real. */
-function ownedFiles(lane, files) {
+export function ownedFiles(lane, files) {
   const patterns = (lane.owns ?? []).map(globToRegExp);
   return new Set(files.filter((f) => patterns.some((p) => p.test(f))));
 }
@@ -127,7 +127,7 @@ function loadLanes() {
 }
 
 /** Which lane this checkout is, by matching its path against each lane's `checkout`. */
-function detectLane(doc) {
+export function detectLane(doc) {
   const here = ROOT.replace(/\\/g, "/").toLowerCase();
   // A lane with no checkout (the verify lane) must not match: `endsWith("")` is
   // true for every string, so an empty checkout would claim whichever lane
@@ -141,7 +141,7 @@ function detectLane(doc) {
 // --- checks -----------------------------------------------------------------
 
 /** Two lanes claiming one file. The failure that produced four duplicate commits. */
-function checkOverlap(doc, files) {
+export function checkOverlap(doc, files) {
   const problems = [];
   const owned = doc.lanes.map((l) => [l, ownedFiles(l, files)]);
   for (let i = 0; i < owned.length; i++) {
@@ -163,7 +163,7 @@ function checkOverlap(doc, files) {
 }
 
 /** A claim matching no file on disk — a typo, or a path that has since moved. */
-function checkEmptyClaims(doc, files) {
+export function checkEmptyClaims(doc, files) {
   const problems = [];
   for (const lane of doc.lanes) {
     for (const pattern of lane.owns ?? []) {
@@ -179,7 +179,7 @@ function checkEmptyClaims(doc, files) {
 }
 
 /** Editing outside your own lane, right now, in this checkout. */
-function checkTrespass(doc, files, laneId) {
+export function checkTrespass(doc, files, laneId, changed = changedHere) {
   const lane = laneId ? doc.lanes.find((l) => l.id === laneId) : detectLane(doc);
   if (!lane) {
     return [
@@ -197,7 +197,7 @@ function checkTrespass(doc, files, laneId) {
   const others = doc.lanes.filter((l) => l.id !== lane.id).map((l) => [l, ownedFiles(l, files)]);
   const problems = [];
 
-  for (const file of changedHere()) {
+  for (const file of changed()) {
     if (mine.has(file) || shared.some((p) => p.test(file))) continue;
     const claimant = others.find(([, owned]) => owned.has(file));
     if (claimant) {
@@ -216,10 +216,10 @@ function checkTrespass(doc, files, laneId) {
 }
 
 /** Work you queued that someone else already finished, or that does not exist. */
-function checkQueue(doc) {
-  let tracker;
+export function checkQueue(doc, trackerDoc = null) {
+  let tracker = trackerDoc;
   try {
-    tracker = readJson(TRACKER_PATH);
+    tracker ??= readJson(TRACKER_PATH);
   } catch {
     return [{ level: "warn", text: "build-tracker.json is unreadable; queues not checked." }];
   }
@@ -266,7 +266,7 @@ function checkQueue(doc) {
 }
 
 /** A lane that has gone quiet. */
-function checkHeartbeats(doc, now) {
+export function checkHeartbeats(doc, now) {
   const problems = [];
   for (const lane of doc.lanes) {
     if (!lane.heartbeat) {
@@ -402,20 +402,25 @@ function owner(path) {
   return owners.length > 1 ? 1 : 0;
 }
 
-const [command = "check", ...rest] = process.argv.slice(2);
-const laneFlag = rest.indexOf("--lane");
-const laneArg = laneFlag >= 0 ? rest[laneFlag + 1] : rest[0];
+const invokedDirectly =
+  process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
-const commands = {
-  check: () => check(laneFlag >= 0 ? rest[laneFlag + 1] : undefined),
-  board,
-  heartbeat: () => heartbeat(laneArg),
-  owner: () => owner(laneArg),
-};
+if (invokedDirectly) {
+  const [command = "check", ...rest] = process.argv.slice(2);
+  const laneFlag = rest.indexOf("--lane");
+  const laneArg = laneFlag >= 0 ? rest[laneFlag + 1] : rest[0];
 
-const run = commands[command];
-if (!run) {
-  console.error(`Unknown command "${command}". Try: check | board | heartbeat <id> | owner <path>`);
-  process.exit(2);
+  const commands = {
+    check: () => check(laneFlag >= 0 ? rest[laneFlag + 1] : undefined),
+    board,
+    heartbeat: () => heartbeat(laneArg),
+    owner: () => owner(laneArg),
+  };
+
+  const run = commands[command];
+  if (!run) {
+    console.error(`Unknown command "${command}". Try: check | board | heartbeat <id> | owner <path>`);
+    process.exit(2);
+  }
+  process.exit(run());
 }
-process.exit(run());

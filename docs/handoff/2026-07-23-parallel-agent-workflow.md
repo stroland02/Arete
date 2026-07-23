@@ -55,8 +55,14 @@ checks run:
 - **empty claim** — a glob matching nothing real (warning)
 - **heartbeat** — a lane quiet for over six hours (warning)
 
-The error paths were verified against a fixture rather than assumed: a
-deliberately broken `lanes.json` produces all four errors and exit 1.
+The error paths are covered by `pnpm test:scripts` — 27 tests, `node --test`, no
+runner and no new dependency. They were proven non-vacuous the same way the rest
+of this repo's regression tests are: removing the regex-metacharacter escaping
+fails exactly the test that asserts it and nothing else. That case is not
+hypothetical — A-view's claim is on a Next.js route group,
+`app/(dashboard)/build-status/page.tsx`, and unescaped those parentheses become
+a capture group, so the claim silently matches a *different* path and the lane
+appears to own files it does not.
 
 **The honest limit:** this reports, it does not block. A lane that reads an error
 and edits anyway has defeated it. That is true of any convention between agents
