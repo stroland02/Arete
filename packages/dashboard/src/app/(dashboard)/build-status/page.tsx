@@ -39,6 +39,10 @@ export default function BuildStatusPage() {
   const groups = ideaGroups(tracker);
   const ideaCount = ideas(tracker).length;
   const verifiedCount = tracker.items.filter(isVerified).length;
+  // id -> title, so a blocker reads as the thing blocking you rather than a slug.
+  // Built from the WHOLE catalogue, not the rendered subset: a row is regularly
+  // blocked by an item sitting in a different section of the page.
+  const titles = new Map(tracker.items.map((i) => [i.id, i.title]));
 
   return (
     <PageReveal className="space-y-8">
@@ -87,6 +91,7 @@ export default function BuildStatusPage() {
               title={`${IMPORTANCE_LABELS[importance]}`}
               count={rows.length}
               items={rows}
+              titles={titles}
             />
           </RevealItem>
         );
@@ -106,7 +111,12 @@ export default function BuildStatusPage() {
 
       {groups.map((group) => (
         <RevealItem key={group.state}>
-          <Section title={group.label} count={group.items.length} items={group.items} />
+          <Section
+            title={group.label}
+            count={group.items.length}
+            items={group.items}
+            titles={titles}
+          />
         </RevealItem>
       ))}
 
@@ -214,14 +224,39 @@ function ProgrammeRails({ programmes }: { programmes: ProgrammeProgress[] }) {
   );
 }
 
+/**
+ * Resolves a blocker id to something a reader can act on.
+ *
+ * `blockedBy` holds ids, and this page used to print them raw — a reader saw
+ * `agents-layer-inside-services` and had to grep the JSON to learn what was
+ * actually in the way. Two shapes exist and they are NOT the same thing:
+ *   - an internal id, naming another row on this page, and
+ *   - an `ext:`-prefixed blocker, which is outside the catalogue entirely
+ *     (an approval, a funded account) and so has no row to point at.
+ * An unresolvable internal id falls back to the id itself rather than being
+ * dropped — a blocker we cannot name is still a blocker, and hiding it would
+ * be worse than showing it ugly.
+ */
+function describeBlocker(
+  id: string,
+  titles: Map<string, string>,
+): { label: string; external: boolean } {
+  if (id.startsWith("ext:")) {
+    return { label: id.slice(4).trim() || id, external: true };
+  }
+  return { label: titles.get(id) ?? id, external: false };
+}
+
 function Section({
   title,
   count,
   items,
+  titles,
 }: {
   title: string;
   count: number;
   items: TrackerItem[];
+  titles: Map<string, string>;
 }) {
   return (
     <section className="space-y-3">
@@ -233,14 +268,14 @@ function Section({
       </div>
       <ul className="glass-panel divide-y divide-border-subtle overflow-hidden rounded-xl">
         {items.map((item) => (
-          <ItemRow key={item.id} item={item} />
+          <ItemRow key={item.id} item={item} titles={titles} />
         ))}
       </ul>
     </section>
   );
 }
 
-function ItemRow({ item }: { item: TrackerItem }) {
+function ItemRow({ item, titles }: { item: TrackerItem; titles: Map<string, string> }) {
   const { title, level, href, works, gap, evidence, area, blockedBy, provenance } = item;
   return (
     <li className="px-4 py-3.5">
@@ -285,7 +320,23 @@ function ItemRow({ item }: { item: TrackerItem }) {
 
       {blockedBy && blockedBy.length > 0 ? (
         <p className="mt-1.5 text-[11px] text-content-muted">
-          Blocked by <span className="font-mono">{blockedBy.join(", ")}</span>
+          Blocked by{" "}
+          {blockedBy.map((id, i) => {
+            const { label, external } = describeBlocker(id, titles);
+            return (
+              <span key={id}>
+                {i > 0 ? ", " : ""}
+                <span className={external ? "italic" : "font-medium text-content-secondary"}>
+                  {label}
+                </span>
+                {/* An external blocker is named as such: nothing in this repo
+                    will clear it, so a reader should not go looking for a row. */}
+                {external ? (
+                  <span className="text-content-muted/60"> (external)</span>
+                ) : null}
+              </span>
+            );
+          })}
         </p>
       ) : null}
 
