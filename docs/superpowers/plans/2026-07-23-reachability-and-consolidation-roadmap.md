@@ -60,7 +60,7 @@ Ordered by *value per unit risk*, and by what unblocks what. Each stage is a coh
 | 1.1 | ✅ **DONE** (`1192d37`) **Approve a proposed fix** — resolved per option (a) below | S | Gate lives on the Services work-item panel; no `/agents` URL created |
 | 1.2 | ✅ **DONE** (`1192d37`) **Post the approved PR** | S–M | Same panel; the `!realMode` dead branch is bypassed, not revived |
 | 1.3 | ✅ **DONE** **Approvals panel** — surface `ApprovalPrompt` so the safety gate is visible | M | Proxy + reject route + rail section; **"reject" turned out not to exist at all** — see below |
-| 1.4 | **Silence / un-silence a finding** — the noise loop closed at the human end | M | Backend already escalates and counts; dashboard hardcodes `noiseState:'OPEN'` (`queries.ts:765`) |
+| 1.4 | ✅ **DONE** **Silence / un-silence a finding** — the noise loop closed at the human end | M | **Not reachability — a build.** Nothing in the dashboard could write `noiseState` at all; see below |
 | 1.5 | **Connect Sentry** — flip `connector-catalog.ts` `status:"planned"` once the integration is approved | S | Connector + tests fully built; UI gate only. **Blocked on Sentry's own approval**, not on us |
 
 **Why first:** every item is already-paid-for capability. 1.1 and 1.2 together restore the product's
@@ -115,6 +115,48 @@ reviews: reject → 200 and the row is durably `REJECTED` with `executedAt` stil
 upstream never silently consumes the decision. A second `ApprovalPrompt` planted under a **different
 installation** did not appear on the dev account — tenancy proven, not asserted. All five rows were
 removed afterwards by explicit primary key.
+
+#### What 1.4 turned out to actually be
+
+The third and last time the audit's "wiring" shorthand was wrong, and the most clear-cut: **1.4 was
+not a reachability item at all.** The roadmap's own note pointed at `queries.ts:765` hardcoding
+`noiseState:'OPEN'` as if a filter were the obstacle. It was not. There was no API route, no UI
+control, and *no writer of `noiseState` anywhere in the dashboard* — the only writers in the entire
+system were `packages/webhook/src/persistence.ts` (machine escalation) and the Python orchestrator.
+Nothing was hidden; it did not exist. That `OPEN` filter is not the bug — it is the mechanism that
+makes silencing mean something, and it was deliberately left exactly as it is.
+
+Built: `POST /api/findings/[id]/noise` (the dashboard's only `noiseState` writer),
+`FindingNoiseControl`, and the review detail page's use of both. 16 new tests.
+
+**The boundary that shaped the design:** a human may assert only `OPEN` and `SILENCED`.
+`UNDER_OBSERVATION` and `ESCALATED` are derived by the escalation machine from a recurrence count
+across pull requests, so a button asserting one would be claiming an observation that never
+happened. They render as read-only labels. Silencing also *does* something rather than setting a
+flag: a silenced finding drops out of the copy-for-agent prompt, and already dropped out of the code
+map via that `OPEN` filter. The UI says plainly what it cannot reach — a comment already posted to
+GitHub stays posted, because `comment-poster.ts` filtered at post time, which has passed.
+
+**Known limitation, recorded not fixed:** restoring returns a finding to `OPEN`, never to whatever
+machine state preceded the silence — that prior state is stored nowhere, and inventing one would be
+fabricated status. Consequence: an `ESCALATED` finding that is silenced and later restored sits at
+`OPEN` with its `occurrenceCount` intact, and the escalation loop only increments rows that are
+`UNDER_OBSERVATION`, so it re-escalates only when the agents next emit it as observed. Fixing this
+properly needs either a new column (Engineer A's lane) or a change to the escalation loop (the
+webhook lane) — both out of scope for a dashboard change.
+
+Verified live on :3002 against three labelled findings (`OPEN`, `ESCALATED`, `UNDER_OBSERVATION`)
+plus a fourth under a **different installation**. Silencing the escalated one → 200, durably
+`SILENCED`, `occurrenceCount` still 4 and its threshold intact; the restore round-trip returned it
+to `OPEN` with that history untouched. The cross-tenant finding answered **404 `not_found`,
+byte-identical to a finding id that never existed**, and its row stayed `OPEN`. Asking directly for
+`ESCALATED` → 400 `invalid_state`. All six planted rows were deleted afterwards by explicit primary
+key; counts returned to the pre-verification baseline.
+
+**A real bug the live drive caught:** `getReviewDetail` included comments with no `orderBy`, so
+Postgres returned heap order and *any* update reshuffled the whole findings list under the reader.
+Invisible until the UI could write. Fixed in the same commit with an explicit
+`orderBy: [{createdAt}, {id}]`, and re-verified: the order is now stable across a silence.
 
 #### Recorded while doing Stage 1 — not fixed, deliberately
 

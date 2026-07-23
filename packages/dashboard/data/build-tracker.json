@@ -792,8 +792,8 @@
       "title": "Silence / un-silence a finding",
       "lane": "inventory",
       "area": "Partially wired",
-      "level": "soon",
-      "state": "next",
+      "level": "live",
+      "state": "shipped",
       "importance": "high",
       "rank": 70,
       "programmes": [
@@ -802,7 +802,6 @@
           "phase": "stage-1"
         }
       ],
-      "gap": "CONTRADICTS the verified-shipped mark on main, re-checked after main's inventory sweep closed. git ls-tree -r origin/main still finds no api/findings/[id]/noise route and no finding-noise-control component; noiseState appears only in lib/queries.ts and its test, as a READ filter. Nothing in the dashboard can write it. The implementation is committed but unmerged on stroland02/overview-revamp @ f5abe54.",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
         "note": "Stage 1.4"
@@ -810,8 +809,9 @@
       "origin": "session",
       "addedAt": "2026-07-23",
       "addedBy": "seed",
-      "evidence": "git ls-tree -r origin/main | grep noise -> empty; noiseState only in lib/queries.ts (read filter)",
-      "verifiedAt": "2026-07-23"
+      "evidence": "packages/dashboard/src/app/api/findings/[id]/noise/route.ts + components/dashboard/finding-noise-control.tsx, with 16 tests",
+      "verifiedAt": "2026-07-23",
+      "works": "POST /api/findings/[id]/noise is the dashboard's only noiseState writer, rendered by FindingNoiseControl on review detail. A human may assert only OPEN and SILENCED; UNDER_OBSERVATION and ESCALATED are machine-derived and render read-only, because a button asserting one would claim an observation that never happened."
     },
     {
       "id": "agent-config-persistence",
