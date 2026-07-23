@@ -547,3 +547,94 @@ private-method change is behaviour-preserving.
 because that file is claimed by the `ridley` lane (see its telemetry-queries entry above). Whoever owns
 `.env.example` next should add it; the generator is
 `python -c "from arete_agents.mcp.token_crypto import generate_key; print(generate_key())"`.
+
+---
+
+### `pyrosome` (PM lane) — master build tracker (declared 2026-07-22)
+
+**⚠️ READ THIS FIRST IF YOU ARE ALSO BUILDING A BUILD-STATUS TRACKER.** The user has confirmed the
+same prompt was given to **three** project managers in three workspaces. Three lanes are building the
+same feature. This entry exists so the three converge on one shape instead of producing three
+incompatible ones.
+
+**Declared slightly late, honestly:** `src/lib/build-tracker/schema.ts` was written before this entry.
+Nothing else had been created or deleted at the time of writing.
+
+#### The collision, precisely
+
+The dangerous artifact is **not** the code — it is `packages/dashboard/data/build-tracker.json`. Its
+value is a hand-authored catalogue of ~47 never-built ideas, each with provenance. Three lanes
+authoring that independently produces three incompatible seeds, and an add/add merge conflict on a
+600-line JSON file that no reviewer can resolve by reading the diff. The *code* around it is
+mechanical and cheap; the *seed* is the deliverable.
+
+Second-order risk: three lanes each **deleting** `packages/dashboard/src/lib/feature-readiness.ts`
+and each rewriting `build-status/page.tsx`, `sidebar.tsx` and root `AGENTS.md`.
+
+#### Proposed convergence — one seed, three reviewers
+
+If you are another PM reading this: **do not author a second seed file.** The cheapest split is one
+lane owns the artifact and the others review and extend it. This lane (`pyrosome`) is claiming the
+schema + seed unless another lane has already declared one above this entry — in which case this
+lane defers and consumes theirs. First declaration wins; the tiebreak is the earlier `declared` date.
+
+#### The schema contract, so three implementations can still merge
+
+If you must build in parallel, build **this** shape. Full definition in
+`packages/dashboard/src/lib/build-tracker/schema.ts`.
+
+- Document: `{ meta, mission, principles[], programmes[], items[] }`
+- Item identity is a frozen kebab-case `id`, **never** the title. The old file keyed React off
+  `name`, so renaming a row destroyed its history.
+- `lane`: `inventory` (audited surfaces — today's 25 rows) | `idea` (proposed, never built).
+- `area` and `level` are **unchanged** from `feature-readiness.ts` — same four areas in the same
+  render order, same `live|preview|partial|soon`. The existing page must keep its look.
+- `state` (`shipped|in-progress|next|someday|blocked|needs-decision|dropped`) is deliberately
+  orthogonal to `level`: `level` = how finished the code is, `state` = what we are doing about it.
+- `importance` is `critical|high|medium|low` **because `severityTone()` in
+  `components/ui/severity-stripe.tsx` already maps exactly those four words** — reuse it, do not add
+  a primitive. `rank` is a sparse integer (10, 20, 30…) so inserts never renumber.
+- `programmes[]` is an **array of refs**, not one value. Four numbering systems run at once here
+  (product 1.1–1.6, SuperLog P1–P5, observability 0/1/2/2b/3/4, orchestration A/B/C). Merging them
+  into one sequence invents a progression that does not exist.
+- **`provenance` is REQUIRED whenever `origin !== "user"`, enforced in `parseTracker`.** An agent
+  cannot add a row without citing the doc/commit/session that recorded the idea. This is the
+  anti-fabrication rule made structural rather than aspirational. Do not relax it.
+- `blockedBy[]` holds item ids, or free text behind an `ext:` prefix. A non-`ext:` id that does not
+  resolve is a **parse error** — a blocker pointing at nothing reads as tracked and is not.
+
+#### Storage decision, and why not Postgres
+
+The JSON file in git is the **single** source of truth. Chosen over a Prisma overlay because (a) the
+`packages/db` schema lane is claimed and all worktrees share one Postgres, (b) an agent must be able
+to read the tracker with one `Read` — a DB the agent cannot query defeats the point, and (c) a
+seed-plus-overlay is two sources by construction, which is what the last four repair commits on this
+branch were spent undoing.
+
+Editing is **local-dev only**: a server action writes the file. In production every control renders
+`disabled` with the true reason (a deployed container has no repo working tree). `store.ts` is the
+only disk-touching module, so swapping JSON for Prisma later is a one-module change.
+
+#### Files this lane will touch
+
+New, no conflict expected: `src/lib/build-tracker/{schema,parse,mutate,select,store}.ts` + tests;
+`src/components/dashboard/build-status/*`; `src/app/(dashboard)/build-status/actions.ts`;
+`packages/dashboard/data/build-tracker.json`; `packages/dashboard/scripts/build-tracker-brief.mjs`.
+
+**Contested — will not touch until another lane confirms it is clear:**
+`src/components/dashboard/sidebar.tsx` (nav entry) and root `AGENTS.md` (agent pointer).
+
+**Destructive act, deferred deliberately:** deleting `src/lib/feature-readiness.ts`. Three lanes each
+deleting it is fine in git (delete/delete does not conflict) but only if all three also removed its
+importer. This lane will not delete it until the tracker renders green.
+
+Nothing in `packages/db`, no migration, no `.env.example`, no lockfile, no `services/`.
+
+#### Also found while sweeping — this file has FORKED between worktrees
+
+Lines 1–341 are identical in `pyrosome` and `ridley`. **After line 341 each copy contains only its
+own lane's claims.** pyrosome cannot see ridley's still-unretired exclusive claim on the whole
+`packages/dashboard/src/components/dashboard/services/` folder; ridley cannot see four pyrosome
+entries. The file that exists to prevent collisions cannot currently be read completely from any
+single checkout. Whoever reconciles branches next should union the tails, not overwrite one with the
+other.
