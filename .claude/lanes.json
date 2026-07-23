@@ -1,5 +1,5 @@
 {
-  "$schema": "see scripts/lanes.mjs — `node scripts/lanes.mjs check` validates this file",
+  "$schema": "see scripts/lanes.mjs \u2014 `node scripts/lanes.mjs check` validates this file",
   "$why": "Four agents, four checkouts, one repo. The prose ledger in ade-coordination.md records intent; this file records ownership in a form a script can reject. Both exist on purpose: prose carries the reasoning, this carries the constraint.",
   "updatedAt": "2026-07-23",
   "shared": [
@@ -12,12 +12,12 @@
     "docs/roadmap/backlog.md",
     "package.json"
   ],
-  "$shared": "Globs every lane may edit, because coordination itself lives in them. Append, never rewrite: a lane that overwrites another's entry has destroyed the record that would have shown the collision. package.json is here because every lane adds scripts to it — but a dependency change is still a claim, and belongs in ade-coordination.md first.",
+  "$shared": "Globs every lane may edit, because coordination itself lives in them. Append, never rewrite: a lane that overwrites another's entry has destroyed the record that would have shown the collision. package.json is here because every lane adds scripts to it \u2014 but a dependency change is still a claim, and belongs in ade-coordination.md first.",
   "lanes": [
     {
       "id": "A-view",
       "checkout": "workspaces/Arete/ridley",
-      "role": "everything a person sees — build-status page, its components, navigation",
+      "role": "everything a person sees \u2014 build-status page, its components, navigation",
       "owns": [
         "packages/dashboard/src/app/(dashboard)/build-status/page.tsx",
         "packages/dashboard/src/components/dashboard/build-status/**",
@@ -30,13 +30,13 @@
       ],
       "queue": [],
       "brief": "docs/handoff/2026-07-23-build-status-lane-briefs.md",
-      "heartbeat": null,
-      "lastCommit": null
+      "heartbeat": "2026-07-23T12:30:00Z",
+      "lastCommit": "bd3e339"
     },
     {
       "id": "B-engine",
       "checkout": "workspaces/Arete/pyrosome",
-      "role": "typed selectors and backend libraries — no UI, no data authoring",
+      "role": "typed selectors and backend libraries \u2014 no UI, no data authoring",
       "owns": [
         "packages/dashboard/src/lib/build-tracker.ts",
         "packages/dashboard/src/lib/build-tracker.test.ts",
@@ -54,7 +54,7 @@
         ".env.example"
       ],
       "queue": [],
-      "$queueNote": "Empty as of 2026-07-23 cf13087, and honestly so. agent-config-persistence needs a new Prisma model and a migration against the one Postgres all four checkouts share; packages/db is not this lane and the repo's rules say schema changes are one writer at a time, so it waits for a human rather than being run unattended. Its other half — 'or give them an explicit disabled state' — is already satisfied (agent-config-drawer.tsx renders a disabled Save and a 'Not saved yet' badge). live-throughput-metrics is blocked on the internal-token lifecycle decision and needs an Overview tile, which is not this lane either. Next: tests for scripts/lanes.mjs, which enforces discipline on four agents and has no test of its own — its error paths have only ever been proven by hand against a scratch fixture.",
+      "$queueNote": "Empty as of 2026-07-23 cf13087, and honestly so. agent-config-persistence needs a new Prisma model and a migration against the one Postgres all four checkouts share; packages/db is not this lane and the repo's rules say schema changes are one writer at a time, so it waits for a human rather than being run unattended. Its other half \u2014 'or give them an explicit disabled state' \u2014 is already satisfied (agent-config-drawer.tsx renders a disabled Save and a 'Not saved yet' badge). live-throughput-metrics is blocked on the internal-token lifecycle decision and needs an Overview tile, which is not this lane either. Next: tests for scripts/lanes.mjs, which enforces discipline on four agents and has no test of its own \u2014 its error paths have only ever been proven by hand against a scratch fixture.",
       "brief": "docs/handoff/2026-07-23-build-status-lane-briefs.md",
       "heartbeat": "2026-07-23T12:34:22Z",
       "lastCommit": "cf13087"
@@ -62,7 +62,7 @@
     {
       "id": "C-data",
       "checkout": "Kuma2/Arete",
-      "role": "the record itself and the path that writes it — tracker JSON, API route, editor",
+      "role": "the record itself and the path that writes it \u2014 tracker JSON, API route, editor",
       "owns": [
         "packages/dashboard/data/build-tracker.json",
         "packages/dashboard/src/app/api/build-status/route.ts",
@@ -74,15 +74,15 @@
         "packages/dashboard/src/components/dashboard/sidebar.tsx"
       ],
       "queue": [],
-      "$queueNote": "silence-a-finding was removed on 2026-07-23: ridley shipped it in 29a1362 while it sat here. The checker flagged it the moment main was rebased in, which is the whole point — C-data had not started, so nothing was wasted. Pick the next item from `pnpm board`.",
+      "$queueNote": "silence-a-finding was removed on 2026-07-23: ridley shipped it in 29a1362 while it sat here. The checker flagged it the moment main was rebased in, which is the whole point \u2014 C-data had not started, so nothing was wasted. Pick the next item from `pnpm board`.",
       "brief": "docs/handoff/2026-07-23-build-status-lane-briefs.md",
       "heartbeat": "2026-07-23T12:20:00Z",
       "lastCommit": "29a1362"
     },
     {
       "id": "D-verify",
-      "checkout": "workspaces/Areté/Project-Manager",
-      "role": "drives the running app on localhost and reports what is actually broken — owns no source file on purpose",
+      "checkout": "workspaces/Aret\u00e9/Project-Manager",
+      "role": "drives the running app on localhost and reports what is actually broken \u2014 owns no source file on purpose",
       "owns": [
         "scripts/smoke-localhost.mjs",
         ".claude/skills/land-on-main/**",

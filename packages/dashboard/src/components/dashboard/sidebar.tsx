@@ -27,6 +27,11 @@ const NAV_ITEMS = [
   // Incidents lives on Overview too (its own section), but a top-level tab
   // makes it deep-linkable/discoverable the same way Services and Agents are.
   { href: "/incidents", label: "Incidents" },
+  // Build status is the product's own honesty surface — what is finished, what
+  // is half-wired, and every idea not yet lost. It was reachable only from a
+  // single link on Settings, which meant the page most likely to correct a
+  // wrong assumption was the hardest one to find. It earns a nav slot.
+  { href: "/build-status", label: "Build status" },
   // Connections and Review History now live under Settings (linked from the
   // Settings page). Their routes still exist for those links + deep-links.
   { href: "/settings", label: "Settings" },
