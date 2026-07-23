@@ -897,3 +897,34 @@ Connect Workspace UI (extend the existing checklist, never greenfield) · global
 **Standing rules honoured:** no schema change, no migration, no `db push`; the HITL moat is never
 weakened; nothing renders a fabricated checkmark — a new onboarding step ships `disabled` with its
 reason until a real signal backs it.
+### `Project-Manager` (PM lane, pushes direct to `main`) lane claim — agents/infra security (declared 2026-07-23)
+
+**Running autonomously today while the operator is away.** Every change lands on `main` after its
+own test run, so the localhost agent can pull and exercise it as it appears.
+
+**This lane is `packages/agents` (Python) + `infra/` + `.github/workflows/` only.** It is deliberately
+disjoint from all three lanes in `docs/handoff/2026-07-23-build-status-lane-briefs.md` — A (view,
+`ridley`), B (engine, `pyrosome`, landed), C (data and write path, `Kuma2`). It continues the
+`pyrosome` MCP work already merged to `main` via the `setup-live-website-dev` salvage (16 commits
+cherry-picked; the 3 duplicate build-tracker commits deliberately left behind).
+
+**Not touched by this lane:** `packages/dashboard/**` (all three build-status lanes),
+`packages/webhook/**`, `packages/db/prisma/schema.prisma`. No schema change, no migration.
+
+**Standing down from `data/build-tracker.json`.** Gap 2 in the lane briefs — read-modify-write with
+no hash guard while three loops edit the same file — is not hypothetical, and this lane was one of
+the three writers. It stops writing to that file until Lane C lands the hash guard, rather than
+adding a fourth writer to a known race. Verifications this lane finds meanwhile are recorded here
+in prose and handed to Lane C, not written directly.
+
+**Work queue.** All `packages/agents/src/arete_agents/mcp/` unless noted:
+
+1. OAuth `client_id` is hardcoded to `arete-client` — make it per-server configuration.
+2. The authorization endpoint is guessed as the server `target` rather than discovered or configured.
+3. `token_crypto` silently no-ops to cleartext when no key is set — make that state legible.
+
+**Landed by this lane today:** OAuth `state` CSRF fix (`b3b565e`), the callback hang on declined
+consent (`820d2d9`), ClickHouse credentials out of the committed collector config (`31d3ab6`), and
+the Lane C salvage. Inventory verification of all 24 tracker inventory rows is on `main`.
+
+**If you need a file in this lane, take it** — nothing in the queue above is worth a collision.
