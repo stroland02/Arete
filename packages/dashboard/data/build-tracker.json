@@ -1095,12 +1095,12 @@
     },
     {
       "id": "agent-memory-cap-and-archive",
-      "title": "Agent memory freezes at 20 rows forever",
+      "title": "A repository at its memory cap can still learn (FIFO archive)",
       "lane": "idea",
       "area": "Partially wired",
-      "level": "partial",
-      "state": "next",
-      "importance": "high",
+      "level": "live",
+      "state": "shipped",
+      "importance": "low",
       "rank": 110,
       "programmes": [
         {
@@ -1112,15 +1112,17 @@
           "phase": "2b"
         }
       ],
-      "gap": "Nothing in the repo ever sets status='archived', and the read cap and write cap are the same number — so once a repo reaches 20 ACTIVE rows every later write returns cap_exceeded forever and the memory set is frozen at whatever it first learned. Separately the cap is check-then-create with no transaction, so concurrent writes can all pass it. The mechanism exists; the missing piece is the policy (age out? evict least-cited? let a human archive?) and a surface to apply it.",
-      "evidence": "packages/webhook/src/memory-write.ts",
+      "gap": "",
+      "evidence": "packages/webhook/src/memory-write.ts:34-37,270-297 (archive in $transaction), :82 (shared read-side cap)",
       "provenance": {
         "doc": "docs/roadmap/backlog.md",
         "note": "agent memory sink"
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "works": "At the cap the oldest active rows are set to status=archived to make room, inside a serializable transaction — so the old check-then-create race that made the cap advisory is closed too. Read and write caps are the same constant by construction, so they cannot drift.",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "checks-update-double-retry",
@@ -1321,12 +1323,12 @@
     },
     {
       "id": "review-pr-heavy-no-consumer",
-      "title": "review-pr-heavy queue has a producer and no consumer",
+      "title": "The heavy review lane has a consumer",
       "lane": "idea",
       "area": "Partially wired",
-      "level": "partial",
-      "state": "next",
-      "importance": "high",
+      "level": "live",
+      "state": "shipped",
+      "importance": "low",
       "rank": 130,
       "programmes": [
         {
@@ -1334,15 +1336,17 @@
           "phase": "stage-4"
         }
       ],
-      "gap": "PRs with more than 50 changed files are routed to a queue nothing consumes — worker.ts starts a Worker only on the fast queue. Those reviews never run and their traces dead-end. Pre-existing, but it means large PRs silently get no review at all.",
-      "evidence": "webhook-handler.ts:114, backfill.ts:86, worker.ts:311",
+      "gap": "",
+      "evidence": "packages/webhook/src/worker.ts:419-423 (both lanes), :436 (called at entry)",
       "provenance": {
         "doc": "docs/roadmap/backlog.md",
         "note": "Phase 1 final review"
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "works": "startReviewWorkers() starts a separate lower-concurrency Worker for review-pr-heavy alongside the fast lane, and is invoked when worker.ts runs as the entry script. PRs over 50 changed files are no longer routed to a queue nothing drains.",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "send-route-work-item-posted",
@@ -1486,16 +1490,17 @@
           "phase": "stage-5"
         }
       ],
-      "works": "Signing, retry backoff with rescheduling, SSRF-guarded delivery and a delivery log all work, and it already fires on every persisted review. The retry worker now runs.",
-      "gap": "The management API is deliberately unmounted, so nobody can register an endpoint or see a delivery, and nothing surfaces delivery health — you cannot see that a delivery failed, how many attempts remain, or the last error. This is the single unblock for every Slack/Linear/PagerDuty relay.",
-      "evidence": "packages/webhook/src/server.ts:408-414, persistence.ts:239-256",
+      "works": "The tenant-scoped management API is now mounted and authenticated — endpoints can be listed and registered over HTTP, and delivery records exist with signing and retry behind them.",
+      "gap": "What is missing is only the dashboard surface: there is still no screen to register an endpoint or inspect deliveries, so this remains reachable by API alone. The previous claim that the API is \"deliberately unmounted\" is no longer true.",
+      "evidence": "packages/webhook/src/server.ts:414-446 (management API mounted); no dashboard route or component references webhook endpoints",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§3 A2"
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "tenant-telemetry-ingest",
