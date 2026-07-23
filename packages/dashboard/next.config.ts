@@ -2,6 +2,19 @@ import path from "node:path";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Keep verification builds OUT of the running dev server's directory.
+  //
+  // `next dev` and `next build` both default to `.next`. A build run while the
+  // dev server is up overwrites the manifests that server is reading, and the
+  // browser then serves stale chunks — the app appears to revert to an older
+  // version until the dev server happens to recompile. That is misleading in
+  // exactly the wrong way: it looks like the work was lost.
+  //
+  // So: `NEXT_DIST_DIR=.next-verify pnpm exec next build` writes somewhere else
+  // entirely and cannot disturb :3002. Unset (CI, Docker) keeps `.next`.
+  // Must stay INSIDE the project dir — Next rejects `../build`.
+  distDir: process.env.NEXT_DIST_DIR ?? ".next",
+
   // Required for a minimal production Docker image (packages/dashboard/Dockerfile):
   // emits a self-contained .next/standalone/ with only the files needed to
   // run `node server.js`, instead of requiring the full node_modules tree.
