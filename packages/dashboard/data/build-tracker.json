@@ -2427,6 +2427,44 @@
       "verifiedAt": "2026-07-23",
       "works": "The acute symptom is addressed. The agents /scan call now carries an explicit 45-minute deadline (SCAN_REQUEST_TIMEOUT_MS, env-overridable) instead of the inherited one that gave up at 307s, and SCAN_STALE_AFTER_MS is derived from it rather than set independently, so the two cannot drift into disagreeing about what is still in flight. Separately, a crashed process no longer leaves a running ScanRun blocking a tenant forever.",
       "evidence": "packages/webhook/src/scan/trigger.ts:36 SCAN_REQUEST_TIMEOUT_MS=45min, :46 SCAN_STALE_AFTER_MS derived; commits ded009f, fef29af"
+    },
+    {
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "next",
+      "rank": 390,
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "PM-3 (C-data)",
+      "id": "tracker-provenance-type-narrower-than-data",
+      "title": "The provenance type is narrower than the data it describes",
+      "importance": "medium",
+      "gap": "lib/build-tracker.ts declares provenance as { doc?; session? }, but the stored data uses doc on all 86 rows and note on 69, and no row uses session at all. So note is invisible to the compiler: a consumer reading provenance.note does not typecheck, and a writer can drop it without any test failing. The write route works around this by reading provenance as a loose record, which keeps the required-provenance guard honest but leaves the type still wrong. Owned by B-engine; C-data will not edit that file.",
+      "evidence": "packages/dashboard/src/lib/build-tracker.ts (provenance type) vs packages/dashboard/data/build-tracker.json (doc 86, note 69, session 0)",
+      "provenance": {
+        "session": "PM-3 C-data lane, 2026-07-23",
+        "note": "found while making provenance required on the build-status write route"
+      }
+    },
+    {
+      "lane": "idea",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "next",
+      "rank": 400,
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "PM-3 (C-data)",
+      "id": "tracker-evidence-should-be-rerunnable",
+      "title": "Evidence strings should be commands that exclude comments",
+      "importance": "medium",
+      "gap": "Every row carries an evidence string so a claim can be rechecked, but they are prose and are re-run by hand. Three times in one day a grep matched a COMMENT rather than code and produced the wrong verdict in both directions: routeIncidentToFix appeared only in a comment and read as \"not shipped\" when the routing had landed under a new name, and location.reload matched the comments explaining what replaced it and read as \"still broken\" when it was fixed. The same shape produced one real error, marking synth-ledger deleted from a check against the wrong path. If evidence were a runnable command that excludes comment lines, a stale row would announce itself instead of waiting to be caught.",
+      "evidence": "commits 63327aa and 47802aa record two of the near-misses; the synth-ledger correction is in the message of the nine-row commit",
+      "provenance": {
+        "session": "PM-3 C-data lane, 2026-07-23",
+        "note": "three near-misses and one real error during the verification sweep"
+      }
     }
   ]
 }
