@@ -604,6 +604,47 @@ describe('pipeline integration: webhook -> queue -> worker -> review -> post', (
     expect(mocks.prisma.reviewCreate).not.toHaveBeenCalled()
   })
 
+  it('posting fails AND annotating the check run fails -> job STILL does not throw (the double-retry, one call later)', async () => {
+    // The realistic shape of this: the reason posting failed is a GitHub
+    // outage, so the very next GitHub call -- the one reporting the degraded
+    // outcome -- fails for the same reason. Before the fix that second throw
+    // escaped the catch, the job re-threw, and BullMQ redid the entire
+    // files x agents review to retry a GitHub API call.
+    mocks.octokit.rest.pulls.createReview.mockRejectedValue(
+      Object.assign(new Error('GitHub API rate limited'), { status: 500 })
+    )
+    mocks.octokit.rest.checks.update.mockRejectedValue(
+      Object.assign(new Error('GitHub API unavailable'), { status: 503 })
+    )
+    const app = await buildApp(mocks)
+
+    const res = await request(app)
+      .post('/webhook')
+      .set('Content-Type', 'application/json')
+      .set('X-GitHub-Event', 'pull_request')
+      .send(JSON.stringify(PR_PAYLOAD))
+    expect(res.status).toBe(200)
+
+    const { processReviewJob } = await import('./worker.js')
+    // A usable ReviewResult exists; failing to ANNOTATE it must not undo the
+    // decision not to retry. Losing the check-run annotation is a real and
+    // visible degradation -- but a strictly smaller one than re-running a
+    // review that already succeeded, at full LLM cost.
+    await expect(processReviewJob(mocks.capturedJobs[0])).resolves.toBeUndefined()
+
+    // The pipeline ran and posting was attempted, so this is the
+    // usable-result path and not the no-result crash path.
+    expect(mocks.fetchMock).toHaveBeenCalledTimes(1)
+    expect(mocks.octokit.rest.pulls.createReview).toHaveBeenCalledTimes(1)
+    // Annotation was attempted rather than skipped -- the guard must not turn
+    // into "don't bother reporting".
+    expect(mocks.octokit.rest.checks.update).toHaveBeenCalledWith(
+      expect.objectContaining({ check_run_id: 555, status: 'completed', conclusion: 'failure' })
+    )
+    // No retry means no re-persist.
+    expect(mocks.prisma.reviewCreate).not.toHaveBeenCalled()
+  })
+
   it('genuine infra crash: pipeline yields no result at all -> job DOES throw (still retried by attempts:3)', async () => {
     const runReviewPipelineMock = vi.fn().mockRejectedValue(new Error('Python pipeline exited with status 500: internal error'))
     await buildApp(mocks, { runReviewPipeline: runReviewPipelineMock })

@@ -63,6 +63,46 @@ export function buildCloneContext(
  * resolve the check run, and persist. This is where the heavy lifting that
  * used to happen synchronously inside the webhook handler now lives.
  */
+/**
+ * Annotates a check run with a degraded outcome, without ever changing the
+ * retry decision that has already been made.
+ *
+ * Both call sites reach here having established two things: the pipeline
+ * produced a usable result, and this job must therefore NOT be retried. The
+ * annotation is the last step, and it is the one most likely to fail — the
+ * reason publishing just failed is overwhelmingly a transient GitHub outage,
+ * which is exactly when this call fails too.
+ *
+ * Unguarded, that throw escapes the catch, the job re-throws, and BullMQ redoes
+ * the entire files x agents review to retry a GitHub API call: the precise
+ * double-retry the two-block split exists to prevent, arriving one call later.
+ *
+ * The failure is logged, not swallowed. If this call fails the check run is
+ * left `in_progress` on the PR, which is a real and visible degradation — but
+ * it is a strictly smaller harm than re-running a completed review, and the log
+ * line is what makes it diagnosable rather than silent.
+ */
+async function reportDegradedOutcome(
+  octokit: Octokit,
+  params: { owner: string; repo: string; checkRunId: number; title: string; summary: string },
+): Promise<void> {
+  try {
+    await (octokit as any).rest.checks.update({
+      owner: params.owner,
+      repo: params.repo,
+      check_run_id: params.checkRunId,
+      status: 'completed',
+      conclusion: 'failure',
+      output: { title: params.title, summary: params.summary },
+    })
+  } catch (err) {
+    log.error(
+      { err, owner: params.owner, repo: params.repo, checkRunId: params.checkRunId },
+      'Failed to annotate the check run with a degraded outcome; the check run may be left in_progress. Not retrying — the review itself succeeded.',
+    )
+  }
+}
+
 async function processGitHubPullRequest(octokit: Octokit, installationToken: string, data: GitHubPullRequestJobData): Promise<void> {
   const { owner, repo, prNumber, headSha, installationId, repositoryExternalId, fullName } = data
 
@@ -132,16 +172,12 @@ async function processGitHubPullRequest(octokit: Octokit, installationToken: str
     // the no-result crash above — this is not a silent failure, the check
     // run still surfaces "failure" to the PR author.
     log.error({ err }, 'Failed to post review (pipeline produced a usable result)')
-    await (octokit as any).rest.checks.update({
+    await reportDegradedOutcome(octokit, {
       owner,
       repo,
-      check_run_id: checkRunId,
-      status: 'completed',
-      conclusion: 'failure',
-      output: {
-        title: 'Review Post Failed',
-        summary: `Areté completed the review but failed to post it to GitHub: ${err instanceof Error ? err.message : String(err)}`,
-      },
+      checkRunId,
+      title: 'Review Post Failed',
+      summary: `Areté completed the review but failed to post it to GitHub: ${err instanceof Error ? err.message : String(err)}`,
     })
     return
   }
@@ -237,16 +273,12 @@ async function processGitHubCheckRun(octokit: Octokit, installationToken: string
     // throw) so this job is NOT retried; attempts:3 stays reserved for the
     // no-result crash above.
     log.error({ err }, 'Failed to post CI diagnosis (pipeline produced a usable result)')
-    await (octokit as any).rest.checks.update({
+    await reportDegradedOutcome(octokit, {
       owner,
       repo,
-      check_run_id: checkRunId,
-      status: 'completed',
-      conclusion: 'failure',
-      output: {
-        title: 'Review Post Failed',
-        summary: `Areté completed the CI diagnosis but failed to post it to GitHub: ${err instanceof Error ? err.message : String(err)}`,
-      },
+      checkRunId,
+      title: 'Review Post Failed',
+      summary: `Areté completed the CI diagnosis but failed to post it to GitHub: ${err instanceof Error ? err.message : String(err)}`,
     })
     return
   }
