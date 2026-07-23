@@ -57,7 +57,7 @@ Ordered by *value per unit risk*, and by what unblocks what. Each stage is a coh
 
 | # | Deliverable (what the USER gets) | Size | Notes |
 |---|---|---|---|
-| 1.1 | **Approve a proposed fix** — generate the `/agents?container=<id>` link so `ApproveSolutionButton` is reachable | S | One link unlocks ~128 lines of built, tested feature |
+| 1.1 | **Approve a proposed fix** — make `ApproveSolutionButton` reachable ⚠️ **see the Stage 1↔2 conflict below** | S | One link unlocks ~128 lines of built, tested feature |
 | 1.2 | **Post the approved PR** — render the send affordance in `realMode` with a real `activeContainerId` | S–M | Currently behind a permanently-false branch |
 | 1.3 | **Approvals panel** — surface `ApprovalPrompt` so the safety gate is visible | M | Needs a session-scoped server proxy; `ApprovalPrompt` has zero dashboard references today |
 | 1.4 | **Silence / un-silence a finding** — the noise loop closed at the human end | M | Backend already escalates and counts; dashboard hardcodes `noiseState:'OPEN'` (`queries.ts:765`) |
@@ -65,6 +65,23 @@ Ordered by *value per unit risk*, and by what unblocks what. Each stage is a coh
 
 **Why first:** every item is already-paid-for capability. 1.1 and 1.2 together restore the product's
 headline differentiator.
+
+> ### ⚠️ Stage 1 ↔ Stage 2 conflict — resolve before starting 1.1
+>
+> `ApproveSolutionButton` lives in `pr-panel.tsx`, the **Agents page's** right pane, and the obvious fix
+> for 1.1 is to generate a `/agents?container=<id>` link. But **Stage 2.3 retires `/agents` as a
+> destination**, so doing 1.1 that way builds a link Stage 2 immediately has to undo — and worse, it
+> deepens the dependency on the page being absorbed.
+>
+> **Resolution — do 1.1 without naming `/agents`.** Either:
+> - **(a) Preferred:** move the approve affordance to where the container already lives — the Services
+>   container view, which every other surface already deep-links to via `/services?container=<id>`
+>   (`incidents/[id]`, `reviews/[id]`, `agent-rail`, `work-item-panel` all use it). This makes 1.1 a step
+>   *toward* Stage 2 rather than against it, and needs no new URL shape.
+> - **(b)** If (a) proves too entangled, gate 1.1 behind Stage 2 and start Stage 1 at 1.2.
+>
+> Do **not** implement 1.1 as a `/agents?container=` link. That was the naive reading, and it is the same
+> class of mistake as `73e2040` — building toward a page that the locked decision is removing.
 
 ### Stage 2 — Agents become a layer inside Services  (Group B · the locked decision)
 
