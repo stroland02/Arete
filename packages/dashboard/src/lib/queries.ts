@@ -262,6 +262,14 @@ export interface ReviewFinding {
   body: string;
   severity: string;
   category: string;
+  /**
+   * The finding's REAL persisted noise state — `OPEN` | `SILENCED` |
+   * `UNDER_OBSERVATION` | `ESCALATED`. Carried to the surface so a human can
+   * see, and change, what the noise machine decided. The column is NOT NULL
+   * DEFAULT 'OPEN', so the `?? 'OPEN'` below guards a partial select rather
+   * than inventing a state for a row that has none.
+   */
+  noiseState: string;
 }
 
 /** One specialist's persisted tiered-comms status (Review.agentStatuses). */
@@ -304,7 +312,11 @@ export async function getReviewDetail(
 
   const review = await db.review.findFirst({
     where: { id: reviewId, repository: { installationId: { in: installationIds } } },
-    include: { repository: true, comments: true },
+    // Explicitly ordered. Without an orderBy, Postgres returns heap order, so
+    // ANY update to a comment (silencing one, say) moves it and reshuffles the
+    // whole findings list under the reader. Caught by silencing a finding on
+    // :3002 and watching the rows jump.
+    include: { repository: true, comments: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] } },
   });
 
   if (!review) return null;
@@ -324,6 +336,7 @@ export async function getReviewDetail(
       body: c.body,
       severity: c.severity,
       category: c.category,
+      noiseState: c.noiseState ?? 'OPEN',
     })),
     agentStatuses: Array.isArray(review.agentStatuses)
       ? (review.agentStatuses as unknown as ReviewAgentStatus[])

@@ -527,3 +527,27 @@ Nothing in `packages/webhook` was edited.
 **Note for the webhook lane:** `executeApproval` refuses a REJECTED approval, but until now nothing
 in the system could WRITE that status — the refusal branch was unreachable. It is now reachable from
 the dashboard. No change was needed on your side; flagged because a previously-dead branch is live.
+
+### `ridley` (W2, overview-revamp) lane claim — Stage 1.4 silence / un-silence (declared 2026-07-23, BEFORE editing)
+
+**Entirely within the `dashboard` lane. No schema change, no migration, no edit to `packages/webhook`
+or `packages/agents`.** The `ReviewComment.noiseState` column already exists
+(`20260714120000_add_review_comment_noise_fields`); this only writes values into it.
+
+Roadmap: `docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md` Stage 1 item 1.4.
+
+**Files claimed:**
+- NEW `packages/dashboard/src/app/api/findings/[id]/noise/route.ts` (+ test) — the only writer of
+  `noiseState` in the dashboard.
+- NEW `packages/dashboard/src/components/dashboard/finding-noise-control.tsx` (+ test).
+- `packages/dashboard/src/lib/queries.ts` — `ReviewFinding` gains `noiseState`; `getReviewDetail`
+  selects it. `getFindingsByPath`'s `noiseState: 'OPEN'` filter is **left exactly as it is** — that
+  filter is what makes silencing mean something on the map.
+- `packages/dashboard/src/app/(dashboard)/reviews/[id]/page.tsx` — renders the control.
+
+**Note for the webhook / agents lanes — a boundary I am deliberately NOT crossing:**
+the human control writes only `OPEN` and `SILENCED`. `UNDER_OBSERVATION` and `ESCALATED` stay owned
+by the machine (`persistence.ts` escalation loop, `orchestrator.py`). A human un-silencing a finding
+returns it to `OPEN`, not to whatever machine state preceded the silence — that prior state is not
+recorded anywhere, and inventing one would be fabricated status. `occurrenceCount` is never touched,
+so recurrence history survives a silence/restore round-trip.
