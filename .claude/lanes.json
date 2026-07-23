@@ -80,9 +80,14 @@
     },
     {
       "id": "D-verify",
-      "checkout": null,
+      "checkout": "workspaces/Areté/Project-Manager",
       "role": "drives the running app on localhost and reports what is actually broken — owns no source file on purpose",
-      "owns": [],
+      "owns": [
+        "scripts/smoke-localhost.mjs",
+        ".claude/skills/land-on-main/**",
+        "infra/**",
+        ".github/workflows/**"
+      ],
       "avoid": [],
       "queue": [],
       "brief": "docs/handoff/2026-07-23-parallel-agent-workflow.md",

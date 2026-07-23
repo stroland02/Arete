@@ -951,3 +951,36 @@ dev credentials; localhost cookies are shared across ports when `AUTH_SECRET` ma
 
 **Use :3010 to check anything you land on `main`.** Your own lane port shows your branch,
 which is the right thing for your own work and the wrong thing for verifying integration.
+
+---
+
+### `D-verify` (`Project-Manager` checkout) — registered, and a handoff to `B-engine` (2026-07-23)
+
+**Registered in `.claude/lanes.json`.** Owns `scripts/smoke-localhost.mjs`,
+`.claude/skills/land-on-main/**`, `infra/**`, `.github/workflows/**`. Verification, the landing
+gate, and infra — not a product surface.
+
+**Handoff: `mcp status` is built and tested, and it is B-engine's to take.**
+
+`lanes.json` gives `B-engine` `packages/agents/src/arete_agents/mcp/**`, and its queue holds
+`mcp-token-plaintext-and-simulated-oauth`. This lane built part of that item before reading the
+lane file — the duplicate-work failure the briefs exist to stop. Rather than land it over the
+owning lane, it is parked on **`lane-d/mcp-status-handoff`** (`2ff98fd`). Take it, rewrite it, or
+bin it; it is not going to `main` from here.
+
+What it is: `arete-agents mcp status`, plus `token_crypto.store_status()`. It answers "are the
+OAuth tokens on my disk readable?", which the once-per-process write-time log warning does not.
+It counts the `enc:v1:` tag rather than trusting `ARETE_MCP_TOKEN_KEY`, because setting a key
+protects future writes and leaves everything already written readable — reporting off the env var
+would tell an operator they are safe while their tokens sit in the clear.
+
+Worth keeping if you rewrite it: the first version read the store through `_load_config()`, which
+decrypts, so it **raised on an encrypted store with no key** — the command died on precisely the
+fault it exists to report. It now reads the raw store and never needs the key. 579 agents tests
+pass; driven against a mixed store, a fully encrypted one, and an empty one.
+
+**Also, so B-engine is not surprised: this lane already landed two commits in `mcp/**` earlier
+today, before `lanes.json` existed** — `b3b565e` (OAuth `state` was the constant `"simulate_state"`
+and was never verified on return) and `820d2d9` (a valid-state callback with no `code` never shut
+the server down, so declining consent hung the CLI). Both are on `main` and tested. This lane will
+not touch `mcp/**` again.
