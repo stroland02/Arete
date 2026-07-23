@@ -124,6 +124,10 @@ describe('runReviewPipeline', () => {
   })
 
   it('rejects with timeout error when process takes too long', async () => {
+    // Pin the (now configurable) timeout so the test is independent of the
+    // generous 15-min default — the default exists for slow local models.
+    const prevTimeout = process.env.REVIEW_REQUEST_TIMEOUT_MS
+    process.env.REVIEW_REQUEST_TIMEOUT_MS = '120000'
     vi.useFakeTimers()
     global.fetch = vi.fn((url, options) => new Promise((resolve, reject) => {
       if (options && (options as any).signal) {
@@ -150,6 +154,8 @@ describe('runReviewPipeline', () => {
     await vi.advanceTimersByTimeAsync(120_001)
     await assertion
     vi.useRealTimers()
+    if (prevTimeout === undefined) delete process.env.REVIEW_REQUEST_TIMEOUT_MS
+    else process.env.REVIEW_REQUEST_TIMEOUT_MS = prevTimeout
   })
 
 })

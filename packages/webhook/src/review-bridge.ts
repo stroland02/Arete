@@ -40,8 +40,14 @@ export async function runReviewPipeline(
     }
   }
 
+  // The review is an unbounded LLM workload — six specialists over the PR diff.
+  // 120s was fine for a fast cloud model but aborts every review against a slow
+  // local one (Ollama), which is why no PR review has completed here. Made
+  // configurable with a generous default, matching the scan path's
+  // SCAN_REQUEST_TIMEOUT_MS convention: this bounds a HANG, not slowness.
+  const REVIEW_TIMEOUT_MS = Number(process.env.REVIEW_REQUEST_TIMEOUT_MS ?? 15 * 60 * 1000)
   const controller = new AbortController()
-  const timer = setTimeout(() => { controller.abort() }, 120_000)
+  const timer = setTimeout(() => { controller.abort() }, REVIEW_TIMEOUT_MS)
 
   try {
     const baseUrl = getServiceConfig().pythonServiceUrl
