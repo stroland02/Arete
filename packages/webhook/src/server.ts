@@ -400,10 +400,16 @@ export async function createServer(): Promise<express.Application> {
   // read or delete any tenant's connections — the exact vuln that pulled /api/webhooks/
   // endpoints. The Test ping additionally makes an outbound call to a client-supplied
   // baseUrl (SSRF-shaped) — net-guard hardens it, but it must not be an open proxy.
-  // The tenant-scoped core lives in ./model-connections/ (store.ts: saveModelConnection/
-  // list/get/delete, all installationId-scoped, key-free views; test-connection.ts:
-  // testModelConnection). The authenticated surface belongs behind the dashboard's
-  // Auth.js session, which supplies a session-derived installationId (fast-follow).
+  // That fast-follow SHIPPED, and not by mounting anything here: the authenticated
+  // surface is the dashboard's own /api/model-connections (route.ts, [id]/route.ts,
+  // test/route.ts) over lib/model-connections-api.ts, which derives installationId
+  // from the Auth.js session and reads/writes ModelConnection through Prisma directly.
+  // What survives in ./model-connections/ is only the half the dashboard genuinely
+  // cannot do: test-connection.ts's outbound probe, mounted above as
+  // /internal/model-connections/test, because the SSRF guard lives in this service.
+  // The CRUD half (store.ts) was deleted rather than left lying here — an unmounted
+  // second implementation of tenant-scoped CRUD is two places for a tenancy rule to
+  // drift, and the next reader would reasonably mistake it for the canonical store.
   //
   // The outbound-webhook *management* API. The public, unauthenticated
   // POST/GET /api/webhooks/endpoints stays GONE (server.test.ts pins that): it
