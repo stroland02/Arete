@@ -434,11 +434,11 @@
     },
     {
       "id": "internal-token-no-expiry",
-      "title": "INTERNAL_API_TOKEN has no expiry — and expiry is not expressible",
+      "title": "Internal service-to-service tokens are signed and short-lived",
       "lane": "idea",
       "area": "Partially wired",
-      "level": "partial",
-      "state": "next",
+      "level": "live",
+      "state": "shipped",
       "importance": "critical",
       "rank": 20,
       "programmes": [
@@ -447,25 +447,26 @@
           "phase": "2b"
         }
       ],
-      "works": "One static shared secret authenticates every internal service-to-service call, and it does authenticate correctly.",
-      "gap": "No exp, no iat, no rotation, no revocation — and tokenMatches(header, token) takes no clock argument, so expiry is not merely absent but not expressible in the current code path. It guards every write-and-spend route on both the webhook and agents services. Needs a credential-lifecycle design (rotation window, dual-token overlap so rotation cannot break in-flight calls), not a patch. Resolve BEFORE building more dashboard proxies onto it.",
-      "evidence": "packages/webhook/src/internal-auth.ts:43",
+      "works": "Closed on main by 9399330. internal-auth.ts mints via mintInternalToken and checks via verifyInternalToken from @arete/internal-token — HS256 with exp and a kid for rotation, 401 on missing/malformed/unknown-kid/bad-signature/expired/wrong-audience without leaking which, and 503 when the keyset is unconfigured so a misconfiguration cannot read as an auth failure.",
+      "gap": "Nothing outstanding. Kept as a row rather than deleted so the closure is on the record.",
+      "evidence": "packages/webhook/src/internal-auth.ts (mintInternalToken / verifyInternalToken), commit 9399330",
       "provenance": {
         "doc": "docs/roadmap/backlog.md",
-        "note": "Phase 2b item 1"
+        "note": "Phase 2b item 1. Re-checked against origin/main 2026-07-23: the previous text (\"no exp, no iat, no rotation… expiry is not expressible in the current code path\") described the state before 9399330 and was still being rendered as a live P0 gap. Corrected with evidence rather than silently rewritten."
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "mcp-token-plaintext-and-simulated-oauth",
-      "title": "MCP tokens are plaintext and the code exchange is simulated",
+      "title": "MCP tokens are stored in cleartext at rest",
       "lane": "idea",
       "area": "Partially wired",
       "level": "partial",
       "state": "next",
-      "importance": "critical",
+      "importance": "high",
       "rank": 30,
       "programmes": [
         {
@@ -473,16 +474,17 @@
           "phase": "2b"
         }
       ],
-      "works": "Refresh-on-expiry now exists and fails closed; the creds file is written 0o600.",
-      "gap": "mcp/auth.py:90 never performs a real code exchange — it fabricates simulated_token_for_<code>, so there is no expires_in to store even where the schema has a slot. Tokens persist as JSON on disk. _save_config's mkdir does not retroactively tighten a pre-existing loose .agents/ directory. Decide: give MCP a real OAuth exchange, or remove the surface until it has one.",
-      "evidence": "packages/agents/src/arete_agents/mcp/auth.py:90, mcp/manager.py",
+      "works": "The OAuth exchange is real: auth.py posts to the provider's token endpoint and computes expires_at = now + expires_in on both the code exchange and the refresh, refresh-on-expiry fails closed, and manager.py creates the store 0o600 atomically via os.open.",
+      "gap": "Tokens are still written as cleartext JSON. Encryption at rest exists (Fernet under ARETE_MCP_TOKEN_KEY, ciphertext tagged enc:v1: so legacy plaintext still reads, undecryptable values raise rather than degrading to None) but lives on an unmerged branch — see 63f1ad3. Separately, _save_config's mkdir(exist_ok=True) does not retighten a pre-existing loose .agents/ directory, so an upgrade from an older version keeps the looser mode.",
+      "evidence": "packages/agents/src/arete_agents/mcp/auth.py:76-81,130-135,145; mcp/manager.py:38",
       "provenance": {
         "doc": "docs/roadmap/backlog.md",
-        "note": "Phase 2b item 1, Phase 4 items 6-7"
+        "note": "Phase 2b item 1, Phase 4 items 6-7. Re-checked against origin/main 2026-07-23: three of the four original claims were false — the exchange is real (auth.py:145 records that it USED to fabricate simulated_token_for_<code>), expires_at is computed, and the file is 0o600. Only cleartext-at-rest still holds, so the row was narrowed to what is true and dropped from critical to high."
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "prose-credentials-reach-sinks",
@@ -1266,11 +1268,11 @@
     },
     {
       "id": "review-pr-heavy-no-consumer",
-      "title": "review-pr-heavy queue has a producer and no consumer",
+      "title": "Large PRs are reviewed — the heavy queue has a consumer",
       "lane": "idea",
       "area": "Partially wired",
-      "level": "partial",
-      "state": "next",
+      "level": "live",
+      "state": "shipped",
       "importance": "high",
       "rank": 130,
       "programmes": [
@@ -1279,15 +1281,17 @@
           "phase": "stage-4"
         }
       ],
-      "gap": "PRs with more than 50 changed files are routed to a queue nothing consumes — worker.ts starts a Worker only on the fast queue. Those reviews never run and their traces dead-end. Pre-existing, but it means large PRs silently get no review at all.",
-      "evidence": "webhook-handler.ts:114, backfill.ts:86, worker.ts:311",
+      "works": "startReviewWorkers() runs a separate consumer per lane — fast, and heavy for PRs over 50 changed files — and is called on worker startup. Large PRs are reviewed rather than routed into a queue nothing drains.",
+      "gap": "Nothing outstanding. Kept as a row rather than deleted so the closure is on the record.",
+      "evidence": "packages/webhook/src/worker.ts:419 (startReviewWorkers), called at :436",
       "provenance": {
         "doc": "docs/roadmap/backlog.md",
-        "note": "Phase 1 final review"
+        "note": "Phase 1 final review. Re-checked against origin/main 2026-07-23: the previous text (\"a queue nothing consumes… large PRs silently get no review at all\") was already false on main and was being rendered as a live high-importance gap. Corrected with evidence rather than silently rewritten."
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "send-route-work-item-posted",
