@@ -126,6 +126,41 @@ def decrypt_secret(value: Optional[str]) -> Optional[str]:
         ) from exc
 
 
+def store_status(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Whether the credentials in ``config`` are actually encrypted at rest.
+
+    The warning in :func:`encrypt_secret` fires once per process, at write
+    time, into the log — which is the wrong moment and the wrong place for an
+    operator asking "are my tokens safe on disk?". This answers that on demand.
+
+    Counts the ``enc:v1:`` tag rather than trusting the key being set: a store
+    written before the key was configured is still plaintext on disk, and a
+    configured key does not retroactively encrypt it. Reports the tally only —
+    never a token value, not even a redacted one.
+    """
+    encrypted = 0
+    plaintext = 0
+    for server in config.values():
+        if not isinstance(server, dict):
+            continue
+        for field in SECRET_FIELDS:
+            value = server.get(field)
+            if not value or not isinstance(value, str):
+                continue
+            if value.startswith(ENC_PREFIX):
+                encrypted += 1
+            else:
+                plaintext += 1
+
+    return {
+        "key_configured": bool(os.environ.get(KEY_ENV_VAR)),
+        "encrypted": encrypted,
+        "plaintext": plaintext,
+        # True only when there is something stored and none of it is readable.
+        "at_rest_protected": plaintext == 0 and encrypted > 0,
+    }
+
+
 def _map_secrets(config: Dict[str, Any], fn) -> Dict[str, Any]:
     """A copy of ``config`` with ``fn`` applied to every credential field.
 
