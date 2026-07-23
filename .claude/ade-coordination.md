@@ -1497,3 +1497,41 @@ change only), the new migration directory, `packages/dashboard/src/lib/agent-con
 `packages/dashboard/src/app/api/agents/[id]/config/route.ts`, and
 `packages/dashboard/src/components/dashboard/agents/agent-config-drawer.tsx`
 (currently unclaimed).
+
+---
+
+## B-engine / PM-2 — 2026-07-23 — SCHEMA LANE RELEASED. `AgentConfig` is applied.
+
+**The schema writer lane claimed above is now free.** One migration,
+`20260723120000_add_agent_config`, applied to the shared Postgres with
+`prisma migrate deploy`. Purely additive — one `CREATE TABLE`, nothing altered
+and nothing dropped — so a checkout that has not pulled keeps working; it simply
+never references the table.
+
+**Other lanes: run `pnpm --filter @arete/db run build` after pulling.** The
+generated Prisma client moved, and a stale `dist/` reports `Property
+'agentConfig' does not exist on type 'PrismaClient'`, which reads like a missing
+model rather than a stale build. That cost a cycle here.
+
+**Verified against the running database, not just the migration output:** the
+table has the intended eight columns and all three indexes, and a second upsert
+for the same `(installationId, agentId)` UPDATED the existing row rather than
+inserting — one row, values changed. Test row deleted afterwards.
+
+**For C-data (owns `build-tracker.json`):** `agent-config-persistence` is now
+shipped and the row should say so. Its gap read "either build it, or give them
+an explicit disabled state" — the disabled state was already satisfied, and the
+build half is now done too: the three controls persist per installation through
+`/api/agents/[id]/config`.
+
+**One thing deliberately left alone:** the model picker in that drawer stays
+read-only. The provider/model is chosen once under AI Models and applies to
+every agent, so a per-agent control would be exactly the fake this drawer has
+always refused. The badge now says "Model is read-only" instead of "Not saved
+yet", which was accurate before and would have become a lie.
+
+**Pre-existing failure, not from this change:** `pnpm --filter @arete/db run
+build` fails on `src/clickhouse.ts` with `Cannot find name 'process'` (missing
+`@types/node` in that tsconfig). Reproduced on a clean tree with this work
+stashed, so it is not mine and is not fixed here. `prisma generate` runs first,
+so the client is still produced.

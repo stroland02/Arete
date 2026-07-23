@@ -314,6 +314,40 @@ model ScanRun {
 /// A plain scoping column (installationId, containerId — no @relation),
 /// mirroring WorkItem/ScanRun: high-volume, append-only, no need to traverse
 /// from Installation/IssueContainer.
+/// Per-installation settings for one specialist review agent.
+///
+/// The config drawer's controls were local React state marked "deliberately NOT
+/// persisted", so every one of them reset on close — a parameter control that
+/// cannot outlive the panel it lives in is decoration. This is where they live.
+///
+/// Tenant-scoped on purpose: `installationId` is not optional, because tenancy
+/// is a security boundary and an unscoped config row is one installation reading
+/// another's settings. Keyed on `(installationId, agentId)` so a save is an
+/// upsert and two rows can never disagree about one agent.
+///
+/// Absence is meaningful and is NOT an error: an agent with no row runs on the
+/// defaults below. That keeps every existing installation working unchanged
+/// after this migration, with no backfill.
+model AgentConfig {
+  id                String   @id @default(uuid())
+  installationId    String
+  /// Matches an Agent.id from the dashboard's agent catalog, e.g. "security" —
+  /// same convention as AgentChatTurn.agentId. Deliberately not a foreign key:
+  /// the catalog is code, not a table.
+  agentId           String
+  /// Whether this agent runs on every pull request.
+  enabled           Boolean  @default(true)
+  /// "info" | "warning" | "error" — only post findings at or above this.
+  severityThreshold String   @default("warning")
+  /// Free-text steer appended to the agent's brief. Empty means no steer.
+  guidance          String   @default("")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([installationId, agentId])
+  @@index([installationId])
+}
+
 model AgentChatTurn {
   id             String   @id @default(uuid())
   installationId String

@@ -21,8 +21,13 @@ export interface AgentConfigDrawerProps {
 /**
  * Right-side slide-in drawer with the agent's real details (role, model, what
  * it inspects, recent finding count) plus configuration controls. The controls
- * are locally interactive but deliberately NOT persisted yet — the Save button
- * stays disabled and the note says so. No fake saves, including the model pick.
+ * persist per installation through `/api/agents/[id]/config` (AgentConfig).
+ *
+ * Still no fake saves: the panel renders the config the server returns rather
+ * than what it sent, and every failed save says so and changes nothing. The
+ * model pick remains read-only — it is chosen once under AI Models and applies
+ * to every agent, so a per-agent control there would be the fake this drawer
+ * has always refused.
  */
 export function AgentConfigDrawer({ agent, findingCount, activeModel = null, onClose }: AgentConfigDrawerProps) {
   useEffect(() => {
@@ -71,10 +76,66 @@ function DrawerPanel({
   const [enabled, setEnabled] = useState(true);
   const [severity, setSeverity] = useState("warning");
   const [guidance, setGuidance] = useState("");
+  // "loading" until the saved config arrives, so the controls never briefly
+  // show defaults that are not what is stored — a flash of the wrong value is
+  // indistinguishable from a setting that did not save.
+  const [status, setStatus] = useState<"loading" | "ready" | "saving">("loading");
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
 
   useEffect(() => {
     panelRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/agents/${agent.id}/config`);
+        if (!res.ok) throw new Error(String(res.status));
+        const { config } = await res.json();
+        if (cancelled) return;
+        setEnabled(config.enabled);
+        setSeverity(config.severityThreshold);
+        setGuidance(config.guidance);
+      } catch {
+        // Leave the defaults in place. They are what the agent actually runs on
+        // when nothing is saved, so this is accurate rather than a fallback.
+      } finally {
+        if (!cancelled) setStatus("ready");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [agent.id]);
+
+  async function save() {
+    setStatus("saving");
+    setSaveError(null);
+    try {
+      const res = await fetch(`/api/agents/${agent.id}/config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled, severityThreshold: severity, guidance }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSaveError(data.error ?? `Could not save (${res.status}). Nothing was changed.`);
+        return;
+      }
+      // Render what came back, not what was sent: if the server stored anything
+      // different, the panel must show the stored value.
+      setEnabled(data.config.enabled);
+      setSeverity(data.config.severityThreshold);
+      setGuidance(data.config.guidance);
+      setSavedAt(new Date().toLocaleTimeString());
+    } catch {
+      setSaveError("Could not reach the server. Nothing was changed.");
+    } finally {
+      setStatus("ready");
+    }
+  }
 
   const Icon = agent.icon;
 
@@ -140,13 +201,16 @@ function DrawerPanel({
         )}
       </section>
 
-      {/* Configuration — interactive, honestly unsaved */}
+      {/* Configuration — persisted per installation via /api/agents/[id]/config */}
       <section className="space-y-4 border-t border-border-subtle pt-5">
         <div className="flex items-center gap-2">
           <h4 className="text-xs font-semibold uppercase tracking-wider text-content-muted">
             Configuration
           </h4>
-          <ReadinessBadge level="soon" label="Not saved yet" />
+          {/* The badge said "Not saved yet" and was accurate until these
+              controls were backed by AgentConfig. It reflects the model pick
+              only now, which genuinely is still read-only. */}
+          <ReadinessBadge level="partial" label="Model is read-only" />
         </div>
 
         {/* Model — the connected model this agent runs on. Read-only and dynamic:
@@ -242,12 +306,22 @@ function DrawerPanel({
         </div>
 
         <div className="space-y-2 pt-1">
-          <Button disabled className="w-full">
-            Save changes
+          <Button
+            onClick={save}
+            disabled={status !== "ready"}
+            className="w-full"
+          >
+            {status === "saving" ? "Saving…" : "Save changes"}
           </Button>
-          <p className="text-xs text-content-muted">
-            Agent settings aren&apos;t saved yet — per-repository configuration is coming soon.
-          </p>
+          {saveError ? (
+            <p className="text-xs text-accent-danger">{saveError}</p>
+          ) : savedAt ? (
+            <p className="text-xs text-content-muted">Saved at {savedAt}.</p>
+          ) : (
+            <p className="text-xs text-content-muted">
+              Saved per installation and applied to this agent&apos;s next run.
+            </p>
+          )}
         </div>
       </section>
     </motion.aside>
