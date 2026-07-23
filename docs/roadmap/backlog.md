@@ -411,3 +411,19 @@ refresh-on-expiry + `0o600` (item 2 above). Carried forward:
    a printed/logged error message — not a credential leak (the body is attacker-controlled,
    not ours), but worth bounding/sanitizing before any error surface here becomes
    user-facing.
+
+---
+
+## Where the master list lives (added 2026-07-22)
+
+This file stays the narrative backlog. The **prioritised, phase-tagged master list** — the one
+the product renders and the agents read — is
+`packages/dashboard/src/lib/feature-readiness.ts`, surfaced at `/build-status`.
+
+- Each row carries `priority` (P0–P3, importance) and `phase` (P1–P4, which programme owns it).
+  They are independent: an item can be P0 and unstarted.
+- Rows carry `ref` back to the audit ids in `docs/status/2026-07-22-build-status-map.md`.
+- A claim that may have gone stale is marked `needsVerification` rather than rewritten. Resolve it
+  with evidence.
+
+Anything added here should get a row there too, or it will not be visible to the people building.

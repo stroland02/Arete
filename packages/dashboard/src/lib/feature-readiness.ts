@@ -73,6 +73,7 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
   // ---------------------------------------------------------------- surfaces
   {
     name: "AI model connections",
+    phase: "P1",
     area: "Product surfaces",
     level: "live",
     href: "/connections/ai-models",
@@ -81,6 +82,7 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
   },
   {
     name: "Review history",
+    phase: "P1",
     area: "Product surfaces",
     level: "live",
     href: "/history",
@@ -88,6 +90,7 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
   },
   {
     name: "Incidents list",
+    phase: "P1",
     area: "Product surfaces",
     level: "live",
     href: "/incidents",
@@ -96,6 +99,7 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
   },
   {
     name: "Settings & billing",
+    phase: "P1",
     area: "Product surfaces",
     level: "live",
     href: "/settings",
@@ -104,6 +108,8 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
   },
   {
     name: "Overview",
+    priority: "P2",
+    phase: "P2",
     area: "Product surfaces",
     level: "partial",
     href: "/overview",
@@ -114,6 +120,8 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
   },
   {
     name: "Agents",
+    priority: "P1",
+    phase: "P2b",
     area: "Product surfaces",
     level: "partial",
     href: "/agents",
@@ -124,6 +132,9 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
   },
   {
     name: "Services",
+    priority: "P1",
+    phase: "P2b",
+    needsVerification: "Commit 1192d37 claims the two HITL gates are now reachable — approve, then post the PR — which is exactly this row's gap. Re-check before planning off it; left unedited on purpose.",
     area: "Product surfaces",
     level: "partial",
     href: "/services",
@@ -134,6 +145,9 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
   },
   {
     name: "Incident detail",
+    priority: "P1",
+    phase: "P2b",
+    ref: "B1",
     area: "Product surfaces",
     level: "partial",
     href: "/incidents",
@@ -143,6 +157,8 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
   },
   {
     name: "Data connectors",
+    priority: "P2",
+    phase: "P2",
     area: "Product surfaces",
     level: "partial",
     href: "/connections",
@@ -152,6 +168,8 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
   },
   {
     name: "Search & notifications",
+    priority: "P3",
+    phase: "P3",
     area: "Product surfaces",
     level: "soon",
     works: "Nothing — the breadcrumb is the only working part of the top bar.",
@@ -176,6 +194,9 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
   },
   {
     name: "Outbound webhooks",
+    priority: "P1",
+    phase: "P2",
+    ref: "A2",
     area: "Built, but unreachable",
     level: "soon",
     works:
@@ -185,6 +206,9 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
   },
   {
     name: "Agent memory",
+    priority: "P1",
+    phase: "P2b",
+    ref: "A3",
     area: "Built, but unreachable",
     level: "soon",
     works:
@@ -194,6 +218,9 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
   },
   {
     name: "Live throughput metrics",
+    priority: "P2",
+    phase: "P2",
+    ref: "A4",
     area: "Built, but unreachable",
     level: "soon",
     works: "The worker publishes review-lifecycle metrics to a server-sent stream.",
@@ -202,6 +229,9 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
   },
   {
     name: "Webhook delivery retries",
+    priority: "P2",
+    phase: "P2",
+    ref: "A5",
     area: "Partially wired",
     level: "partial",
     works:
@@ -213,6 +243,9 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
   // -------------------------------------------------------- partially wired
   {
     name: "Tracing & log search",
+    priority: "P1",
+    phase: "P2b",
+    ref: "B2",
     area: "Partially wired",
     level: "partial",
     works: "Full OpenTelemetry instrumentation now flows into ClickHouse and Jaeger.",
@@ -221,6 +254,9 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
   },
   {
     name: "Finding confidence",
+    priority: "P2",
+    phase: "P2",
+    ref: "B3",
     area: "Partially wired",
     level: "partial",
     works: "Confidence is computed and shown on scan and fix work items.",
@@ -229,6 +265,9 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
   },
   {
     name: "Noise & escalation controls",
+    priority: "P2",
+    phase: "P2",
+    ref: "B4",
     area: "Partially wired",
     level: "partial",
     works:
@@ -238,6 +277,9 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
   },
   {
     name: "Telemetry freshness",
+    priority: "P2",
+    phase: "P2",
+    ref: "B5",
     area: "Partially wired",
     level: "partial",
     href: "/grid",
@@ -247,6 +289,9 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
   },
   {
     name: "MCP servers",
+    priority: "P2",
+    phase: "P2b",
+    ref: "B6",
     area: "Partially wired",
     level: "partial",
     works: "Kuma can consume third-party MCP servers, driven from the CLI.",
@@ -257,30 +302,45 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
   // ------------------------------------------------------------ not built
   {
     name: "Slack / Linear / PagerDuty relays",
+    priority: "P2",
+    phase: "P2",
+    ref: "C1",
     area: "Not built yet",
     level: "soon",
     gap: "Blocked on outbound webhook management and the retry worker. Once those land, each relay is a thin consumer.",
   },
   {
     name: "Public API & API keys",
+    priority: "P3",
+    phase: "P3",
+    ref: "C2",
     area: "Not built yet",
     level: "soon",
     gap: "No key issuance, no read or management REST surface.",
   },
   {
     name: "Review scope filters",
+    priority: "P2",
+    phase: "P1",
+    ref: "C3",
     area: "Not built yet",
     level: "soon",
     gap: "No way to say which paths Kuma should or should not review.",
   },
   {
     name: "Kuma as an MCP server",
+    priority: "P3",
+    phase: "P3",
+    ref: "C4",
     area: "Not built yet",
     level: "soon",
     gap: "Exposing Kuma's findings back into your coding agent. Only the client half exists today.",
   },
   {
     name: "Tenant telemetry ingestion",
+    priority: "P3",
+    phase: "P4",
+    ref: "C6",
     area: "Not built yet",
     level: "soon",
     gap: "Ingest endpoints, ingest keys, alert rules and a service map. Deliberately deferred — the current stack observes Kuma itself, not your services.",
@@ -324,28 +384,9 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
     gap: "Tokens persist as plaintext JSON with no expiry field and no file-mode hardening, and the auth step never performs a code exchange — it fabricates a token string, then presents it as a Bearer credential indefinitely.",
     evidence: "arete_agents/mcp/auth.py:90",
   },
-  {
-    name: "Hand-opened investigations dead-end",
-    area: "Partially wired",
-    level: "partial",
-    priority: "P1",
-    phase: "P2b",
-    ref: "B1",
-    works: "The alert path creates a work item, container and fix drive end to end.",
-    gap: "The UI path writes an Incident but never routes it to a fix, so an investigation you open by hand can only be marked noise.",
-    evidence: "lib/queries.ts (createManualIncident)",
-  },
-  {
-    name: "Agent memory never evicts",
-    area: "Partially wired",
-    level: "partial",
-    priority: "P1",
-    phase: "P2b",
-    ref: "A3",
-    works: "Memories are written and read back into review context.",
-    gap: "The cap is 20 rows, the check-then-create has no transaction, and nothing ever archives — so a repository freezes permanently at 20 memories.",
-    evidence: "webhook/src/memory-write.ts:104,248",
-  },
+  // B1 and A3 are deliberately NOT repeated here: "Incident detail" and "Agent
+  // memory" above already own those defects and now carry the matching `ref`.
+  // A second row per defect would double-count them in the phase totals.
   {
     name: "Reviews shown in the product are unverified in a browser",
     area: "Partially wired",
