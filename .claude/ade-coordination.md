@@ -1448,3 +1448,52 @@ Follow-up to the "dry for 39 hours" note. Two things now established by driving,
 "authenticates on startup" because nothing had flowed through it. It has now — receiver → exporter →
 ClickHouse, with env credentials — so it is verified end to end. Recorded because the difference
 between those two claims is exactly what this lane exists to keep honest.
+
+---
+
+## B-engine / PM-2 — 2026-07-23 — SCHEMA CLAIM: `AgentConfig` (declared BEFORE editing)
+
+**Coordination rule 4 — one schema writer at a time. This lane is taking it now.**
+Checked first: no other checkout has an uncommitted `packages/db/prisma/` change
+(ridley, tope, horseshoe, Kuma2 all clean), and the last migration on main is
+`20260722210000_add_installation_is_platform`. Release announced here when done.
+
+**Why:** PM-2 brief item 2, `agent-config-persistence`. The agent config drawer's
+three controls — enabled, severity threshold, custom guidance — are local React
+state that is explicitly "deliberately NOT persisted". The Save button is
+honestly disabled today, which is the acceptable half of the item; this is the
+other half.
+
+**Change — purely additive, no column dropped, no table altered:**
+
+```prisma
+model AgentConfig {
+  id                 String   @id @default(uuid())
+  installationId     String
+  agentId            String   /// matches Agent.id from the dashboard catalog, like AgentChatTurn
+  enabled            Boolean  @default(true)
+  severityThreshold  String   @default("warning")
+  guidance           String   @default("")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([installationId, agentId])
+  @@index([installationId])
+}
+```
+
+`installationId` is not optional: tenancy is a security boundary here, and a
+config row that is not tenant-scoped is one installation reading another's
+settings. Keyed `(installationId, agentId)` so a save is an upsert and there can
+never be two rows disagreeing about one agent.
+
+**Applied with `prisma migrate deploy` against the shared Postgres — never
+`db push`.** `db push` syncs the shared database *down* to one checkout's schema
+and silently drops other lanes' columns. The migration is `CREATE TABLE` only, so
+every other checkout keeps working without pulling.
+
+**Files this lane is claiming for it:** `packages/db/prisma/schema.prisma` (this
+change only), the new migration directory, `packages/dashboard/src/lib/agent-config.ts`,
+`packages/dashboard/src/app/api/agents/[id]/config/route.ts`, and
+`packages/dashboard/src/components/dashboard/agents/agent-config-drawer.tsx`
+(currently unclaimed).
