@@ -446,15 +446,15 @@
     },
     {
       "id": "collector-plaintext-credentials",
-      "title": "Collector config commits plaintext ClickHouse credentials",
+      "title": "Collector credentials come from the environment, not the committed config",
       "lane": "idea",
       "area": "Partially wired",
-      "level": "partial",
-      "state": "next",
-      "importance": "critical",
+      "level": "live",
+      "state": "shipped",
+      "importance": "low",
       "rank": 10,
-      "gap": "otel-collector-config.yaml commits `superlog/superlog` in the clear. Fine for local compose; it must not survive into any deploy path, and nothing currently stops it.",
-      "evidence": "infra otel-collector-config.yaml",
+      "gap": "",
+      "evidence": "infra/otel-collector-config.yaml (exporters.clickhouse), infra/docker-compose.yml:37-39,69-71, .github/workflows/ci.yml validate step",
       "provenance": {
         "doc": "docs/roadmap/backlog.md"
       },
@@ -463,7 +463,9 @@
       "addedBy": "seed",
       "tags": [
         "honesty-security"
-      ]
+      ],
+      "works": "otel-collector-config.yaml carries no credential literal — database/username/password resolve from CLICKHOUSE_DB/USER/PASSWORD. docker-compose supplies throwaway local defaults so `docker compose up` still works with no .env, and .env.example documents them. Verified by running the same validate the CI step runs.",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "internal-token-no-expiry",

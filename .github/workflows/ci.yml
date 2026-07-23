@@ -241,7 +241,14 @@ jobs:
       # separate otel compose file to validate).
       - name: Validate collector config
         run: |
+          # The config resolves its ClickHouse credentials from the environment
+          # rather than carrying literals, so validation has to supply them.
+          # These are throwaway values purely to make resolution succeed —
+          # validate never connects to ClickHouse.
           docker run --rm \
+            -e CLICKHOUSE_DB=validate \
+            -e CLICKHOUSE_USER=validate \
+            -e CLICKHOUSE_PASSWORD=validate \
             -v "$PWD/infra/otel-collector-config.yaml:/etc/otelcol/config.yaml" \
             otel/opentelemetry-collector-contrib:0.156.0 \
             validate --config=/etc/otelcol/config.yaml
