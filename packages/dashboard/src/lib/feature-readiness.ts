@@ -127,21 +127,20 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
     href: "/agents",
     works:
       "Per-agent chat is genuinely live against the connected model, with provider errors surfaced honestly. Findings come from real reviews.",
-    gap: "Every configuration control is local-only and never saved. Approve-solution is effectively unreachable — nothing links to /agents?container=.",
-    evidence: "agent-config-drawer.tsx:245, pr-panel.tsx:122-133",
+    gap: "Every configuration control is local-only and never saved — the Save button is disabled and says so, and making it real needs an AgentConfig model that does not exist in the schema yet (roadmap 2.4, another lane). Approve-solution is no longer unreachable: the gate moved to the Services work-item panel, which already holds the real container, so no /agents?container= link was ever needed.",
+    evidence: "agent-config-drawer.tsx:24, services/work-item-panel.tsx",
   },
   {
     name: "Services",
     priority: "P1",
     phase: "P2b",
-    needsVerification: "Commit 1192d37 claims the two HITL gates are now reachable — approve, then post the PR — which is exactly this row's gap. Re-check before planning off it; left unedited on purpose.",
     area: "Product surfaces",
     level: "partial",
     href: "/services",
     works:
-      "Repo rail, live synthesizer console over SSE, status board, Scan, Fix it and Dismiss all hit real endpoints.",
-    gap: "The whole PR-send workflow is stubbed or unreachable: Fix & open PR is disabled, and SendPrButton can never render with a real container.",
-    evidence: "services-workspace.tsx:851-861, send-pr-button.tsx",
+      "Repo rail, live synthesizer console over SSE, status board, Fix it and Dismiss all hit real endpoints. BOTH HITL gates are now reachable here — approve the solution, then post the PR as a separate decision — each re-checked server-side against stored container state. Scan tracks the real ScanRun instead of a 1.5s timer, and Fix/Dismiss soft-refresh without losing rail position.",
+    gap: "Send honestly 503s locally because STAGING_SERVICE_URL is unset. Separately, and recorded rather than fixed: a successful send advances the container to posted but leaves its work item at staged.",
+    evidence: "work-item-panel.tsx, send-pr-button.tsx, work-item-inbox.tsx (scanIdentity), triage.ts",
   },
   {
     name: "Incident detail",
@@ -151,9 +150,10 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
     area: "Product surfaces",
     level: "partial",
     href: "/incidents",
-    works: "Mark and unmark noise, view a linked fix run, scrubbed alert payload tables.",
-    gap: "A manually-opened investigation cannot be driven — there is no action to start a fix from it.",
-    evidence: "lib/incidents.ts:211",
+    works:
+      "Mark and unmark noise, view a linked fix run, scrubbed alert payload tables. A manually-opened investigation now routes to a fix through the SAME routeIncidentToFix the Alertmanager path uses, reached via a thin internal-token webhook route — a transport, not a second implementation.",
+    gap: "Routing obeys the shared critical+firing policy, so a warning investigation deliberately does not start a fix. An unreachable webhook is reported as unavailable and never fails the action, since the incident is already durably created.",
+    evidence: "lib/incidents.ts (requestIncidentRouting), webhook server.ts POST /incidents/:id/route",
   },
   {
     name: "Data connectors",
@@ -180,17 +180,15 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
   // ------------------------------------------------------ built, but no UI
   {
     name: "Approval gate (human-in-the-loop)",
-    area: "Built, but unreachable",
-    level: "soon",
+    area: "Product surfaces",
+    level: "live",
     works:
-      "Complete end to end: the approval record, the claim-and-enqueue handler, a running worker, and the apply call into the agents service.",
-    gap: "No screen anywhere lists pending approvals, so the product's headline safety feature is invisible. Belongs on review detail.",
-    evidence: "worker.ts:439, schema.prisma:336-350",
+      "Complete end to end AND reachable: pending approvals render on Services, Approve proxies to the webhook (which stays the authority for PENDING→EXECUTED), and Reject writes a durable decision. Verified live — reject returned 200 and the row is durably REJECTED; approve with the webhook down returned 502 and left the row PENDING, so a failed upstream never silently consumes the decision. An approval planted under a different installation never rendered.",
+    gap: "Reject is conditional on executedAt: null, so an approve/reject race resolves to exactly one outcome — but approve still depends on the webhook being reachable, and reports that honestly instead of pretending.",
+    evidence: "approvals-section.tsx, api/approvals/[id]/{approve,reject}/route.ts, lib/approvals.ts",
     priority: "P1",
     phase: "P2b",
     ref: "A1",
-    needsVerification:
-      "Commits 1192d37 and a21f956 claim the HITL gates are now reachable and rejectable. Re-check whether this row's gap still holds before planning off it — left unedited on purpose.",
   },
   {
     name: "Outbound webhooks",
@@ -268,12 +266,12 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
     priority: "P2",
     phase: "P2",
     ref: "B4",
-    area: "Partially wired",
-    level: "partial",
+    area: "Product surfaces",
+    level: "live",
     works:
-      "A full state machine exists — silenced, under observation, escalated — with occurrence thresholds.",
-    gap: "The dashboard only filters on open findings. No human can silence or un-silence anything.",
-    evidence: "persistence.ts:162-200",
+      "The state machine now has a human end: a finding can be silenced and restored from the review detail page. A silenced finding drops out of the code map and the copy-for-agent prompt, so silencing does something rather than setting a flag. Verified live, including that occurrenceCount and the escalation threshold survive a silence/restore round-trip.",
+    gap: "A human may set only OPEN and SILENCED — UNDER_OBSERVATION and ESCALATED stay the machine's, since a button asserting one would claim a recurrence count nothing measured. Restoring returns a finding to OPEN, never to a guessed prior state, and a comment already posted to GitHub stays posted.",
+    evidence: "api/findings/[id]/noise/route.ts, finding-noise-control.tsx, queries.ts:765",
   },
   {
     name: "Telemetry freshness",
@@ -307,7 +305,7 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
     ref: "C1",
     area: "Not built yet",
     level: "soon",
-    gap: "Blocked on outbound webhook management and the retry worker. Once those land, each relay is a thin consumer.",
+    gap: "The retry worker half is done — it now actually runs. What remains is authenticated outbound-webhook management, which is unmounted for a security reason (it trusted a client-supplied installationId, so any caller could read a tenant's whsec_ secret) and belongs behind the dashboard session. Once that lands, each relay is a thin consumer.",
   },
   {
     name: "Public API & API keys",
@@ -363,15 +361,16 @@ export const FEATURE_READINESS: FeatureReadiness[] = [
     evidence: "arete_agents/skills/security.py:12",
   },
   {
-    name: "Internal API token never expires",
+    name: "Internal API token expiry",
     area: "Partially wired",
     level: "partial",
-    priority: "P0",
+    priority: "P1",
     phase: "P2b",
     ref: "B8",
-    works: "Every internal route is authenticated with a shared secret.",
-    gap: "One static token: no expiry, rotation or revocation — and expiry is not expressible in the current code path. It guards every write-and-spend route on both services. Resolve before adding proxies that depend on it.",
-    evidence: "webhook/src/internal-auth.ts:43",
+    works:
+      "No longer a static shared secret: the internal token is a minted, verified JWT carrying { iss, aud, iat, exp } on a 120s default TTL, and verification returns 401 for signature/expired/wrong-audience without distinguishing them, 503 when the keyset is unconfigured. Expiry is now both present and expressible — this is what let the session-scoped approval proxy ship.",
+    gap: "Rotation and revocation are still not designed — a short TTL bounds exposure but does not let you revoke a leaked key. The MCP half is untouched and is the worse half (see the row below).",
+    evidence: "internal-token/src/mint.ts:15, webhook/src/internal-auth.ts:54",
   },
   {
     name: "MCP tokens are plaintext, and the OAuth exchange is faked",
