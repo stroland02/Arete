@@ -1,3 +1,4 @@
+import os
 import secrets
 import threading
 import time
@@ -11,6 +12,7 @@ import httpx
 
 _TOKEN_REQUEST_TIMEOUT_S = 10.0
 _CLIENT_ID = "arete-client"
+_CLIENT_ID_ENV_VAR = "ARETE_MCP_CLIENT_ID"
 _REDIRECT_URI = "http://localhost:3118/callback"
 
 PostFn = Callable[[str, dict, dict], httpx.Response]
@@ -25,6 +27,74 @@ class TokenExchangeError(Exception):
 
 def _default_post(url: str, data: dict, headers: dict) -> httpx.Response:
     return httpx.post(url, data=data, headers=headers, timeout=_TOKEN_REQUEST_TIMEOUT_S)
+
+
+def _default_get(url: str) -> httpx.Response:
+    return httpx.get(url, timeout=_TOKEN_REQUEST_TIMEOUT_S, follow_redirects=True)
+
+
+def metadata_urls(target_url: str) -> list:
+    """The RFC 8414 well-known locations to try, in order, for ``target_url``.
+
+    §3.1 puts the well-known segment BETWEEN the host and the issuer's path,
+    which is the opposite of where most people expect it: a server hosted at
+    ``https://host/mcp`` publishes at ``https://host/.well-known/...​/mcp``. The
+    bare-origin form is tried second anyway, because plenty of servers publish
+    there regardless of what the RFC says.
+    """
+    parsed = urlparse(target_url)
+    if not parsed.scheme or not parsed.netloc:
+        return []
+
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    path = parsed.path.rstrip("/")
+    urls = []
+    for suffix in ("oauth-authorization-server", "openid-configuration"):
+        if path:
+            urls.append(f"{origin}/.well-known/{suffix}{path}")
+        urls.append(f"{origin}/.well-known/{suffix}")
+    return urls
+
+
+def discover_metadata(target_url: str, get: Optional[Callable] = None) -> Optional[dict]:
+    """Authorization-server metadata for ``target_url``, or None.
+
+    Returns None rather than raising: a server that does not implement RFC 8414
+    is ordinary, not an error. What must not happen is None being mistaken for
+    "discovery said the endpoint is the target" — the caller is expected to say
+    out loud when it is guessing. Silently guessing an authorization endpoint
+    sends the operator's browser, and their credentials, to a URL nobody chose.
+
+    Only absolute http/https endpoints are accepted out of the document. A
+    relative or scheme-less value would resolve against whatever the caller
+    happened to be doing, which is how metadata turns into an open redirect.
+    """
+    get_fn = get if get is not None else _default_get
+
+    for url in metadata_urls(target_url):
+        try:
+            response = get_fn(url)
+        except httpx.HTTPError:
+            continue
+        if not (200 <= response.status_code < 300):
+            continue
+        try:
+            payload = response.json()
+        except ValueError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+
+        found = {}
+        for field in ("authorization_endpoint", "token_endpoint", "issuer"):
+            value = payload.get(field)
+            if isinstance(value, str) and urlparse(value).scheme in ("http", "https"):
+                found[field] = value
+        if "authorization_endpoint" in found:
+            found["discovered_from"] = url
+            return found
+
+    return None
 
 
 def exchange_code_for_token(
@@ -259,6 +329,55 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
         # Suppress logging to keep the terminal clean
         pass
 
+def resolve_client_id(server_info: dict) -> str:
+    """The client id to present, most specific source first.
+
+    ``arete-client`` was hardcoded. It is a fine default for a server that does
+    not care, and wrong for every server that registered us under a real id —
+    with no way to say so short of editing this file.
+    """
+    configured = server_info.get("client_id")
+    if isinstance(configured, str) and configured.strip():
+        return configured.strip()
+    from_env = os.environ.get(_CLIENT_ID_ENV_VAR)
+    if from_env and from_env.strip():
+        return from_env.strip()
+    return _CLIENT_ID
+
+
+def resolve_authorization_endpoint(
+    server_info: dict,
+    target_url: str,
+    discover: Optional[Callable] = None,
+) -> tuple:
+    """``(endpoint, how_we_know)`` — never a silent guess.
+
+    Three sources, and the caller prints which one was used. The third is the
+    old behaviour: point the browser at the MCP server's own URL and hope it
+    serves an authorization page. That is a guess, it is often wrong, and the
+    only thing worse than guessing is guessing quietly — the operator ends up
+    debugging a blank page with no idea the URL was invented.
+    """
+    configured = server_info.get("authorization_url")
+    if isinstance(configured, str) and configured.strip():
+        return configured.strip(), "configured on this server as authorization_url"
+
+    discover_fn = discover if discover is not None else discover_metadata
+    metadata = discover_fn(target_url)
+    if metadata and metadata.get("authorization_endpoint"):
+        return (
+            metadata["authorization_endpoint"],
+            f"discovered via RFC 8414 at {metadata.get('discovered_from')}",
+        )
+
+    return (
+        target_url,
+        "GUESSED — this server publishes no RFC 8414 metadata, so this is the "
+        "server's own URL and may not be an authorization page at all. Set "
+        "authorization_url on the server to stop guessing",
+    )
+
+
 def start_oauth_flow(name: str, manager) -> None:
     server_info = manager.get_server(name)
     if not server_info:
@@ -272,16 +391,21 @@ def start_oauth_flow(name: str, manager) -> None:
     # accepted any authorization code any page could send it — the CSRF hole
     # `state` exists to close.
     state = secrets.token_urlsafe(32)
-    client_id = "arete-client"
-    redirect_uri = urllib.parse.quote("http://localhost:3118/callback")
-    
-    # Ideally, we would fetch the auth_endpoint from the MCP server, 
-    # but we simulate it pointing to the target for now.
+    client_id = resolve_client_id(server_info)
+    redirect_uri = urllib.parse.quote(_REDIRECT_URI)
+
+    # Where the browser is sent, in descending order of how much we actually
+    # know. The last branch is a guess, and it says so — it used to be the only
+    # branch, and it was silent.
+    endpoint, source = resolve_authorization_endpoint(server_info, target_url)
+
     auth_url = (
-        f"{target_url}?client_id={client_id}&redirect_uri={redirect_uri}&response_type=code"
+        f"{endpoint}?client_id={client_id}&redirect_uri={redirect_uri}&response_type=code"
         f"&state={state}&scope=mcp:read"
     )
-    
+
+    print(f"\nAuthorization endpoint: {endpoint}\n  ({source})")
+    print(f"Client id: {client_id}")
     print("\nOAuth flow started. Open this URL in your browser to authorize:")
     print(auth_url)
     print("\nAfter you approve, your browser redirects to a http://localhost:3118/callback?code=... page.")

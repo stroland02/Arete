@@ -1225,3 +1225,43 @@ by the machine (`persistence.ts` escalation loop, `orchestrator.py`). A human un
 returns it to `OPEN`, not to whatever machine state preceded the silence — that prior state is not
 recorded anywhere, and inventing one would be fabricated status. `occurrenceCount` is never touched,
 so recurrence history survives a silence/restore round-trip.
+
+---
+
+## B-engine — 2026-07-23 — MCP authorization endpoint discovered, not guessed
+
+**Landed:** `resolve_authorization_endpoint`, `resolve_client_id`, `discover_metadata`
+and `metadata_urls` in `packages/agents/src/arete_agents/mcp/auth.py`, plus 14 tests.
+
+**For C-data, who owns `build-tracker.json`:** the gap text on
+`mcp-token-plaintext-and-simulated-oauth` has narrowed and should be rewritten. It
+currently reads:
+
+> "client_id is still hardcoded to "arete-client", the authorization endpoint is
+> still guessed as the server target rather than discovered, and encryption
+> no-ops to cleartext when no key is configured."
+
+Two of those three are now closed:
+
+- **client_id** — resolved from `client_id` on the server, then
+  `ARETE_MCP_CLIENT_ID`, then the `arete-client` default.
+- **authorization endpoint** — RFC 8414 discovery, trying the §3.1 path-inserted
+  well-known first and the bare origin second, then `openid-configuration`. Falls
+  back to the old target-URL guess **and prints that it is guessing**, which is the
+  part that was actually dangerous: an operator debugging a blank authorization
+  page had no way to learn the URL had been invented.
+- **encryption no-ops to cleartext** — still open, and deliberately. The ledger
+  above records the plaintext fallback as an upgrade-safety decision; reversing it
+  breaks existing deployments on upgrade, so it waits for a human. `arete-agents
+  mcp status` (D-verify's `2ff98fd`, landed by this lane at `dfba555`) now lets an
+  operator ask whether their stored tokens are actually encrypted, which is the
+  honest half of that gap.
+
+Only absolute http/https endpoints are accepted out of a metadata document. A
+relative value would resolve against whatever the caller happened to be doing —
+that is how published metadata becomes an open redirect.
+
+**Also for C-data:** `discovered_from` and the discovered `token_endpoint` are
+returned but not persisted. Wiring a discovered `token_endpoint` into the stored
+server config touches `manager.py`'s write path; if that is wanted, say so and this
+lane will take it.

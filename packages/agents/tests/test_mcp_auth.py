@@ -344,3 +344,169 @@ class TestCallbackResult:
         for params in cases:
             code, error = mcp_auth.callback_result(params, self.STATE)
             assert (code is None) != (error is None), params
+
+
+# --- RFC 8414 discovery, and the end of the two hardcoded values --------------
+#
+# Before this, `start_oauth_flow` sent the browser to the MCP server's own URL
+# with a comment admitting "we simulate it pointing to the target for now", and
+# presented the literal client id "arete-client" with no way to change it. The
+# guess is still the last resort — there is nothing better when a server
+# publishes no metadata — but it is now labelled as a guess, which is the part
+# that was missing.
+
+
+def _fake_get(responses):
+    """A ``get`` callable over {url: (status, json_or_None)}. Anything not in
+    the map raises, standing in for a 404 or a refused connection."""
+
+    def get(url):
+        if url not in responses:
+            raise httpx.ConnectError("nothing there")
+        status, body = responses[url]
+        response = MagicMock(spec=httpx.Response)
+        response.status_code = status
+        if body is None:
+            response.json.side_effect = ValueError("not json")
+        else:
+            response.json.return_value = body
+        return response
+
+    return get
+
+
+class TestMetadataUrls:
+    def test_puts_the_well_known_segment_before_the_path_per_rfc_8414(self):
+        urls = mcp_auth.metadata_urls("https://host.example/mcp")
+        # §3.1: between host and path, NOT appended to it. Getting this
+        # backwards is the single most common way discovery silently 404s.
+        assert urls[0] == "https://host.example/.well-known/oauth-authorization-server/mcp"
+        assert "https://host.example/.well-known/oauth-authorization-server" in urls
+
+    def test_falls_back_to_openid_configuration(self):
+        urls = mcp_auth.metadata_urls("https://host.example")
+        assert "https://host.example/.well-known/openid-configuration" in urls
+
+    def test_returns_nothing_for_a_url_it_cannot_parse(self):
+        assert mcp_auth.metadata_urls("not-a-url") == []
+        assert mcp_auth.metadata_urls("") == []
+
+
+class TestDiscoverMetadata:
+    def test_reads_the_authorization_endpoint_from_the_document(self):
+        url = "https://host.example/.well-known/oauth-authorization-server/mcp"
+        found = mcp_auth.discover_metadata(
+            "https://host.example/mcp",
+            get=_fake_get(
+                {
+                    url: (
+                        200,
+                        {
+                            "issuer": "https://host.example",
+                            "authorization_endpoint": "https://auth.example/authorize",
+                            "token_endpoint": "https://auth.example/token",
+                        },
+                    )
+                }
+            ),
+        )
+        assert found["authorization_endpoint"] == "https://auth.example/authorize"
+        assert found["token_endpoint"] == "https://auth.example/token"
+        assert found["discovered_from"] == url
+
+    def test_keeps_trying_the_remaining_locations_after_a_failure(self):
+        # The path-inserted form 404s; the bare origin serves it. A discovery
+        # that gave up on the first miss would find nothing on most servers.
+        found = mcp_auth.discover_metadata(
+            "https://host.example/mcp",
+            get=_fake_get(
+                {
+                    "https://host.example/.well-known/oauth-authorization-server": (
+                        200,
+                        {"authorization_endpoint": "https://auth.example/authorize"},
+                    )
+                }
+            ),
+        )
+        assert found["authorization_endpoint"] == "https://auth.example/authorize"
+
+    def test_returns_none_when_no_server_answers(self):
+        # Not an exception: a server without RFC 8414 metadata is ordinary.
+        assert mcp_auth.discover_metadata("https://host.example/mcp", get=_fake_get({})) is None
+
+    def test_ignores_a_document_that_is_not_json(self):
+        urls = mcp_auth.metadata_urls("https://host.example/mcp")
+        assert mcp_auth.discover_metadata(
+            "https://host.example/mcp", get=_fake_get({u: (200, None) for u in urls})
+        ) is None
+
+    def test_refuses_a_relative_endpoint(self):
+        # A scheme-less value would resolve against whatever the caller was
+        # doing. Accepting it turns published metadata into an open redirect.
+        urls = mcp_auth.metadata_urls("https://host.example/mcp")
+        assert mcp_auth.discover_metadata(
+            "https://host.example/mcp",
+            get=_fake_get({u: (200, {"authorization_endpoint": "/authorize"}) for u in urls}),
+        ) is None
+
+    def test_ignores_a_non_2xx_response(self):
+        urls = mcp_auth.metadata_urls("https://host.example/mcp")
+        assert mcp_auth.discover_metadata(
+            "https://host.example/mcp",
+            get=_fake_get({u: (404, {"authorization_endpoint": "https://a/b"}) for u in urls}),
+        ) is None
+
+
+class TestResolveClientId:
+    def test_prefers_the_id_configured_on_the_server(self, monkeypatch):
+        monkeypatch.setenv(mcp_auth._CLIENT_ID_ENV_VAR, "from-env")
+        assert mcp_auth.resolve_client_id({"client_id": "from-server"}) == "from-server"
+
+    def test_falls_back_to_the_environment(self, monkeypatch):
+        monkeypatch.setenv(mcp_auth._CLIENT_ID_ENV_VAR, "from-env")
+        assert mcp_auth.resolve_client_id({}) == "from-env"
+
+    def test_ignores_blank_values_rather_than_presenting_an_empty_client_id(self, monkeypatch):
+        monkeypatch.delenv(mcp_auth._CLIENT_ID_ENV_VAR, raising=False)
+        assert mcp_auth.resolve_client_id({"client_id": "   "}) == mcp_auth._CLIENT_ID
+
+    def test_defaults_to_arete_client(self, monkeypatch):
+        monkeypatch.delenv(mcp_auth._CLIENT_ID_ENV_VAR, raising=False)
+        assert mcp_auth.resolve_client_id({}) == "arete-client"
+
+
+class TestResolveAuthorizationEndpoint:
+    def test_configured_value_wins_and_discovery_is_not_even_attempted(self):
+        def explode(_url):
+            raise AssertionError("discovery ran despite an explicit authorization_url")
+
+        endpoint, source = mcp_auth.resolve_authorization_endpoint(
+            {"authorization_url": "https://auth.example/authorize"},
+            "https://host.example/mcp",
+            discover=explode,
+        )
+        assert endpoint == "https://auth.example/authorize"
+        assert "configured" in source
+
+    def test_uses_discovery_when_nothing_is_configured(self):
+        endpoint, source = mcp_auth.resolve_authorization_endpoint(
+            {},
+            "https://host.example/mcp",
+            discover=lambda _u: {
+                "authorization_endpoint": "https://auth.example/authorize",
+                "discovered_from": "https://host.example/.well-known/x",
+            },
+        )
+        assert endpoint == "https://auth.example/authorize"
+        assert "RFC 8414" in source
+
+    def test_says_it_is_guessing_when_it_falls_back_to_the_target(self):
+        # The whole point. The old code did exactly this and said nothing, so
+        # an operator debugging a blank page had no way to learn the URL was
+        # invented. If this assertion is ever relaxed, that returns.
+        endpoint, source = mcp_auth.resolve_authorization_endpoint(
+            {}, "https://host.example/mcp", discover=lambda _u: None
+        )
+        assert endpoint == "https://host.example/mcp"
+        assert "GUESSED" in source
+        assert "authorization_url" in source
