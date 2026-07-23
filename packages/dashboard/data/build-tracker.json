@@ -1,7 +1,6 @@
 {
   "meta": {
     "seededFrom": [
-      "docs/roadmap/master-build-status.json",
       "docs/status/2026-07-22-build-status-map.md",
       "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
       "docs/roadmap/backlog.md",
@@ -11,7 +10,8 @@
     ],
     "seededAt": "2026-07-23",
     "lastEditedAt": null,
-    "lastEditedBy": null
+    "lastEditedBy": null,
+    "seededNote": "Seeded 2026-07-23 from the docs above. A working file (docs/roadmap/master-build-status.json) was used to assemble this and was retired in 476b7e8 so only one record exists; it is not listed here because a provenance path a reader cannot open is not provenance. Every item carries its own provenance to a doc that still exists."
   },
   "mission": {
     "northStar": "Kuma — your AI Software Healing Engineer.",
