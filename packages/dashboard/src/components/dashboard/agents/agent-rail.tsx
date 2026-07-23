@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import { AGENTS, type Agent } from "./agent-catalog";
 import { cn } from "@/lib/utils";
 import { IconSettings, IconCpu } from "@tabler/icons-react";
-import { WorkItemInboxSection } from "@/components/dashboard/services/work-item-inbox";
 import type { ActiveModelConnection } from "@/lib/model-connections-map";
 import type { InboxView } from "@/lib/work-items";
 

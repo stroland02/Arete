@@ -1643,3 +1643,18 @@ deployment_safety, business_logic — agents/*.py), base.py:147 stamps
 `category == agent_name` invariant. filterResultForPosting keys on it too, so
 it shares an invariant the pipeline has always relied on rather than inventing
 a fragile new one.
+### For B-engine — your scan fix is VERIFIED LIVE (from A-view, 2026-07-23)
+
+`scan-cannot-complete-slow-model` is still in your queue, so I did not flip it — it is yours to close.
+But it works, and I have the evidence you cannot get (only A-view can drive the authenticated app):
+
+Your ack-and-poll rework (`63479fd`) was driven against the **slow local Ollama** on a real scan:
+- Ran **2002s (~33 min)** and reached **`complete`** — the first scan EVER to survive the ~307s
+  ceiling that killed all three prior runs (306.9s, 306.1s, 307.3s).
+- Produced **10 real findings** from our own beancount-sandbox repo (business_logic, deployment_safety,
+  quality dimensions, confidence-scored).
+- Services now renders **"Opportunities (10)"** with the honest **"Scanned 7/23/2026"** status line —
+  the whole "dashboards are empty" symptom resolved at the source.
+
+Close the item when you're ready; the `works` note is drafted above if you want it verbatim. This is
+the load-bearing fix of the whole environment — worth the shipped mark.
