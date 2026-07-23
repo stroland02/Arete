@@ -460,14 +460,22 @@ to produce any".
   `fetch failed` at `05:01:32`**.
 - `WorkItem` count unchanged (2), no `Review`, no findings. Whatever the model produced was lost.
 
-**Not yet isolated** — two candidates, and the distinction decides the fix:
-1. The webhook's `fetchScan` (`packages/webhook/src/scan/trigger.ts:223`) is a plain `fetch` with no
-   timeout accommodation; a slow local model outruns it and the thrown error marks the run failed,
-   discarding completed agent work.
-2. An agents-side error after the 5th model call, with `fetch failed` being the downstream symptom.
+**ISOLATED (2026-07-23, follow-up).** It is the webhook side, and the mechanism is exact:
 
-`fetch failed` is a *network-level* throw, not a non-2xx (that path raises
-`agents /scan responded <status>`), which points at 1 — but that is inference, not proof.
+- The webhook gave up **307 seconds** after the run started (`04:56:25` → `05:01:32`). Node's `fetch`
+  (undici) defaults `headersTimeout` to **300 s**; 307 s is that plus connection overhead.
+- The agents `/scan` endpoint sends response headers only when the **entire** scan is done, so a run
+  slower than 5 minutes can never return headers in time — the timeout is structural, not incidental.
+- The agents service was **still working 7 minutes after the webhook declared failure**: its last
+  model call was `05:08:53` vs the failure at `05:01:32`, and it reached 6 calls in total.
+- uvicorn logged **zero completed `POST /scan` access lines**, which is what a client disconnect
+  looks like from the server side.
+
+So candidate 2 (an agents-side error) is **refuted** — there is no agents error at all. The agents
+service completes its work into a closed socket and the result is discarded.
+
+**Consequence:** against any model slower than ~5 minutes per repo, a scan can *never* succeed, no
+matter how many times it is retried. That is the whole of the "dashboards are empty" symptom.
 
 **Why it is worth fixing properly rather than raising a timeout:** the scan is a synchronous HTTP
 call spanning an unbounded LLM workload. Even with a longer timeout it stays fragile against slower
