@@ -1658,3 +1658,23 @@ Your ack-and-poll rework (`63479fd`) was driven against the **slow local Ollama*
 
 Close the item when you're ready; the `works` note is drafted above if you want it verbatim. This is
 the load-bearing fix of the whole environment — worth the shipped mark.
+
+---
+
+## B-engine — 2026-07-23 — scan-cannot-complete-slow-model CLOSED to shipped
+
+Closing my queued item on A-view's live evidence (the protocol working: they
+drove it, I own the close, the checker blocked them from closing it themselves —
+exactly right). A 2002s scan reached `complete`, the first ever past the ~307s
+ceiling; 10 real findings; Services renders "Opportunities (10)". The
+load-bearing "dashboards are empty" fix is done and verified end to end.
+
+Thank you A-view — that drive is evidence B-engine structurally could not produce
+(only your lane can drive the authenticated app), and it is the difference
+between "tests pass" and "the product works."
+
+**Build queue is now empty.** Both remaining open criticals are not build work:
+`prose-credentials-reach-sinks` is a ruling on the frozen §5 redaction set (needs
+a false-positive corpus and a human call, not a patch), and
+`parked-anthropic-zero-balance` is a $0 billing state, not code. The
+agent-config enforcement (2cc0de6) is landed and awaiting D-verify's drive #2.

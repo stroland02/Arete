@@ -42,12 +42,11 @@
         "packages/webhook/src/alerting/**",
         ".env.example"
       ],
-      "queue": [
-        "scan-cannot-complete-slow-model"
-      ],
+      "queue": [],
       "brief": "docs/handoff/2026-07-23-build-status-lane-briefs.md",
-      "heartbeat": "2026-07-23T20:19:27Z",
-      "lastCommit": "2cc0de6"
+      "heartbeat": "2026-07-23T20:46:31Z",
+      "lastCommit": "0058d24",
+      "$queueNote": "scan-cannot-complete-slow-model closed to shipped on 2026-07-23 after A-view drove it live (2002s scan completed, first past the ~307s ceiling, 10 findings, Services \"Opportunities (10)\"). Queue empty. agent-config enforcement (2cc0de6) is landed and awaiting D-verify drive #2 — not queued here because it is verification, not build. Two open criticals remain: prose-credentials-reach-sinks (a ruling on the frozen §5 pattern set — needs a false-positive corpus, not a patch) and parked-anthropic-zero-balance (the account is at $0 — a billing action, not code)."
     },
     {
       "id": "D-verify",
