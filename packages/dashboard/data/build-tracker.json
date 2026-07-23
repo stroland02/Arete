@@ -924,11 +924,11 @@
     },
     {
       "id": "back-to-overview-and-sample-data-copy",
-      "title": "Two links that point at the wrong place",
+      "title": "Back-to-Overview and sample-data links point where they say",
       "lane": "idea",
       "area": "Partially wired",
-      "level": "partial",
-      "state": "someday",
+      "level": "live",
+      "state": "shipped",
       "importance": "low",
       "rank": 20,
       "programmes": [
@@ -937,8 +937,7 @@
           "phase": "stage-3"
         }
       ],
-      "gap": "'Back to Overview' goes to / (the marketing root), not /overview. 'Explore with sample data' leads to a page that never shows sample data — stale copy that should be removed rather than made true.",
-      "evidence": "packages/dashboard/src/app/(dashboard)/reviews/[id]/page.tsx:67 vs :96",
+      "evidence": "packages/dashboard/src/app/(dashboard)/reviews/[id]/page.tsx — both links href=/overview",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
         "note": "Stage 3.5"
@@ -946,7 +945,8 @@
       "origin": "session",
       "addedAt": "2026-07-23",
       "addedBy": "seed",
-      "verifiedAt": "2026-07-23"
+      "verifiedAt": "2026-07-23",
+      "works": "Both \"Back to Overview\" links in reviews/[id] now go to /overview. The stale \"Explore with sample data\" copy was already removed."
     },
     {
       "id": "delete-synth-ledger",
