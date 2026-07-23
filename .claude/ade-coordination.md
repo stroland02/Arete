@@ -787,3 +787,35 @@ since several "open" entries close on merge.
 **Overlap if merged with `ridley`:** 8 files — `.claude/ade-coordination.md`, `.gitignore`,
 `docs/roadmap/backlog.md`, `packages/dashboard/AGENTS.md`, `incidents/actions.ts`, `lib/incidents.ts`,
 `lib/queries.ts`, `webhook/src/server.ts`. Only the two `incidents` files carry the real conflict.
+
+### UPDATE (2026-07-23, later) — the manual-investigation duplication is now a MERGE CONFLICT, and main took the other lane's version
+
+`main` has since absorbed the other implementation (`packages/dashboard/src/lib/fix-dispatch.ts`,
+`openFixContainer`, reached from `createManualIncident`). Merging `origin/main` into
+`stroland02/overview-revamp` therefore conflicts in exactly the two predicted files —
+`app/(dashboard)/incidents/actions.ts` and `lib/feature-readiness.ts`.
+
+**The merge was ABORTED, deliberately, not resolved.** This lane flagged earlier that the choice is a
+design decision and must not be settled by whoever merges second; resolving it silently now would be
+doing precisely that. The branch is left clean at `e63dc05`.
+
+**Credit where due:** the version on `main` is architecturally the better dashboard-side change — it
+collapses three near-identical "open an IssueContainer, flip the WorkItem to `fixing`, POST
+/fix/trigger" copies into one primitive, which is a real de-duplication this lane did not do.
+
+**The one substantive difference left to decide is a POLICY question, not a code-quality one:**
+
+> Should a hand-opened **`warning`** investigation auto-start a fix run?
+>
+> - **`main`'s answer: yes.** `createManualIncident` opens the run directly, for any severity.
+> - **`ridley`'s answer: no.** It calls the webhook's `routeIncidentToFix`, which opens runs only for
+>   `critical` + `firing` — the same rule alert-driven incidents obey — and reports `unavailable`
+>   rather than failing the action when the webhook is unreachable.
+>
+> Whichever wins, the loser's useful half is worth keeping: `main`'s `fix-dispatch` consolidation, and
+> `ridley`'s "manual and alert-driven incidents obey one policy" property.
+
+**Recommended:** keep `main`'s `fix-dispatch.ts`, and decide the severity policy explicitly. If
+hand-opened incidents should bypass the critical+firing rule, say so in the spec — right now the two
+paths disagree and nothing records which is intended. `ridley` will drop its
+`requestIncidentRouting` + `POST /incidents/:id/route` if the policy answer is "yes, any severity".
