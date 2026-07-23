@@ -1154,11 +1154,11 @@
     },
     {
       "id": "checks-update-double-retry",
-      "title": "Unguarded second checks.update re-opens the double-retry",
+      "title": "A failed check-run update cannot repost the whole review",
       "lane": "idea",
       "area": "Partially wired",
-      "level": "partial",
-      "state": "someday",
+      "level": "live",
+      "state": "shipped",
       "importance": "medium",
       "rank": 160,
       "programmes": [
@@ -1167,8 +1167,7 @@
           "phase": "stage-4"
         }
       ],
-      "gap": "On BOTH worker paths, the checks.update inside the publish-failure catch is itself unguarded. If it throws (transient GitHub failure while reporting a degraded outcome) the error escapes the catch, the job re-throws, and BullMQ retries the whole pipeline despite it having already produced a usable result — the exact double-retry the two-block split was meant to prevent, one call later.",
-      "evidence": "packages/webhook/src/worker.ts — 6 checks.update call sites; the ones inside the publish-failure catch are still unguarded",
+      "evidence": "packages/webhook/src/worker.ts reportDegradedOutcome (try/catch, logs, does not rethrow); commit cf13087",
       "provenance": {
         "doc": "docs/roadmap/backlog.md",
         "note": "Deferred from Phase 4, item 4"
@@ -1176,7 +1175,8 @@
       "origin": "roadmap",
       "addedAt": "2026-07-23",
       "addedBy": "seed",
-      "verifiedAt": "2026-07-23"
+      "verifiedAt": "2026-07-23",
+      "works": "Both publish-failure paths now route through reportDegradedOutcome, which wraps the checks.update in its own try/catch and logs instead of rethrowing. A transient GitHub failure while reporting a degraded outcome can no longer escape the catch and send BullMQ round the whole files-x-agents pipeline again. The stakes were highest on the PR path, where the review is already posted, so a retry meant duplicate comments. The two remaining unguarded updates are in the infra-crash catches, where rethrowing is correct because nothing was produced."
     },
     {
       "id": "confidence-on-review-findings",
