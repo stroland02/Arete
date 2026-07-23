@@ -742,14 +742,15 @@
       ],
       "works": "The worker publishes review-lifecycle metrics to a server-sent stream.",
       "gap": "No consumer — the source comments call it a dark wire. An Overview throughput tile needs a server-side proxy, which depends on the internal-token lifecycle decision.",
-      "evidence": "packages/webhook/src/agent-metrics.ts:4",
+      "evidence": "No dashboard consumer of /metrics/stream. The only EventSource uses target /api/containers/[id]/stream (the synthesizer console), not the metrics wire",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§3 A4"
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "post-the-approved-pr",
@@ -1182,14 +1183,15 @@
       ],
       "works": "Confidence is computed and shown on scan and fix work items.",
       "gap": "ReviewComment has no confidence column at all, so PR findings show none. Schema column plus UI.",
-      "evidence": "schema.prisma (ReviewComment)",
+      "evidence": "packages/db/prisma/schema.prisma ReviewComment has no confidence field; the confidence Float at :186 belongs to WorkItem, which is why scan and fix show one and PR findings do not",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§4 B3"
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "correct-tracking-docs",
@@ -2071,7 +2073,7 @@
       "href": "/grid",
       "works": "The grid reads a real telemetry snapshot per repository.",
       "gap": "Snapshots are captured only during a review and there is no background poller, so a quiet repo shows arbitrarily stale data with nothing but fetchedAt to say so. TelemetrySnapshotRecord is a latest-value row, not a history table.",
-      "evidence": "schema.prisma:367-374",
+      "evidence": "No background poller in packages/webhook/src/telemetry — snapshots are still captured only during a review",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§4 B5"
@@ -2081,7 +2083,8 @@
       "addedBy": "seed",
       "tags": [
         "product-commercial"
-      ]
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "tracing-and-log-search",
@@ -2099,8 +2102,8 @@
         }
       ],
       "works": "Full OpenTelemetry instrumentation flows into ClickHouse and Jaeger, and Jaeger trace deep-links exist.",
-      "gap": "Exactly one metric reaches the UI. No trace view, no span drill-down, no log search. This is what blocks telemetry-fed investigations — the healing agent cannot read an incident's own trace context.",
-      "evidence": "packages/dashboard/src/lib/queries.ts getAgentEventsPerMinute",
+      "gap": "Still no in-product trace view, no span drill-down and no log search. One correction: deep-linking is no longer missing — the Errors list and an incident's Signals rows turn real trace ids into Jaeger links when NEXT_PUBLIC_JAEGER_UI_URL is set, and render plain text when it is not.",
+      "evidence": "packages/dashboard/src/lib/trace-links.ts and components/dashboard/incidents/error-list.tsx:7,29 (deep-links present); no trace/span/log-search surface exists",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§4 B2"
@@ -2110,7 +2113,8 @@
       "addedBy": "seed",
       "tags": [
         "product-commercial"
-      ]
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "parked-anthropic-zero-balance",
