@@ -633,3 +633,24 @@ never once succeeded here.
 **Verify the fix:** a real open PR (#1, head 9a577c4b) exists on the connected repo. Enqueue a review
 for it with the worker under a correct env (`node --env-file`, which parses the multi-line key that
 bash-sourcing truncates), and confirm a `Review` row lands and Overview populates.
+
+### Follow-up 2026-07-23 — PR reviews: two walls down, the third is the ~300s ceiling
+
+After the octokit.rest fix (`cdf2cd2`) and the 120s→15min review-timeout fix (`76f7dcd`), a review of
+the real open PR #1 now runs PAST 120s and reaches the agents `/review` — then dies with
+`fetch failed`, the SAME network-level connection sever that killed the scan at ~307s (see the scan
+saga above). So the review path has the identical unidentified ~300s ceiling, and the 15-min app
+timeout never gets to fire because the socket is severed first.
+
+**Two honest paths to populated Overview dashboards, neither requiring more guesswork:**
+- **A (no code):** connect a FAST model. A review against a cloud model (Anthropic/Gemini) completes
+  in well under 300s, so the ceiling never bites — reviews land, dashboards populate immediately.
+  Blocked only by the parked $0 Anthropic balance. This is the cheapest path by far.
+- **B (substantial):** give `/review` the same ack-and-poll rework `/scan` got (`63479fd`) — submit,
+  get a runId, poll `/review/runs/{id}` — so a review survives any duration on the slow local model.
+  This is the durable fix and mirrors an existing pattern, but it is real work across webhook+agents.
+
+The two timeout fixes are correct and landed regardless — they were genuine bugs (reviews died at
+120s even on a fast model that finishes in 30s would have been fine, but the 120s was still too tight
+for local). The remaining blocker is the shared ~300s ceiling, now confirmed on BOTH the scan and
+review paths.
