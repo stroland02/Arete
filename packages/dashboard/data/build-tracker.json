@@ -2415,7 +2415,7 @@
       "lane": "inventory",
       "area": "Partially wired",
       "level": "partial",
-      "state": "next",
+      "state": "running",
       "importance": "critical",
       "rank": 5,
       "gap": "The webhook stops waiting on agents /scan while the service is still working, and the completed findings are discarded. Observed: gave up at 307s, agents kept working 7 more minutes. ded009f added an explicit deadline; the underlying limit that ended the run is still unknown (the 300s headersTimeout theory was DISPROVED). This is the whole of the 'dashboards are empty' symptom.",
