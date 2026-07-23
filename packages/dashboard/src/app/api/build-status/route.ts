@@ -1,101 +1,77 @@
-import { readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { NextResponse } from "next/server";
+import { addItem, dropItem, removeUserItem } from "@/lib/build-tracker/mutate";
+import { readTracker, trackerWritability, writeTracker } from "@/lib/build-tracker/store";
+import {
+  AREA_ORDER,
+  IMPORTANCE_ORDER,
+  LEVEL_ORDER,
+  type Importance,
+  type ItemState,
+  type ReadinessArea,
+  type ReadinessLevel,
+} from "@/lib/build-tracker/schema";
 
 /**
- * Dev-only write-back for the build-status list.
+ * Dev-only write-back for the build-status tracker.
  *
- * The master list stays a hand-authored TypeScript file (see
- * `lib/feature-readiness.ts`) — that is deliberate, so it can describe
- * capabilities with no UI to inspect, and so every edit lands as a reviewable
- * git diff rather than invisible database state.
+ * The tracker stays a git-tracked file (`data/build-tracker.json`) rather than
+ * database state, so every edit made here arrives as a reviewable diff, and an
+ * agent can read the same record the page renders.
  *
- * This route therefore performs *surgical* inserts and removals rather than
- * re-serialising the whole array: rewriting the array wholesale would delete
- * the file's section comments and evidence annotations, which are the point of
- * it being hand-authored.
+ * This route moved with the page when it adopted the tracker. Leaving it
+ * pointed at the old list would have been worse than not shipping it: the form
+ * would look live, report success, and write somewhere nothing reads.
  *
- * Not mounted in production — editing your own source at runtime is a
- * local-development affordance only.
+ * Not available in production — editing a repository working tree at runtime is
+ * a local-development affordance, and a deployed container has no working tree.
  */
 
-const FILE = path.join(process.cwd(), "src", "lib", "feature-readiness.ts");
+export const dynamic = "force-dynamic";
+
+/** The page's importance bands, as the editor still labels them. */
+const PRIORITY_TO_IMPORTANCE: Record<string, Importance> = {
+  P0: "critical",
+  P1: "high",
+  P2: "medium",
+  P3: "low",
+};
 
 /**
- * Line endings are detected from the file rather than assumed. On Windows git
- * checks this file out as CRLF, and matching on a bare "\n" finds nothing —
- * every edit would fail with "file shape changed". Detecting keeps the inserted
- * text consistent with the file instead of mixing endings.
+ * A new row's lifecycle state, inferred from how finished it is.
+ *
+ * Inferred rather than asked for: the editor collects what a person actually
+ * knows (how finished, how much it matters), and making them also pick a
+ * lifecycle state invites a guess that then reads as fact.
  */
-function eolOf(source: string) {
-  return source.includes("\r\n") ? "\r\n" : "\n";
-}
-
-/** Closing line of the FEATURE_READINESS array literal, either line ending. */
-const ARRAY_END = /\r?\n\];\r?\n/;
-
-function isProduction() {
-  return process.env.NODE_ENV === "production";
+function stateForLevel(level: ReadinessLevel): ItemState {
+  if (level === "live") return "shipped";
+  if (level === "partial" || level === "preview") return "in-progress";
+  return "someday";
 }
 
 interface ItemInput {
-  name: string;
-  area: string;
-  level: string;
+  name?: string;
+  area?: string;
+  level?: string;
   priority?: string;
-  phase?: string;
   href?: string;
   works?: string;
   gap?: string;
   evidence?: string;
+  note?: string;
 }
 
-const AREAS = ["Product surfaces", "Built, but unreachable", "Partially wired", "Not built yet"];
-const LEVELS = ["live", "preview", "partial", "soon"];
-const PRIORITIES = ["P0", "P1", "P2", "P3"];
-const PHASES = ["P1", "P2", "P2b", "P3", "P4"];
-
-/** Render one entry as TypeScript, matching the file's existing style. */
-function serialize(item: ItemInput, eol: string): string {
-  const line = (k: string, v?: string) => (v ? `    ${k}: ${JSON.stringify(v)},${eol}` : "");
-  return (
-    `  {${eol}` +
-    line("name", item.name) +
-    line("area", item.area) +
-    line("level", item.level) +
-    line("priority", item.priority) +
-    line("phase", item.phase) +
-    line("href", item.href) +
-    line("works", item.works) +
-    line("gap", item.gap) +
-    line("evidence", item.evidence) +
-    `  },${eol}`
-  );
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
-/**
- * Find the entry whose `name` matches and return its [start, end) bounds, so it
- * can be cut out without disturbing its neighbours or the surrounding comments.
- */
-function findEntry(source: string, name: string): [number, number] | null {
-  const eol = eolOf(source);
-  const needle = `    name: ${JSON.stringify(name)},`;
-  const at = source.indexOf(needle);
-  if (at === -1) return null;
-
-  const open = `${eol}  {${eol}`;
-  const start = source.lastIndexOf(open, at);
-  if (start === -1) return null;
-
-  const close = `${eol}  },${eol}`;
-  const end = source.indexOf(close, at);
-  if (end === -1) return null;
-
-  return [start + eol.length, end + close.length];
+function unavailable() {
+  return new NextResponse("Not found", { status: 404 });
 }
 
 export async function POST(request: Request) {
-  if (isProduction()) return new NextResponse("Not found", { status: 404 });
+  const writability = trackerWritability();
+  if (!writability.writable) return unavailable();
 
   let body: ItemInput;
   try {
@@ -104,65 +80,131 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Body must be JSON." }, { status: 400 });
   }
 
-  if (!body?.name?.trim()) {
+  const name = body?.name?.trim();
+  if (!name) {
     return NextResponse.json({ error: "A name is required." }, { status: 400 });
   }
-  if (!AREAS.includes(body.area)) {
-    return NextResponse.json({ error: `area must be one of: ${AREAS.join(", ")}` }, { status: 400 });
-  }
-  if (!LEVELS.includes(body.level)) {
-    return NextResponse.json({ error: `level must be one of: ${LEVELS.join(", ")}` }, { status: 400 });
-  }
-  if (body.priority && !PRIORITIES.includes(body.priority)) {
+  if (!AREA_ORDER.includes(body.area as ReadinessArea)) {
     return NextResponse.json(
-      { error: `priority must be one of: ${PRIORITIES.join(", ")}` },
+      { error: `area must be one of: ${AREA_ORDER.join(", ")}` },
       { status: 400 }
     );
   }
-  if (body.phase && !PHASES.includes(body.phase)) {
-    return NextResponse.json({ error: `phase must be one of: ${PHASES.join(", ")}` }, { status: 400 });
+  if (!LEVEL_ORDER.includes(body.level as ReadinessLevel)) {
+    return NextResponse.json(
+      { error: `level must be one of: ${LEVEL_ORDER.join(", ")}` },
+      { status: 400 }
+    );
   }
 
-  const source = await readFile(FILE, "utf8");
-
-  if (findEntry(source, body.name)) {
+  const importance = body.priority
+    ? PRIORITY_TO_IMPORTANCE[body.priority]
+    : ("medium" as Importance);
+  if (!importance || !IMPORTANCE_ORDER.includes(importance)) {
     return NextResponse.json(
-      { error: `"${body.name}" is already on the list. Remove it first to replace it.` },
+      { error: `priority must be one of: ${Object.keys(PRIORITY_TO_IMPORTANCE).join(", ")}` },
+      { status: 400 }
+    );
+  }
+
+  const tracker = await readTracker();
+  if (!tracker.ok) {
+    return NextResponse.json({ error: tracker.errors.join(" ") }, { status: 500 });
+  }
+
+  if (tracker.doc.items.some((item) => item.title === name)) {
+    return NextResponse.json(
+      { error: `"${name}" is already on the list. Remove it first to replace it.` },
       { status: 409 }
     );
   }
 
-  const match = ARRAY_END.exec(source);
-  if (!match) {
+  const level = body.level as ReadinessLevel;
+  const result = addItem(
+    tracker.doc,
+    {
+      title: name,
+      area: body.area as ReadinessArea,
+      level,
+      state: stateForLevel(level),
+      importance,
+      lane: "idea",
+      href: body.href,
+      works: body.works,
+      gap: body.gap,
+      note: body.note,
+    },
+    today()
+  );
+
+  if (!result.changed) {
+    return NextResponse.json({ error: result.refused ?? "Nothing changed." }, { status: 400 });
+  }
+
+  // `expectedRaw` guards the lost update: the tracker's other writer is an agent
+  // editing the file directly, and it will never cooperate with a revision
+  // counter, so the comparison is against the bytes we actually read.
+  const written = await writeTracker(result.doc, tracker.raw);
+  if (!written.ok) {
     return NextResponse.json(
-      { error: "Could not locate the end of FEATURE_READINESS — file shape changed." },
-      { status: 500 }
+      { error: written.errors.join(" ") },
+      { status: written.reason === "stale" ? 409 : 500 }
     );
   }
 
-  const eol = eolOf(source);
-  const at = match.index + eol.length; // insert just before the closing "];"
-  await writeFile(FILE, source.slice(0, at) + serialize(body, eol) + source.slice(at), "utf8");
-
-  return NextResponse.json({ ok: true, added: body.name });
+  return NextResponse.json({ ok: true, added: name });
 }
 
 export async function DELETE(request: Request) {
-  if (isProduction()) return new NextResponse("Not found", { status: 404 });
+  const writability = trackerWritability();
+  if (!writability.writable) return unavailable();
 
   const name = new URL(request.url).searchParams.get("name");
   if (!name) {
     return NextResponse.json({ error: "Pass ?name=<item name>." }, { status: 400 });
   }
 
-  const source = await readFile(FILE, "utf8");
-  const bounds = findEntry(source, name);
-  if (!bounds) {
+  const tracker = await readTracker();
+  if (!tracker.ok) {
+    return NextResponse.json({ error: tracker.errors.join(" ") }, { status: 500 });
+  }
+
+  const target = tracker.doc.items.find((item) => item.title === name);
+  if (!target) {
     return NextResponse.json({ error: `No entry named "${name}".` }, { status: 404 });
   }
 
-  const [start, end] = bounds;
-  await writeFile(FILE, source.slice(0, start) + source.slice(end), "utf8");
+  /**
+   * Two different operations, and the difference is the point.
+   *
+   * Something you added yourself is destroyed. A catalogued item is *dropped* —
+   * it keeps its row, its provenance and a reason, and stays restorable.
+   * Destroying a catalogued idea is exactly the loss this tracker was built to
+   * prevent, so the API refuses to do it however the button is labelled.
+   */
+  const stamp = today();
+  const result =
+    target.origin === "user"
+      ? removeUserItem(tracker.doc, target.id, stamp)
+      : dropItem(tracker.doc, target.id, "Dropped from the build-status page.", stamp);
 
-  return NextResponse.json({ ok: true, removed: name });
+  if (!result.changed) {
+    return NextResponse.json({ error: result.refused ?? "Nothing changed." }, { status: 409 });
+  }
+
+  const written = await writeTracker(result.doc, tracker.raw);
+  if (!written.ok) {
+    return NextResponse.json(
+      { error: written.errors.join(" ") },
+      { status: written.reason === "stale" ? 409 : 500 }
+    );
+  }
+
+  return NextResponse.json({
+    ok: true,
+    removed: name,
+    // Said plainly so the UI cannot imply a catalogued idea was deleted when it
+    // was only set aside.
+    outcome: target.origin === "user" ? "deleted" : "dropped",
+  });
 }

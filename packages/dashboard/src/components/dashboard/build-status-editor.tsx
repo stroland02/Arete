@@ -5,12 +5,17 @@ import { useRouter } from "next/navigation";
 import { IconPlus, IconTrash } from "@tabler/icons-react";
 
 /**
- * Local-development editor for the build-status list.
+ * Local-development editor for the build-status tracker.
  *
- * Writes through to `lib/feature-readiness.ts`, so every change you make here
- * shows up as a git diff you review and commit — the list stays hand-authored
- * and stays the one thing both this page and the agents read. Rendered only in
- * development; the route behind it 404s in production.
+ * Writes through to `data/build-tracker.json`, so every change you make here
+ * shows up as a git diff you review and commit — the tracker stays one record
+ * that both this page and the agents read. Rendered only in development; the
+ * route behind it 404s in production.
+ *
+ * No phase control on purpose. Each programme numbers its phases differently
+ * (`stage-1…5`, `0…4`, `P1…P4`, `A/B/C`), so a single flat value cannot say
+ * which programme it belongs to — and a control that writes something nothing
+ * can read is worse than no control. Set a phase in the file.
  */
 
 const AREAS = [
@@ -21,17 +26,16 @@ const AREAS = [
 ] as const;
 const LEVELS = ["live", "preview", "partial", "soon"] as const;
 const PRIORITIES = ["P0", "P1", "P2", "P3"] as const;
-const PHASES = ["P1", "P2", "P2b", "P3", "P4"] as const;
 
 const EMPTY = {
   name: "",
   area: "Not built yet" as string,
   level: "soon" as string,
   priority: "P2" as string,
-  phase: "" as string,
   works: "",
   gap: "",
   evidence: "",
+  note: "",
 };
 
 export function BuildStatusEditor({ names }: { names: string[] }) {
@@ -109,7 +113,7 @@ export function BuildStatusEditor({ names }: { names: string[] }) {
         <div>
           <h2 className="text-sm font-semibold text-content-primary">Edit the list</h2>
           <p className="mt-0.5 text-xs text-content-muted">
-            Writes to <span className="font-mono">lib/feature-readiness.ts</span> — review the diff
+            Writes to <span className="font-mono">data/build-tracker.json</span> — review the diff
             before committing. Development only.
           </p>
         </div>
@@ -161,11 +165,14 @@ export function BuildStatusEditor({ names }: { names: string[] }) {
             </select>
           </div>
           <div>
-            <label className={label} htmlFor="bs-phase">Phase</label>
-            <select id="bs-phase" className={field} value={form.phase} onChange={set("phase")}>
-              <option value="">— none —</option>
-              {PHASES.map((p) => <option key={p} value={p}>{p}</option>)}
-            </select>
+            <label className={label} htmlFor="bs-note">Where this came from</label>
+            <input
+              id="bs-note"
+              className={field}
+              value={form.note}
+              onChange={set("note")}
+              placeholder="optional — a doc, a commit, a conversation"
+            />
           </div>
 
           <div className="sm:col-span-2">
@@ -200,6 +207,16 @@ export function BuildStatusEditor({ names }: { names: string[] }) {
 
       <div className="border-t border-border-subtle pt-3">
         <label className={label} htmlFor="bs-remove">Remove an item</label>
+        {/*
+          Says what actually happens. Only something you added yourself is
+          destroyed; a catalogued item is set aside with a reason and stays in
+          the file, because losing a recorded idea is the failure this tracker
+          exists to prevent.
+        */}
+        <p className="mt-0.5 text-[11px] leading-4 text-content-muted">
+          Items you added are deleted. Catalogued items are dropped — kept in the file with a
+          reason, so the idea is not lost.
+        </p>
         <div className="mt-1 flex gap-2">
           <select
             id="bs-remove"

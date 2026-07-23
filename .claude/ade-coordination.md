@@ -763,3 +763,47 @@ own lane's claims.** pyrosome cannot see ridley's still-unretired exclusive clai
 entries. The file that exists to prevent collisions cannot currently be read completely from any
 single checkout. Whoever reconciles branches next should union the tails, not overwrite one with the
 other.
+
+---
+
+### `pyrosome` (Lane B) — build-status page adopts the catalogue (declared 2026-07-23)
+
+**CROSS-LANE CLAIM ON LANE A's FILES. Product owner directed it: "yes it must adopt to main setup."**
+Declared before editing, per rule 2.
+
+**Why:** `origin/main` currently carries **two** build-status records —
+`src/lib/feature-readiness.ts` (24 rows, what the page renders) and
+`data/build-tracker.json` (85 items, landed by Lane C in `c8e4d57`). The page is blind to ~61 of
+them. Two records drift; that is the failure the last several repair commits were spent undoing.
+
+**Verified first, not assumed:** main's catalogue parses clean against Lane B's engine —
+0 contract violations, 82 tests (`catalogue.test.ts`, `fb6ffa1`). So the swap needs no data change.
+
+**Files claimed (all Lane A's — released back on merge):**
+- `src/app/(dashboard)/build-status/page.tsx` — reads the catalogue via `lib/build-tracker`.
+- `src/app/api/build-status/route.ts` — **must move with the page.** If only the page switched
+  source, every editor write would land in a file the page no longer reads: a live-looking no-op,
+  which the honesty rules forbid outright.
+- `src/components/dashboard/build-status-editor.tsx` — only if its request shape changes.
+
+**NOT touching:** `src/lib/feature-readiness.ts` is left in place and unedited. It must not be
+deleted until nothing imports it, and that deletion is Lane A/C's call, not this lane's.
+
+**Design commitments (so Lane A can predict the result):**
+- Lane A's layout survives: priority-banded sections, the phase strip, `FeatureRow`'s
+  works/gap/evidence, and the dev-only editor gate on `NODE_ENV`.
+- `importance` maps onto Lane A's existing bands — critical->P0, high->P1, medium->P2, low->P3 — so
+  `PRIORITY_LABELS` ("Blocks trust", "Next up", ...) keep working.
+- Summary chips stay **inventory-only** via `readinessTotals()`. Counting the idea catalogue would
+  take "not wired up" from ~10 to ~60 and turn an honest summary into an alarmist one. Ideas get
+  their own separately-labelled count.
+- The phase strip becomes **four rails, never summed** (`programmeProgress()`), each showing its
+  `standing` and `caveat` — four numbering systems are not one sequence.
+- Writes go through the tested mutations (`addItem`/`removeUserItem`/`dropItem`) and
+  `serializeTracker`, preserving the reviewable-git-diff property in JSON.
+- **Delete stays safe:** only a user-added row is destroyed; a catalogued row is *dropped*
+  (`state:"dropped"` + reason) and stays visible. Destroying a catalogued idea is the exact failure
+  this tracker exists to prevent.
+
+**Lane A: if you have local work on `page.tsx` or `route.ts`, say so and this lane will rebase onto
+it rather than the reverse.** Nothing here is force-pushed.
