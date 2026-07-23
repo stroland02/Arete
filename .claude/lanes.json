@@ -42,6 +42,8 @@
         "packages/dashboard/src/lib/build-tracker.test.ts",
         "packages/agents/src/arete_agents/mcp/**",
         "packages/agents/tests/test_mcp_*.py",
+        "packages/webhook/src/worker.ts",
+        "packages/webhook/src/pipeline.integration.test.ts",
         "scripts/lanes.mjs"
       ],
       "avoid": [
@@ -56,8 +58,8 @@
       ],
       "$queueNote": "mcp-token-plaintext-and-simulated-oauth was cleared on 2026-07-23 at c7ddd54: client_id resolution and RFC 8414 discovery are done. Its one remaining part — encryption no-opping to cleartext with no key configured — is a ruling, not a patch (the ledger records that fallback as a deliberate upgrade-safety decision), so it waits for a human rather than sitting here making this lane look busy. agent-config-persistence is the next open item this lane can actually finish alone: it needs a persistence path, which is library work, and A-view owns the drawer that consumes it.",
       "brief": "docs/handoff/2026-07-23-build-status-lane-briefs.md",
-      "heartbeat": "2026-07-23T12:07:02Z",
-      "lastCommit": "8179749"
+      "heartbeat": "2026-07-23T12:33:26Z",
+      "lastCommit": "801ae80"
     },
     {
       "id": "C-data",

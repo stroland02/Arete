@@ -645,6 +645,39 @@ describe('pipeline integration: webhook -> queue -> worker -> review -> post', (
     expect(mocks.prisma.reviewCreate).not.toHaveBeenCalled()
   })
 
+  it('posting SUCCEEDS but the final check-run update fails -> job does not throw, and the review is not posted twice', async () => {
+    // The worse half of the same bug, and the one that was still open after
+    // the publish-failure catch was guarded: by this point the review has
+    // ALREADY been posted to the PR. An unguarded throw here sends BullMQ
+    // round the entire files x agents pipeline again -- and the retry posts
+    // the whole review a SECOND time, so the PR author gets duplicate
+    // comments. A check run stuck `in_progress` is a visible degradation; a
+    // duplicated review is worse and harder to undo.
+    mocks.octokit.rest.checks.update.mockRejectedValue(
+      Object.assign(new Error('GitHub API unavailable'), { status: 503 })
+    )
+    const app = await buildApp(mocks)
+
+    const res = await request(app)
+      .post('/webhook')
+      .set('Content-Type', 'application/json')
+      .set('X-GitHub-Event', 'pull_request')
+      .send(JSON.stringify(PR_PAYLOAD))
+    expect(res.status).toBe(200)
+
+    const { processReviewJob } = await import('./worker.js')
+    await expect(processReviewJob(mocks.capturedJobs[0])).resolves.toBeUndefined()
+
+    // Posting succeeded exactly once. That is the assertion that matters:
+    // this test fails on the retry count, not merely on the throw.
+    expect(mocks.octokit.rest.pulls.createReview).toHaveBeenCalledTimes(1)
+    // The completion was attempted with the review's real verdict, not
+    // downgraded to 'failure' -- the review did succeed.
+    expect(mocks.octokit.rest.checks.update).toHaveBeenCalledWith(
+      expect.objectContaining({ check_run_id: 555, status: 'completed', output: expect.anything() })
+    )
+  })
+
   it('genuine infra crash: pipeline yields no result at all -> job DOES throw (still retried by attempts:3)', async () => {
     const runReviewPipelineMock = vi.fn().mockRejectedValue(new Error('Python pipeline exited with status 500: internal error'))
     await buildApp(mocks, { runReviewPipeline: runReviewPipelineMock })
