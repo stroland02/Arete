@@ -35,6 +35,16 @@ const log = logger.child({ component: 'scan' })
  */
 const SCAN_REQUEST_TIMEOUT_MS = Number(process.env.SCAN_REQUEST_TIMEOUT_MS ?? 45 * 60 * 1000)
 
+/**
+ * After this long, a `running` ScanRun is treated as abandoned rather than
+ * in-flight.
+ *
+ * Derived from the request deadline instead of being set independently, so the
+ * two cannot drift apart: a run older than the longest possible in-flight
+ * request, plus a margin, cannot still be running in this process.
+ */
+const SCAN_STALE_AFTER_MS = SCAN_REQUEST_TIMEOUT_MS + 5 * 60 * 1000
+
 export interface ScanFindingBody {
   kind: 'issue' | 'opportunity'
   title: string
@@ -73,6 +83,7 @@ export interface ScanTriggerDeps {
       findFirst(args: unknown): Promise<{ id: string } | null>
       create(args: unknown): Promise<{ id: string }>
       update(args: unknown): Promise<unknown>
+      updateMany(args: unknown): Promise<unknown>
     }
     workItem: {
       findUnique(args: unknown): Promise<{ id: string; state: string } | null>
@@ -117,11 +128,39 @@ export async function maybeStartScan(
   const llm = await deps.resolveModel(installation.externalId)
   if (!llm) return { started: false, reason: 'no_model' }
 
+  // A `running` row only ever becomes `failed` via the catch at the end of this
+  // function, which needs THIS PROCESS to still be alive. If the webhook
+  // restarts mid-scan — deploy, crash, container reschedule — the row is left
+  // saying `running` with nothing remaining that could finish it, and from then
+  // on every scan for that tenant is refused as already_running. Permanently.
+  // The 45-minute request deadline above makes that window wide.
+  //
+  // So only a run that could still plausibly be in flight blocks a new one.
+  const staleCutoff = new Date(Date.now() - SCAN_STALE_AFTER_MS)
   const running = await deps.prisma.scanRun.findFirst({
-    where: { installationId, status: 'running' },
+    where: { installationId, status: 'running', startedAt: { gt: staleCutoff } },
     select: { id: true },
   })
   if (running) return { started: false, reason: 'already_running' }
+
+  // Anything older is abandoned, and is closed out rather than left alone: a row
+  // reading `running` about a process that no longer exists is a false status,
+  // and this record is what the UI shows. The reason says what is actually
+  // known — that it was abandoned — not that it was tried and failed.
+  try {
+    await deps.prisma.scanRun.updateMany({
+      where: { installationId, status: 'running', startedAt: { lte: staleCutoff } },
+      data: {
+        status: 'failed',
+        error: 'abandoned: no scan process claimed this run before it went stale',
+        finishedAt: new Date(),
+      },
+    })
+  } catch (err) {
+    // Never fatal. Failing to tidy history must not stop the scan being asked
+    // for now — the stale row has already been excluded from the block above.
+    log.error({ err, installationId }, 'failed to close out abandoned ScanRun rows')
+  }
 
   const run = await deps.prisma.scanRun.create({
     data: { installationId, repositoryId: repo.id, status: 'running' },
@@ -218,6 +257,7 @@ export function defaultScanTriggerDeps(): ScanTriggerDeps {
         findFirst: delegate('scanRun', 'findFirst'),
         create: delegate('scanRun', 'create'),
         update: delegate('scanRun', 'update'),
+        updateMany: delegate('scanRun', 'updateMany'),
       },
       workItem: {
         findUnique: delegate('workItem', 'findUnique'),

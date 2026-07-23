@@ -49,6 +49,7 @@ function deps(opts: {
   const scanRunFindFirst = vi.fn().mockResolvedValue(opts.runningScan ? { id: 'run-existing' } : null)
   const scanRunCreate = vi.fn().mockResolvedValue({ id: 'run-1' })
   const scanRunUpdate = vi.fn().mockResolvedValue({ id: 'run-1' })
+  const scanRunUpdateMany = vi.fn().mockResolvedValue({ count: 0 })
   const workItemFindUnique = vi.fn(async (args: unknown) => {
     const where = (args as { where: { installationId_fingerprint: { fingerprint: string } } }).where
     return existing.get(where.installationId_fingerprint.fingerprint) ?? null
@@ -65,7 +66,12 @@ function deps(opts: {
     prisma: {
       installation: { findUnique: installationFindUnique },
       repository: { findFirst: repositoryFindFirst },
-      scanRun: { findFirst: scanRunFindFirst, create: scanRunCreate, update: scanRunUpdate },
+      scanRun: {
+        findFirst: scanRunFindFirst,
+        create: scanRunCreate,
+        update: scanRunUpdate,
+        updateMany: scanRunUpdateMany,
+      },
       workItem: { findUnique: workItemFindUnique, create: workItemCreate, update: workItemUpdate },
     },
     resolveModel,
@@ -78,6 +84,7 @@ function deps(opts: {
     scanRunFindFirst,
     scanRunCreate,
     scanRunUpdate,
+    scanRunUpdateMany,
     workItemFindUnique,
     workItemCreate,
     workItemUpdate,
@@ -199,5 +206,54 @@ describe('maybeStartScan — repo+model gated, honest ScanRun status', () => {
     const d = deps({})
     d.installationFindUnique.mockResolvedValue(null)
     expect(await maybeStartScan('missing', d.d)).toEqual({ started: false, reason: 'no_repo' })
+  })
+
+  it('only lets a run that could still be in flight block a new scan', async () => {
+    // The blocking query must be time-bounded. A ScanRun only becomes 'failed'
+    // via the catch in maybeStartScan, which needs THIS process alive; if the
+    // webhook restarts mid-scan the row stays 'running' with nothing left to
+    // finish it, and every later scan for that tenant is refused forever.
+    const { d, scanRunFindFirst } = deps({})
+    await maybeStartScan('inst-1', d)
+
+    const where = scanRunFindFirst.mock.calls[0][0].where
+    expect(where.status).toBe('running')
+    expect(where.startedAt?.gt).toBeInstanceOf(Date)
+    // Wide enough that a genuinely slow scan is never mistaken for abandoned.
+    expect(Date.now() - where.startedAt.gt.getTime()).toBeGreaterThan(45 * 60 * 1000)
+  })
+
+  it('closes out an abandoned run instead of leaving it saying running forever', async () => {
+    const { d, scanRunUpdateMany, scanRunFindFirst } = deps({})
+    await maybeStartScan('inst-1', d)
+
+    expect(scanRunUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ installationId: 'inst-1', status: 'running' }),
+        data: expect.objectContaining({ status: 'failed', error: expect.stringContaining('abandoned') }),
+      }),
+    )
+    // The cutoff for closing out must be the exact complement of the cutoff for
+    // blocking, or a run could fall through both and be neither.
+    const blockAfter = scanRunFindFirst.mock.calls[0][0].where.startedAt.gt
+    const closeBefore = scanRunUpdateMany.mock.calls[0][0].where.startedAt.lte
+    expect(closeBefore.getTime()).toBe(blockAfter.getTime())
+  })
+
+  it('still starts the scan when closing out abandoned runs fails', async () => {
+    // Tidying history is never allowed to block the scan being asked for now.
+    const { d, scanRunUpdateMany, scanRunCreate } = deps({})
+    scanRunUpdateMany.mockRejectedValue(new Error('db down'))
+
+    await expect(maybeStartScan('inst-1', d)).resolves.toEqual({ started: true })
+    expect(scanRunCreate).toHaveBeenCalled()
+  })
+
+  it('a fresh running scan still blocks, and nothing is closed out', async () => {
+    const { d, scanRunCreate, scanRunUpdateMany } = deps({ runningScan: true })
+
+    expect(await maybeStartScan('inst-1', d)).toEqual({ started: false, reason: 'already_running' })
+    expect(scanRunCreate).not.toHaveBeenCalled()
+    expect(scanRunUpdateMany).not.toHaveBeenCalled()
   })
 })
