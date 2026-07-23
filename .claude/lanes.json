@@ -36,7 +36,7 @@
     {
       "id": "B-engine",
       "checkout": "workspaces/Arete/pyrosome",
-      "role": "typed selectors and backend libraries — no UI, no data authoring",
+      "role": "PM-2 · Engine — unblock the data; typed selectors and backend libraries, no UI",
       "owns": [
         "packages/dashboard/src/lib/build-tracker.ts",
         "packages/dashboard/src/lib/build-tracker.test.ts",
@@ -46,7 +46,9 @@
         "packages/webhook/src/pipeline.integration.test.ts",
         "scripts/lanes*.mjs",
         "packages/dashboard/src/lib/trends.ts",
-        "packages/dashboard/src/lib/trends.test.ts"
+        "packages/dashboard/src/lib/trends.test.ts",
+        "packages/webhook/src/scan/trigger.ts",
+        "packages/webhook/src/scan/trigger.test.ts"
       ],
       "avoid": [
         "packages/dashboard/src/components/**",
@@ -55,12 +57,11 @@
         "packages/webhook/src/alerting/**",
         ".env.example"
       ],
-      "queue": [
-        "trends-utc-vs-local-day"
-      ],
+      "queue": [],
       "brief": "docs/handoff/2026-07-23-build-status-lane-briefs.md",
-      "heartbeat": "2026-07-23T13:10:13Z",
-      "lastCommit": "19d9cb5"
+      "heartbeat": "2026-07-23T13:32:45Z",
+      "lastCommit": "f95bb28",
+      "$queueNote": "Working PM-2 item 1, the M1 scan timeout (docs/handoff/2026-07-23-build-the-product-briefs.md). It is NOT in the queue because it has no tracker row — the repo's most consequential defect is absent from the record that is supposed to be the single source of truth. D-verify flagged this; C-data owns build-tracker.json. Queuing a made-up id would have turned the checker red for every lane, and inventing a row in another lane's file is what this system exists to prevent. Requested in ade-coordination.md; will queue it the moment the row exists."
     },
     {
       "id": "C-data",
