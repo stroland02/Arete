@@ -192,54 +192,68 @@ def state_is_valid(expected: Optional[str], received: Optional[str]) -> bool:
     return secrets.compare_digest(expected, received)
 
 
+def callback_result(
+    query_params: dict, expected_state: Optional[str]
+) -> tuple[Optional[str], Optional[str]]:
+    """Decide a callback's outcome as `(code, error)` — exactly one is set.
+
+    Pure, so the branches can be tested without binding a socket. The order
+    matters: `state` is checked before the code is even looked at, because an
+    unverified code must never reach the caller.
+
+    A callback carrying a valid `state` but no `code` is a *failure*, not a
+    non-event — the usual cause is the provider redirecting with
+    `?error=access_denied` when someone declines consent. It gets an error so
+    the caller stops waiting; see the shutdown note in `do_GET`.
+    """
+    received = (query_params.get("state") or [None])[0]
+    if not state_is_valid(expected_state, received):
+        return None, "callback state did not match the value this flow generated"
+
+    code = (query_params.get("code") or [None])[0]
+    if code:
+        return code, None
+
+    provider_error = (query_params.get("error") or [None])[0]
+    return None, provider_error or "callback carried no authorization code"
+
+
 class OAuthCallbackHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed_path = urlparse(self.path)
-        if parsed_path.path == "/callback":
-            query_params = parse_qs(parsed_path.query)
-            received_state = (query_params.get("state") or [None])[0]
-            expected_state = getattr(self.server, "expected_state", None)
-
-            # Check state BEFORE looking at the code: an unverified code must
-            # never be stored, or the CSRF check is decorative.
-            if not state_is_valid(expected_state, received_state):
-                self.server.oauth_error = (
-                    "callback state did not match the value this flow generated"
-                )
-                self.send_response(400)
-                self.send_header("Content-type", "text/html")
-                self.end_headers()
-                self.wfile.write(
-                    b"<html><body><h1>Authentication Failed!</h1><p>The callback could not be "
-                    b"verified as belonging to this login attempt, so it was rejected.</p></body></html>"
-                )
-                threading.Thread(target=self.server.shutdown, daemon=True).start()
-                return
-
-            if "code" in query_params:
-                code = query_params["code"][0]
-                self.server.oauth_code = code
-
-                self.send_response(200)
-                self.send_header("Content-type", "text/html")
-                self.end_headers()
-                self.wfile.write(
-                    b"<html><body><h1>Authentication Successful!</h1><p>You can close this tab "
-                    b"and return to the terminal.</p></body></html>"
-                )
-
-                # Signal the server to stop
-                threading.Thread(target=self.server.shutdown, daemon=True).start()
-            else:
-                self.send_response(400)
-                self.send_header("Content-type", "text/html")
-                self.end_headers()
-                self.wfile.write(
-                    b"<html><body><h1>Authentication Failed!</h1><p>Missing authorization code.</p></body></html>"
-                )
-        else:
+        if parsed_path.path != "/callback":
             self.send_response(404)
             self.end_headers()
+            return
+
+        code, error = callback_result(
+            parse_qs(parsed_path.query), getattr(self.server, "expected_state", None)
+        )
+
+        if code:
+            self.server.oauth_code = code
+            body = (
+                b"<html><body><h1>Authentication Successful!</h1><p>You can close this tab "
+                b"and return to the terminal.</p></body></html>"
+            )
+            self.send_response(200)
+        else:
+            self.server.oauth_error = error
+            body = (
+                b"<html><body><h1>Authentication Failed!</h1><p>This callback was rejected "
+                b"and nothing was stored. Return to the terminal for the reason.</p></body></html>"
+            )
+            self.send_response(400)
+
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+        self.wfile.write(body)
+
+        # Every /callback outcome stops the server, success or not. Failing to
+        # shut down on the failure paths left serve_forever() blocking with
+        # nothing left to wait for, so declining consent hung the CLI until
+        # Ctrl-C.
+        threading.Thread(target=self.server.shutdown, daemon=True).start()
 
     def log_message(self, format, *args):
         # Suppress logging to keep the terminal clean

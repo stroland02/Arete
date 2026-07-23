@@ -286,3 +286,61 @@ class TestCallbackStateVerification:
         assert "simulate_state" not in seen
         assert seen[0] != seen[1], "state must be regenerated per flow"
         assert all(len(s) >= 32 for s in seen), "state must be long enough to be unguessable"
+
+
+class TestCallbackResult:
+    """A callback that is not a success must still end the flow.
+
+    The handler's failure branch used to send 400 and return without calling
+    shutdown, so serve_forever() kept blocking with nothing left to arrive.
+    The reachable case is ordinary: providers redirect with
+    ?state=...&error=access_denied when someone clicks Deny, which carries a
+    valid state and no code — so declining consent hung the CLI until Ctrl-C.
+    """
+
+    STATE = "the-flow-state"
+
+    def test_a_valid_callback_yields_the_code_and_no_error(self):
+        code, error = mcp_auth.callback_result(
+            {"state": [self.STATE], "code": ["abc123"]}, self.STATE
+        )
+        assert code == "abc123"
+        assert error is None
+
+    def test_declining_consent_is_an_error_not_silence(self):
+        code, error = mcp_auth.callback_result(
+            {"state": [self.STATE], "error": ["access_denied"]}, self.STATE
+        )
+        assert code is None
+        # Surfaced verbatim so the terminal can say why, and — critically —
+        # non-None, which is what stops the caller waiting.
+        assert error == "access_denied"
+
+    def test_valid_state_with_no_code_and_no_error_still_reports_an_error(self):
+        code, error = mcp_auth.callback_result({"state": [self.STATE]}, self.STATE)
+        assert code is None
+        assert error
+
+    def test_a_mismatched_state_never_returns_a_code(self):
+        code, error = mcp_auth.callback_result(
+            {"state": ["attacker"], "code": ["attacker-code"]}, self.STATE
+        )
+        assert code is None
+        assert "state" in error
+
+    def test_state_is_checked_before_the_code_is_read(self):
+        """Even a well-formed code is discarded when the state is absent."""
+        code, _ = mcp_auth.callback_result({"code": ["abc123"]}, self.STATE)
+        assert code is None
+
+    def test_every_outcome_sets_exactly_one_of_code_or_error(self):
+        cases = [
+            {"state": [self.STATE], "code": ["c"]},
+            {"state": [self.STATE], "error": ["access_denied"]},
+            {"state": [self.STATE]},
+            {"state": ["wrong"], "code": ["c"]},
+            {},
+        ]
+        for params in cases:
+            code, error = mcp_auth.callback_result(params, self.STATE)
+            assert (code is None) != (error is None), params
