@@ -1375,3 +1375,29 @@ Whoever decides: the window arithmetic is now isolated in `startOfLocalDay` and
 Both functions are also now written around DST — two local midnights can be 23 or
 25 hours apart, so the window rolls the day-of-month instead of subtracting
 milliseconds.
+
+---
+
+### `D-verify` (PM-4) — the lane cannot currently do its own job (2026-07-23)
+
+**Charter:** drive the running app on localhost and report what is actually broken. Owns no
+source file on purpose. Released `packages/webhook/src/scan/**` this tick — claiming it was drift,
+and the M1 fix was escalated rather than built, so holding the path only blocked whoever would.
+
+**Blocked on two things, both environmental:**
+
+1. **No browser.** The Chrome DevTools MCP profile (`~/.cache/chrome-devtools-mcp/chrome-profile`)
+   is already in use by another agent, and attaching fails. Not killing it — stopping another
+   lane's process to unblock this one has already cost time once in this project.
+2. **No session.** Every dashboard route worth driving is behind the auth wall, and `curl` has no
+   cookie. `scripts/smoke-localhost.mjs` therefore reports "auth wall (expected; page not
+   verified)" and refuses to call a login page a pass — which is honest, and also the ceiling of
+   what this lane can currently assert.
+
+**Consequence, stated plainly:** D-verify can confirm a server is up, which service it is, and
+which branch it serves. It cannot confirm any authenticated page renders correctly. Every
+"verified" claim this lane has made today came from reading code, not from driving the product.
+
+**What would unblock it** (either is enough): a dedicated browser profile for this lane
+(`--isolated` or a distinct `userDataDir`), or a seeded dev session on a port this lane can use.
+Until then this lane should not be counted as covering the drive-it stage of the workflow.
