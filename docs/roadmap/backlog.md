@@ -464,7 +464,10 @@ refresh-on-expiry + `0o600` (item 2 above). Carried forward:
 
 This file stays the narrative backlog. The **prioritised, phase-tagged master list** — the one
 the product renders and the agents read — is
-`packages/dashboard/src/lib/feature-readiness.ts`, surfaced at `/build-status`.
+`packages/dashboard/data/build-tracker.json`, surfaced at `/build-status` and read through the
+typed selectors in `packages/dashboard/src/lib/build-tracker.ts`. (It moved there from
+`src/lib/feature-readiness.ts` on 2026-07-23; that file is now deleted, so a pointer to it
+would send a reader to nothing.)
 
 - Each row carries `priority` (P0–P3, importance) and `phase` (P1–P4, which programme owns it).
   They are independent: an item can be P0 and unstarted.

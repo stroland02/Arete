@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  droppedItems,
+  focusRail,
   ideaGroups,
   ideas,
   inventory,
   loadTracker,
+  nextRank,
   programmeProgress,
   readinessTotals,
+  resolveBlockers,
   verificationLabel,
+  type Tracker,
   type TrackerItem,
 } from "./build-tracker";
 
@@ -89,6 +94,168 @@ describe("verification labelling", () => {
       const label = verificationLabel(item);
       if (item.verifiedAt) expect(label).toContain(item.verifiedAt);
       else expect(label).toBe("Never verified");
+    }
+  });
+});
+
+/**
+ * The rest of this file uses a synthetic tracker. The real file carries no
+ * dropped rows yet — which is exactly why these behaviours need a fixture: they
+ * describe what must happen the first time someone presses Drop, and the real
+ * data cannot exercise that until the damage is already possible.
+ */
+function fixture(items: Partial<TrackerItem>[]): Tracker {
+  return {
+    ...tracker,
+    programmes: [{ id: "p", label: "P", standing: "current", caveat: "test fixture" }],
+    items: items.map((item, index) => ({
+      id: `i${index}`,
+      title: `Item ${index}`,
+      lane: "idea",
+      area: "Not built yet",
+      level: "soon",
+      state: "someday",
+      importance: "medium",
+      rank: (index + 1) * 10,
+      ...item,
+    })) as TrackerItem[],
+  };
+}
+
+describe("dropped items", () => {
+  it("leave both lanes and every count derived from them", () => {
+    const doc = fixture([
+      { lane: "inventory", level: "live", state: "shipped" },
+      { lane: "inventory", level: "soon", state: "dropped", droppedAt: "2026-07-23" },
+      { lane: "idea", state: "dropped", droppedAt: "2026-07-23" },
+      { lane: "idea", state: "next" },
+    ]);
+
+    expect(inventory(doc).map((i) => i.id)).toEqual(["i0"]);
+    expect(ideas(doc).map((i) => i.id)).toEqual(["i3"]);
+    expect(readinessTotals(doc).counted).toBe(1);
+    expect(ideaGroups(doc).flatMap((g) => g.items.map((i) => i.id))).toEqual(["i3"]);
+  });
+
+  it("are still readable — exclusion from the lanes is not deletion", () => {
+    const doc = fixture([
+      { state: "dropped", droppedAt: "2026-07-20", droppedReason: "superseded" },
+      { state: "dropped", droppedAt: "2026-07-23", droppedReason: "out of scope" },
+      { state: "next" },
+    ]);
+    // Most recent first, and the reason travels with the row.
+    expect(droppedItems(doc).map((i) => i.id)).toEqual(["i1", "i0"]);
+    expect(droppedItems(doc)[0].droppedReason).toBe("out of scope");
+  });
+
+  it("do not flatter a programme by shrinking its denominator", () => {
+    const doc = fixture([
+      { state: "shipped", programmes: [{ programme: "p", phase: "1" }] },
+      { state: "next", programmes: [{ programme: "p", phase: "2" }] },
+      { state: "dropped", droppedAt: "2026-07-23", programmes: [{ programme: "p", phase: "3" }] },
+    ]);
+    const [rail] = programmeProgress(doc);
+    // 1 of 2, not 1 of 3, and no phantom phase 3 on the rail.
+    expect([rail.done, rail.total]).toEqual([1, 2]);
+    expect(rail.phases).toEqual(["1", "2"]);
+  });
+});
+
+describe("focus rail", () => {
+  it("ranks by importance first, then rank, across both lanes", () => {
+    const doc = fixture([
+      { lane: "inventory", importance: "medium", rank: 10 },
+      { lane: "idea", importance: "critical", rank: 90 },
+      { lane: "inventory", importance: "high", rank: 20 },
+      { lane: "idea", importance: "critical", rank: 30 },
+    ]);
+    expect(focusRail(doc).map((i) => i.id)).toEqual(["i3", "i1", "i2", "i0"]);
+  });
+
+  it("shows nothing that is finished or set aside", () => {
+    const doc = fixture([
+      { importance: "critical", state: "shipped" },
+      { importance: "critical", state: "dropped", droppedAt: "2026-07-23" },
+      { importance: "low", state: "someday" },
+    ]);
+    expect(focusRail(doc).map((i) => i.id)).toEqual(["i2"]);
+  });
+
+  it("honours the limit", () => {
+    const doc = fixture(Array.from({ length: 12 }, () => ({})));
+    expect(focusRail(doc)).toHaveLength(7);
+    expect(focusRail(doc, 3)).toHaveLength(3);
+  });
+});
+
+describe("blocker resolution", () => {
+  const doc = fixture([
+    { id: "blocker", title: "The thing in the way", state: "next" },
+    { id: "done", title: "Already handled", state: "shipped" },
+    { id: "subject", blockedBy: ["blocker", "done", "ext: a real Anthropic key", "typo-id"] },
+  ]);
+  const subject = doc.items.find((i) => i.id === "subject")!;
+
+  it("names the blocking item instead of printing its id", () => {
+    expect(resolveBlockers(subject, doc)[0]).toEqual({
+      kind: "item",
+      id: "blocker",
+      title: "The thing in the way",
+      state: "next",
+      done: false,
+    });
+  });
+
+  it("marks a shipped blocker as done rather than hiding it", () => {
+    expect(resolveBlockers(subject, doc)[1]).toMatchObject({ id: "done", done: true });
+  });
+
+  it("reads an ext: blocker as prose, not as a missing item", () => {
+    expect(resolveBlockers(subject, doc)[2]).toEqual({
+      kind: "external",
+      text: "a real Anthropic key",
+    });
+  });
+
+  it("surfaces an id nothing matches — a broken reference is not an unblocked item", () => {
+    // The tempting alternative is to filter it out. That would render this row
+    // as carrying one fewer blocker than it claims, which is the lie.
+    expect(resolveBlockers(subject, doc)[3]).toEqual({ kind: "unknown", id: "typo-id" });
+    expect(resolveBlockers(subject, doc)).toHaveLength(4);
+  });
+
+  it("returns nothing for an item that lists no blockers", () => {
+    expect(resolveBlockers(doc.items[0], doc)).toEqual([]);
+  });
+});
+
+describe("next rank", () => {
+  it("keeps the sparse step so a later insert never renumbers the list", () => {
+    expect(nextRank(fixture([{ rank: 10 }, { rank: 20 }]))).toBe(30);
+    // The bug this replaces: max + 1 would return 35 here, leaving no room
+    // between 34 and the new row the very next time anything is reordered.
+    expect(nextRank(fixture([{ rank: 34 }]))).toBe(40);
+  });
+
+  it("starts at the step, not at one, on an empty tracker", () => {
+    expect(nextRank(fixture([]))).toBe(10);
+  });
+});
+
+describe("the real tracker satisfies the new contract", () => {
+  it("has no blocker pointing at an id that does not exist", () => {
+    const broken = tracker.items.flatMap((item) =>
+      resolveBlockers(item, tracker)
+        .filter((b) => b.kind === "unknown")
+        .map((b) => `${item.id} -> ${(b as { id: string }).id}`)
+    );
+    expect(broken).toEqual([]);
+  });
+
+  it("gives every dropped row a date and a reason", () => {
+    for (const item of droppedItems(tracker)) {
+      expect(item.droppedAt, `${item.id} was dropped with no date`).toBeTruthy();
+      expect(item.droppedReason, `${item.id} was dropped with no reason`).toBeTruthy();
     }
   });
 });

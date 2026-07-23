@@ -24,7 +24,19 @@ import path from "node:path";
 
 export type Lane = "inventory" | "idea";
 export type Level = "live" | "preview" | "partial" | "soon";
-export type State = "shipped" | "next" | "blocked" | "someday" | "needs-decision";
+export type State =
+  | "shipped"
+  | "next"
+  | "blocked"
+  | "someday"
+  | "needs-decision"
+  /**
+   * Deliberately set aside — kept, not deleted. The write path must reach for
+   * this instead of removing a row: losing a catalogued idea is the one failure
+   * this tracker exists to prevent, so "remove" has to mean "move somewhere it
+   * can still be read" for anything the team did not add by hand.
+   */
+  | "dropped";
 export type Importance = "critical" | "high" | "medium" | "low";
 export type Standing = "current" | "stale";
 
@@ -54,6 +66,9 @@ export interface TrackerItem {
   programmes?: ProgrammeRef[];
   /** Absent on every item today. Absence must render as "never verified". */
   verifiedAt?: string;
+  /** Set together with `state: "dropped"`. A drop with no reason is not a record. */
+  droppedAt?: string;
+  droppedReason?: string;
 }
 
 export interface Programme {
@@ -108,7 +123,14 @@ export const STATE_LABELS: Record<State, string> = {
   "needs-decision": "Needs a decision",
   blocked: "Blocked",
   someday: "Someday",
+  dropped: "Dropped",
 };
+
+/** Blockers that no item id can satisfy — a person, a key, a third party. */
+export const EXTERNAL_BLOCKER_PREFIX = "ext:";
+
+/** Rank step. Sparse on purpose, so inserting between two rows never renumbers. */
+export const RANK_STEP = 10;
 
 const LEVEL_ORDER: Record<Level, number> = { soon: 0, partial: 1, preview: 2, live: 3 };
 const IMPORTANCE_ORDER: Record<Importance, number> = {
@@ -132,12 +154,31 @@ export function loadTracker(): Tracker {
   return parsed;
 }
 
+/**
+ * Dropped rows are excluded from both lanes, and from every count derived from
+ * them, because a dropped row is no longer part of the working picture. They are
+ * not lost by that exclusion — `droppedItems` is the surface that shows them,
+ * with the reason, and the page is expected to render it. Removing them from one
+ * without adding the other would be a silent deletion with extra steps.
+ */
 export function inventory(tracker: Tracker = loadTracker()): TrackerItem[] {
-  return tracker.items.filter((i) => i.lane === "inventory");
+  return tracker.items.filter((i) => i.lane === "inventory" && i.state !== "dropped");
 }
 
 export function ideas(tracker: Tracker = loadTracker()): TrackerItem[] {
-  return tracker.items.filter((i) => i.lane === "idea");
+  return tracker.items.filter((i) => i.lane === "idea" && i.state !== "dropped");
+}
+
+/** Everything set aside, most recently dropped first. Its own section on the page. */
+export function droppedItems(tracker: Tracker = loadTracker()): TrackerItem[] {
+  return tracker.items
+    .filter((i) => i.state === "dropped")
+    .sort((a, b) => (b.droppedAt ?? "").localeCompare(a.droppedAt ?? "") || a.rank - b.rank);
+}
+
+/** Still real work: neither finished nor set aside. */
+export function isOpen(item: TrackerItem): boolean {
+  return item.state !== "shipped" && item.state !== "dropped";
 }
 
 export interface ReadinessTotals {
@@ -229,8 +270,10 @@ export interface ProgrammeProgress extends Programme {
  */
 export function programmeProgress(tracker: Tracker = loadTracker()): ProgrammeProgress[] {
   return tracker.programmes.map((programme) => {
-    const rows = tracker.items.filter((i) =>
-      i.programmes?.some((p) => p.programme === programme.id)
+    // Dropped rows leave the denominator too — a programme does not become
+    // less complete because work on it was abandoned rather than finished.
+    const rows = tracker.items.filter(
+      (i) => i.state !== "dropped" && i.programmes?.some((p) => p.programme === programme.id)
     );
     const phases: string[] = [];
     for (const row of rows) {
@@ -257,4 +300,66 @@ export function verificationLabel(item: TrackerItem): string {
 
 export function isVerified(item: TrackerItem): boolean {
   return Boolean(item.verifiedAt);
+}
+
+/**
+ * The few things that most deserve attention next, across **both** lanes.
+ *
+ * Deliberately lane-blind: an unbuilt idea can matter more than a half-wired
+ * surface, and a rail that could only ever show inventory would quietly rank
+ * the catalogue below everything else. Finished and dropped rows are excluded —
+ * neither is something to do next.
+ */
+export function focusRail(tracker: Tracker = loadTracker(), limit = 7): TrackerItem[] {
+  return tracker.items
+    .filter(isOpen)
+    .sort(
+      (a, b) =>
+        IMPORTANCE_ORDER[a.importance] - IMPORTANCE_ORDER[b.importance] || a.rank - b.rank
+    )
+    .slice(0, limit);
+}
+
+export type ResolvedBlocker =
+  | { kind: "item"; id: string; title: string; state: State; done: boolean }
+  | { kind: "external"; text: string }
+  /** An id nothing matches. Surfaced, never dropped — see below. */
+  | { kind: "unknown"; id: string };
+
+/**
+ * Turn `blockedBy` entries into something a reader can act on.
+ *
+ * Three cases, and the third is the reason this returns a union rather than a
+ * list of strings: an id that matches no item is a broken reference, and the
+ * honest thing is to say so. Silently filtering it out would make a blocked
+ * item look unblocked, which is worse than showing a name nobody recognises.
+ */
+export function resolveBlockers(
+  item: TrackerItem,
+  tracker: Tracker = loadTracker()
+): ResolvedBlocker[] {
+  return (item.blockedBy ?? []).map((entry): ResolvedBlocker => {
+    if (entry.startsWith(EXTERNAL_BLOCKER_PREFIX)) {
+      return { kind: "external", text: entry.slice(EXTERNAL_BLOCKER_PREFIX.length).trim() };
+    }
+    const match = tracker.items.find((i) => i.id === entry);
+    if (!match) return { kind: "unknown", id: entry };
+    return {
+      kind: "item",
+      id: match.id,
+      title: match.title,
+      state: match.state,
+      done: match.state === "shipped",
+    };
+  });
+}
+
+/**
+ * The rank a newly added row should take: past the end, on the sparse step the
+ * seeded data uses. `max + 1` would land a new row one apart from the last and
+ * defeat the whole point of sparse ranks the first time someone reorders.
+ */
+export function nextRank(tracker: Tracker = loadTracker()): number {
+  const max = tracker.items.reduce((acc, i) => Math.max(acc, i.rank ?? 0), 0);
+  return (Math.floor(max / RANK_STEP) + 1) * RANK_STEP;
 }
