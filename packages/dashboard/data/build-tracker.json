@@ -245,7 +245,9 @@
       "addedBy": "seed",
       "tags": [
         "surface"
-      ]
+      ],
+      "evidence": "packages/dashboard/src/app/(dashboard)/connections/ai-models/page.tsx",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "surface-connections",
@@ -318,7 +320,9 @@
       "addedBy": "seed",
       "tags": [
         "surface"
-      ]
+      ],
+      "evidence": "packages/dashboard/src/app/(dashboard)/incidents/page.tsx",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "surface-overview",
@@ -366,7 +370,9 @@
       "addedBy": "seed",
       "tags": [
         "surface"
-      ]
+      ],
+      "evidence": "packages/dashboard/src/app/(dashboard)/history/page.tsx",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "surface-search-notifications",
@@ -656,7 +662,9 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "evidence": "packages/dashboard/src/components/dashboard/services/approvals-section.tsx:39 posts to /api/approvals/{id}/{approve|reject}; both route handlers exist under src/app/api/approvals/[id]/",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "approve-a-proposed-fix",
@@ -789,7 +797,9 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "evidence": "packages/dashboard/src/components/dashboard/incidents/error-list.tsx:174-177 (silence action, hidden once silenced), covered by error-list.test.tsx and incidents-workspace.test.tsx",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "agent-config-persistence",
