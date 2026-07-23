@@ -215,7 +215,7 @@
       "href": "/agents",
       "works": "Per-agent chat is genuinely live against the connected model, with provider errors surfaced honestly. Findings come from real reviews.",
       "gap": "Every configuration control is local-only and never saved, and the page is scheduled for absorption into Services.",
-      "evidence": "packages/dashboard/src/components/dashboard/agents/agent-config-drawer.tsx:24,149,249 — Save disabled with a \"Not saved yet\" badge; the absorption-into-Services half is a plan, not something code can confirm",
+      "evidence": "components/dashboard/agents/agent-config-drawer.tsx:24 — \"deliberately NOT persisted yet\"",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md"
       },
@@ -265,7 +265,7 @@
       "href": "/connections",
       "works": "GitHub App install, Stripe API key, and PostHog + Vercel OAuth.",
       "gap": "Every other connector is disabled pending its integration being published.",
-      "evidence": "packages/dashboard/src/app/(dashboard)/connections/[id]/page.tsx:51-59,118 — connectors without a connectHref render \"Not available yet\" behind a disabled CTA",
+      "evidence": "app/(dashboard)/connections/[id]/page.tsx — non-published connectors still render disabled",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md"
       },
@@ -375,7 +375,7 @@
       "tags": [
         "surface"
       ],
-      "evidence": "packages/dashboard/src/app/(dashboard)/history/page.tsx",
+      "evidence": "app/(dashboard)/history/page.tsx — real pagination/filter params",
       "verifiedAt": "2026-07-23"
     },
     {
@@ -391,7 +391,7 @@
         "topbar-search-and-notifications"
       ],
       "gap": "Command palette and notifications are both disabled placeholders. The breadcrumb is the only working part of the top bar.",
-      "evidence": "packages/dashboard/src/components/dashboard/topbar.tsx:45-46,56-57 — both controls are disabled with \"coming soon\" titles",
+      "evidence": "components/dashboard/topbar.tsx — 2 disabled controls, no handlers",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md"
       },
@@ -498,7 +498,7 @@
       ],
       "works": "The static shared secret is retired. Callers present a short-lived HS256 JWT minted by @arete/internal-token with claims {iss, aud: arete-internal, iat, exp} and a kid header; the default TTL is 120s. Verification rejects missing, malformed, unknown-kid, bad-signature, expired and wrong-audience tokens with an undifferentiated 401, and answers 503 when the keyset is unconfigured rather than running open. The keyset maps kid -> secret with a separate activeKid, so a rotation can overlap (old kids keep verifying while new tokens mint with the new one) and dropping a kid revokes everything signed with it.",
       "gap": "",
-      "evidence": "packages/internal-token/src/mint.ts:5,15-16 (TTL 120s, iat/exp/kid), src/keyset.ts:7-39 (kid map + activeKid), packages/webhook/src/internal-auth.ts:43-68 (401/503 posture)",
+      "evidence": "packages/webhook/src/internal-auth.ts:43",
       "provenance": {
         "doc": "docs/roadmap/backlog.md",
         "note": "Phase 2b item 1"
@@ -528,7 +528,7 @@
       ],
       "works": "The fabricated simulated_token_for_<code> is gone: _complete_auth performs a real code exchange, fails closed when token_url is unset, and stores nothing without a genuine access_token. Config is encrypted at rest and created atomically at 0o600. The OAuth state is now secrets.token_urlsafe(32), fresh per flow, and verified with compare_digest on BOTH the local callback and the manual-paste fallback — an unverified code is discarded before it is ever stored.",
       "gap": "Remaining, and smaller than it was: client_id is still hardcoded to \"arete-client\", the authorization endpoint is still guessed as the server target rather than discovered, and encryption no-ops to cleartext when no key is configured.",
-      "evidence": "packages/agents/src/arete_agents/mcp/auth.py state_is_valid + start_oauth_flow; tests/test_mcp_auth.py::TestCallbackStateVerification",
+      "evidence": "packages/agents/src/arete_agents/mcp/auth.py:90, mcp/manager.py",
       "provenance": {
         "doc": "docs/roadmap/backlog.md",
         "note": "Phase 2b item 1, Phase 4 items 6-7"
@@ -558,7 +558,7 @@
       ],
       "works": "Shaped secrets (sk-*, gh?_*, Bearer, key-ish URL params) and blocklisted object keys are scrubbed; URL query stripping now fires on embedded URLs anywhere in a string.",
       "gap": "A memory body containing a free-text credential matches no shape and no object key, and has no URL to strip. Verified stored verbatim. Fixing it means amending the frozen §5 pattern set, with real false-positive risk on ordinary prose — a decision, not a patch. Applies to every sink equally.",
-      "evidence": "scrubText / scrubSinkText, SECRET_VALUE_PATTERNS",
+      "evidence": "packages/telemetry/src/redaction.ts:26 — six shape patterns, none matches a bare prose credential",
       "provenance": {
         "doc": "docs/roadmap/backlog.md",
         "note": "Phase 2b item 6"
@@ -568,7 +568,8 @@
       "addedBy": "seed",
       "tags": [
         "honesty-security"
-      ]
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "security-assessor-fabricates",
@@ -638,7 +639,7 @@
       ],
       "works": "Kuma really does record what it learns per repository and injects it into later reviews.",
       "gap": "Nothing displays it. Belongs on repository settings as 'What Kuma has learned', with an archive action.",
-      "evidence": "No dashboard component references AgentMemory; the write path exists with no surface",
+      "evidence": "packages/webhook/src/memory-write.ts — write path real; zero dashboard references",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§3 A3"
@@ -671,7 +672,7 @@
       "origin": "session",
       "addedAt": "2026-07-23",
       "addedBy": "seed",
-      "evidence": "packages/dashboard/src/components/dashboard/services/approvals-section.tsx:39 posts to /api/approvals/{id}/{approve|reject}; both route handlers exist under src/app/api/approvals/[id]/",
+      "evidence": "packages/dashboard/src/app/api/approvals/[id]/{approve,reject} both exist",
       "verifiedAt": "2026-07-23"
     },
     {
@@ -690,14 +691,15 @@
         }
       ],
       "works": "The gate renders on the Services work-item panel, reading the container's stored state. No /agents URL was created, so this is a step toward the Stage 2 absorption rather than against it.",
-      "evidence": "1192d37",
+      "evidence": "components/dashboard/services/work-item-panel.tsx — 4 refs to the two gate buttons",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
         "note": "Stage 1.1"
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "connect-sentry",
@@ -719,14 +721,15 @@
       ],
       "works": "The connector and its tests are fully built. Flipping connector-catalog.ts status:'planned' is the whole change.",
       "gap": "Blocked on Sentry's own integration approval, not on us.",
-      "evidence": "connector-catalog.ts",
+      "evidence": "packages/dashboard/src/lib/connector-catalog.ts — Sentry status is still \"planned\"",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
         "note": "Stage 1.5"
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "live-throughput-metrics",
@@ -748,7 +751,7 @@
       ],
       "works": "The worker publishes review-lifecycle metrics to a server-sent stream.",
       "gap": "No consumer — the source comments call it a dark wire. An Overview throughput tile needs a server-side proxy, which depends on the internal-token lifecycle decision.",
-      "evidence": "No dashboard consumer of /metrics/stream. The only EventSource uses target /api/containers/[id]/stream (the synthesizer console), not the metrics wire",
+      "evidence": "packages/webhook/src/agent-metrics.ts — /metrics/stream has zero dashboard consumers",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§3 A4"
@@ -774,22 +777,23 @@
         }
       ],
       "works": "Same panel as the approve gate; the dead !realMode branch is bypassed rather than revived.",
-      "evidence": "1192d37",
+      "evidence": "components/dashboard/services/work-item-panel.tsx — SendPrButton rendered from the panel",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
         "note": "Stage 1.2"
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "silence-a-finding",
       "title": "Silence / un-silence a finding",
       "lane": "inventory",
       "area": "Partially wired",
-      "level": "live",
-      "state": "shipped",
+      "level": "soon",
+      "state": "next",
       "importance": "high",
       "rank": 70,
       "programmes": [
@@ -798,8 +802,7 @@
           "phase": "stage-1"
         }
       ],
-      "works": "POST /api/findings/[id]/noise is the dashboard's only noiseState writer. A human may assert only OPEN and SILENCED; UNDER_OBSERVATION and ESCALATED are machine-derived and render read-only, because a button asserting one would claim an observation that never happened.",
-      "gap": "Known limitation, recorded not fixed: restoring returns a finding to OPEN, never to the machine state that preceded the silence — that prior state is stored nowhere, and inventing one would be fabricated status.",
+      "gap": "CONTRADICTS the verified-shipped mark on main, re-checked after main's inventory sweep closed. git ls-tree -r origin/main still finds no api/findings/[id]/noise route and no finding-noise-control component; noiseState appears only in lib/queries.ts and its test, as a READ filter. Nothing in the dashboard can write it. The implementation is committed but unmerged on stroland02/overview-revamp @ f5abe54.",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
         "note": "Stage 1.4"
@@ -807,7 +810,7 @@
       "origin": "session",
       "addedAt": "2026-07-23",
       "addedBy": "seed",
-      "evidence": "packages/dashboard/src/components/dashboard/incidents/error-list.tsx:174-177 (silence action, hidden once silenced), covered by error-list.test.tsx and incidents-workspace.test.tsx",
+      "evidence": "git ls-tree -r origin/main | grep noise -> empty; noiseState only in lib/queries.ts (read filter)",
       "verifiedAt": "2026-07-23"
     },
     {
@@ -826,7 +829,7 @@
         }
       ],
       "gap": "Every parameter control in the config drawer is local-only and explicitly 'deliberately NOT persisted'. Without this, the Stage 2 agents layer ships parameter controls that are theatre — so either build it, or give them an explicit disabled state.",
-      "evidence": "packages/dashboard/src/components/dashboard/agents/agent-config-drawer.tsx:24,149,249 (Save disabled, \"Not saved yet\" badge)",
+      "evidence": "components/dashboard/agents/agent-config-drawer.tsx:24 — \"deliberately NOT persisted yet\"",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
         "note": "Stage 2.4"
@@ -890,7 +893,9 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23",
+      "evidence": "components/dashboard/sidebar.tsx still lists /agents as a nav destination"
     },
     {
       "id": "revert-or-subsume-agents-rail-inbox",
@@ -933,14 +938,15 @@
         }
       ],
       "gap": "'Back to Overview' goes to / (the marketing root), not /overview. 'Explore with sample data' leads to a page that never shows sample data — stale copy that should be removed rather than made true.",
-      "evidence": "reviews/[id]/page.tsx:96, connections/[id]/page.tsx:129-131",
+      "evidence": "packages/dashboard/src/app/(dashboard)/reviews/[id]/page.tsx:67 vs :96",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
         "note": "Stage 3.5"
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "delete-synth-ledger",
@@ -957,15 +963,16 @@
           "phase": "stage-3"
         }
       ],
-      "gap": "Exported, imported by nothing.",
-      "evidence": "synth-ledger.tsx",
+      "gap": "Still to do. The file exists at components/dashboard/agents/synthesizer/synth-ledger.tsx and no file under packages/dashboard/src imports it. An earlier pass on this lane checked components/dashboard/synth-ledger.tsx, the wrong path, and wrongly reported it deleted.",
+      "evidence": "origin/main: packages/dashboard/src/components/dashboard/agents/synthesizer/synth-ledger.tsx exists; zero importers across src",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
         "note": "Stage 3.6"
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "fix-dismiss-no-full-reload",
@@ -983,14 +990,15 @@
         }
       ],
       "gap": "window.location.reload() is the only feedback, and it loses rail expansion, selection and stream position.",
-      "evidence": "services-workspace.tsx",
+      "evidence": "components/dashboard/services — 3 location.reload() call sites",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
         "note": "Stage 3.4"
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "global-refresh-kuma-logo",
@@ -1033,14 +1041,15 @@
         }
       ],
       "gap": "The alert path (receiver.ts to routeIncidentToFix) creates a WorkItem, container and fix drive. The UI path writes an Incident and never routes it, so a hand-opened investigation is a dead end that can only be marked noise. Preserve the human approve then send gate.",
-      "evidence": "lib/incidents.ts:211 createManualIncident",
+      "evidence": "lib/incidents.ts — routeIncidentToFix is not referenced anywhere in this module",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§4 B1"
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "scan-completion-signal",
@@ -1058,14 +1067,15 @@
         }
       ],
       "gap": "setTimeout(reload, 1500) is unconnected to scan completion — a slower scan reloads into stale state and looks like it did nothing.",
-      "evidence": "services-workspace.tsx",
+      "evidence": "components/dashboard/services — 1 reload-on-timer remains",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
         "note": "Stage 3.3"
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "topbar-search-and-notifications",
@@ -1083,14 +1093,15 @@
         }
       ],
       "gap": "Command palette and notifications are disabled placeholders. Honest today, but the top bar is prime real estate doing nothing.",
-      "evidence": "topbar.tsx:44-62",
+      "evidence": "components/dashboard/topbar.tsx — 2 disabled controls, no handlers",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§1"
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "adopt-account-state-agents-map",
@@ -1114,7 +1125,9 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23",
+      "evidence": "agents/page.tsx and map/page.tsx contain zero getAccountState references"
     },
     {
       "id": "agent-memory-cap-and-archive",
@@ -1163,14 +1176,15 @@
         }
       ],
       "gap": "On BOTH worker paths, the checks.update inside the publish-failure catch is itself unguarded. If it throws (transient GitHub failure while reporting a degraded outcome) the error escapes the catch, the job re-throws, and BullMQ retries the whole pipeline despite it having already produced a usable result — the exact double-retry the two-block split was meant to prevent, one call later.",
-      "evidence": "packages/webhook/src/worker.ts:134-144, 239-249",
+      "evidence": "packages/webhook/src/worker.ts — 6 checks.update call sites; the ones inside the publish-failure catch are still unguarded",
       "provenance": {
         "doc": "docs/roadmap/backlog.md",
         "note": "Deferred from Phase 4, item 4"
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "confidence-on-review-findings",
@@ -1189,7 +1203,7 @@
       ],
       "works": "Confidence is computed and shown on scan and fix work items.",
       "gap": "ReviewComment has no confidence column at all, so PR findings show none. Schema column plus UI.",
-      "evidence": "packages/db/prisma/schema.prisma ReviewComment has no confidence field; the confidence Float at :186 belongs to WorkItem, which is why scan and fix show one and PR findings do not",
+      "evidence": "packages/db/prisma/schema.prisma — ReviewComment still has no confidence column",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§4 B3"
@@ -1239,14 +1253,15 @@
         }
       ],
       "gap": "Webhook /health is not excluded from tracing (the agents' is), so a 5s probe will dominate span volume. CI smoke-boots dist/otel.js and dist/index.js but never dist/otel-worker.js — the boot path that owns service.name=arete-worker and the whole review span tree is unsmoked.",
-      "evidence": ".github/workflows/ci.yml:91, packages/agents/.../server.py:52",
+      "evidence": ".github/workflows/ci.yml — otel-worker.js is never smoke-booted",
       "provenance": {
         "doc": "docs/roadmap/backlog.md",
         "note": "Phase 1 final review"
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "otel-span-conventions-drift",
@@ -1264,14 +1279,15 @@
         }
       ],
       "gap": "The Python lane emits agent_review:{name} / synthesize_reviews instead of spec §5's agent.review (attr agent.role) / review.synthesize, and no llm.generate span exists. arete.agent.duration has a histogram View registered in both lanes and documented in the skill, but no instrument ever records it. review.publish is wrapped on the PR path and absent on the check_run path. Either rename/record, or amend §5 to match reality — and keep debug-from-telemetry in sync.",
-      "evidence": "orchestrator.py:393,456; init.ts:64; observability.py:152; worker.ts",
+      "evidence": "orchestrator.py — 8 agent_review:/synthesize_reviews span names still diverge from spec §5",
       "provenance": {
         "doc": "docs/roadmap/backlog.md",
         "note": "Phase 1 final review, Phase 4 item 2"
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "password-reset-and-email-verification",
@@ -1296,7 +1312,7 @@
       "origin": "session",
       "addedAt": "2026-07-23",
       "addedBy": "seed",
-      "evidence": "emailVerified appears only at packages/db/prisma/schema.prisma:464 and is never written; no reset/verify route exists under packages/dashboard/src/app",
+      "evidence": "packages/dashboard/src/app — no reset/forgot route; nothing writes User.emailVerified",
       "verifiedAt": "2026-07-23"
     },
     {
@@ -1321,7 +1337,9 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23",
+      "evidence": "packages/webhook/src/logger.ts contains zero fingerprint references"
     },
     {
       "id": "python-fingerprint-decision",
@@ -1396,7 +1414,9 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23",
+      "evidence": "app/api/containers/[id]/send/route.ts makes no reference to the work item"
     },
     {
       "id": "trends-utc-vs-local-day",
@@ -1414,14 +1434,15 @@
         }
       ],
       "gap": "lib/trends.ts buckets by LOCAL calendar day while the ClickHouse window is UTC. Every chart in the product is affected for any viewer whose timezone crosses midnight relative to UTC, so the fix needs its own change and its own verification.",
-      "evidence": "packages/dashboard/src/lib/trends.ts",
+      "evidence": "packages/dashboard/src/lib/trends.ts — 2 local-calendar date calls against a UTC window",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
         "note": "Stage 1 recorded findings"
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "docker-sandbox-workspace-agent",
@@ -1449,7 +1470,9 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23",
+      "evidence": "packages/agents — workspace.py does not exist; still the one missing plan artifact"
     },
     {
       "id": "glass-box-production",
@@ -1492,14 +1515,15 @@
         }
       ],
       "gap": "Spec is proposed and awaiting user review — confirm intent before spending a week. Includes giving the fix pipeline a tool loop: fix_pipeline.py makes one direct LLM call for a JSON blob, so spec §3's 'tool descriptions ARE the prompt' cannot apply to healing and rubrics necessarily live in the prompt.",
-      "evidence": "docs/superpowers/specs/2026-07-22-investigations-surface-and-agent-harness-design.md",
+      "evidence": "packages/agents/src/arete_agents/fix_pipeline.py — zero tool references, so the fix path still has no tool loop",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
         "note": "Stage 5.1"
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "outbound-webhook-management-ui",
@@ -1518,7 +1542,7 @@
       ],
       "works": "The tenant-scoped management API is now mounted and authenticated — endpoints can be listed and registered over HTTP, and delivery records exist with signing and retry behind them.",
       "gap": "What is missing is only the dashboard surface: there is still no screen to register an endpoint or inspect deliveries, so this remains reachable by API alone. The previous claim that the API is \"deliberately unmounted\" is no longer true.",
-      "evidence": "packages/webhook/src/server.ts:414-446 (management API mounted); no dashboard route or component references webhook endpoints",
+      "evidence": "packages/webhook/src/server.ts:408 — management API still deliberately unmounted",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§3 A2"
@@ -1603,7 +1627,7 @@
       "importance": "high",
       "rank": 150,
       "gap": "Each new checklist step (workspace connected, install complete, MCP connected) needs a real getAccountState signal before it may show a checkmark. No fabricated ticks. Existing users must land on the correct new step rather than being reset to the start.",
-      "evidence": "packages/dashboard/src/lib/overview-setup.ts, lib/account-state.ts",
+      "evidence": "lib/overview-setup.ts has 5 coming_soon sub-steps with no backing account-state signal",
       "provenance": {
         "doc": "docs/status/2026-07-20-phase-wrap-up.md"
       },
@@ -1612,7 +1636,8 @@
       "addedBy": "seed",
       "tags": [
         "onboarding-install"
-      ]
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "connect-workspace-clone-or-folder",
@@ -1624,7 +1649,7 @@
       "importance": "high",
       "rank": 160,
       "gap": "After the GitHub connect step, the user should be able to clone a repo URL OR point at a local folder, so Kuma has the actual working tree it needs for code and telemetry setup. Today this survives only as an honest 'coming soon' sub-step. HARD CONSTRAINT: extend the existing setup — reconcile with GitHub App connect, model connections, and the Sensorium/context-map indexing that already runs on install. Do not greenfield.",
-      "evidence": "lib/overview-setup.ts:76-84",
+      "evidence": "lib/overview-setup.ts still carries coming_soon placeholders; no clone or folder-select exists",
       "provenance": {
         "doc": "docs/status/2026-07-20-phase-wrap-up.md",
         "note": "Immediate next, item 1"
@@ -1634,7 +1659,8 @@
       "addedBy": "seed",
       "tags": [
         "onboarding-install"
-      ]
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "kuma-as-mcp-server",
@@ -1675,7 +1701,7 @@
       "importance": "high",
       "rank": 170,
       "gap": "Connecting a coding agent (Claude Code recommended) should kick off the Kuma install into the user's repo: the Kuma skills, the code graph embedded in the project, and OpenTelemetry wired up. The pieces exist separately (agents skills/loader, the context-map checkout and graph export that already run on install) — this is the flow that composes them.",
-      "evidence": "packages/agents/src/arete_agents/skills/loader.py, context_map/graph_export.py",
+      "evidence": "skills/loader.py and context_map/graph_export.py both exist; no flow composes them into an install",
       "provenance": {
         "doc": "docs/status/2026-07-20-phase-wrap-up.md",
         "note": "Immediate next, item 1"
@@ -1685,7 +1711,8 @@
       "addedBy": "seed",
       "tags": [
         "onboarding-install"
-      ]
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "mcp-servers-no-surface",
@@ -1698,7 +1725,7 @@
       "rank": 260,
       "works": "Kuma can consume third-party MCP servers, driven from the CLI.",
       "gap": "No dashboard surface to add or list them.",
-      "evidence": "No route or component under packages/dashboard/src references MCP servers — still CLI-only",
+      "evidence": "no .tsx under components/ or app/ references mcp — still CLI-only",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§4 B6"
@@ -1734,7 +1761,9 @@
       "addedBy": "seed",
       "tags": [
         "onboarding-install"
-      ]
+      ],
+      "verifiedAt": "2026-07-23",
+      "evidence": "no dashboard MCP surface exists, so setup still cannot run from an agent here"
     },
     {
       "id": "setup-prompt-workflow",
@@ -1746,7 +1775,7 @@
       "importance": "high",
       "rank": 190,
       "gap": "The setup prompt itself — what Kuma hands the user's coding agent to run, and how the result is verified back. Named as a 'coming soon' sub-step on the onboarding checklist with nothing behind it. The user holds reference data on how this is done.",
-      "evidence": "lib/overview-setup.ts:76-84",
+      "evidence": "lib/overview-setup.ts — the setup-prompt sub-step is still a coming_soon placeholder",
       "provenance": {
         "doc": "docs/status/2026-07-20-phase-wrap-up.md",
         "note": "Immediate next, item 1"
@@ -1756,18 +1785,18 @@
       "addedBy": "seed",
       "tags": [
         "onboarding-install"
-      ]
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "ci-for-untested-packages",
-      "title": "Four packages have no CI job",
+      "title": "CI covers orchestration, topology, net-guard and db",
       "lane": "idea",
       "area": "Not built yet",
-      "level": "soon",
-      "state": "someday",
+      "level": "live",
+      "state": "shipped",
       "importance": "medium",
       "rank": 270,
-      "gap": "orchestration, topology, net-guard and db have test suites that CI never runs, so a regression in any of them lands green.",
       "provenance": {
         "doc": "docs/status/2026-07-20-phase-wrap-up.md",
         "note": "Immediate next, item 5"
@@ -1777,7 +1806,10 @@
       "addedBy": "seed",
       "tags": [
         "sdlc"
-      ]
+      ],
+      "verifiedAt": "2026-07-23",
+      "works": "ci.yml runs a package matrix over @arete/orchestration, @arete/topology, @arete/net-guard and @arete/db. The claim that these four had no CI job is no longer true.",
+      "evidence": ".github/workflows/ci.yml:169-185 (matrix entries incl. @arete/db)"
     },
     {
       "id": "deploy-pipeline-and-prod-runbook",
@@ -1798,7 +1830,9 @@
       "addedBy": "seed",
       "tags": [
         "sdlc"
-      ]
+      ],
+      "verifiedAt": "2026-07-23",
+      "evidence": ".github/workflows contains only ci.yml — there is no deploy workflow"
     },
     {
       "id": "google-oauth-client-missing",
@@ -1867,14 +1901,13 @@
     },
     {
       "id": "root-aggregate-test-script",
-      "title": "No single command runs every suite",
+      "title": "One command runs every suite",
       "lane": "idea",
       "area": "Not built yet",
-      "level": "soon",
-      "state": "someday",
+      "level": "live",
+      "state": "shipped",
       "importance": "low",
       "rank": 110,
-      "gap": "Each package is invoked separately, which is how a red suite hid behind a green one before. One root script that runs everything and reports per-package.",
       "provenance": {
         "doc": "docs/status/2026-07-20-phase-wrap-up.md",
         "note": "Immediate next, item 5"
@@ -1884,7 +1917,10 @@
       "addedBy": "seed",
       "tags": [
         "sdlc"
-      ]
+      ],
+      "verifiedAt": "2026-07-23",
+      "works": "Root package.json exposes test:all = pnpm run test:ts && pnpm run test:agents.",
+      "evidence": "package.json scripts.test:all"
     },
     {
       "id": "typed-debt-ratchets",
@@ -1905,7 +1941,9 @@
       "addedBy": "seed",
       "tags": [
         "sdlc"
-      ]
+      ],
+      "verifiedAt": "2026-07-23",
+      "evidence": "packages/dashboard/eslint.config.mjs — no-explicit-any still held at \"warn\""
     },
     {
       "id": "anthropic-catalog-default-tier",
@@ -1918,7 +1956,7 @@
       "rank": 300,
       "works": "Fast tiers exist and the agent role defaults were re-tiered for speed (chat/quality/test_coverage/performance/ci = haiku, security/business_logic/deployment_safety/synthesizer = sonnet).",
       "gap": "The connect UI still lists claude-opus-4-8 first, so a new connection gets the slowest model by default — and the BYO path runs ALL roles on the one model the user picked, so that choice is not softened by the role tiers.",
-      "evidence": "packages/dashboard/src/lib/model-catalog.ts:56",
+      "evidence": "packages/dashboard/src/lib/model-catalog.ts — models[0] is still claude-opus-4-8",
       "provenance": {
         "doc": "docs/status/2026-07-20-phase-wrap-up.md",
         "note": "Immediate next, item 3"
@@ -1928,7 +1966,8 @@
       "addedBy": "seed",
       "tags": [
         "product-commercial"
-      ]
+      ],
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "public-api-and-keys",
@@ -1956,7 +1995,7 @@
       "tags": [
         "product-commercial"
       ],
-      "evidence": "No ApiKey model, issuance path or management route exists",
+      "evidence": "packages/db/prisma/schema.prisma — no ApiKey model exists",
       "verifiedAt": "2026-07-23"
     },
     {
@@ -2016,7 +2055,9 @@
       "addedBy": "seed",
       "tags": [
         "product-commercial"
-      ]
+      ],
+      "verifiedAt": "2026-07-23",
+      "evidence": "packages/db/prisma/schema.prisma — Review has no prUrl column"
     },
     {
       "id": "review-scope-filters",
@@ -2087,7 +2128,7 @@
       "href": "/grid",
       "works": "The grid reads a real telemetry snapshot per repository.",
       "gap": "Snapshots are captured only during a review and there is no background poller, so a quiet repo shows arbitrarily stale data with nothing but fetchedAt to say so. TelemetrySnapshotRecord is a latest-value row, not a history table.",
-      "evidence": "No background poller in packages/webhook/src/telemetry — snapshots are still captured only during a review",
+      "evidence": "packages/webhook/src/telemetry — no setInterval or cron; snapshots are captured only during a review",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§4 B5"
@@ -2117,7 +2158,7 @@
       ],
       "works": "Full OpenTelemetry instrumentation flows into ClickHouse and Jaeger, and Jaeger trace deep-links exist.",
       "gap": "Still no in-product trace view, no span drill-down and no log search. One correction: deep-linking is no longer missing — the Errors list and an incident's Signals rows turn real trace ids into Jaeger links when NEXT_PUBLIC_JAEGER_UI_URL is set, and render plain text when it is not.",
-      "evidence": "packages/dashboard/src/lib/trace-links.ts and components/dashboard/incidents/error-list.tsx:7,29 (deep-links present); no trace/span/log-search surface exists",
+      "evidence": "packages/dashboard/src/lib/telemetry-queries.ts:370,382,395,422 — consumed by app/(dashboard)/incidents/[id]/page.tsx",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§4 B2"
