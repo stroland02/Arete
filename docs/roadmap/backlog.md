@@ -30,7 +30,18 @@ Retrospective: [`2026-07-21-phase-2-retrospective.md`](2026-07-21-phase-2-retros
 
 Ranked. The first item is a live security gap, not an enhancement.
 
-1. **Internal + MCP tokens have no expiry — spec §6 Phase 2 gate 2 is UNMET.**
+1. ~~**Internal + MCP tokens have no expiry — spec §6 Phase 2 gate 2 is UNMET.**~~
+   **INTERNAL HALF CLOSED** (verified 2026-07-23, Stage 4.1). The static shared secret was replaced
+   by a minted, verified JWT: `packages/internal-token/src/mint.ts:15` issues
+   `{ iss, aud: 'arete-internal', iat, exp }` with a 120s default TTL
+   (`INTERNAL_TOKEN_DEFAULT_TTL_SECONDS`, overridable via `INTERNAL_TOKEN_TTL_SECONDS`), and
+   `packages/webhook/src/internal-auth.ts:54` verifies it via `verifyInternalToken` — 401 for
+   signature/expired/wrong-audience without distinguishing them, 503 when the keyset is
+   unconfigured. Expiry is therefore both present AND expressible; the specific claim below that it
+   was "not expressible in the current code path" is now false.
+   **The MCP half is still OPEN and is still the worse half** — left in full below because nothing
+   about it has changed.
+   *Original entry, kept for the record:*
    `INTERNAL_API_TOKEN` is one static shared secret read from the environment per request
    (`packages/webhook/src/internal-auth.ts:43`): no `exp`, no `iat`, no rotation, no revocation.
    Probed — the middleware authenticates the identical token with the system clock set ten years
@@ -146,11 +157,14 @@ Triaged by the final reviewer as non-blocking; the two blockers it found (URL-at
 leak, missing CI gate) were fixed on the phase branch before merge.
 
 **Observability coverage gaps**
-- `review-pr-heavy` queue has a producer (`webhook-handler.ts:114`, `backfill.ts:86` route
+- ~~`review-pr-heavy` queue has a producer (`webhook-handler.ts:114`, `backfill.ts:86` route
   PRs with >50 changed files) but **no consumer** — `worker.ts:311` only starts a Worker on
-  the fast queue. Those reviews never run and their traces dead-end. Pre-existing, not
-  introduced by Phase 1, but it undercuts "one real PR review traced end-to-end" — use a
-  small PR for that exit criterion until this is fixed.
+  the fast queue. Those reviews never run and their traces dead-end.~~
+  **CLOSED** (verified 2026-07-23, Stage 4.1). `worker.ts:419 startReviewWorkers()` now returns
+  `{ fast, heavy }`, starting a dedicated lower-concurrency consumer on `REVIEW_QUEUE_HEAVY_NAME`
+  (`queue.ts:18` = `review-pr-heavy`) at `worker.ts:422`; the code's own comment at `:411` records
+  that oversized PRs had always been routed there with nothing consuming them. The
+  "use a small PR for the end-to-end exit criterion" workaround is no longer required.
 - Span-name convention drift (Python lane): `orchestrator.py:393,456` emit
   `agent_review:{name}` / `synthesize_reviews` with `pr_number`/`agent_name` attributes
   instead of spec §5's `agent.review` (attr `agent.role`) / `review.synthesize`. No

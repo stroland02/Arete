@@ -191,27 +191,96 @@ without either 2.4 or an explicit disabled state.
 
 | # | Deliverable | Size |
 |---|---|---|
-| 3.1 | **Kuma logo = true global refresh.** Click re-pulls services, connections, telemetry and scan state; the existing spin becomes honest progress, not decoration. Must show real completion, and must not fabricate success if a source fails | S–M |
-| 3.2 | Manual investigations start a fix (`/incidents` is a dead end today — `createManualIncident` never calls `routeIncidentToFix`) | M |
-| 3.3 | Scan completion replaces the blind `setTimeout(reload, 1500)` | S |
-| 3.4 | Fix/Dismiss stops full-page reloading and losing rail position | S |
-| 3.5 | "Back to Overview" → `/overview` (currently `/`); remove "Explore with sample data →", which leads to a page with no sample data | S |
-| 3.6 | Delete `synth-ledger.tsx` (zero importers) | S |
+| 3.1 | ✅ **DONE** (`98562e8`) **Kuma logo = true global refresh** — `router.refresh()`, spin is the transition's real pending flag | S–M |
+| 3.2 | ✅ **DONE** (`98562e8`) **Manual investigations start a fix** — thin webhook route + honest `unavailable`/`declined` reporting | M |
+| 3.3 | ✅ **DONE** (`e0a3f65`) **Scan completion** — watches the real `ScanRun`, bounded at 90s with an honest "stopped watching" | S |
+| 3.4 | ✅ **DONE** (`e0a3f65`) **Fix/Dismiss** — `router.refresh()` keeps rail selection + scroll | S |
+| 3.5 | ✅ **DONE** (`e0a3f65`) **Dead links** — `/overview`; sample-data link reworded, not left broken | S |
+| 3.6 | ✅ **DONE** (`e0a3f65`) **Deleted `synth-ledger.tsx`** — superseded by the 1.1/1.2 gate | S |
 
 **3.1 design note:** the refresh must be *real*. A spin that resolves on a timer would be exactly the
 fabricated-status the honesty rules forbid. It needs per-source results, and a source that fails must say
 so rather than silently completing.
 
+> **How 3.1 was actually built.** Not a per-source fan-out but `router.refresh()`, which re-runs the
+> current route's server components against the live DB — it re-executes whatever data reads that page
+> actually declares, so the refresh is global by construction and cannot drift as pages change. "Real
+> completion" is the `useTransition` pending flag (true until the new server render commits), and "no
+> fabricated success" falls out for free: a failing source renders its own error/empty state on
+> re-render, so the control never claims a success the data does not support — and, deliberately, never
+> claims a failure it did not observe either.
+>
+> **How 3.2 was actually built.** `routeIncidentToFix` was reachable only from the Alertmanager
+> receiver; the fix was one internal-token webhook route (`POST /incidents/:id/route`) transporting the
+> existing function, NOT a dashboard reimplementation — reimplementing it would have forked its
+> critical+firing policy and its P2002/already-routed handling. The dashboard reports the router's own
+> verdict and treats an unreachable webhook as `unavailable` (distinct from a decline), never throwing,
+> because the incident is already durably created. The critical+firing policy was left intact: a manual
+> `warning` does not start a fix, and changing that stays the webhook lane's decision.
+>
+> **A dev-workflow bug fixed alongside Stage 3** (`fac7140`): `next build` and `next dev` both default
+> to `.next`, so every verification build this session clobbered the running dev server's manifests —
+> the app appeared to revert to an older version. `NEXT_DIST_DIR` now isolates verify builds; the dir is
+> throwaway and must be `rm -rf`'d after (lint is config-protected). Documented in
+> `packages/dashboard/AGENTS.md`.
+
 ### Stage 4 — Hygiene that keeps the map honest  (Group F)
 
 | # | Deliverable | Size |
 |---|---|---|
-| 4.1 | Correct `backlog.md` — 7 entries are recorded open but are closed in code; every plan is drawn off this file | S |
-| 4.2 | Correct `build-status-map.md` §3 A5 / §4 B2, B8 (stale since the retry worker and internal-token work landed) | S |
-| 4.3 | Adopt `getAccountState` on `agents/page.tsx` + `map/page.tsx` (last ad-hoc `hasAccess` users) | S |
-| 4.4 | Password reset + email verification — `User.emailVerified` exists and is never written; a locked-out user has no recovery path | M |
-| 4.5 | Surface confidence on review findings (schema column + UI) | S+S |
-| 4.6 | Decide the Python fingerprint question — shared service, generated port with golden vectors, or an explicit spec amendment. **A second hand-written copy is forbidden by contract §5** | M (decision-led) |
+| 4.1 | ✅ **DONE** Correct `backlog.md` — struck through with evidence, not deleted | S |
+| 4.2 | ✅ **DONE** Correct `build-status-map.md` — §2 (all 7), §3 A1/A5, §4 B1/B4/B8, and 3 surface rows | S |
+| 4.3 | ✅ **DONE** Adopt `getAccountState` on `agents/page.tsx` — and it was a real bug, not just tidying | S |
+| 4.4 | ⏸ **NOT DONE — needs a decision + infrastructure.** Password reset + email verification | M |
+| 4.5 | ⏸ **NOT DONE — needs a shared-Postgres migration in another lane.** Confidence on review findings | S+S |
+| 4.6 | ✅ **RESOLVED — the question is moot.** See below | M (decision-led) |
+
+#### What Stage 4 turned out to be
+
+**4.1/4.2 — the docs were staler than the roadmap said, partly because of this session.** Verified
+each claim against code before touching it, and struck through rather than deleted:
+- `review-pr-heavy` **closed** — `worker.ts:419 startReviewWorkers()` returns `{fast, heavy}` and
+  `:422` starts the heavy consumer; the code comment at `:411` records the gap it fixed.
+- Internal-token expiry **closed for the internal token** — `internal-token/src/mint.ts:15` mints
+  `{iss, aud, iat, exp}` (120s TTL) and `internal-auth.ts:54` verifies it. The backlog's specific
+  claim that expiry was "not expressible in the current code path" is now false. **The MCP half is
+  still open and is still the worse half** — left in full.
+- A5 outbound retry worker **closed** — `worker.ts:451` calls `startOutboundRetryWorker()`.
+- B1 (manual investigations), B4 (noise machine) and all seven §2 items closed **by this session's
+  own work**, which is exactly why the map needed correcting before it misled the next reader.
+
+**4.3 was not cosmetic.** `agents/page.tsx` computed `modelConnected` with an inline
+`db.modelConnection.count({ where: { installationId: { in: ... } } })`. `getAccountState` also counts
+**pending user-scoped** connections (`userId, installationId: null`) — a model connected before the
+first repo. The ad-hoc count missed those, so the page could show "connect a model" to someone who
+already had one. Adopting the single resolver fixed a real wrong answer, which is the argument for
+the contract in the first place.
+
+**4.6 is moot: there is no Python fingerprint implementation at all.** The item exists to prevent a
+second hand-written copy (contract §5). A search of `packages/agents` for `fingerprint` across every
+`.py` file returns **zero matches** — there is nothing to port, nothing to keep in sync, and no
+divergence risk today. The TypeScript side is already unified on one normalizer
+(`@arete/telemetry/fingerprint`); `webhook/src/fingerprint.ts` and the dashboard's
+`error-fingerprint.ts` both delegate to `fingerprintScoped`, and that file documents why two honest
+wrappers remain (an error is scoped by *service*, a comment by *category*). **The decision to make
+is therefore not "how do we port it" but "nothing, until Python needs a fingerprint" —** at which
+point the contract already forbids the hand-written copy and the choice becomes shared-service vs
+generated-port. Recorded rather than designed, because designing now would be building for a
+requirement that does not exist.
+
+#### Why 4.4 and 4.5 are deliberately not done
+
+Both leave the dashboard lane, and neither is blocked on effort:
+
+- **4.5 (confidence on findings)** needs a new column on `ReviewComment` — `packages/db`, which the
+  coordination ledger assigns to another engineer, on a Postgres **shared by every worktree**. Safety
+  rule 6 permits `migrate deploy`, but shipping a schema change mid-session without that lane's
+  agreement is precisely what rule 7's declare-first exists to prevent. The dashboard half (render a
+  `%` on each finding) is ~20 minutes once the column exists.
+- **4.4 (password reset + email verification)** needs an email-sending capability the repo does not
+  currently have, plus a token-lifecycle design (single-use, expiring, revocable on password change).
+  `User.emailVerified` exists and is never written. This is a genuine M-sized auth feature, not
+  hygiene, and it deserves its own review rather than being folded into a hygiene sweep.
 
 ### Stage 5 — The bigger bets  (Group E · re-approve before building)
 

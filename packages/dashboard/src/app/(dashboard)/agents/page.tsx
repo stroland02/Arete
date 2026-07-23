@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getDashboardViewModel, resolveSelectedInstallationIds, getAgentActivity } from "@/lib/queries";
+import { getAccountState } from "@/lib/account-state";
 import { getActiveModelConnection } from "@/lib/model-connections-api";
 import { getWorkItemInbox } from "@/lib/work-items";
 import { AgentsWorkspace } from "@/components/dashboard/agents/agents-workspace";
@@ -47,11 +48,15 @@ export default async function AgentsPage({
   // The agents' real dependency is a connected model — the repo alone can't
   // produce a review. Drives the honest empty-state CTA (connect a model, not
   // a repo, once the repo is already connected).
-  const modelConnected =
-    installationIds.length > 0 &&
-    (await db.modelConnection.count({
-      where: { installationId: { in: installationIds } },
-    })) > 0;
+  //
+  // Stage 4.3: this was an inline `db.modelConnection.count()`, one of the last
+  // surfaces re-deriving lifecycle state locally instead of through the single
+  // resolver (account-state contract §; getAccountState.modelConnected already
+  // counts installation-scoped AND pending user-scoped connections, which the
+  // raw count above missed). Session userId flows in so a model connected
+  // before the first repo still reads as connected.
+  const account = await getAccountState(db, installationIds, session.user.id);
+  const modelConnected = account.modelConnected;
 
   // The concrete model every agent runs on today (dynamic; replaces the old
   // hardcoded Opus/Sonnet tier badges). Null when nothing is connected.
