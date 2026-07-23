@@ -1027,3 +1027,27 @@ private-method change is behaviour-preserving.
 because that file is claimed by the `ridley` lane (see its telemetry-queries entry above). Whoever owns
 `.env.example` next should add it; the generator is
 `python -c "from arete_agents.mcp.token_crypto import generate_key; print(generate_key())"`.
+
+---
+
+## ▶ OPERATING MODEL (2026-07-23) — read this before starting work
+
+`docs/superpowers/plans/2026-07-23-multi-agent-operating-model.md` is now the operating procedure for
+all four lanes. It defines lane ownership + **port pinning**, the Kanban card schema, the merge gates,
+the continuous-verification loop, and the milestones. It was written after parallelism cost us a
+feature built twice, a forked copy of THIS file, and a browser tab that appeared to revert because
+four dev servers were racing for one port.
+
+**Two things every lane must do now:**
+
+1. **Pin your dev port.** `"dev": "next dev"` pins nothing — Next starts at 3000 and auto-increments,
+   so which lane owns a port is decided by startup order. `ridley` = `-p 3002`, `pyrosome` = `-p 3004`.
+   Claim yours in the table in §1 and pin it in your `packages/dashboard/package.json`.
+2. **Use `packages/dashboard/data/build-tracker.json` as the one queue** (85 items: 17 next,
+   15 blocked, 39 someday, 13 shipped, 1 needs-decision). Append there; do not start a second list.
+
+**The gate that matters most:** a finding is either *auto-fix* (mechanical — formatting, generated
+files, a doc line the code disproves) or *ask-user* (intent-changing — product behaviour, a policy
+question, a shared-DB migration, a cross-lane deletion). Auto-fix and proceed; **escalate the rest
+rather than resolving them silently.** Whoever merges second must not get to decide a policy question
+by accident.
