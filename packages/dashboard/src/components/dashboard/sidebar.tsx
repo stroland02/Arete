@@ -22,8 +22,16 @@ const NAV_ITEMS = [
   // Code map is reached from the Overview page (inline map + "Open map"), not a
   // top-level tab. Dashboards charts are now a section of Overview too. Both
   // routes still exist (/map deep-links; /dashboards redirects to /overview).
+  // Services now carries the agents layer (Stage 2.2): the specialists are in
+  // its rail, selecting one opens its conversation, and the gear opens its
+  // parameters in place. So /agents stops being a second destination for the
+  // same thing — Stage 2.3, and the locked decision behind both.
+  //
+  // The ROUTE is deliberately kept. Deep-links to /agents?container= still
+  // resolve, and anything bookmarked still works; it is only the nav entry
+  // that goes. Removing this before 2.2 shipped would have left agent chat
+  // reachable only by typing a URL, which is why the roadmap gated it.
   { href: "/services", label: "Services" },
-  { href: "/agents", label: "Agents" },
   // Incidents lives on Overview too (its own section), but a top-level tab
   // makes it deep-linkable/discoverable the same way Services and Agents are.
   { href: "/incidents", label: "Incidents" },
