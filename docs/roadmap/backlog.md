@@ -514,12 +514,28 @@ to produce any".
   `fetch failed` at `05:01:32`**.
 - `WorkItem` count unchanged (2), no `Review`, no findings. Whatever the model produced was lost.
 
-**ISOLATED (2026-07-23, follow-up).** It is the webhook side, and the mechanism is exact:
+**CORRECTION (2026-07-23) — the mechanism below was WRONG, and another lane disproved it.**
 
-- The webhook gave up **307 seconds** after the run started (`04:56:25` → `05:01:32`). Node's `fetch`
-  (undici) defaults `headersTimeout` to **300 s**; 307 s is that plus connection overhead.
-- The agents `/scan` endpoint sends response headers only when the **entire** scan is done, so a run
-  slower than 5 minutes can never return headers in time — the timeout is structural, not incidental.
+I wrote that this was "isolated" and the "mechanism is exact": undici's 300 s `headersTimeout`, with
+307 s read as 300 s + overhead. That inference was a coincidence fit, not a proof. `D-verify` tested
+it directly (`ded009f`): on Node 24.15.0, against a server that deliberately withheld headers for
+**305 s**, `fetch` returned the body successfully. **The 300 s ceiling did not apply.** So whatever
+ended the 307 s run, it was not this, and the true limit is unknown and version-dependent.
+
+What survives unchanged is the *observation*, which is still the real defect: the webhook stopped
+waiting at 307 s while the agents service kept working for another seven minutes, and the completed
+work was discarded. What does not survive is my explanation of why.
+
+`ded009f` fixed the thing that actually needed fixing — an explicit, configurable deadline — so an
+unknown limit cannot silently strand a tenant with a `running` ScanRun that refuses every later scan.
+
+*The original, now-falsified reasoning is kept below rather than deleted, because the way it was
+wrong is instructive: a number that fits a hypothesis is not the same as testing the hypothesis.*
+
+- ~~The webhook gave up **307 seconds** after the run started (`04:56:25` → `05:01:32`). Node's
+  `fetch` (undici) defaults `headersTimeout` to **300 s**; 307 s is that plus connection overhead.~~
+- ~~The agents `/scan` endpoint sends response headers only when the **entire** scan is done, so a
+  run slower than 5 minutes can never return headers in time — structural, not incidental.~~
 - The agents service was **still working 7 minutes after the webhook declared failure**: its last
   model call was `05:08:53` vs the failure at `05:01:32`, and it reached 6 calls in total.
 - uvicorn logged **zero completed `POST /scan` access lines**, which is what a client disconnect
