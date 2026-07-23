@@ -33,13 +33,24 @@ git rev-list --left-right --count origin/main...HEAD   # behind<TAB>ahead
    git rebase origin/main
    ```
    Merging a stale branch here resurrects work another lane deliberately superseded.
-2. **Run the tests for what you touched** (see the table below).
-3. **Push**, then **re-check** — the push can still be rejected because main moved during
+2. **Check the lanes** — the cheapest stage, and the only one that catches *wasted* work
+   rather than broken work.
+   ```bash
+   node scripts/lanes.mjs check
+   ```
+   Exit 1 means this checkout has changed a file another lane owns, two lanes claim one
+   file, or you built something the tracker already calls shipped. The last of those has
+   happened four times. That is why this stage is here.
+3. **Run the tests for what you touched** (see the table below).
+4. **Push**, then **re-check** — the push can still be rejected because main moved during
    your test run.
    ```bash
-   git push origin HEAD:main
+   git push origin HEAD:main && node scripts/lanes.mjs heartbeat
    ```
-4. **Rejected?** Go back to step 1. This happened twice in one session. It is routine, not
+   The heartbeat records where this lane is. A lane that has not checked in for six hours
+   is reported as possibly stale, so its file claims can be released rather than blocking
+   everyone else indefinitely.
+5. **Rejected?** Go back to step 1. This happened twice in one session. It is routine, not
    an emergency.
 
 ## Which tests, for what you touched

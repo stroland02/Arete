@@ -1,0 +1,94 @@
+{
+  "$schema": "see scripts/lanes.mjs — `node scripts/lanes.mjs check` validates this file",
+  "$why": "Four agents, four checkouts, one repo. The prose ledger in ade-coordination.md records intent; this file records ownership in a form a script can reject. Both exist on purpose: prose carries the reasoning, this carries the constraint.",
+  "updatedAt": "2026-07-23",
+  "shared": [
+    ".claude/ade-coordination.md",
+    ".claude/lanes.json",
+    ".claude/skills/**",
+    "AGENTS.md",
+    "docs/handoff/**",
+    "docs/status/**",
+    "docs/roadmap/backlog.md",
+    "package.json"
+  ],
+  "$shared": "Globs every lane may edit, because coordination itself lives in them. Append, never rewrite: a lane that overwrites another's entry has destroyed the record that would have shown the collision. package.json is here because every lane adds scripts to it — but a dependency change is still a claim, and belongs in ade-coordination.md first.",
+  "lanes": [
+    {
+      "id": "A-view",
+      "checkout": "workspaces/Arete/ridley",
+      "role": "everything a person sees — build-status page, its components, navigation",
+      "owns": [
+        "packages/dashboard/src/app/(dashboard)/build-status/page.tsx",
+        "packages/dashboard/src/components/dashboard/build-status/**",
+        "packages/dashboard/src/components/dashboard/sidebar.tsx"
+      ],
+      "avoid": [
+        "packages/dashboard/src/lib/build-tracker.ts",
+        "packages/dashboard/src/app/api/build-status/route.ts",
+        "packages/dashboard/data/build-tracker.json"
+      ],
+      "queue": [],
+      "brief": "docs/handoff/2026-07-23-build-status-lane-briefs.md",
+      "heartbeat": null,
+      "lastCommit": null
+    },
+    {
+      "id": "B-engine",
+      "checkout": "workspaces/Arete/pyrosome",
+      "role": "typed selectors and backend libraries — no UI, no data authoring",
+      "owns": [
+        "packages/dashboard/src/lib/build-tracker.ts",
+        "packages/dashboard/src/lib/build-tracker.test.ts",
+        "packages/agents/src/arete_agents/mcp/**",
+        "scripts/lanes.mjs"
+      ],
+      "avoid": [
+        "packages/dashboard/src/components/**",
+        "packages/dashboard/src/app/api/build-status/route.ts",
+        "packages/dashboard/data/build-tracker.json",
+        "packages/webhook/src/alerting/**",
+        ".env.example"
+      ],
+      "queue": [
+        "mcp-token-plaintext-and-simulated-oauth"
+      ],
+      "brief": "docs/handoff/2026-07-23-build-status-lane-briefs.md",
+      "heartbeat": "2026-07-23T11:38:17Z",
+      "lastCommit": "56883f0"
+    },
+    {
+      "id": "C-data",
+      "checkout": "Kuma2/Arete",
+      "role": "the record itself and the path that writes it — tracker JSON, API route, editor",
+      "owns": [
+        "packages/dashboard/data/build-tracker.json",
+        "packages/dashboard/src/app/api/build-status/route.ts",
+        "packages/dashboard/src/components/dashboard/build-status-editor.tsx"
+      ],
+      "avoid": [
+        "packages/dashboard/src/lib/build-tracker.ts",
+        "packages/dashboard/src/app/(dashboard)/build-status/page.tsx",
+        "packages/dashboard/src/components/dashboard/sidebar.tsx"
+      ],
+      "queue": [
+        "silence-a-finding"
+      ],
+      "brief": "docs/handoff/2026-07-23-build-status-lane-briefs.md",
+      "heartbeat": null,
+      "lastCommit": null
+    },
+    {
+      "id": "D-verify",
+      "checkout": null,
+      "role": "drives the running app on localhost and reports what is actually broken — owns no source file on purpose",
+      "owns": [],
+      "avoid": [],
+      "queue": [],
+      "brief": "docs/handoff/2026-07-23-parallel-agent-workflow.md",
+      "$note": "Owning nothing is the point. A lane that both builds and signs off on its own work is not verification. It files findings against the tracker and against whichever lane owns the file; it does not fix them.",
+      "heartbeat": null,
+      "lastCommit": null
+    }
+  ]
+}

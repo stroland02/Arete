@@ -14,7 +14,9 @@
     "dev:dashboard": "pnpm --filter @arete/dashboard dev",
     "dev:seed": "node packages/dashboard/scripts/seed-dev-user.mjs",
     "dev:glassbox": "node scripts/dev/glassbox-watch.mjs",
-    "dev:all": "node scripts/dev/dev-all.mjs"
+    "dev:all": "node scripts/dev/dev-all.mjs",
+    "lanes": "node scripts/lanes.mjs check",
+    "board": "node scripts/lanes.mjs board"
   },
   "packageManager": "pnpm@9.15.9"
 }

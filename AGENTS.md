@@ -7,7 +7,8 @@ Read these three before writing any code.
 |---|---|
 | [`docs/PRINCIPLES.md`](docs/PRINCIPLES.md) | The mission, the honesty rules, the HITL moat, the tenancy and BYO-model contracts, and the working rules. **What never to do.** |
 | [`packages/dashboard/data/build-tracker.json`](packages/dashboard/data/build-tracker.json) | **The single record** of what is built, what is half-wired and what remains — 85 items, each with provenance, importance and phase. **What to do.** Contract and selectors: `packages/dashboard/src/lib/build-tracker.ts`. |
-| [`.claude/ade-coordination.md`](.claude/ade-coordination.md) | Who owns which package right now. Claim one, and declare cross-package edits **before** editing. |
+| [`.claude/ade-coordination.md`](.claude/ade-coordination.md) | Who owns which package right now, and **why**. Claim one, and declare cross-package edits **before** editing. |
+| [`.claude/lanes.json`](.claude/lanes.json) | The same ownership, in a form a script can reject. `pnpm board` shows every lane's queue and the top unclaimed work; `pnpm lanes` exits 1 if two lanes claim one file, if this checkout is editing someone else's, or if you queued something another lane already shipped. Prose carries the reasoning; this carries the constraint. Workflow: [`docs/handoff/2026-07-23-parallel-agent-workflow.md`](docs/handoff/2026-07-23-parallel-agent-workflow.md). |
 
 > **One record, deliberately.** Three lanes built a build-status tracker in parallel and a
 > second record (`docs/roadmap/master-build-status.json`) briefly existed alongside this one.
