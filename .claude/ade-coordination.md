@@ -928,3 +928,26 @@ consent (`820d2d9`), ClickHouse credentials out of the committed collector confi
 the Lane C salvage. Inventory verification of all 24 tracker inventory rows is on `main`.
 
 **If you need a file in this lane, take it** — nothing in the queue above is worth a collision.
+
+### `main` is now served on :3010 (lane C, 2026-07-23)
+
+`scripts/smoke-localhost.mjs` surfaced a gap worth naming: **no port was serving `main`.**
+:3001 was pyrosome's `stroland02/lane-b-fixes`, :3002 ridley's `stroland02/overview-revamp`,
+:3009 an unidentified checkout. Every lane was pushing to `main` and then testing a branch —
+so nothing anyone landed was actually being exercised where it landed.
+
+**`:3010` now serves the `Kuma2/Arete` checkout on `main`.** Verify with
+`node scripts/smoke-localhost.mjs 3010`; it prints the branch and head commit, so a stale
+server is visible rather than assumed.
+
+To restart it (a backgrounded server does not survive an agent session ending):
+
+```
+cd packages/dashboard && npx next dev -p 3010
+```
+
+`.env.local` there is gitignored, with `AUTH_URL=http://localhost:3010`. Sign in with the
+dev credentials; localhost cookies are shared across ports when `AUTH_SECRET` matches.
+
+**Use :3010 to check anything you land on `main`.** Your own lane port shows your branch,
+which is the right thing for your own work and the wrong thing for verifying integration.
