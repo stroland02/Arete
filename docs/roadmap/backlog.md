@@ -514,6 +514,47 @@ to produce any".
   `fetch failed` at `05:01:32`**.
 - `WorkItem` count unchanged (2), no `Review`, no findings. Whatever the model produced was lost.
 
+**RE-OPENED (2026-07-23, third data point) — the ~300 s ceiling is real, and the correction below
+now looks like the thing that was wrong.**
+
+I retracted the headersTimeout diagnosis after `D-verify` produced a counter-test. Three live scans
+since then say the ceiling is real, and this evidence is stronger than either earlier argument
+because it is reproduction, not inference:
+
+| Run | Wall time | Agents-side behaviour |
+|---|---|---|
+| `04:56:25` | **306.86 s** | 6 model calls; still working 7 min after the failure |
+| `11:13:11` | **306.15 s** | — |
+| `16:38:37` | **307.33 s** | **0 model calls** (fell back to local Ollama, which was up and answering 200) |
+
+What makes this decisive rather than another coincidence fit:
+
+- **The agents service behaved completely differently across runs** — six model calls in one, none in
+  another — and the wall time still landed within 1.2 s of 307 s. A limit that ignores what the other
+  side is doing is not an agents-side limit.
+- **`ded009f`'s explicit deadline did not fire.** `SCAN_REQUEST_TIMEOUT_MS` defaults to **45 minutes**
+  (`trigger.ts:36`), so the run died roughly 43 minutes early, and the error is `fetch failed` — a
+  network-level throw — not the `AbortError` that `AbortSignal.timeout` produces.
+
+So something terminates this fetch at ~300 s regardless of the deadline, regardless of the agents
+service, and reports it as a network failure. That is precisely undici's documented `headersTimeout`
+signature.
+
+**This does not automatically make `D-verify` wrong** — their 305 s test genuinely returned a body,
+and that result needs explaining rather than dismissing. The likeliest reconciliation is that
+`headersTimeout` measures time-to-*first-byte*, and their harness sent something (a status line, a
+header, a keep-alive) that reset the clock, whereas agents `/scan` sends nothing at all until the
+scan completes. **Whoever picks this up should re-run their harness with a server that writes
+literally zero bytes for 310 s before responding.** That single experiment settles it.
+
+**Lesson worth keeping:** I asserted this mechanism, retracted it under one counter-test, and the
+retraction was probably also premature. Neither the original claim nor the retraction rested on
+reproduction. Three runs do.
+
+---
+
+*The retraction, kept for the record:*
+
 **CORRECTION (2026-07-23) — the mechanism below was WRONG, and another lane disproved it.**
 
 I wrote that this was "isolated" and the "mechanism is exact": undici's 300 s `headersTimeout`, with
