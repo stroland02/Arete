@@ -25,6 +25,7 @@
  *   node scripts/lanes.mjs board                 standup view: lanes, queues, what is next
  *   node scripts/lanes.mjs heartbeat [<id>]      record that this lane is alive, and where
  *   node scripts/lanes.mjs owner <path>          which lane owns a path
+ *   node scripts/lanes.mjs feedback [<ref>]      tracker rows filed since you last checked in
  */
 
 import { execFileSync } from "node:child_process";
@@ -364,6 +365,70 @@ function board() {
   return 0;
 }
 
+/**
+ * What the tracker has gained or changed since this lane last checked in.
+ *
+ * The build/verify loop needs this: D-verify dogfoods the running product and
+ * files what it finds as tracker rows, and re-reading 88 rows every tick to spot
+ * three new ones is how findings get missed. `lastCommit` is already recorded by
+ * `heartbeat`, so "since I last looked" needs no new state.
+ *
+ * Reports only. It cannot tell you a row is *right* — a finding filed from
+ * dogfooding is a claim about the running product, and checking it is the work.
+ */
+function feedback(sinceRef) {
+  const doc = loadLanes();
+  const lane = detectLane(doc);
+  const since = sinceRef || lane?.lastCommit;
+  if (!since) {
+    console.error("No ref to compare against. Pass one, or run `heartbeat` first.");
+    return 1;
+  }
+
+  let before;
+  try {
+    before = JSON.parse(git("show", `${since}:packages/dashboard/data/build-tracker.json`));
+  } catch {
+    console.error(`Could not read the tracker at ${since}. Has it been fetched?`);
+    return 1;
+  }
+  const now = readJson(TRACKER_PATH);
+
+  const was = new Map(before.items.map((i) => [i.id, i]));
+  const added = now.items.filter((i) => !was.has(i.id));
+  const changed = now.items.filter((i) => {
+    const old = was.get(i.id);
+    return old && (old.state !== i.state || old.gap !== i.gap);
+  });
+
+  console.log(`\n  Tracker changes since ${since}:\n`);
+  if (added.length === 0 && changed.length === 0) {
+    console.log("    nothing new\n");
+    return 0;
+  }
+
+  if (added.length > 0) {
+    console.log(`  NEW (${added.length}) — filed since you last looked:`);
+    for (const i of added) {
+      console.log(`    ${i.importance.padEnd(8)} ${i.id}`);
+      console.log(`      ${i.title}`);
+      if (i.gap) console.log(`      gap: ${i.gap.slice(0, 160)}`);
+    }
+    console.log();
+  }
+
+  if (changed.length > 0) {
+    console.log(`  CHANGED (${changed.length}):`);
+    for (const i of changed) {
+      const old = was.get(i.id);
+      const move = old.state !== i.state ? `${old.state} -> ${i.state}` : "gap rewritten";
+      console.log(`    ${i.id}  (${move})`);
+    }
+    console.log();
+  }
+  return 0;
+}
+
 function heartbeat(laneId) {
   const doc = loadLanes();
   const lane = doc.lanes.find((l) => l.id === laneId) ?? detectLane(doc);
@@ -414,12 +479,13 @@ if (invokedDirectly) {
     check: () => check(laneFlag >= 0 ? rest[laneFlag + 1] : undefined),
     board,
     heartbeat: () => heartbeat(laneArg),
+    feedback: () => feedback(laneArg),
     owner: () => owner(laneArg),
   };
 
   const run = commands[command];
   if (!run) {
-    console.error(`Unknown command "${command}". Try: check | board | heartbeat <id> | owner <path>`);
+    console.error(`Unknown command "${command}". Try: check | board | feedback | heartbeat <id> | owner <path>`);
     process.exit(2);
   }
   process.exit(run());

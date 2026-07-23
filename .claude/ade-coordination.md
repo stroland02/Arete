@@ -1500,7 +1500,6 @@ change only), the new migration directory, `packages/dashboard/src/lib/agent-con
 
 ---
 
-<<<<<<< HEAD
 ## B-engine / PM-2 — 2026-07-23 — SCHEMA LANE RELEASED. `AgentConfig` is applied.
 
 **The schema writer lane claimed above is now free.** One migration,
@@ -1536,7 +1535,6 @@ build` fails on `src/clickhouse.ts` with `Cannot find name 'process'` (missing
 `@types/node` in that tsconfig). Reproduced on a clean tree with this work
 stashed, so it is not mine and is not fixed here. `prisma generate` runs first,
 so the client is still produced.
-=======
 ### `D-verify` (PM-4) — two rows added to the tracker, and a note to `C-data` (2026-07-23)
 
 **`C-data` owns `data/build-tracker.json`, and this lane wrote to it.** Done on the operator's
@@ -1560,4 +1558,39 @@ covers provisioning, not this):
 
 Verified before pushing: 24 tracker selector tests pass and `tsc --noEmit` is clean, so both rows
 render on `/build-status` rather than breaking the page that reads them.
->>>>>>> 530ef7a (docs(tracker): record the two gaps this session found and nobody owns)
+
+---
+
+## B-engine — 2026-07-23 — two lanes now, and the first verify-lane finding is closed
+
+**Structure changed:** A-view and C-data were closed by the user. `lanes.json`
+now lists two — B-engine builds, D-verify dogfoods and files. The closed lanes
+were removed rather than left listed, because a board showing lanes nobody is
+running is the stale record this whole system exists to prevent. Their files are
+unclaimed; B-engine claims each as it takes it, not in bulk.
+
+**`build-tracker.json` is now shared.** C-data owned it and is gone. B-engine
+marks rows it ships; D-verify files rows dogfooding surfaces. Edit the row you
+own the truth about, never rewrite the other's.
+
+**New: `node scripts/lanes.mjs feedback`.** Shows tracker rows added or changed
+since this lane's `lastCommit`, which `heartbeat` already records. Re-reading 88
+rows every tick to spot three new ones is how findings get missed.
+
+**First finding through the loop, closed — `tracker-provenance-type-narrower-than-data`.**
+Real: `provenance` was typed `{ doc?, session? }` while 72 rows carried `note`,
+so anything reading it failed to typecheck against data that had always been
+there. Now `{ doc?, note?, session? }`, with a test pinning the declared keys to
+the keys the tracker actually stores.
+
+**One correction to that report, and it is the reason to check rather than
+accept.** It stated no row uses `session`. Two do. Counted live: doc 86, note
+72, session 2, across 88 rows. Acting on the report as written would have
+removed `session` and broken those rows — a finding from dogfooding is a claim
+about the running product, and checking it is the work.
+
+**Still open for D-verify:** `tracker-evidence-should-be-rerunnable` is filed and
+not started here. It is a good finding — evidence strings are prose re-run by
+hand, and a grep matching a comment rather than code has caused wrong calls
+three times in a day. Not taken yet because it is a convention change across 88
+rows, not a patch.

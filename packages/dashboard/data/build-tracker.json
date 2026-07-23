@@ -517,7 +517,7 @@
         }
       ],
       "works": "The fabricated simulated_token_for_<code> is gone: _complete_auth performs a real code exchange, fails closed when token_url is unset, and stores nothing without a genuine access_token. Config is encrypted at rest and created atomically at 0o600. The OAuth state is now secrets.token_urlsafe(32), fresh per flow, and verified with compare_digest on BOTH the local callback and the manual-paste fallback — an unverified code is discarded before it is ever stored.",
-      "gap": "Remaining, and smaller than it was: client_id is still hardcoded to \"arete-client\", the authorization endpoint is still guessed as the server target rather than discovered, and encryption no-ops to cleartext when no key is configured.",
+      "gap": "Narrowed at c7ddd54: client_id now resolves from the server config, then ARETE_MCP_CLIENT_ID, then the default; the authorization endpoint is discovered via RFC 8414 and the target-URL fallback prints that it is GUESSING. What remains is one item and it is a ruling, not a patch: encryption no-ops to cleartext when no key is configured, which the coordination ledger records as a deliberate upgrade-safety decision.",
       "evidence": "packages/agents/src/arete_agents/mcp/auth.py:90, mcp/manager.py",
       "provenance": {
         "doc": "docs/roadmap/backlog.md",
@@ -809,7 +809,7 @@
       "lane": "idea",
       "area": "Partially wired",
       "level": "partial",
-      "state": "next",
+      "state": "shipped",
       "importance": "high",
       "rank": 80,
       "programmes": [
@@ -818,8 +818,8 @@
           "phase": "stage-2"
         }
       ],
-      "gap": "Still unsaved, and now honestly so. Stage 2.2 shipped the agents layer without it by leaving the Save button disabled with a note saying why — no fake saves, including the model pick. That is the right interim, not a fix: the controls are interactive locally and nothing is persisted, so the work remains.",
-      "evidence": "components/dashboard/agents/agent-config-drawer.tsx:24,245 — Save is disabled; no agent-config API route exists",
+      "gap": "The model picker in that drawer is still read-only, deliberately — the provider/model is chosen once under AI Models and applies to every agent, so a per-agent control there would be theatre. Nothing consumes the saved config in the review pipeline yet: it is stored and shown, not yet enforced on a run.",
+      "evidence": "packages/dashboard/src/lib/agent-config.ts; api/agents/[id]/config/route.ts; AgentConfig verified in Postgres — second upsert updated the row rather than inserting a second",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
         "note": "Stage 2.4"
@@ -827,7 +827,8 @@
       "origin": "session",
       "addedAt": "2026-07-23",
       "addedBy": "seed",
-      "verifiedAt": "2026-07-23"
+      "verifiedAt": "2026-07-23",
+      "works": "Enabled, severity threshold and custom guidance persist per installation through /api/agents/[id]/config, backed by the AgentConfig table (migration 20260723120000). A save is an upsert on (installationId, agentId); the panel renders what the server returns, and a save that cannot happen answers non-2xx and changes nothing."
     },
     {
       "id": "agents-layer-inside-services",
@@ -1420,7 +1421,7 @@
           "phase": "stage-4"
         }
       ],
-      "gap": "lib/trends.ts buckets by LOCAL calendar day while the ClickHouse window is UTC. Every chart in the product is affected for any viewer whose timezone crosses midnight relative to UTC, so the fix needs its own change and its own verification.",
+      "gap": "Unchanged and still a product decision: trends bucket by LOCAL calendar day while the ClickHouse window is UTC. Bucketing in UTC makes a viewer in UTC-5 see \"today\" start at 19:00 yesterday; querying in the viewer timezone needs a timezone these server components are not given. Being wrong is silent — every chart keeps rendering with different numbers. A separate, confirmed bug WAS fixed at 7a63f19: future-dated rows were swept into the pre-window baseline and drawn as pre-existing history.",
       "evidence": "packages/dashboard/src/lib/trends.ts — 2 local-calendar date calls against a UTC window",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
@@ -2432,7 +2433,7 @@
       "lane": "idea",
       "area": "Partially wired",
       "level": "partial",
-      "state": "next",
+      "state": "shipped",
       "rank": 390,
       "origin": "session",
       "addedAt": "2026-07-23",
@@ -2440,12 +2441,14 @@
       "id": "tracker-provenance-type-narrower-than-data",
       "title": "The provenance type is narrower than the data it describes",
       "importance": "medium",
-      "gap": "lib/build-tracker.ts declares provenance as { doc?; session? }, but the stored data uses doc on all 86 rows and note on 69, and no row uses session at all. So note is invisible to the compiler: a consumer reading provenance.note does not typecheck, and a writer can drop it without any test failing. The write route works around this by reading provenance as a loose record, which keeps the required-provenance guard honest but leaves the type still wrong. Owned by B-engine; C-data will not edit that file.",
-      "evidence": "packages/dashboard/src/lib/build-tracker.ts (provenance type) vs packages/dashboard/data/build-tracker.json (doc 86, note 69, session 0)",
+      "gap": "One correction to the report, checked before acting: it said no row uses `session`. Two do, so `session` stayed. Counted live at the time of the fix: doc 86, note 72, session 2, across 88 rows.",
+      "evidence": "packages/dashboard/src/lib/build-tracker.ts TrackerItem.provenance; build-tracker.test.ts \"provenance keeps the type honest about the data\"",
       "provenance": {
         "session": "PM-3 C-data lane, 2026-07-23",
         "note": "found while making provenance required on the build-status write route"
-      }
+      },
+      "verifiedAt": "2026-07-23",
+      "works": "provenance is now { doc?, note?, session? } and a test pins the declared keys to the keys the real tracker stores, so the type cannot narrow away from the data again."
     },
     {
       "lane": "idea",

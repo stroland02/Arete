@@ -1,6 +1,6 @@
 {
   "$schema": "see scripts/lanes.mjs — `node scripts/lanes.mjs check` validates this file",
-  "$why": "Four agents, four checkouts, one repo. The prose ledger in ade-coordination.md records intent; this file records ownership in a form a script can reject. Both exist on purpose: prose carries the reasoning, this carries the constraint.",
+  "$why": "Two agents now: B-engine builds, D-verify dogfoods the running product and files what it finds. That is the cookbook's evaluator/optimizer split — the lane that verifies owns no source file, because a lane that fixes what it finds stops looking once it finds something it can fix. Ownership lives here rather than in prose because prose forked between worktrees and four duplicate commits landed anyway. `node scripts/lanes.mjs check` validates this file.",
   "updatedAt": "2026-07-23",
   "shared": [
     ".claude/ade-coordination.md",
@@ -10,33 +10,15 @@
     "docs/handoff/**",
     "docs/status/**",
     "docs/roadmap/backlog.md",
-    "package.json"
+    "package.json",
+    "packages/dashboard/data/build-tracker.json"
   ],
-  "$shared": "Globs every lane may edit, because coordination itself lives in them. Append, never rewrite: a lane that overwrites another's entry has destroyed the record that would have shown the collision. package.json is here because every lane adds scripts to it — but a dependency change is still a claim, and belongs in ade-coordination.md first.",
+  "$shared": "Globs either lane may edit, because coordination itself lives in them. Append, never rewrite another lane's entry. build-tracker.json is shared now that C-data is closed: B-engine marks rows it ships, D-verify files rows dogfooding surfaces. Edit the row you own the truth about, never rewrite the other's.",
   "lanes": [
-    {
-      "id": "A-view",
-      "checkout": "workspaces/Arete/ridley",
-      "role": "everything a person sees — build-status page, its components, navigation",
-      "owns": [
-        "packages/dashboard/src/app/(dashboard)/build-status/page.tsx",
-        "packages/dashboard/src/components/dashboard/build-status/**",
-        "packages/dashboard/src/components/dashboard/sidebar.tsx"
-      ],
-      "avoid": [
-        "packages/dashboard/src/lib/build-tracker.ts",
-        "packages/dashboard/src/app/api/build-status/route.ts",
-        "packages/dashboard/data/build-tracker.json"
-      ],
-      "queue": [],
-      "brief": "docs/handoff/2026-07-23-build-status-lane-briefs.md",
-      "heartbeat": "2026-07-23T12:30:00Z",
-      "lastCommit": "bd3e339"
-    },
     {
       "id": "B-engine",
       "checkout": "workspaces/Arete/pyrosome",
-      "role": "PM-2 · Engine — unblock the data; typed selectors and backend libraries, no UI",
+      "role": "PM-2 · the builder — all product code; claims files as it takes them",
       "owns": [
         "packages/dashboard/src/lib/build-tracker.ts",
         "packages/dashboard/src/lib/build-tracker.test.ts",
@@ -61,37 +43,16 @@
         ".env.example"
       ],
       "queue": [
-        "agent-config-persistence",
         "scan-cannot-complete-slow-model"
       ],
       "brief": "docs/handoff/2026-07-23-build-status-lane-briefs.md",
-      "heartbeat": "2026-07-23T16:45:05Z",
-      "lastCommit": "ef698af"
-    },
-    {
-      "id": "C-data",
-      "checkout": "Kuma2/Arete",
-      "role": "the record itself and the path that writes it — tracker JSON, API route, editor",
-      "owns": [
-        "packages/dashboard/data/build-tracker.json",
-        "packages/dashboard/src/app/api/build-status/route.ts",
-        "packages/dashboard/src/components/dashboard/build-status-editor.tsx"
-      ],
-      "avoid": [
-        "packages/dashboard/src/lib/build-tracker.ts",
-        "packages/dashboard/src/app/(dashboard)/build-status/page.tsx",
-        "packages/dashboard/src/components/dashboard/sidebar.tsx"
-      ],
-      "queue": [],
-      "$queueNote": "silence-a-finding was removed on 2026-07-23: ridley shipped it in 29a1362 while it sat here. The checker flagged it the moment main was rebased in, which is the whole point — C-data had not started, so nothing was wasted. Pick the next item from `pnpm board`.",
-      "brief": "docs/handoff/2026-07-23-build-status-lane-briefs.md",
-      "heartbeat": "2026-07-23T12:20:00Z",
-      "lastCommit": "29a1362"
+      "heartbeat": "2026-07-23T16:50:45Z",
+      "lastCommit": "dab4956"
     },
     {
       "id": "D-verify",
       "checkout": "workspaces/Areté/Project-Manager",
-      "role": "drives the running app on localhost and reports what is actually broken — owns no source file on purpose",
+      "role": "dogfoods the running product on localhost, files what it finds, and does not fix it — owns no product source on purpose",
       "owns": [
         "scripts/smoke-localhost.mjs",
         ".claude/skills/land-on-main/**",
@@ -105,5 +66,6 @@
       "heartbeat": "2026-07-23T16:34:18Z",
       "lastCommit": "d72ada1"
     }
-  ]
+  ],
+  "$closed": "A-view (ridley) and C-data (Kuma2) were closed by the user on 2026-07-23. Removed rather than left listed: a board showing lanes nobody is running is the stale record this system exists to prevent. Their files are unclaimed and B-engine, as the only builder, may take them — claiming each one as it does, not in bulk. Their history is in git."
 }

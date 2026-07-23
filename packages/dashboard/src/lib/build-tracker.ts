@@ -59,7 +59,13 @@ export interface TrackerItem {
   works?: string;
   gap?: string;
   evidence?: string;
-  provenance?: { doc?: string; session?: string };
+  /**
+   * Where this row came from, so any claim on the page is one Read from being
+   * checked. `note` was stored on most rows and declared on none — anything
+   * reading it failed to typecheck against data that has always carried it.
+   * Counted before fixing: doc 86, note 72, session 2, across 88 rows.
+   */
+  provenance?: { doc?: string; note?: string; session?: string };
   origin?: string;
   addedAt?: string;
   addedBy?: string;

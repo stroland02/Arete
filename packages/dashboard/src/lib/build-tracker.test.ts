@@ -259,3 +259,22 @@ describe("the real tracker satisfies the new contract", () => {
     }
   });
 });
+
+describe("provenance keeps the type honest about the data", () => {
+  it("declares every provenance key the real tracker actually stores", () => {
+    // Filed by the verify lane after dogfooding: the type said { doc, session }
+    // while 72 rows carried `note`, so anything reading it failed to typecheck
+    // against data that had always been there. Their report also said no row
+    // used `session`; two do, so it stays. Checking the claim mattered more
+    // than accepting it.
+    const declared = new Set(["doc", "note", "session"]);
+    const seen = new Set(tracker.items.flatMap((i) => Object.keys(i.provenance ?? {})));
+    const undeclared = [...seen].filter((k) => !declared.has(k));
+    expect(undeclared, `provenance keys stored but not declared: ${undeclared.join(", ")}`).toEqual([]);
+  });
+
+  it("gives every row a provenance, so no claim is unattributable", () => {
+    const orphans = tracker.items.filter((i) => !i.provenance).map((i) => i.id);
+    expect(orphans).toEqual([]);
+  });
+});
