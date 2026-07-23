@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 
 // saveAgentMemory is the pure business-logic core behind POST
 // /internal/memory (route wiring + the auth-rejection mutation test live in
@@ -80,6 +80,22 @@ function baseParams(overrides: Record<string, unknown> = {}) {
     ...overrides,
   }
 }
+
+// Warm vite's transform cache before any test is timed — same fix, and same
+// reasoning, as tenancy.test.ts. loadModule() must run inside each test (it
+// installs a per-test ./db.js mock), and its FIRST call pays the cold transform
+// of memory-write.js and its dependency chain: 1425ms in isolation, 3421ms in
+// the full suite under CPU contention. Later calls are nearly free, because
+// vi.resetModules() clears the module registry, not vite's transform cache.
+//
+// Charged to the first test that left ~1.6s under vitest's 5s testTimeout, which
+// is the same landmine tenancy.test.ts stepped on — just further from going off.
+// Paying it in beforeAll charges setup work to setup (hookTimeout, 10s) and
+// leaves each test measuring only its own behaviour.
+beforeAll(async () => {
+  await loadModule(makeFakeStore({}))
+  vi.resetModules()
+})
 
 describe('saveAgentMemory', () => {
   beforeEach(() => {
