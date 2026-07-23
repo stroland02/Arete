@@ -416,21 +416,24 @@
     },
     {
       "id": "collector-plaintext-credentials",
-      "title": "Collector config commits plaintext ClickHouse credentials",
+      "title": "Collector credentials come from the environment, not the config file",
       "lane": "idea",
       "area": "Partially wired",
       "level": "partial",
-      "state": "next",
+      "state": "shipped",
       "importance": "critical",
       "rank": 10,
-      "gap": "otel-collector-config.yaml commits `superlog/superlog` in the clear. Fine for local compose; it must not survive into any deploy path, and nothing currently stops it.",
-      "evidence": "infra otel-collector-config.yaml",
+      "works": "The ClickHouse exporter reads database/username/password via ${env:...} instead of carrying literals, and compose passes the same three values to both the clickhouse service and the collector so they cannot drift apart. Verified against the real otel/opentelemetry-collector-contrib:0.156.0 binary: the config validates with and without the variables set, and substitution was PROVEN live by pointing a typed field at an env var and watching it fail the bool check — validate alone cannot tell substitution from a literal passing through.",
+      "gap": "A dev default of `superlog` still ships in compose so a zero-config local start keeps working, and a default that ships in the repo is not a secret. Any non-local deployment must override CLICKHOUSE_DB/USER/PASSWORD. Making it fail closed instead would break the two lanes running against this stack unattended, so it was left as a labelled default rather than a hard requirement.",
+      "evidence": "infra/otel-collector-config.yaml (exporters.clickhouse), infra/docker-compose.yml (clickhouse + otel-collector environment blocks)",
       "provenance": {
-        "doc": "docs/roadmap/backlog.md"
+        "doc": "docs/roadmap/backlog.md",
+        "note": "Closed 2026-07-23. The specific finding — credentials committed in the collector config — is addressed. The residual dev default is deliberate and named rather than quietly left."
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23"
     },
     {
       "id": "internal-token-no-expiry",

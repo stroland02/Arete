@@ -30,9 +30,14 @@ services:
   clickhouse:
     image: clickhouse/clickhouse-server:24.3-alpine
     environment:
-      CLICKHOUSE_DB: superlog
-      CLICKHOUSE_USER: superlog
-      CLICKHOUSE_PASSWORD: superlog
+      # One source for these three, shared with the collector below so the two
+      # cannot drift apart and leave the exporter authenticating against a
+      # database that has moved. The defaults keep a zero-config local start
+      # working; a deployment that reuses this file MUST override them, because
+      # a credential committed to the repo is not a credential.
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-superlog}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-superlog}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-superlog}
     ports:
       - "8123:8123"
       - "9000:9000"
@@ -59,6 +64,14 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.156.0
     command: ["--config=/etc/otel-collector-config.yaml"]
+    # The exporter reads these through ${env:...} rather than carrying literals
+    # in its config file. Without this block the substitution would silently
+    # fall back to the defaults, which is the failure mode worth naming: it
+    # would still work locally, so nobody would notice the override was dead.
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-superlog}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-superlog}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-superlog}
     volumes:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
     ports:
