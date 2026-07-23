@@ -221,7 +221,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "surface"
+      ]
     },
     {
       "id": "surface-ai-models",
@@ -239,7 +242,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "surface"
+      ]
     },
     {
       "id": "surface-connections",
@@ -262,7 +268,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "surface"
+      ]
     },
     {
       "id": "surface-incident-detail",
@@ -285,7 +294,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "surface"
+      ]
     },
     {
       "id": "surface-incidents",
@@ -303,7 +315,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "surface"
+      ]
     },
     {
       "id": "surface-overview",
@@ -327,7 +342,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "surface"
+      ]
     },
     {
       "id": "surface-review-history",
@@ -345,7 +363,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "surface"
+      ]
     },
     {
       "id": "surface-search-notifications",
@@ -366,7 +387,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "surface"
+      ]
     },
     {
       "id": "surface-services",
@@ -390,7 +414,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "surface"
+      ]
     },
     {
       "id": "surface-settings",
@@ -412,7 +439,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "surface"
+      ]
     },
     {
       "id": "collector-plaintext-credentials",
@@ -430,7 +460,10 @@
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "honesty-security"
+      ]
     },
     {
       "id": "internal-token-no-expiry",
@@ -456,7 +489,10 @@
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "honesty-security"
+      ]
     },
     {
       "id": "mcp-token-plaintext-and-simulated-oauth",
@@ -482,7 +518,10 @@
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "honesty-security"
+      ]
     },
     {
       "id": "prose-credentials-reach-sinks",
@@ -508,7 +547,10 @@
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "honesty-security"
+      ]
     },
     {
       "id": "security-assessor-fabricates",
@@ -527,7 +569,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "honesty-security"
+      ]
     },
     {
       "id": "sse-endpoint-unauthenticated",
@@ -546,7 +591,10 @@
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "honesty-security"
+      ]
     },
     {
       "id": "agent-memory-ui",
@@ -1521,7 +1569,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "onboarding-install"
+      ]
     },
     {
       "id": "connect-workspace-clone-or-folder",
@@ -1540,7 +1591,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "onboarding-install"
+      ]
     },
     {
       "id": "kuma-as-mcp-server",
@@ -1565,7 +1619,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "onboarding-install"
+      ]
     },
     {
       "id": "kuma-install-skills-and-codemap",
@@ -1584,7 +1641,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "onboarding-install"
+      ]
     },
     {
       "id": "mcp-servers-no-surface",
@@ -1604,7 +1664,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "onboarding-install"
+      ]
     },
     {
       "id": "mcp-setup-from-agent",
@@ -1626,7 +1689,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "onboarding-install"
+      ]
     },
     {
       "id": "setup-prompt-workflow",
@@ -1645,7 +1711,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "onboarding-install"
+      ]
     },
     {
       "id": "ci-for-untested-packages",
@@ -1663,7 +1732,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "sdlc"
+      ]
     },
     {
       "id": "deploy-pipeline-and-prod-runbook",
@@ -1681,7 +1753,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "sdlc"
+      ]
     },
     {
       "id": "google-oauth-client-missing",
@@ -1702,7 +1777,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "sdlc"
+      ]
     },
     {
       "id": "lane-to-preview-governance",
@@ -1720,7 +1798,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "sdlc"
+      ]
     },
     {
       "id": "managed-env-template",
@@ -1737,7 +1818,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "sdlc"
+      ]
     },
     {
       "id": "root-aggregate-test-script",
@@ -1755,7 +1839,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "sdlc"
+      ]
     },
     {
       "id": "typed-debt-ratchets",
@@ -1773,7 +1860,10 @@
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "sdlc"
+      ]
     },
     {
       "id": "anthropic-catalog-default-tier",
@@ -1793,7 +1883,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "product-commercial"
+      ]
     },
     {
       "id": "public-api-and-keys",
@@ -1817,7 +1910,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "product-commercial"
+      ]
     },
     {
       "id": "relays-slack-linear-pagerduty",
@@ -1844,7 +1940,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "product-commercial"
+      ]
     },
     {
       "id": "review-pr-url-and-reason-codes",
@@ -1868,7 +1967,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "product-commercial"
+      ]
     },
     {
       "id": "review-scope-filters",
@@ -1892,7 +1994,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "product-commercial"
+      ]
     },
     {
       "id": "self-serve-upgrade-billing",
@@ -1911,7 +2016,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "product-commercial"
+      ]
     },
     {
       "id": "telemetry-freshness-poller",
@@ -1938,7 +2046,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "product-commercial"
+      ]
     },
     {
       "id": "tracing-and-log-search",
@@ -1964,7 +2075,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "product-commercial"
+      ]
     },
     {
       "id": "parked-anthropic-zero-balance",
@@ -1985,7 +2099,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "parked"
+      ]
     },
     {
       "id": "parked-clickhouse-ttl-verification",
@@ -2006,7 +2123,10 @@
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "parked"
+      ]
     },
     {
       "id": "parked-code-map-browser-qa",
@@ -2026,7 +2146,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "parked"
+      ]
     },
     {
       "id": "parked-error-severity-log",
@@ -2046,7 +2169,10 @@
       },
       "origin": "audit",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "parked"
+      ]
     },
     {
       "id": "parked-haiku-fix-authoring-adequacy",
@@ -2069,7 +2195,10 @@
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "parked"
+      ]
     },
     {
       "id": "parked-mcp-rfc8414-discovery",
@@ -2090,7 +2219,10 @@
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "parked"
+      ]
     },
     {
       "id": "parked-review-comment-indexes",
@@ -2111,7 +2243,10 @@
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "parked"
+      ]
     },
     {
       "id": "parked-review-concurrency-tuning",
@@ -2134,7 +2269,10 @@
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "parked"
+      ]
     },
     {
       "id": "parked-review-job-double-retry",
@@ -2156,7 +2294,10 @@
       },
       "origin": "roadmap",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "parked"
+      ]
     },
     {
       "id": "parked-signals-visibly-render",
@@ -2177,7 +2318,10 @@
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "tags": [
+        "parked"
+      ]
     }
   ]
 }
