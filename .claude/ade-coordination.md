@@ -1320,3 +1320,26 @@ a migration, against the one Postgres all four checkouts share, while three othe
 agents work against it. `packages/db` is not in this lane, the repo's own rules
 say schema changes are one writer at a time, and running a migration unattended
 is exactly the irreversible act that should wait. Recorded rather than attempted.
+
+---
+
+## ▶ 2026-07-23 — BUILD THE PRODUCT. Lanes are advisory from here.
+
+`docs/handoff/2026-07-23-build-the-product-briefs.md` supersedes the lane briefs.
+
+**The reason, in numbers:** 87 commits landed on main in 12 hours and **50 touched zero product
+code**. The four most-edited files were this ledger, the tracker JSON, `lanes.json`, and the backlog.
+A person opening localhost after a full night saw one new nav item. Lane ownership stopped us
+building the same thing twice, which was real — but empty queues then produced status documents
+instead of software.
+
+**What changes:** take the work in your brief; if it is done, take the next unclaimed `next` item.
+No lane declaration, no ledger entry, no brief required first.
+
+**What survives — the only rule that actually prevented duplicate work:** before writing code,
+`git fetch && git log origin/main --oneline -30` and grep for the thing you are about to build, then
+set that tracker item's `state` to `running` and push that one line. If someone already built it,
+**land theirs; do not rebuild it.**
+
+**What a finished session means now:** a user-visible change, on `main`, verified in a browser
+against rendered content. A docs-only session is a no-op — say so and stop.
