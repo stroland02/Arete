@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 
 // saveAgentMemory is the pure business-logic core behind POST
 // /internal/memory (route wiring + the auth-rejection mutation test live in
@@ -124,6 +124,22 @@ function baseParams(overrides: Record<string, unknown> = {}) {
   }
 }
 
+// Warm vite's transform cache before any test is timed — same fix, and same
+// reasoning, as tenancy.test.ts. loadModule() must run inside each test (it
+// installs a per-test ./db.js mock), and its FIRST call pays the cold transform
+// of memory-write.js and its dependency chain: 1425ms in isolation, 3421ms in
+// the full suite under CPU contention. Later calls are nearly free, because
+// vi.resetModules() clears the module registry, not vite's transform cache.
+//
+// Charged to the first test that left ~1.6s under vitest's 5s testTimeout, which
+// is the same landmine tenancy.test.ts stepped on — just further from going off.
+// Paying it in beforeAll charges setup work to setup (hookTimeout, 10s) and
+// leaves each test measuring only its own behaviour.
+beforeAll(async () => {
+  await loadModule(makeFakeStore({}))
+  vi.resetModules()
+})
+
 describe('saveAgentMemory', () => {
   beforeEach(() => {
     vi.resetModules()
@@ -235,11 +251,13 @@ describe('saveAgentMemory', () => {
     // ARCHIVED, never deleted — the row is still there.
     expect(store.memories).toHaveLength(MAX_MEMORIES_PER_REPO + 1)
 
-    // Asserted here rather than in its own case: every test in this file pays a
-    // full vi.resetModules() + re-import of a heavy dependency chain, so an
-    // extra case costs a real second of wall clock. Counting outside the
-    // transaction is precisely the check-then-create race that made the cap
-    // advisory rather than enforced, and this is the case that exercises it.
+    // Asserted here rather than in its own case because it belongs to this
+    // scenario: counting outside the transaction is precisely the
+    // check-then-create race that made the cap advisory rather than enforced,
+    // and eviction-at-the-cap is the case that exercises it. (An earlier version
+    // of this comment justified the folding by re-import cost — "an extra case
+    // costs a real second of wall clock". The beforeAll warm-up above removed
+    // that cost, so the reason no longer holds; the placement still does.)
     expect(store.$transaction).toHaveBeenCalledTimes(1)
     expect(store.$transaction.mock.calls[0][1]).toMatchObject({ isolationLevel: 'Serializable' })
   })
