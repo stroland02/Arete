@@ -779,3 +779,54 @@ migration, or generated file is touched.
 **Verification:** webhook **523/523**, dashboard **617/617**, `tsc --noEmit` clean in both.
 (`src/tenancy.test.ts` fails intermittently under full parallel load — pre-existing, unrelated to this
 change, passes 7/7 in isolation.)
+
+---
+
+### `pyrosome` (PM lane) — MCP credential store hardened (declared 2026-07-22)
+
+**No cross-lane claim needed: entirely `packages/agents` (Python) + the root `.gitignore`.** Declared
+anyway so the concurrent dashboard-UI lane can see it did NOT touch `packages/dashboard`,
+`packages/db`, `packages/webhook`, `.env.example`, or `pnpm-lock.yaml`.
+
+**Two defects closed in `.agents/mcp_servers.json`, which holds real OAuth access AND refresh tokens:**
+
+1. **The store was not gitignored.** No pattern in the root `.gitignore` covered `.agents/`, so a
+   `git add .` would have committed live third-party OAuth credentials. **Verified it never happened**
+   — `git ls-files` and `git log --all --diff-filter=A -- '.agents/*'` are both empty, so this is
+   preventive, not a cleanup. Fixed by adding `.agents/` to `.gitignore`.
+2. **Tokens were stored in cleartext.** The file was already created 0o600 atomically (a prior fix),
+   which stops another *user* on the box — but does nothing about the ways credential files actually
+   escape: a backup, a disk image, a copied workspace, a crash dump. `mcp/token_crypto.py` (**new**)
+   encrypts the two credential fields with a Fernet key held outside the file in
+   **`ARETE_MCP_TOKEN_KEY`**.
+
+**Design decisions, and their reasons:**
+- **Only `token` and `refresh_token` are encrypted.** Encrypting the whole document would make the
+  store undiagnosable; an operator must still see which servers exist, where they point, and their state.
+- **Ciphertext is tagged `enc:v1:`.** Untagged values are legacy plaintext and are returned as-is, so a
+  store written before this change keeps working and upgrades in place on the next write.
+- **No key configured == previous behaviour** (plaintext + a one-time structlog warning). Existing
+  deployments must not break on upgrade.
+- **A tagged value that will not decrypt raises `MCPTokenDecryptError`.** Returning `None` would read as
+  "never authenticated" and silently restart an OAuth flow; returning raw bytes would present garbage to
+  the server as a bearer token. Both hide a key-management failure — so it fails closed and loud.
+  Decryption sits deliberately OUTSIDE `_load_config`'s `except`, which otherwise swallows everything.
+- **Honest limit:** this is defence-in-depth against the *file* leaving the machine, not against an
+  attacker already executing as this user — they read the same env var the process does.
+
+**Files:** `.gitignore`; `packages/agents/src/arete_agents/mcp/token_crypto.py` (new);
+`packages/agents/src/arete_agents/mcp/manager.py` (`_load_config`/`_save_config` only — both **private**;
+`add_server`/`get_server`/`update_server_token`/`get_valid_token` keep identical signatures and still see
+plaintext); `packages/agents/tests/test_mcp_token_crypto.py` (new, 10 tests);
+`packages/agents/pyproject.toml` + `packages/agents/uv.lock` (`cryptography>=44` promoted from transitive
+to direct — a security control must not rest on someone else's dependency surviving an upgrade; the lock
+diff is **2 added lines**, no version churn, since it already resolved to 49.0.0).
+
+**Verification:** agents **561 passed, 1 skipped** (the skip is the POSIX file-mode test on Windows),
+`ruff check` clean. The 6 pre-existing `test_mcp_manager.py` tests pass **untouched** — the evidence the
+private-method change is behaviour-preserving.
+
+**Follow-up left undone on purpose:** `ARETE_MCP_TOKEN_KEY` is **not** documented in `.env.example`,
+because that file is claimed by the `ridley` lane (see its telemetry-queries entry above). Whoever owns
+`.env.example` next should add it; the generator is
+`python -c "from arete_agents.mcp.token_crypto import generate_key; print(generate_key())"`.

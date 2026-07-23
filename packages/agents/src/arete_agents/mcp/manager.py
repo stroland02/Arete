@@ -4,6 +4,8 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from .token_crypto import decrypt_config, encrypt_config
+
 
 class MCPTokenRefreshError(Exception):
     """Raised when an MCP access token is past its skew window and cannot be
@@ -21,23 +23,37 @@ class MCPManager:
             return {}
         try:
             with open(self.config_file, "r") as f:
-                return json.load(f)
+                raw = json.load(f)
         except Exception:
+            # A missing/corrupt/unreadable store is "no servers configured".
             return {}
-            
+        # Decryption is deliberately OUTSIDE the try: a store we can read but
+        # cannot decrypt is a key-management failure, and swallowing it here
+        # would report the operator's tokens as simply absent. See
+        # token_crypto.MCPTokenDecryptError.
+        return decrypt_config(raw)
+
     def _save_config(self, config: Dict[str, Any]) -> None:
-        # The file holds real OAuth access + refresh tokens in cleartext, so it
-        # must be owner-only. mkdir the parent 0o700, then create the file
-        # itself at 0o600 ATOMICALLY via os.open (O_CREAT with an explicit
-        # mode) -- avoids the TOCTOU window a plain open()+chmod() leaves
-        # between file creation (umask-default perms, e.g. 0o644) and the
-        # chmod call, during which the file holding tokens is world/group
-        # readable. The follow-up chmod is kept to tighten a pre-existing
-        # looser file from before this fix; it's a no-op on Windows, harmless.
+        # Defence in depth, in two layers.
+        #
+        # 1. The credential fields are encrypted at rest when
+        #    ARETE_MCP_TOKEN_KEY is set (token_crypto), so the file alone is
+        #    worthless if it is ever backed up, imaged, copied or committed.
+        #    With no key set this is a no-op and the file holds cleartext, as
+        #    it always did -- an existing deployment must not break on upgrade.
+        # 2. The file is owner-only regardless. mkdir the parent 0o700, then
+        #    create the file itself at 0o600 ATOMICALLY via os.open (O_CREAT
+        #    with an explicit mode) -- avoids the TOCTOU window a plain
+        #    open()+chmod() leaves between file creation (umask-default perms,
+        #    e.g. 0o644) and the chmod call, during which the file holding
+        #    tokens is world/group readable. The follow-up chmod is kept to
+        #    tighten a pre-existing looser file from before that fix; it's a
+        #    no-op on Windows, harmless.
+        on_disk = encrypt_config(config)
         self.config_file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         fd = os.open(self.config_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w") as f:
-            json.dump(config, f, indent=2)
+            json.dump(on_disk, f, indent=2)
         try:
             os.chmod(self.config_file, 0o600)
         except (OSError, NotImplementedError):
