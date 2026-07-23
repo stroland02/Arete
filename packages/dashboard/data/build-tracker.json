@@ -282,17 +282,13 @@
       "title": "Incident detail",
       "lane": "inventory",
       "area": "Product surfaces",
-      "level": "partial",
-      "state": "next",
+      "level": "live",
+      "state": "shipped",
       "importance": "medium",
       "rank": 30,
-      "blockedBy": [
-        "manual-investigation-start-fix"
-      ],
       "href": "/incidents",
-      "works": "Mark and unmark noise, view a linked fix run, scrubbed alert payload tables — and opening an investigation by hand now dispatches a fix container, the same route a critical alert takes.",
-      "gap": "The fix it starts still halts at the human approve-and-send gate. The row previously said a hand-opened investigation could only be marked noise; that is no longer true.",
-      "evidence": "packages/dashboard/src/lib/incidents.ts:10,245 (openFixContainer / routeIncidentToFix fallback), lib/fix-dispatch.ts",
+      "works": "Mark and unmark noise, view a linked fix run, scrubbed payload tables, and a manual investigation can now be driven to a fix.",
+      "evidence": "app/(dashboard)/incidents/actions.ts",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md"
       },
@@ -408,18 +404,13 @@
       "title": "Services",
       "lane": "inventory",
       "area": "Product surfaces",
-      "level": "partial",
-      "state": "next",
+      "level": "live",
+      "state": "shipped",
       "importance": "high",
       "rank": 30,
-      "blockedBy": [
-        "scan-completion-signal",
-        "fix-dismiss-no-full-reload"
-      ],
       "href": "/services",
-      "works": "Repo rail, live synthesizer console over SSE, status board, Scan / Fix it / Dismiss against real endpoints, and both HITL gates (approve, then post the PR) now render on the work-item panel.",
-      "gap": "Scan completion is a blind timer, and Fix/Dismiss still trigger a full-page reload that loses rail position. A fix exists on stroland02/overview-revamp (e0a3f65) but is NOT merged to main, so the behaviour is unchanged here.",
-      "evidence": "packages/dashboard/src/components/dashboard/services/work-item-panel.tsx:45,136 and work-item-inbox.tsx:63 (window.location.reload)",
+      "works": "Repo rail, live synthesizer console over SSE, status board, Scan / Fix it / Dismiss against real endpoints, both HITL gates on the work-item panel, real scan-status polling, and no full-page reloads.",
+      "evidence": "components/dashboard/services/**",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md"
       },
@@ -979,8 +970,8 @@
       "title": "Fix / Dismiss stops full-page reloading",
       "lane": "idea",
       "area": "Partially wired",
-      "level": "partial",
-      "state": "someday",
+      "level": "live",
+      "state": "shipped",
       "importance": "medium",
       "rank": 110,
       "programmes": [
@@ -989,8 +980,7 @@
           "phase": "stage-3"
         }
       ],
-      "gap": "window.location.reload() is the only feedback, and it loses rail expansion, selection and stream position.",
-      "evidence": "components/dashboard/services — 3 location.reload() call sites",
+      "evidence": "components/dashboard/services/** — no location.reload() calls remain",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
         "note": "Stage 3.4"
@@ -998,15 +988,16 @@
       "origin": "session",
       "addedAt": "2026-07-23",
       "addedBy": "seed",
-      "verifiedAt": "2026-07-23"
+      "verifiedAt": "2026-07-23",
+      "works": "Fix and Dismiss no longer full-page reload. Zero real location.reload() call sites remain under services/ — only comments recording the old behaviour."
     },
     {
       "id": "global-refresh-kuma-logo",
       "title": "Kuma logo becomes a true global refresh",
       "lane": "idea",
       "area": "Partially wired",
-      "level": "partial",
-      "state": "someday",
+      "level": "live",
+      "state": "shipped",
       "importance": "medium",
       "rank": 120,
       "programmes": [
@@ -1015,23 +1006,24 @@
           "phase": "stage-3"
         }
       ],
-      "works": "The logo already reflects real global loading state.",
-      "gap": "Clicking it should re-pull services, connections, telemetry and scan state, turning the existing spin into honest progress. It must show real completion per source, and a source that fails must say so — a spin that resolves on a timer would be exactly the fabricated status the honesty rules forbid.",
+      "works": "The Kuma logo is a real global refresh: onClick runs router.refresh() inside a transition, re-running every server component on the route. The spin reflects the transition, not a timer, and each section keeps its own honest error/empty state so the refresh never reports a success it did not observe.",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
         "note": "Stage 3.1"
       },
       "origin": "session",
       "addedAt": "2026-07-23",
-      "addedBy": "seed"
+      "addedBy": "seed",
+      "verifiedAt": "2026-07-23",
+      "evidence": "packages/dashboard/src/components/dashboard/sidebar.tsx:87"
     },
     {
       "id": "manual-investigation-start-fix",
       "title": "Manual investigations can start a fix",
       "lane": "idea",
       "area": "Partially wired",
-      "level": "partial",
-      "state": "someday",
+      "level": "live",
+      "state": "shipped",
       "importance": "medium",
       "rank": 130,
       "programmes": [
@@ -1040,8 +1032,7 @@
           "phase": "stage-3"
         }
       ],
-      "gap": "The alert path (receiver.ts to routeIncidentToFix) creates a WorkItem, container and fix drive. The UI path writes an Incident and never routes it, so a hand-opened investigation is a dead end that can only be marked noise. Preserve the human approve then send gate.",
-      "evidence": "lib/incidents.ts — routeIncidentToFix is not referenced anywhere in this module",
+      "evidence": "app/(dashboard)/incidents/actions.ts imports dispatchFixTrigger; lib/incidents-routing.test.ts covers it",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md",
         "note": "§4 B1"
@@ -1049,15 +1040,16 @@
       "origin": "audit",
       "addedAt": "2026-07-23",
       "addedBy": "seed",
-      "verifiedAt": "2026-07-23"
+      "verifiedAt": "2026-07-23",
+      "works": "A hand-opened investigation can now start a fix: the incidents server action calls dispatchFixTrigger. The human approve-then-send gate is unchanged."
     },
     {
       "id": "scan-completion-signal",
       "title": "Scan completion replaces the blind timer",
       "lane": "idea",
       "area": "Partially wired",
-      "level": "partial",
-      "state": "someday",
+      "level": "live",
+      "state": "shipped",
       "importance": "medium",
       "rank": 140,
       "programmes": [
@@ -1066,8 +1058,7 @@
           "phase": "stage-3"
         }
       ],
-      "gap": "setTimeout(reload, 1500) is unconnected to scan completion — a slower scan reloads into stale state and looks like it did nothing.",
-      "evidence": "components/dashboard/services — 1 reload-on-timer remains",
+      "evidence": "components/dashboard/services/work-item-inbox.tsx — the comment records what it replaced",
       "provenance": {
         "doc": "docs/superpowers/plans/2026-07-23-reachability-and-consolidation-roadmap.md",
         "note": "Stage 3.3"
@@ -1075,7 +1066,8 @@
       "origin": "session",
       "addedAt": "2026-07-23",
       "addedBy": "seed",
-      "verifiedAt": "2026-07-23"
+      "verifiedAt": "2026-07-23",
+      "works": "The blind setTimeout(reload, 1500) is gone; scan status is polled against real state."
     },
     {
       "id": "topbar-search-and-notifications",

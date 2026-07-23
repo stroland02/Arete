@@ -76,8 +76,8 @@
       "queue": [],
       "$queueNote": "silence-a-finding was removed on 2026-07-23: ridley shipped it in 29a1362 while it sat here. The checker flagged it the moment main was rebased in, which is the whole point — C-data had not started, so nothing was wasted. Pick the next item from `pnpm board`.",
       "brief": "docs/handoff/2026-07-23-build-status-lane-briefs.md",
-      "heartbeat": null,
-      "lastCommit": null
+      "heartbeat": "2026-07-23T12:20:00Z",
+      "lastCommit": "29a1362"
     },
     {
       "id": "D-verify",
