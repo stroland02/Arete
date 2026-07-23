@@ -19,6 +19,7 @@ from arete_agents.mcp.token_crypto import (
     KEY_ENV_VAR,
     MCPTokenDecryptError,
     generate_key,
+    store_status,
 )
 
 SERVER = {
@@ -154,3 +155,60 @@ def test_null_token_survives_a_round_trip(tmp_path, monkeypatch):
     got = m.get_server("srv")
     assert got["token"] is None
     assert got["refresh_token"] is None
+
+
+class TestStoreStatus:
+    """An operator has to be able to ask whether the tokens on disk are readable.
+
+    encrypt_secret warns once per process, at write time, into the log. That is
+    the wrong moment and the wrong place for the question "are my tokens safe on
+    disk?", so store_status answers it on demand.
+    """
+
+    def test_no_servers_is_not_protection(self):
+        status = store_status({})
+        assert status["encrypted"] == 0
+        assert status["plaintext"] == 0
+        # Nothing stored is not the same as nothing exposed.
+        assert status["at_rest_protected"] is False
+
+    def test_counts_tagged_values_as_encrypted(self):
+        status = store_status(
+            {"srv": {"token": ENC_PREFIX + "abc", "refresh_token": ENC_PREFIX + "def"}}
+        )
+        assert status["encrypted"] == 2
+        assert status["plaintext"] == 0
+        assert status["at_rest_protected"] is True
+
+    def test_untagged_values_are_plaintext(self):
+        status = store_status({"srv": {"token": "raw-access", "refresh_token": "raw-refresh"}})
+        assert status["plaintext"] == 2
+        assert status["at_rest_protected"] is False
+
+    def test_a_configured_key_does_not_retroactively_encrypt_the_file(self, monkeypatch):
+        """The reason this counts tags instead of trusting the env var.
+
+        Setting the key protects future writes. Anything already written stays
+        readable on disk until it is rewritten, and reporting otherwise would
+        tell an operator they are safe while their tokens sit in the clear.
+        """
+        monkeypatch.setenv(KEY_ENV_VAR, generate_key())
+        status = store_status({"srv": {"token": "written-before-the-key"}})
+        assert status["key_configured"] is True
+        assert status["plaintext"] == 1
+        assert status["at_rest_protected"] is False
+
+    def test_a_partially_encrypted_store_is_not_protected(self):
+        status = store_status(
+            {"a": {"token": ENC_PREFIX + "x"}, "b": {"token": "still-plain"}}
+        )
+        assert status["encrypted"] == 1
+        assert status["plaintext"] == 1
+        assert status["at_rest_protected"] is False
+
+    def test_ignores_non_credential_fields_and_malformed_entries(self):
+        status = store_status(
+            {"srv": {"target": "https://example/mcp", "status": "ready"}, "bad": "not-a-dict"}
+        )
+        assert status["encrypted"] == 0
+        assert status["plaintext"] == 0
