@@ -328,7 +328,7 @@
       "lane": "inventory",
       "area": "Product surfaces",
       "level": "partial",
-      "state": "next",
+      "state": "shipped",
       "importance": "high",
       "rank": 20,
       "blockedBy": [
@@ -337,8 +337,8 @@
       ],
       "href": "/overview",
       "works": "Stat tiles, Sensorium code map, setup checklist derived from real DB facts, preset tabs, time range.",
-      "gap": "Two checklist sub-steps (the coding-agent setup prompt, MCP Kuma) are honest 'coming soon' placeholders with nothing behind them. Planned telemetry connectors are inert.",
-      "evidence": "packages/dashboard/src/lib/overview-setup.ts:12,80,104-105 — both steps are declared not-yet-shipped and render as honest placeholders",
+      "gap": "The two setup sub-steps now route to guided-setup pages — a copy-paste agent prompt at /connections/workspace-setup and MCP config at /connections/mcp-kuma — rather than dead 'coming soon' pills. These are instructions, not yet automated integrations. Planned telemetry connectors are still inert.",
+      "evidence": "packages/dashboard/src/lib/overview-setup.ts:83-84,107-108 — workspace-setup and mcp-kuma sub-steps are status 'todo' with hrefs to real pages at packages/dashboard/src/app/(dashboard)/connections/{workspace-setup,mcp-kuma}/page.tsx",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md"
       },
@@ -348,7 +348,8 @@
       "tags": [
         "surface"
       ],
-      "verifiedAt": "2026-07-23"
+      "verifiedAt": "2026-07-23",
+      "shippedIn": "f2d0f16 — feat(ui): land the merman UI-scope tickets onto main"
     },
     {
       "id": "surface-review-history",
@@ -427,15 +428,15 @@
       "lane": "inventory",
       "area": "Product surfaces",
       "level": "partial",
-      "state": "someday",
+      "state": "next",
       "importance": "medium",
       "rank": 60,
       "blockedBy": [
         "self-serve-upgrade-billing"
       ],
       "href": "/settings",
-      "works": "GitHub OAuth connect, a real Connections summary, real billing usage against the free-tier limit.",
-      "gap": "No self-serve upgrade — stated plainly rather than faked.",
+      "works": "GitHub OAuth connect, a real Connections summary, real billing usage against the free-tier limit, and an outbound-webhooks management card (list + register endpoints) shipped in f2d0f16.",
+      "gap": "No self-serve upgrade — stated plainly rather than faked. This is the one remaining blocker on the surface.",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md"
       },
@@ -445,7 +446,7 @@
       "tags": [
         "surface"
       ],
-      "evidence": "packages/dashboard/src/app/(dashboard)/settings/page.tsx:266 states the missing self-serve upgrade outright rather than faking a checkout",
+      "evidence": "packages/dashboard/src/app/(dashboard)/settings/page.tsx:266 states the missing self-serve upgrade outright rather than faking a checkout; packages/dashboard/src/components/settings/webhooks-card.tsx is the outbound-webhooks UI landed in f2d0f16",
       "verifiedAt": "2026-07-23"
     },
     {
