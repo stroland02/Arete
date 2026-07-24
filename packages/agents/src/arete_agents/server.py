@@ -7,7 +7,7 @@ from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from pydantic import BaseModel, ValidationError
 
-from arete_agents import scan_runs
+from arete_agents import async_runs
 from arete_agents.agents.chat import ChatAgent
 from arete_agents.config import Settings, get_settings
 from arete_agents.context_map.graph_export import GraphExportError, build_graph_export
@@ -159,6 +159,11 @@ def review(pr: PRContext):
     # LLM clients from THAT config (get_llms_by_role_from_config) — a fresh
     # orchestrator on the user's own model — instead of the server's global
     # Settings-derived singleton. Callers that omit pr.llm keep the default.
+    #
+    # Everything validated synchronously stays synchronous: a bad provider or an
+    # unreachable Ollama fails the submit itself with the same status it always
+    # did, whether sync or async. Only the orchestrator's run — the unbounded
+    # LLM workload that hits the ~300s connection ceiling — moves off-connection.
     if pr.llm is not None:
         if pr.llm.provider == "ollama":
             reason = ollama_unavailable_reason(
@@ -180,7 +185,7 @@ def review(pr: PRContext):
         except ValueError as exc:
             # Unknown provider is a client error, not a server fault.
             raise HTTPException(status_code=400, detail=str(exc))
-        return ReviewOrchestrator(llm=llms).run(pr)
+        return _run_review(pr, ReviewOrchestrator(llm=llms))
 
     # Default path — this may be the Ollama safety fallback (no primary key).
     settings = _resolve_settings()
@@ -192,7 +197,55 @@ def review(pr: PRContext):
         )
         if reason:
             raise HTTPException(status_code=503, detail=reason)
-    return _get_orchestrator().run(pr)
+    return _run_review(pr, _get_orchestrator())
+
+
+def _run_review(pr: PRContext, orchestrator: ReviewOrchestrator):
+    """Run a review sync, or ack-and-run-async, sharing one validated path.
+
+    Sync returns the ReviewResult in the response, unchanged. Async registers a
+    run, spawns the orchestrator on its own daemon thread, and returns
+    ``{status: accepted, runId}`` — the poller reads GET /review/runs/{id}. A
+    thread cannot raise to a caller, so its failure is recorded on the run;
+    losing it would leave the poller seeing "running" forever, which is the hang
+    the async shape exists to end.
+    """
+    if pr.mode != "async":
+        return orchestrator.run(pr)
+
+    run_id = async_runs.create_run()
+
+    def _run() -> None:
+        try:
+            result = orchestrator.run(pr)
+            payload = result.model_dump() if hasattr(result, "model_dump") else dict(result)
+            async_runs.complete_run(run_id, payload)
+        except Exception as exc:  # noqa: BLE001 — a thread must never die silently
+            async_runs.fail_run(run_id, f"{type(exc).__name__}: {exc}")
+
+    threading.Thread(target=_run, name=f"review-{run_id[:8]}", daemon=True).start()
+    return {"status": "accepted", "runId": run_id}
+
+
+@app.get("/review/runs/{run_id}", dependencies=_INTERNAL)
+def review_run_status(run_id: str):
+    """Progress of an async review. 404 for an unknown id is honest: the registry
+    is in-memory, so a restart forgets every in-flight run, and the caller must
+    treat that as a failed review rather than as still-running."""
+    run = async_runs.get_run(run_id)
+    if run is None:
+        raise HTTPException(
+            status_code=404,
+            detail="unknown review run — this service may have restarted since it was accepted",
+        )
+    if run.status == "running":
+        return {"status": "running"}
+    if run.status == "failed":
+        return {"status": "failed", "error": run.error}
+    # A completed review's stored payload IS the ReviewResult the sync path would
+    # have returned, so the poller needs no second shape. Tag it so the poll
+    # response is self-describing without colliding with ReviewResult fields.
+    return {"status": "complete", "result": run.response}
 
 
 @app.post("/scan", dependencies=_INTERNAL)
@@ -219,19 +272,19 @@ def scan(req: ScanRequest):
         # the time this runs — a bad LLM block or unreachable Ollama still
         # fails the submit itself with the same status it always did. Only the
         # scan's own execution moves off-connection.
-        run_id = scan_runs.create_run()
+        run_id = async_runs.create_run()
 
         def _run() -> None:
             try:
                 result = run_scan(req, llms)
                 payload = result.model_dump() if hasattr(result, "model_dump") else dict(result)
-                scan_runs.complete_run(run_id, payload)
+                async_runs.complete_run(run_id, payload)
             except (GraphExportError, ScanUnavailableError) as exc:
                 # The sync path answers these with a 503; a thread cannot, so
                 # the run records the same honest "can't scan yet" as its error.
-                scan_runs.fail_run(run_id, str(exc))
+                async_runs.fail_run(run_id, str(exc))
             except Exception as exc:  # noqa: BLE001 — a thread must never die silently
-                scan_runs.fail_run(run_id, f"{type(exc).__name__}: {exc}")
+                async_runs.fail_run(run_id, f"{type(exc).__name__}: {exc}")
 
         threading.Thread(target=_run, name=f"scan-{run_id[:8]}", daemon=True).start()
         return {"status": "accepted", "runId": run_id}
@@ -275,7 +328,7 @@ def scan_run_status(run_id: str):
     the registry is in-memory, so a restart forgets every in-flight run — and
     the caller must treat that as a failed scan, never as still-running. The
     webhook's stale-ScanRun recovery closes out the database side."""
-    run = scan_runs.get_run(run_id)
+    run = async_runs.get_run(run_id)
     if run is None:
         raise HTTPException(
             status_code=404,

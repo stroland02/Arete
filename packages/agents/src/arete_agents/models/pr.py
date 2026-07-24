@@ -105,3 +105,11 @@ class PRContext(BaseModel):
     # server's global Settings. Omitted by webhook/CLI callers that rely on the
     # server default provider.
     llm: LLMConfig | None = None
+    # "sync" (default) returns the ReviewResult in this response, exactly as
+    # every existing caller expects. "async" acks with a run id and the caller
+    # polls GET /review/runs/{id} — so no HTTP connection has to stay open for
+    # the review's duration. Mirrors ScanRequest.mode; both exist because
+    # something unidentified severs long-lived connections to this service
+    # (observed at ~307s on both the scan and review paths), and an ack removes
+    # the dependency on it.
+    mode: str = "sync"

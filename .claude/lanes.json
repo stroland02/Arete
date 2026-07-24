@@ -1,7 +1,7 @@
 {
   "$schema": "see scripts/lanes.mjs — `node scripts/lanes.mjs check` validates this file",
   "$why": "Two agents now: B-engine builds, D-verify dogfoods the running product and files what it finds. That is the cookbook's evaluator/optimizer split — the lane that verifies owns no source file, because a lane that fixes what it finds stops looking once it finds something it can fix. Ownership lives here rather than in prose because prose forked between worktrees and four duplicate commits landed anyway. `node scripts/lanes.mjs check` validates this file.",
-  "updatedAt": "2026-07-23",
+  "updatedAt": "2026-07-24",
   "shared": [
     ".claude/ade-coordination.md",
     ".claude/lanes.json",
@@ -34,7 +34,13 @@
         "packages/dashboard/src/lib/agent-config*.ts",
         "packages/dashboard/src/app/api/agents/*/config/route.ts",
         "packages/dashboard/src/components/dashboard/agents/agent-config-drawer.tsx",
-        "packages/webhook/src/dev-review/**"
+        "packages/webhook/src/dev-review/**",
+        "packages/webhook/src/review-bridge*.ts",
+        "packages/agents/src/arete_agents/async_runs.py",
+        "packages/agents/src/arete_agents/server.py",
+        "packages/agents/src/arete_agents/models/pr.py",
+        "packages/agents/tests/test_review_async.py",
+        "packages/agents/tests/test_scan_async.py"
       ],
       "avoid": [
         "packages/dashboard/src/components/**",
@@ -44,11 +50,11 @@
         ".env.example"
       ],
       "queue": [
-        "review-path-not-dogfooded"
+        "review-cannot-complete-slow-model"
       ],
       "brief": "docs/handoff/2026-07-23-build-status-lane-briefs.md",
-      "heartbeat": "2026-07-23T23:31:43Z",
-      "lastCommit": "7494314",
+      "heartbeat": "2026-07-24T00:13:56Z",
+      "lastCommit": "af697d9",
       "$queueNote": "scan-cannot-complete-slow-model closed to shipped on 2026-07-23 after A-view drove it live (2002s scan completed, first past the ~307s ceiling, 10 findings, Services \"Opportunities (10)\"). Queue empty. agent-config enforcement (2cc0de6) is landed and awaiting D-verify drive #2 — not queued here because it is verification, not build. Two open criticals remain: prose-credentials-reach-sinks (a ruling on the frozen §5 pattern set — needs a false-positive corpus, not a patch) and parked-anthropic-zero-balance (the account is at $0 — a billing action, not code)."
     },
     {

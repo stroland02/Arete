@@ -2533,6 +2533,30 @@
       "tags": [
         "sdlc"
       ]
+    },
+    {
+      "id": "review-cannot-complete-slow-model",
+      "title": "A PR review can never complete against a slow model",
+      "lane": "inventory",
+      "area": "Partially wired",
+      "level": "partial",
+      "state": "next",
+      "importance": "critical",
+      "rank": 6,
+      "works": "The /review path now has the same ack-and-poll shape as /scan: POST /review mode:\"async\" acks with a runId, the orchestrator runs on its own thread, and the webhook polls GET /review/runs/{id} (executeReviewRequest). No connection outlives the review, so the ~300s sever stops mattering. Reversible: an agents service predating async mode returns the ReviewResult inline and it passes through unchanged.",
+      "gap": "Built and unit-tested (8 webhook protocol tests + 5 agents async tests; scan async regression still green); NOT yet driven live. A-view confirmed reviews hit the exact ~300s ceiling the scan did (real PR #1 died with fetch failed at ~307s). D-verify: run a review against the slow local model and confirm it survives past ~307s and populates Overview's PR tiles — that moves this to shipped. Follow-on: the review and scan poll loops are near-identical and should be collapsed once both are live-verified.",
+      "evidence": "packages/webhook/src/review-bridge.ts executeReviewRequest; agents server.py /review mode=async + GET /review/runs/{id}; async_runs.py (generalized from scan_runs); docs/roadmap/backlog.md follow-up 2026-07-23",
+      "provenance": {
+        "doc": "docs/roadmap/backlog.md",
+        "note": "PR reviews: third wall (~300s ceiling)"
+      },
+      "origin": "session",
+      "addedAt": "2026-07-23",
+      "addedBy": "B-engine",
+      "tags": [
+        "sdlc",
+        "honesty-security"
+      ]
     }
   ]
 }

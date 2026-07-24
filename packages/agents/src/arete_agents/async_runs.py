@@ -1,6 +1,6 @@
-"""In-process registry for asynchronous scan runs.
+"""In-process registry for asynchronous runs (scans and reviews).
 
-Why this exists: the webhook's call to ``POST /scan`` used to stay open for the
+Why this exists: the webhook's call to ``POST /scan`` (and now ``POST /review``) used to stay open for the
 entire scan — an unbounded LLM workload — and something in the path (still
 unidentified; the 300 s undici theory was disproved by driving it) severs long
 connections. The observed failure: the socket closed at 307 s while this

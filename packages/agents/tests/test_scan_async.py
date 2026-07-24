@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
 import arete_agents.server as server
-from arete_agents import scan_runs
+from arete_agents import async_runs as scan_runs  # registry is generic; scan tests keep the local name
 from arete_agents.scan import ScanUnavailableError
 from tests.conftest import INTERNAL_HEADERS
 

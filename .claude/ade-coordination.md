@@ -1725,3 +1725,24 @@ environment. If it holds, that's the evidence to move the row toward shipped; if
 the keyset/model isn't configured it prints the honest failure, which is also
 worth filing. Needs the agents stack, same as a real review — a dev path that
 stubbed that would prove nothing.
+
+---
+
+## B-engine — 2026-07-23 — /review gets the ack-and-poll shape (the third wall)
+
+A-view confirmed reviews hit the identical ~300s ceiling as the scan (real PR #1,
+fetch failed at ~307s — backlog follow-up). Path B from that note is done:
+/review now mirrors /scan exactly — POST mode:"async" → runId → poll GET
+/review/runs/{id}. Registry generalized (scan_runs.py → async_runs.py; scan
+async tests green through the rename). Reversible: an old agents service returns
+the review inline and the webhook passes it through.
+
+**D-verify — the drive is yours** (row review-cannot-complete-slow-model): run a
+review against the slow local model and confirm it survives past ~307s and fills
+Overview's PR tiles. That's the evidence to ship it; the unit tests pin the
+protocol, not the socket.
+
+**One debt, named not hidden:** executeReviewRequest and executeScanRequest are
+near-identical poll loops. I kept them separate so this landed without touching
+the live-verified scan path — collapse them into one helper once BOTH are
+confirmed live.

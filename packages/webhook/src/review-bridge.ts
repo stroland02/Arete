@@ -40,39 +40,105 @@ export async function runReviewPipeline(
     }
   }
 
-  // The review is an unbounded LLM workload — six specialists over the PR diff.
-  // 120s was fine for a fast cloud model but aborts every review against a slow
-  // local one (Ollama), which is why no PR review has completed here. Made
-  // configurable with a generous default, matching the scan path's
-  // SCAN_REQUEST_TIMEOUT_MS convention: this bounds a HANG, not slowness.
-  const REVIEW_TIMEOUT_MS = Number(process.env.REVIEW_REQUEST_TIMEOUT_MS ?? 15 * 60 * 1000)
-  const controller = new AbortController()
-  const timer = setTimeout(() => { controller.abort() }, REVIEW_TIMEOUT_MS)
+  // prContext already carries the resolved `llm` block (attached above) — the
+  // agents /review parses exactly that name.
+  const baseUrl = getServiceConfig().pythonServiceUrl
+  return executeReviewRequest(baseUrl, prContext, () => internalAuthHeaders())
+}
 
-  try {
-    const baseUrl = getServiceConfig().pythonServiceUrl
-    // prContext already carries the resolved `llm` block (attached above) —
-    // the agents /review parses exactly that name. (A stale merge remnant here
-    // used to re-map a long-gone `modelConnection` field; removed.)
-    const res = await fetch(`${baseUrl}/review`, {
-      method: 'POST',
-      body: JSON.stringify(prContext),
-      headers: { 'Content-Type': 'application/json', ...(await internalAuthHeaders()) },
-      signal: controller.signal
-    })
+/** How long to wait overall for a review, and how often to poll for it. */
+const REVIEW_REQUEST_TIMEOUT_MS = Number(process.env.REVIEW_REQUEST_TIMEOUT_MS ?? 45 * 60 * 1000)
+const REVIEW_POLL_INTERVAL_MS = Number(process.env.REVIEW_POLL_INTERVAL_MS ?? 5_000)
 
-    if (!res.ok) {
-      const errorText = await res.text()
-      throw new Error(`Python pipeline exited with status ${res.status}: ${errorText}`)
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+
+export interface ReviewHttpOptions {
+  fetchFn?: typeof fetch
+  pollIntervalMs?: number
+  deadlineMs?: number
+}
+
+/**
+ * Run a review against the agents service without a connection outliving it.
+ *
+ * The review path hits the identical ~300s connection ceiling the scan did —
+ * confirmed live: a review of real PR #1 reached agents /review and died with
+ * `fetch failed` at ~307s, the same unidentified sever. So this is the exact
+ * twin of the scan's `executeScanRequest` (63479fd): submit with `mode:"async"`,
+ * get a runId, poll `GET /review/runs/{id}`. No connection stays open for the
+ * review's duration, so whatever severs long connections stops mattering.
+ *
+ * Reversible: an agents service that predates `mode` ignores it and returns the
+ * ReviewResult inline, which is passed through unchanged. Headers are minted per
+ * request — a review can outlive one short-lived internal token.
+ *
+ * (Deliberately self-contained rather than sharing executeScanRequest: that path
+ * is verified live and load-bearing, and this lands without touching it. Once
+ * this is also proven live, the two poll loops should be collapsed into one
+ * helper — noted in the ledger.)
+ */
+export async function executeReviewRequest(
+  baseUrl: string,
+  prContext: PRContext,
+  headersFn: () => Promise<Record<string, string>>,
+  opts: ReviewHttpOptions = {},
+): Promise<ReviewResult> {
+  const fetchFn = opts.fetchFn ?? fetch
+  const deadlineMs = opts.deadlineMs ?? REVIEW_REQUEST_TIMEOUT_MS
+  const pollIntervalMs = opts.pollIntervalMs ?? REVIEW_POLL_INTERVAL_MS
+  const startedAt = Date.now()
+
+  const submit = await fetchFn(`${baseUrl}/review`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(await headersFn()) },
+    body: JSON.stringify({ ...prContext, mode: 'async' }),
+    ...(deadlineMs > 0 ? { signal: AbortSignal.timeout(deadlineMs) } : {}),
+  })
+  if (!submit.ok) {
+    const text = await submit.text().catch(() => '')
+    throw new Error(`Python pipeline exited with status ${submit.status}: ${text}`)
+  }
+  const ack = (await submit.json()) as { status?: string; runId?: string } & Partial<ReviewResult>
+
+  // No runId: an agents service predating async mode returned the review itself.
+  if (!ack.runId) {
+    if (ack.file_reviews) return ack as ReviewResult
+    throw new Error(
+      `agents /review returned neither an ack nor a result: ${JSON.stringify(ack).slice(0, 300)}`,
+    )
+  }
+
+  for (;;) {
+    if (deadlineMs > 0 && Date.now() - startedAt >= deadlineMs) {
+      throw new Error(
+        `review run ${ack.runId} exceeded the ${deadlineMs}ms deadline; recorded failed rather ` +
+          `than left running forever`,
+      )
     }
+    await sleep(pollIntervalMs)
 
-    return await res.json() as ReviewResult
-  } catch (err: any) {
-    if (err.name === 'AbortError') {
-      throw new Error('Python pipeline timed out after 120s')
+    let res: Response
+    try {
+      res = await fetchFn(`${baseUrl}/review/runs/${ack.runId}`, { headers: await headersFn() })
+    } catch {
+      // One failed poll is not a failed review — keep polling until the deadline.
+      continue
     }
-    throw new Error(`Failed to parse pipeline output: ${err}`)
-  } finally {
-    clearTimeout(timer)
+    if (res.status === 404) {
+      throw new Error(
+        'agents service no longer knows this review run — it likely restarted mid-review',
+      )
+    }
+    if (!res.ok) continue
+
+    const state = (await res.json()) as
+      | { status: 'running' }
+      | { status: 'failed'; error?: string }
+      | { status: 'complete'; result: ReviewResult }
+    if (state.status === 'running') continue
+    if (state.status === 'failed') {
+      throw new Error(`review failed on the agents side: ${state.error ?? 'no reason recorded'}`)
+    }
+    return state.result
   }
 }

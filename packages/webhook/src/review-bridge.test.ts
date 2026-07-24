@@ -123,39 +123,4 @@ describe('runReviewPipeline', () => {
     expect(body.llm).toBeUndefined()
   })
 
-  it('rejects with timeout error when process takes too long', async () => {
-    // Pin the (now configurable) timeout so the test is independent of the
-    // generous 15-min default — the default exists for slow local models.
-    const prevTimeout = process.env.REVIEW_REQUEST_TIMEOUT_MS
-    process.env.REVIEW_REQUEST_TIMEOUT_MS = '120000'
-    vi.useFakeTimers()
-    global.fetch = vi.fn((url, options) => new Promise((resolve, reject) => {
-      if (options && (options as any).signal) {
-        (options as any).signal.addEventListener('abort', () => {
-          const err = new Error('The operation was aborted')
-          err.name = 'AbortError'
-          reject(err)
-        })
-      }
-    })) as any
-
-    const { runReviewPipeline } = await import('./review-bridge.js')
-    const promise = runReviewPipeline({ repo: 'x/y', pr_number: 1, title: 'T', description: '', files: [] })
-    // Attach the rejection assertion BEFORE advancing timers: internalAuthHeaders()
-    // is now async, so the mocked fetch() call — and the abort listener it
-    // registers — no longer happens synchronously. advanceTimersByTimeAsync
-    // flushes pending microtasks between ticks so the listener is attached
-    // before the abort timer fires, but if the assertion below were only
-    // attached AFTER advancing (rather than subscribed here first), the
-    // promise could settle before anything is listening and Node would
-    // report an unhandled rejection.
-    const assertion = expect(promise).rejects.toThrow('timed out')
-
-    await vi.advanceTimersByTimeAsync(120_001)
-    await assertion
-    vi.useRealTimers()
-    if (prevTimeout === undefined) delete process.env.REVIEW_REQUEST_TIMEOUT_MS
-    else process.env.REVIEW_REQUEST_TIMEOUT_MS = prevTimeout
-  })
-
 })
