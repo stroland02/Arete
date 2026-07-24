@@ -213,8 +213,8 @@
       ],
       "href": "/agents",
       "works": "Per-agent chat is genuinely live against the connected model, with provider errors surfaced honestly. Findings come from real reviews.",
-      "gap": "Agent configuration is still local-only, with Save disabled and the reason stated. The absorption into Services has now happened.",
-      "evidence": "components/dashboard/agents/agent-config-drawer.tsx:24 — \"deliberately NOT persisted yet\"",
+      "gap": "Agent configuration now PERSISTS and is enforced (agent-config-persistence, dab4956 + 2cc0de6): enabled / severity threshold / custom guidance save per installation, and a review filters what it posts to the PR accordingly. Two honest remainders: 'Enabled: off' keeps findings off the PR but the agent still runs and spends (skipping the run needs an agents-side contract field), and the model picker stays read-only by design — it is chosen once under AI Models and applies to every agent.",
+      "evidence": "packages/dashboard/src/lib/agent-config.ts (persist); packages/webhook/src/agent-config.ts (enforce on post); agent-config-drawer.tsx Save is live",
       "provenance": {
         "doc": "docs/status/2026-07-22-build-status-map.md"
       },
