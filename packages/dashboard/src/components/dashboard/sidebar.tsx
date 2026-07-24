@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { IconChevronLeft, IconChevronRight, IconCpu } from "@tabler/icons-react";
+import { IconChevronLeft, IconChevronRight, IconCpu, IconLayoutDashboard, IconServerCog, IconAlertTriangle, IconActivity, IconSettings } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import { springTransition } from "@/lib/motion";
 import { InstallationSwitcher } from "@/components/InstallationSwitcher";
@@ -16,9 +16,8 @@ import type { AuthorizedInstallation } from "@/lib/installations";
 import type { ActiveModelConnection } from "@/lib/model-connections-map";
 
 const collapseTransition = { ...springTransition, opacity: { duration: 0.15 } } as const;
-
 const NAV_ITEMS = [
-  { href: "/overview", label: "Overview" },
+  { href: "/overview", label: "Overview", icon: IconLayoutDashboard },
   // Code map is reached from the Overview page (inline map + "Open map"), not a
   // top-level tab. Dashboards charts are now a section of Overview too. Both
   // routes still exist (/map deep-links; /dashboards redirects to /overview).
@@ -31,18 +30,18 @@ const NAV_ITEMS = [
   // resolve, and anything bookmarked still works; it is only the nav entry
   // that goes. Removing this before 2.2 shipped would have left agent chat
   // reachable only by typing a URL, which is why the roadmap gated it.
-  { href: "/services", label: "Services" },
+  { href: "/services", label: "Services", icon: IconServerCog },
   // Incidents lives on Overview too (its own section), but a top-level tab
   // makes it deep-linkable/discoverable the same way Services and Agents are.
-  { href: "/incidents", label: "Incidents" },
+  { href: "/incidents", label: "Incidents", icon: IconAlertTriangle },
   // Build status is the product's own honesty surface — what is finished, what
   // is half-wired, and every idea not yet lost. It was reachable only from a
   // single link on Settings, which meant the page most likely to correct a
   // wrong assumption was the hardest one to find. It earns a nav slot.
-  { href: "/build-status", label: "Build status" },
+  { href: "/build-status", label: "Build status", icon: IconActivity },
   // Connections and Review History now live under Settings (linked from the
   // Settings page). Their routes still exist for those links + deep-links.
-  { href: "/settings", label: "Settings" },
+  { href: "/settings", label: "Settings", icon: IconSettings },
 ];
 
 interface SidebarProps {
@@ -145,13 +144,16 @@ export function Sidebar({ collapsed, onToggleCollapsed, installations, userName,
       <nav className="flex-1 px-4 space-y-1.5 mt-2">
         {NAV_ITEMS.map((item) => {
           const isActive = pathname === item.href;
+          const Icon = item.icon;
           return (
             <Link
               key={item.href}
               href={item.href}
+              title={collapsed ? item.label : undefined}
               className={cn(
                 "relative flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-colors duration-150",
-                isActive ? "text-content-primary" : "text-content-muted hover:text-content-primary hover:bg-content-primary/5"
+                isActive ? "text-content-primary" : "text-content-muted hover:text-content-primary hover:bg-content-primary/5",
+                collapsed && "justify-center px-0"
               )}
             >
               {isActive && (
@@ -161,18 +163,22 @@ export function Sidebar({ collapsed, onToggleCollapsed, installations, userName,
                   transition={springTransition}
                 />
               )}
-              <span className="relative grid">
+              <span className="relative grid w-full">
                 <AnimatePresence mode="wait" initial={false}>
-                  <motion.span
+                  <motion.div
                     key={collapsed ? "short" : "full"}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={collapseTransition}
-                    className="col-start-1 row-start-1 whitespace-nowrap"
+                    className={cn(
+                      "col-start-1 row-start-1 flex items-center gap-3 whitespace-nowrap",
+                      collapsed && "justify-center"
+                    )}
                   >
-                    {collapsed ? item.label[0] : item.label}
-                  </motion.span>
+                    <Icon size={20} stroke={1.75} className={cn("shrink-0", isActive ? "text-accent-primary" : "")} />
+                    {!collapsed && <span>{item.label}</span>}
+                  </motion.div>
                 </AnimatePresence>
               </span>
             </Link>

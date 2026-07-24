@@ -80,7 +80,8 @@ export function deriveOverviewSetup(
           label: "Run the Kuma setup prompt in your coding agent",
           detail:
             "Installs Kuma skills, wires OpenTelemetry, and embeds the code graph in your project.",
-          status: "coming_soon",
+          status: "todo",
+          href: "/connections/workspace-setup",
         },
       ],
     },
@@ -103,7 +104,8 @@ export function deriveOverviewSetup(
           id: "mcp-kuma",
           label: "Connect MCP Kuma to your agent",
           detail: "Pull Kuma's review judgment straight into your coding agent.",
-          status: "coming_soon",
+          status: "todo",
+          href: "/connections/mcp-kuma",
         },
         {
           id: "connect-services",

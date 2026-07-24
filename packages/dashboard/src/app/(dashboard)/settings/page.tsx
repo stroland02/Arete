@@ -11,6 +11,8 @@ import {
 } from "@/lib/queries";
 import { getAccountState } from "@/lib/account-state";
 import { getActiveModelConnection } from "@/lib/model-connections-api";
+import { listEndpointsForSession } from "@/lib/webhook-endpoints-api";
+import { isPlatformInstallation } from "@/lib/platform-installation";
 import { deriveConnectionsSummary } from "@/lib/settings-connections";
 import { isGithubLinked } from "@/lib/github-link";
 import { connectGithub } from "./github-link-actions";
@@ -18,6 +20,7 @@ import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ConnectionsCard } from "@/components/settings/connections-card";
+import { WebhooksCard } from "@/components/settings/webhooks-card";
 import { SettingRow, SettingLink } from "@/components/settings/setting-row";
 
 export const dynamic = "force-dynamic";
@@ -83,7 +86,7 @@ export default async function SettingsPage({
   const installationIds = resolveSelectedInstallationIds(session.installations ?? [], installation);
   // All independent, all tenancy-scoped by the same resolved installationIds
   // (getActiveModelConnection derives its own scope from the session).
-  const [billing, githubLinked, accountState, repositories, telemetryProviders, activeModel] =
+  const [billing, githubLinked, accountState, repositories, telemetryProviders, activeModel, webhooksResult] =
     await Promise.all([
       getInstallationBilling(db, installationIds),
       isGithubLinked(db, session.user.id),
@@ -91,7 +94,9 @@ export default async function SettingsPage({
       getConnectedRepositories(db, installationIds),
       getConnectedTelemetryProviders(db, installationIds),
       getActiveModelConnection(),
+      listEndpointsForSession(),
     ]);
+  const webhooks = webhooksResult.ok ? webhooksResult.data : [];
   const connectionsSummary = deriveConnectionsSummary({
     accountState,
     repositories,
@@ -99,6 +104,9 @@ export default async function SettingsPage({
     activeModel,
   });
   const banner = githubBanner(connected, error);
+
+  const platformChecks = await Promise.all((session.installations ?? []).map(i => isPlatformInstallation(db, [i.id])));
+  const platformInstalls = (session.installations ?? []).filter((_, idx) => platformChecks[idx]);
 
   const userName = session.user.name ?? session.user.email ?? "Signed in";
   const userEmail = session.user.email ?? "";
@@ -143,6 +151,12 @@ export default async function SettingsPage({
       <RevealItem>
         <ConnectionsCard summary={connectionsSummary} />
       </RevealItem>
+
+      {platformInstalls.length > 0 && (
+        <RevealItem>
+          <WebhooksCard endpoints={webhooks} installations={platformInstalls.map(i => ({ id: i.id, owner: i.owner, isPlatformInstallation: true }))} />
+        </RevealItem>
+      )}
 
       <RevealItem>
         <Card>

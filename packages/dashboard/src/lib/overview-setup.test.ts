@@ -59,7 +59,15 @@ describe("deriveOverviewSetup — the four-step setup matrix", () => {
     expect(s.setupComplete).toBe(true);
   });
 
-  it("coming_soon sub-steps are NEVER done in any state — guidance, not a checkmark", () => {
+  it("workspace-setup and mcp-kuma graduated to actionable todo steps — real pages, never faked complete", () => {
+    // These two were `coming_soon` guidance until the pages were built
+    // (/connections/workspace-setup, /connections/mcp-kuma). Now they are real,
+    // actionable `todo` steps with hrefs. The invariant they still uphold: their
+    // status is static `todo` in EVERY account-state combination — no boolean
+    // ever flips them to `done`, so an unfinished action is never faked complete.
+    // (No `coming_soon` sub-steps remain in the matrix; the guidance-never-a-
+    // checkmark rule re-arms automatically if one is added.)
+    const graduatedIds = ["workspace-setup", "mcp-kuma"];
     const bools = [false, true];
     for (const repoConnected of bools)
       for (const modelConnected of bools)
@@ -73,12 +81,14 @@ describe("deriveOverviewSetup — the four-step setup matrix", () => {
                 scanCompleted,
                 telemetryConnected,
               });
-              const comingSoonIds = ["workspace-setup", "mcp-kuma"];
               const rows = s.steps
                 .flatMap((step) => step.subSteps ?? [])
-                .filter((sub) => comingSoonIds.includes(sub.id));
+                .filter((sub) => graduatedIds.includes(sub.id));
               expect(rows).toHaveLength(2);
-              for (const sub of rows) expect(sub.status).toBe("coming_soon");
+              for (const sub of rows) {
+                expect(sub.status).toBe("todo");
+                expect(sub.href).toBeTruthy();
+              }
             }
   });
 
