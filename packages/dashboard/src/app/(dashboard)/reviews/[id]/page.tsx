@@ -6,13 +6,8 @@ import { getReviewDetail, resolveSelectedInstallationIds } from "@/lib/queries";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 import { CopyAgentPrompt } from "@/components/dashboard/copy-agent-prompt";
 import { IconArrowLeft, IconSparkles } from "@tabler/icons-react";
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
 import { AgentRunExplorer } from "@/components/dashboard/agent-run-explorer";
 import { FindingNoiseControl } from "@/components/dashboard/finding-noise-control";
-*/
-/* --- END MERGE --- */
 
 export const dynamic = "force-dynamic";
 
@@ -86,14 +81,6 @@ export default async function ReviewDetailPage({
     );
   }
 
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-  // Paste-ready prompt for a coding agent, from the real verified findings.
-  const agentPrompt = [
-    `Fix the following ${review.findings.length} code review ${review.findings.length === 1 ? "finding" : "findings"} on ${review.repositoryFullName} (PR #${review.prNumber}):`,
-    "",
-    ...review.findings.map(
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
   // Silencing has to MEAN something, or the control is decoration: a finding a
   // human called noise stops driving the agent prompt below, exactly as it
   // already stops driving the code map (getFindingsByPath filters to OPEN).
@@ -107,8 +94,6 @@ export default async function ReviewDetailPage({
     `Fix the following ${actionable.length} code review ${actionable.length === 1 ? "finding" : "findings"} on ${review.repositoryFullName} (PR #${review.prNumber}):`,
     "",
     ...actionable.map(
-*/
-/* --- END MERGE --- */
       (f, i) => `${i + 1}. [${formatCategory(f.category)} · ${f.severity}] ${f.path}:${f.line}\n   ${f.body}`,
     ),
   ].join("\n");
@@ -142,13 +127,7 @@ export default async function ReviewDetailPage({
               <IconSparkles size={14} stroke={1.75} aria-hidden />
               View in Synthesizer
             </Link>
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-            {review.findings.length > 0 && <CopyAgentPrompt prompt={agentPrompt} />}
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
             {actionable.length > 0 && <CopyAgentPrompt prompt={agentPrompt} />}
-*/
-/* --- END MERGE --- */
             <span
               className={`px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wide border shrink-0 ${riskBadgeClasses(review.riskLevel)}`}
             >

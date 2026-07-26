@@ -1,12 +1,3 @@
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-import { describe, it, expect } from 'vitest';
-import { renderToStaticMarkup } from 'react-dom/server';
-import { AgentRail } from './agent-rail';
-
-const noop = () => {};
-
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
 import { describe, it, expect, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { AgentRail } from './agent-rail';
@@ -35,8 +26,6 @@ const workItem = (o: Partial<InboxView['items'][number]> = {}): InboxView['items
   ...o,
 });
 
-*/
-/* --- END MERGE --- */
 describe('AgentRail', () => {
   it('renders a separate select control and configure control per agent', () => {
     const html = renderToStaticMarkup(
@@ -52,9 +41,6 @@ describe('AgentRail', () => {
     expect(html).toContain('View the Security agent');
     expect(html).toContain('Configure the Security agent');
   });
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
 
   it('no longer surfaces the work-item inbox — Services owns it (Stage 2.1)', () => {
     // Inverted deliberately. This pinned a SECOND copy of the inbox that lived
@@ -93,6 +79,4 @@ describe('AgentRail', () => {
     );
     expect(html).not.toContain('Work items');
   });
-*/
-/* --- END MERGE --- */
 });

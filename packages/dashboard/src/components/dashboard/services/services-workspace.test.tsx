@@ -1,9 +1,3 @@
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-import { describe, it, expect } from 'vitest';
-import { renderToStaticMarkup } from 'react-dom/server';
-import { ServicesWorkspace } from './services-workspace';
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
 import { describe, it, expect, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
@@ -210,38 +204,19 @@ describe('ServicesWorkspace — review panel (real mode)', () => {
     expect(html).not.toContain('Verified findings');
   });
 });
-*/
-/* --- END MERGE --- */
 
 describe('ServicesWorkspace', () => {
   it('hosts the Synthesizer in the center with a connect CTA when nothing is connected', () => {
     // The authenticated (embedded) center is now the Synthesizer's home —
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-    // its onboarding state, plus a Connect-a-repository CTA.
-    const html = renderToStaticMarkup(<ServicesWorkspace />);
-
-    expect(html).toContain('The Synthesizer coordinates every review');
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
     // its professional introduction, plus a Connect-a-repository CTA.
     const html = renderToStaticMarkup(<ServicesWorkspace />);
 
     expect(html).toContain('Kuma');
     expect(html).toContain('How a review runs');
-*/
-/* --- END MERGE --- */
     expect(html).toContain('Connect a repository');
     expect(html).toContain('/connections');
   });
 
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-  it('shows the connected onboarding state when a repository is connected', () => {
-    const html = renderToStaticMarkup(<ServicesWorkspace connected />);
-
-    expect(html).toContain('The Synthesizer coordinates every review');
-    expect(html).toContain('awaiting your first pull request');
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
   it('introduces Kuma without loading/waiting talk when a repository is connected', () => {
     const html = renderToStaticMarkup(<ServicesWorkspace connected />);
 
@@ -477,7 +452,5 @@ describe('ServicesWorkspace — work-item inbox', () => {
     );
 
     expect(html).toContain('Scanning');
-*/
-/* --- END MERGE --- */
   });
 });

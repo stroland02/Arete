@@ -16,15 +16,6 @@ function finding(over: Partial<AgentActivityFinding> = {}): AgentActivityFinding
 }
 
 describe('AgentConversation', () => {
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-  it('renders the agent header, model tier, and real finding rows', () => {
-    const html = renderToStaticMarkup(
-      <AgentConversation agent={security} findings={[finding()]} findingCount={1} hasReviews onConfigure={noop} />,
-    );
-    expect(html).toContain('Security');
-    expect(html).toContain('Opus'); // security tier
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
   it('renders the agent header, connected model, and real finding rows', () => {
     const html = renderToStaticMarkup(
       <AgentConversation
@@ -38,8 +29,6 @@ describe('AgentConversation', () => {
     );
     expect(html).toContain('Security');
     expect(html).toContain('qwen2.5-coder'); // dynamic connected model, not a hardcoded tier
-*/
-/* --- END MERGE --- */
     expect(html).toContain('src/auth/session.ts:42');
     expect(html).toContain('Refresh token written to localStorage');
     expect(html).toContain('PR #7');

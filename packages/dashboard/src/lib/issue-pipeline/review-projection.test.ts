@@ -1,12 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { reviewToContainer, type ProjectedReview } from "./review-projection";
 import { assertPrIntegrity } from "./pipeline";
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
 import { projectStatusBoard } from "./status-board";
-*/
-/* --- END MERGE --- */
 
 function review(over: Partial<ProjectedReview> = {}): ProjectedReview {
   return {
@@ -43,9 +38,6 @@ describe("reviewToContainer", () => {
     expect(c.findings.map((f) => f.agentId)).toEqual(["security", "performance"]); // category == agent id
   });
 
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
   it("emits status-board report steps from persisted agentStatuses (real state only)", () => {
     const c = reviewToContainer(
       review({
@@ -71,8 +63,6 @@ describe("reviewToContainer", () => {
     expect(projectStatusBoard(c.transcript)).toHaveLength(0);
   });
 
-*/
-/* --- END MERGE --- */
   it("reconstructs a dispatch → (verify,keep)* → compose → posted transcript, no dropped", () => {
     const c = reviewToContainer(review(), "inst-1");
     const kinds = c.transcript.map((s) => s.kind);

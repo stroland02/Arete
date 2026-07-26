@@ -59,21 +59,6 @@ export default async function ConnectionsPage() {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-content-primary">Kuma GitHub App</span>
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-              <span className="rounded-full border border-accent-primary/20 bg-accent-primary/5 px-1.5 py-0.5 text-[10px] font-medium text-accent-primary/80">
-                Core
-              </span>
-            </div>
-            <p className="mt-0.5 text-xs text-content-muted">
-              Install the Kuma GitHub App on your account or org so Kuma can review your pull
-              requests. This is the core connection that powers your overview dashboard.
-            </p>
-          </div>
-          <a
-            href={`https://github.com/apps/${process.env.GITHUB_APP_SLUG ?? 'kumaservices'}/installations/new`}
-            className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-accent-primary/30 bg-accent-primary/20 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/30"
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
               {connected ? (
                 <span className="inline-flex items-center gap-1 rounded-full border border-accent-success/25 bg-accent-success/10 px-1.5 py-0.5 text-[10px] font-medium text-accent-success">
                   <IconCircleCheck className="h-3 w-3" stroke={2.25} />
@@ -129,8 +114,6 @@ export default async function ConnectionsPage() {
                 ? "border-border-default bg-surface-2 text-content-secondary hover:bg-content-primary/5"
                 : "border-accent-primary/30 bg-accent-primary/20 text-white hover:bg-accent-primary/30"
             }`}
-*/
-/* --- END MERGE --- */
           >
             <IconBrandGithub className="h-4 w-4" />
             {connected ? "Manage on GitHub" : "Install on GitHub"}

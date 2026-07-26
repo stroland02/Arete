@@ -2,13 +2,7 @@
 
 import Link from "next/link";
 import { useReducedMotion } from "framer-motion";
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-import { IconArrowRight, IconHourglassHigh } from "@tabler/icons-react";
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
 import { IconArrowRight } from "@tabler/icons-react";
-*/
-/* --- END MERGE --- */
 import { cn } from "@/lib/utils";
 import { isSampleContainerId } from "@/lib/issue-pipeline/sample-containers";
 import { useSynthStream } from "./synthesizer/use-synth-stream";
@@ -65,13 +59,7 @@ function ConsoleStream({ containerId }: { containerId: string }) {
   const live = view.phase === "working";
 
   return (
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-    <section className="flex min-h-0 flex-1 flex-col" aria-label="Synthesizer console">
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
     <section className="flex min-h-0 flex-1 flex-col" aria-label="Kuma console">
-*/
-/* --- END MERGE --- */
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border-subtle px-3">
         <span
           className={cn(
@@ -84,13 +72,7 @@ function ConsoleStream({ containerId }: { containerId: string }) {
           )}
           aria-hidden
         />
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Synthesizer</h2>
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
         <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Kuma</h2>
-*/
-/* --- END MERGE --- */
         <span className="rounded-full border border-border-default px-1.5 py-px text-[10px] font-medium text-content-muted">
           {PHASE_LABEL[view.phase]}
         </span>
@@ -99,9 +81,6 @@ function ConsoleStream({ containerId }: { containerId: string }) {
             Sample
           </span>
         )}
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
         {/* A real, completed container replays its stored transcript instantly —
             label it honestly so a replay is never mistaken for a live solve. */}
         {!isSample && !live && view.phase !== "idle" && view.phase !== "working" && (
@@ -109,8 +88,6 @@ function ConsoleStream({ containerId }: { containerId: string }) {
             Replay
           </span>
         )}
-*/
-/* --- END MERGE --- */
         <div className="ml-auto flex items-center gap-2 font-mono text-[11px] tabular-nums">
           <span className="text-accent-success">✓ {view.kept}</span>
           <span className="text-content-muted">✕ {view.dropped}</span>
@@ -137,13 +114,7 @@ function ConsoleStream({ containerId }: { containerId: string }) {
           </p>
         ) : (
           <p className="font-mono text-[10px] text-content-muted/80">
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-            {live ? "verifying findings against the diff…" : "waiting for the review to run"}
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
             {live ? "verifying findings against the diff…" : "standing by — the review streams here the moment it starts"}
-*/
-/* --- END MERGE --- */
           </p>
         )}
       </footer>
@@ -151,49 +122,6 @@ function ConsoleStream({ containerId }: { containerId: string }) {
   );
 }
 
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-function ConsoleEmpty({ connected }: { connected: boolean }) {
-  return (
-    <section className="flex min-h-0 flex-1 flex-col" aria-label="Synthesizer console">
-      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border-subtle px-3">
-        <span className="h-1.5 w-1.5 rounded-full bg-content-muted/40" aria-hidden />
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Synthesizer</h2>
-      </header>
-
-      <div className="mx-auto flex h-full max-w-md flex-col items-center justify-center gap-5 px-4 text-center">
-        <div className="rounded-2xl border border-border-default bg-content-primary/5 p-3 text-accent-primary">
-          <IconHourglassHigh size={24} stroke={1.5} />
-        </div>
-
-        <div className="space-y-1.5">
-          <p className="text-sm font-semibold text-content-primary">The Synthesizer coordinates every review</p>
-          <p className="text-xs leading-5 text-content-muted">
-            It gathers findings from all six specialists, then verifies each one against your diff and drops anything not
-            backed by real evidence. Only the proven findings reach your pull request — you see signal, not noise.
-          </p>
-          <p className="text-xs leading-5 text-content-muted">
-            {connected
-              ? "Your repository is connected — open a pull request and the review streams here live as it runs."
-              : "Connect a repository and open a pull request — the review streams here live as it runs."}
-          </p>
-        </div>
-
-        {connected ? (
-          <span className="inline-flex items-center gap-2 rounded-xl border border-accent-success/30 bg-accent-success/10 px-4 py-2 text-sm font-medium text-accent-success">
-            <span className="h-1.5 w-1.5 rounded-full bg-accent-success" aria-hidden />
-            Connected · awaiting your first pull request
-          </span>
-        ) : (
-          <Link
-            href="/connections"
-            className="inline-flex items-center gap-2 rounded-xl border border-accent-primary/30 bg-accent-primary/15 px-4 py-2 text-sm font-medium text-accent-primary transition-colors hover:bg-accent-primary/25"
-          >
-            Connect a repository
-            <IconArrowRight size={15} stroke={2} />
-          </Link>
-        )}
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
 /** The visible-thinking pipeline Kuma walks a review through — the glass-box
     workflow, laid out up front the way a Claude Code transcript reads:
     lead line, structured status entries, a prompt line. No chat bubbles. */
@@ -258,8 +186,6 @@ function ConsoleEmpty({ connected }: { connected: boolean }) {
             </Link>
           )}
         </div>
-*/
-/* --- END MERGE --- */
       </div>
     </section>
   );

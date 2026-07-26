@@ -10,12 +10,7 @@ import { springTransition } from "@/lib/motion";
 import { InstallationSwitcher } from "@/components/InstallationSwitcher";
 import { KumaLogo } from "@/components/ui/kuma-logo";
 import { useGlobalLoading } from "@/lib/loading-context";
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
 import { MODEL_PROVIDERS } from "@/lib/model-catalog";
-*/
-/* --- END MERGE --- */
 import type { ReactNode } from "react";
 import type { AuthorizedInstallation } from "@/lib/installations";
 import type { ActiveModelConnection } from "@/lib/model-connections-map";
@@ -61,17 +56,6 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, onToggleCollapsed, installations, userName, userEmail, activeModel, signOutSlot }: SidebarProps) {
   const pathname = usePathname();
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-  const { isLoading, setIsLoading } = useGlobalLoading();
-  const initial = userName.charAt(0).toUpperCase();
-
-  // A quick demonstration handler to prove the decoupled data pipeline loading state
-  const handleSimulateLoad = () => {
-    setIsLoading(true);
-    setTimeout(() => setIsLoading(false), 3000); // Spins for 3 seconds simulating a heavy data fetch
-  };
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
   const router = useRouter();
   const { isLoading } = useGlobalLoading();
   const initial = userName.charAt(0).toUpperCase();
@@ -100,8 +84,6 @@ export function Sidebar({ collapsed, onToggleCollapsed, installations, userName,
   const activeProviderName = activeModel
     ? MODEL_PROVIDERS.find((p) => p.id === activeModel.provider)?.name ?? activeModel.provider
     : null;
-*/
-/* --- END MERGE --- */
 
   return (
     <aside
@@ -110,13 +92,6 @@ export function Sidebar({ collapsed, onToggleCollapsed, installations, userName,
         collapsed ? "w-20" : "w-64"
       )}
     >
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-      <div 
-        className="p-6 h-[68px] flex items-center overflow-hidden cursor-pointer group" 
-        onClick={handleSimulateLoad} 
-        title="Click to simulate data pipeline loading!"
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
       {/* The logo refreshes the page's real data. The spin is the transition's
           own pending state, so it ends when the new server render commits. */}
       <button
@@ -127,8 +102,6 @@ export function Sidebar({ collapsed, onToggleCollapsed, installations, userName,
         aria-busy={busy}
         title="Refresh this page's data"
         className="p-6 h-[68px] w-full flex items-center overflow-hidden group cursor-pointer text-left disabled:cursor-wait"
-*/
-/* --- END MERGE --- */
       >
         <AnimatePresence mode="wait" initial={false}>
           {collapsed ? (
@@ -140,13 +113,7 @@ export function Sidebar({ collapsed, onToggleCollapsed, installations, userName,
               transition={collapseTransition}
               className="flex items-center text-accent-primary drop-shadow-[0_0_8px_rgba(0,212,255,0.4)]"
             >
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-              <KumaLogo size={28} isLoading={isLoading} />
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
               <KumaLogo size={28} isLoading={busy} />
-*/
-/* --- END MERGE --- */
             </motion.div>
           ) : (
             <motion.div
@@ -158,13 +125,7 @@ export function Sidebar({ collapsed, onToggleCollapsed, installations, userName,
               className="flex items-center gap-2 text-accent-primary"
             >
               <span className="drop-shadow-[0_0_8px_rgba(0,212,255,0.4)]">
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-                <KumaLogo size={28} isLoading={isLoading} />
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
                 <KumaLogo size={28} isLoading={busy} />
-*/
-/* --- END MERGE --- */
               </span>
               <span className="text-2xl font-semibold font-serif text-content-primary tracking-tight whitespace-nowrap">
                 Kuma

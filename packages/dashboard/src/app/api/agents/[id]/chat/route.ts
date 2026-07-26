@@ -2,20 +2,12 @@ import { NextResponse, type NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { AGENTS } from "@/components/dashboard/agents/agent-catalog";
 import { sendAgentChat } from "@/lib/agent-chat";
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
 import { resolveActiveLlmForChat } from "@/lib/model-connections-api";
 import { listChatTurns, appendChatTurn } from "@/lib/agent-chat-history";
-*/
-/* --- END MERGE --- */
 
 // Session-scoped; never statically prerendered.
 export const dynamic = "force-dynamic";
 
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
 function resolveAgent(id: string) {
   return AGENTS.find((a) => a.id === id) ?? null;
 }
@@ -51,24 +43,17 @@ export async function GET(
   return NextResponse.json({ turns });
 }
 
-*/
-/* --- END MERGE --- */
 /**
  * Dashboard -> agent chat. Authenticates the session, validates the agent id
  * against the real catalog, then proxies to the Python /chat service via
  * sendAgentChat. On any upstream failure (including a missing model key, which
  * makes the service refuse to start) it returns a truthful 503 — the composer
  * renders that as its honest disabled notice, never a fabricated reply.
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
  *
  * Persists both turns to the thread identified by (agent, containerId) — a
  * specific work item's container, or the "general" thread when none is open —
  * so the conversation survives navigating away and reloading. Persistence is
  * best-effort (see agent-chat-history.ts) and never blocks or fails the reply.
-*/
-/* --- END MERGE --- */
  */
 export async function POST(
   req: NextRequest,
@@ -80,13 +65,7 @@ export async function POST(
   }
 
   const { id } = await ctx.params;
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-  const agent = AGENTS.find((a) => a.id === id);
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
   const agent = resolveAgent(id);
-*/
-/* --- END MERGE --- */
   if (!agent) {
     return NextResponse.json({ error: "Unknown agent" }, { status: 400 });
   }
@@ -96,12 +75,6 @@ export async function POST(
   if (!message) {
     return NextResponse.json({ error: "Empty message" }, { status: 400 });
   }
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-
-  try {
-    const reply = await sendAgentChat({ agent, message });
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
   const containerId = typeof body?.containerId === "string" && body.containerId.trim() ? body.containerId.trim() : null;
 
   void appendChatTurn(id, containerId, { role: "user", text: message });
@@ -119,8 +92,6 @@ export async function POST(
     }
     const reply = result.reply;
     void appendChatTurn(id, containerId, { role: "agent", text: reply || "(no response)" });
-*/
-/* --- END MERGE --- */
     return NextResponse.json({ reply });
   } catch (err) {
     console.error("[agents/chat] upstream chat failed", err);

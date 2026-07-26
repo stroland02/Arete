@@ -82,12 +82,6 @@ describe('backfillInstallationPRs', () => {
   it('continues backfilling other repos when one repo fails to list PRs (best-effort)', async () => {
     const mockEnqueue = vi.fn().mockResolvedValue(undefined)
     vi.doMock('./queue.js', () => ({ enqueueReviewJob: mockEnqueue }))
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
-*/
-/* --- END MERGE --- */
 
     const octokit = makeOctokit({
       broken: new Error('boom: GitHub API 500'),
@@ -100,26 +94,14 @@ describe('backfillInstallationPRs', () => {
       { id: 2, name: 'ok', full_name: 'acme/ok' },
     ])
 
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
     // Behavior under test: the broken repo does not stop the ok repo from
     // being backfilled (best-effort). Failure is logged via the pino
     // logger (see logger.ts), not console.* — no console spy needed here.
-*/
-/* --- END MERGE --- */
     expect(mockEnqueue).toHaveBeenCalledTimes(1)
     expect(mockEnqueue).toHaveBeenCalledWith(
       expect.objectContaining({ repo: 'ok', prNumber: 9 }),
       'fast'
     )
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-    expect(consoleErrorSpy).toHaveBeenCalled()
-    consoleErrorSpy.mockRestore()
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
-*/
-/* --- END MERGE --- */
   })
 
   it('continues enqueueing other PRs in a repo when one PR fails to enqueue (best-effort)', async () => {
@@ -127,12 +109,6 @@ describe('backfillInstallationPRs', () => {
       .mockRejectedValueOnce(new Error('redis down'))
       .mockResolvedValueOnce(undefined)
     vi.doMock('./queue.js', () => ({ enqueueReviewJob: mockEnqueue }))
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
-*/
-/* --- END MERGE --- */
 
     const octokit = makeOctokit({
       api: [
@@ -147,12 +123,6 @@ describe('backfillInstallationPRs', () => {
     ])
 
     expect(mockEnqueue).toHaveBeenCalledTimes(2)
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-    consoleErrorSpy.mockRestore()
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
-*/
-/* --- END MERGE --- */
   })
 })
 
@@ -160,21 +130,11 @@ describe('installation webhook backfill wiring (server.ts)', () => {
   beforeEach(() => { vi.resetModules() })
 
   function makeApp() {
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-    const handlers: Record<string, Function> = {}
-    return {
-      app: {
-        webhooks: {
-          on: (event: string, handler: Function) => { handlers[event] = handler },
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
     const handlers: Record<string, (...args: any[]) => any> = {}
     return {
       app: {
         webhooks: {
           on: (event: string, handler: (...args: any[]) => any) => { handlers[event] = handler },
-*/
-/* --- END MERGE --- */
         },
         getInstallationOctokit: vi.fn(),
       },

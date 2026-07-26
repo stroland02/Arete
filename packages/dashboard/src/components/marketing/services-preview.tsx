@@ -1,18 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
-/* --- MERGED: PRESERVING UI (HEAD) --- */
-import {
-  ServicesWorkspace,
-  SAMPLE_SERVICES,
-  SAMPLE_ISSUES,
-} from "@/components/dashboard/services/services-workspace";
-/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
-/*
 import { ServicesWorkspace } from "@/components/dashboard/services/services-workspace";
 import { SAMPLE_SERVICES, SAMPLE_ISSUES } from "./services-preview-fixtures";
-*/
-/* --- END MERGE --- */
 
 /**
  * Landing-page "example interface" — a browser-framed preview of the real
