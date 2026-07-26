@@ -10,7 +10,7 @@
 [![License](https://img.shields.io/badge/License-MIT-blue)]()
 [![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen)]()
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)]()
-[![pnpm](https://img.shields.io/badge/pnpm-workspace-orange)]()<img src="docs/assets/hero-network.jpg" alt="Areté Dashboard Interface" width="100%">
+[![pnpm](https://img.shields.io/badge/pnpm-workspace-orange)]()<img src="docs/assets/demo-1.png" alt="Areté Dashboard Interface" width="100%">
 
 </div>
 
@@ -35,7 +35,7 @@ The ecosystem is consumed in multiple ways:
 * **Scalable Persistence:** Robust database layer managing schemas, migrations, and strongly-typed queries across the entire ecosystem.
 
 <div align="center">
-  <img src="docs/assets/dashboard-logs.jpg" alt="Areté Logs and Auditing" width="100%">
+  <img src="docs/assets/demo-2.png" alt="Areté Logs and Auditing" width="100%">
   <p><em>The Areté Dashboard — Real-time Agent Auditing and Logs</em></p>
 </div>
 
