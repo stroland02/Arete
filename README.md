@@ -1,73 +1,42 @@
 <div align="center">
-  <img src="./docs/assets/hero-network.jpg" alt="Areté Network Interface" width="100%">
 
-  # ✦ Areté ✦
+# ✧ Areté
 
-  **The Next Generation Autonomous Agentic Ecosystem**
+**The Next Generation Autonomous Agentic Ecosystem**
 
-  <p align="center">
-    <a href="#features">Features</a> •
-    <a href="#architecture">Architecture</a> •
-    <a href="#quick-start">Quick Start</a> •
-    <a href="#ui-aesthetic">UI Aesthetic</a>
-  </p>
+*Secure boundaries. Marble & Ink aesthetics. Powerful multi-agent orchestration.*
+
+[![Build Status](https://img.shields.io/badge/build-passing-success)]()
+[![License](https://img.shields.io/badge/License-MIT-blue)]()
+[![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen)]()
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)]()
+[![pnpm](https://img.shields.io/badge/pnpm-workspace-orange)]()
+
+<img src="./docs/assets/hero-network.jpg" alt="Areté Dashboard Interface" width="100%">
+
 </div>
 
----
+## What is Areté?
 
-**Areté** is a powerful monorepo housing a suite of microservices, dashboard frontends, and backend controllers that enable developers to build, monitor, and deploy advanced AI agents seamlessly. Built around strict security boundaries and stunning aesthetics, it brings clarity to complex multi-agent workflows.
+Areté is a powerful monorepo that houses a suite of microservices, dashboard frontends, and backend controllers. It enables developers to build, monitor, and deploy advanced AI agents seamlessly. It brings absolute clarity to complex multi-agent workflows by providing a pristine visualization layer and strict security boundaries.
 
-## 🚀 Key Features
+The ecosystem is consumed in multiple ways:
+* 🖥️ **The Dashboard** — A beautiful Next.js frontend built with the 'Marble & Ink' design system, featuring Framer Motion animations and real-time data websockets.
+* 🧠 **Agent Sub-networks** — Core agent logic, LLM coordination, reasoning loops, and prompt compilation operating within secure, isolated bounds.
+* 🗺️ **Topology Engine** — Manages the dynamic graphs and structural relationships between instantiated agents on the fly.
+* 🪝 **Webhook Dispatcher** — An extensive event-driven architecture allowing real-time streaming, integrations, and external system triggers.
 
-* **Agentic Framework:** A robust framework that orchestrates complex autonomous agents to accomplish tasks, communicate seamlessly, and manage context.
-* **Secure Sub-networking:** Creates isolated execution environments and private networks, ensuring security boundaries are rigorously maintained between agent clusters.
-* **RBAC & Auditing:** Fine-grained role-based access controls and detailed event logging for compliance, security, and monitoring of all agent behaviors.
-* **Webhooks & Integrations:** Extensive event-driven architecture allowing real-time streaming and custom integrations.
+> *Why it's different: Areté isn't just an agent builder; it is a full-stack, secure operating environment with a breathtaking visual interface that makes debugging and monitoring agent behavior effortless and completely transparent.*
 
-<br/>
+## ✨ Features
+
+* **Marble & Ink UI:** A stunning, custom-built light theme relying on warm off-white paper backgrounds (`surface-0`), crisp graphite typography, and subtle cobalt blue accents.
+* **Agentic Framework:** A robust framework that orchestrates complex autonomous agents to accomplish multi-step tasks across isolated boundaries.
+* **Secure Sub-networking:** Creates isolated execution environments and private networks, ensuring security boundaries are rigorously maintained between different agent clusters.
+* **RBAC & Auditing:** Fine-grained role-based access controls and detailed event logging for compliance and monitoring of all agent behaviors.
+* **Prisma & PostgreSQL:** Scalable persistence layer managing schemas, migrations, and strongly-typed queries across the monorepo.
 
 <div align="center">
-  <img src="./docs/assets/dashboard-logs.jpg" alt="Areté Dashboard Interface" width="100%">
+  <img src="./docs/assets/dashboard-logs.jpg" alt="Areté Logs and Auditing" width="100%">
   <p><em>The Areté Dashboard — Real-time Agent Auditing and Logs</em></p>
 </div>
-
-<br/>
-
-## 🏗 Architecture & Packages
-
-Areté is structured as an advanced monorepo managed via `pnpm`. The repository is split into dedicated packages for high scalability and separation of concerns:
-
-| Package | Description |
-| :--- | :--- |
-| 🖥️ **`packages/dashboard`** | The Next.js 16 frontend featuring the 'Marble & Ink' design system, Framer Motion animations, and real-time websockets. |
-| 🧠 **`packages/agents`** | Core agent logic, LLM coordination, reasoning loops, and prompt compilation. |
-| 🔒 **`packages/net-guard`** | The security layer handling sub-networking, isolation, and traffic interception between agents. |
-| 🗄️ **`packages/db`** | Prisma and PostgreSQL database schemas, migrations, and typed clients. |
-| 🗺️ **`packages/topology`** | Manages the dynamic graphs and structural relationships between instantiated agents. |
-| 🪝 **`packages/webhook`** | Manages outbound webhooks, event dispatching, and system integrations. |
-
-## 🎨 UI Aesthetic: "Marble & Ink"
-
-Areté ships with a stunning, custom-built light theme known as **Marble & Ink**. It relies on warm, off-white paper-like backgrounds (`surface-0`), crisp graphite typography (`content-primary`), and subtle cobalt blue accents. The layout utilizes `glass-panel` components to create a sense of tactile depth without heavy shadows.
-
-## 🛠 Quick Start
-
-Ensure you have `pnpm`, `docker`, and `node` (v20+) installed.
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/stroland02/Arete.git
-cd Arete
-
-# 2. Install dependencies across all packages
-pnpm install
-
-# 3. Start local infrastructure (Postgres, Redis, etc.)
-docker-compose -f infra/docker-compose.yml up -d
-
-# 4. Run the development server
-pnpm dev
-```
-
-## 📜 License
-Proprietary / All Rights Reserved.
