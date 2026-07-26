@@ -40,3 +40,64 @@ export async function getAuthorizedInstallations(
     select: { id: true, provider: true, owner: true, externalId: true },
   });
 }
+
+/** Narrow slice of the Prisma client the durable-access helpers depend on. */
+export interface InstallationAccessDb {
+  installationAccess: {
+    findMany: (args: {
+      where: { userId: string };
+      select: { installation: { select: { id: true; provider: true; owner: true; externalId: true } } };
+    }) => Promise<Array<{ installation: AuthorizedInstallation }>>;
+    upsert: (args: {
+      where: { userId_installationId: { userId: string; installationId: string } };
+      create: { userId: string; installationId: string };
+      update: Record<string, never>;
+    }) => Promise<unknown>;
+    deleteMany: (args: {
+      where: { userId: string; installationId: { notIn: string[] } };
+    }) => Promise<{ count: number }>;
+  };
+}
+
+/**
+ * The DURABLE authorization source: the InstallationAccess rows persisted for a
+ * user at connect time (and write-through on a successful live derivation). The
+ * login read-path prefers this over re-deriving from the GitHub API, so a
+ * transient API failure or a reset token no longer drops a tenant's
+ * installations (the connection-reset incident). Scoped by userId.
+ */
+export async function getStoredInstallations(
+  db: InstallationAccessDb | PrismaClient,
+  userId: string
+): Promise<AuthorizedInstallation[]> {
+  const rows = await (db as InstallationAccessDb).installationAccess.findMany({
+    where: { userId },
+    select: { installation: { select: { id: true, provider: true, owner: true, externalId: true } } },
+  });
+  return rows.map((r) => r.installation);
+}
+
+/**
+ * Persist the authoritative user→installation mapping durably: upsert a row for
+ * each currently-authorized installation and prune any the user no longer has
+ * (reconcile), so a revocation seen during a successful live derivation is
+ * reflected in the stored set. Idempotent; safe to call on every successful
+ * derivation and at connect time.
+ */
+export async function persistInstallationAccess(
+  db: InstallationAccessDb | PrismaClient,
+  userId: string,
+  installations: AuthorizedInstallation[]
+): Promise<void> {
+  const access = (db as InstallationAccessDb).installationAccess;
+  const ids = installations.map((i) => i.id);
+  for (const installation of installations) {
+    await access.upsert({
+      where: { userId_installationId: { userId, installationId: installation.id } },
+      create: { userId, installationId: installation.id },
+      update: {},
+    });
+  }
+  // Prune rows this user is no longer authorized for (empty list → prune all).
+  await access.deleteMany({ where: { userId, installationId: { notIn: ids } } });
+}

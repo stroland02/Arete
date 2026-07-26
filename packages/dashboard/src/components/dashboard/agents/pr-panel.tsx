@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import { IconCheck, IconChevronDown } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ApproveSolutionButton } from "./approve-solution-button";
 
 export interface PrPanelProps {
   hasReviews: boolean;
@@ -15,6 +16,12 @@ export interface PrPanelProps {
   } | null;
   /** Total verified findings composed (real, from commentsByCategory). */
   totalFindings: number;
+  /**
+   * The focused container (deep-linked from a Services issue). When present, the
+   * Approve control is LIVE and triggers the server-enforced solution gate; the
+   * server decides readiness. Null → the disabled shell (nothing to approve yet).
+   */
+  containerId?: string | null;
 }
 
 function riskDotClass(riskLevel: string): string {
@@ -45,7 +52,7 @@ function riskDotClass(riskLevel: string): string {
  * file/commit detail isn't synced yet, so those sections say so plainly; the
  * Approve control is a disabled shell until the backend gate is wired.
  */
-export function PrPanel({ hasReviews, latestReview, totalFindings }: PrPanelProps) {
+export function PrPanel({ hasReviews, latestReview, totalFindings, containerId = null }: PrPanelProps) {
   const pr = hasReviews ? latestReview ?? null : null;
 
   return (
@@ -112,15 +119,19 @@ export function PrPanel({ hasReviews, latestReview, totalFindings }: PrPanelProp
         <p className="font-mono text-[10px] uppercase tracking-wider text-content-muted">
           Human verification · 1 of 2
         </p>
-        <Button
-          size="sm"
-          disabled
-          title="Connect a repository to enable"
-          className="h-8 w-full rounded-lg text-[12px]"
-        >
-          <IconCheck size={13} stroke={2} aria-hidden />
-          Approve solution
-        </Button>
+        {containerId ? (
+          <ApproveSolutionButton containerId={containerId} />
+        ) : (
+          <Button
+            size="sm"
+            disabled
+            title="Open a reviewed issue to approve its solution"
+            className="h-8 w-full rounded-lg text-[12px]"
+          >
+            <IconCheck size={13} stroke={2} aria-hidden />
+            Approve solution
+          </Button>
+        )}
         <p className="text-[10px] leading-4 text-content-muted/80">
           Approving readies the fix — you post the pull request from the issue&apos;s Services view.
           Kuma never changes your code without approval.

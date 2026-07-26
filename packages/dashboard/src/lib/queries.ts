@@ -1,5 +1,7 @@
 import type { PrismaClient } from '@arete/db';
 import type { AuthorizedInstallation } from './installations';
+import type { FindingLike } from './sensors';
+import { clickhouse, jsonEachRow } from './clickhouse';
 
 /**
  * Picks which authorized installation(s) the current page view should query:
@@ -188,6 +190,30 @@ export async function getConnectedTelemetryProviders(
   return connections.map((c) => c.provider);
 }
 
+/**
+ * The repositories Kuma is actually installed on for the caller's authorized
+ * installations — the concrete "connected to what" the Connections page shows
+ * next to the GitHub App. Tenant-scoped by installationId exactly like every
+ * other query here, so a repo outside the caller's installations can never
+ * appear. Returns full names ("owner/repo") sorted for a stable list.
+ */
+export async function getConnectedRepositories(
+  db: PrismaClient,
+  installationIds: string[]
+): Promise<string[]> {
+  if (installationIds.length === 0) {
+    return [];
+  }
+
+  const repos = await db.repository.findMany({
+    where: { installationId: { in: installationIds } },
+    select: { fullName: true },
+    orderBy: { fullName: "asc" },
+  });
+
+  return repos.map((r) => r.fullName);
+}
+
 export interface TrendSeries {
   reviewDates: Date[];
   repoDates: Date[];
@@ -236,6 +262,23 @@ export interface ReviewFinding {
   body: string;
   severity: string;
   category: string;
+  /**
+   * The finding's REAL persisted noise state — `OPEN` | `SILENCED` |
+   * `UNDER_OBSERVATION` | `ESCALATED`. Carried to the surface so a human can
+   * see, and change, what the noise machine decided. The column is NOT NULL
+   * DEFAULT 'OPEN', so the `?? 'OPEN'` below guards a partial select rather
+   * than inventing a state for a row that has none.
+   */
+  noiseState: string;
+}
+
+/** One specialist's persisted tiered-comms status (Review.agentStatuses). */
+export interface ReviewAgentStatus {
+  agent: string;
+  status: string;
+  summary: string;
+  confidence: number;
+  blockers?: string[];
 }
 
 export interface ReviewDetail {
@@ -247,6 +290,8 @@ export interface ReviewDetail {
   createdAt: Date;
   repositoryFullName: string;
   findings: ReviewFinding[];
+  /** Per-specialist status the board renders; [] when the review stored none. */
+  agentStatuses: ReviewAgentStatus[];
 }
 
 /**
@@ -267,7 +312,11 @@ export async function getReviewDetail(
 
   const review = await db.review.findFirst({
     where: { id: reviewId, repository: { installationId: { in: installationIds } } },
-    include: { repository: true, comments: true },
+    // Explicitly ordered. Without an orderBy, Postgres returns heap order, so
+    // ANY update to a comment (silencing one, say) moves it and reshuffles the
+    // whole findings list under the reader. Caught by silencing a finding on
+    // :3002 and watching the rows jump.
+    include: { repository: true, comments: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] } },
   });
 
   if (!review) return null;
@@ -287,7 +336,11 @@ export async function getReviewDetail(
       body: c.body,
       severity: c.severity,
       category: c.category,
+      noiseState: c.noiseState ?? 'OPEN',
     })),
+    agentStatuses: Array.isArray(review.agentStatuses)
+      ? (review.agentStatuses as unknown as ReviewAgentStatus[])
+      : [],
   };
 }
 
@@ -362,6 +415,73 @@ export async function getReviewHistory(
     total,
     riskCounts,
   };
+}
+
+export interface ServiceReviewRow {
+  /** IS the container id — deep-links to the live transcript stream. */
+  id: string;
+  prNumber: number;
+  riskLevel: string;
+  createdAt: string; // ISO — client-safe
+  findingCount: number;
+}
+
+export interface ServiceReviewGroup {
+  repositoryFullName: string;
+  /** Highest risk tier across this repo's reviews — drives the rail dot. */
+  worstRisk: string;
+  reviews: ServiceReviewRow[];
+}
+
+// Highest-first risk ranking, so a repo's worst review sets its rail dot.
+const RISK_RANK: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };
+
+/**
+ * The Services "triage inbox", grounded in REAL reviews: every review the
+ * caller's installations produced, grouped by repository (the "service"), each
+ * carrying its verified-finding count. Selecting a review streams its real
+ * Synthesizer transcript via /api/containers/[id]/stream (the id IS the review
+ * id). Tenant-scoped by `repository.installationId` like every query here, so a
+ * review outside the caller's installations can never appear. No sample data,
+ * no fabricated fixes — only reviews that actually ran.
+ */
+export async function getServicesInbox(
+  db: PrismaClient,
+  installationIds: string[]
+): Promise<ServiceReviewGroup[]> {
+  if (installationIds.length === 0) {
+    return [];
+  }
+
+  const repoScope = { installationId: { in: installationIds } } as const;
+  const reviews = await db.review.findMany({
+    where: { repository: repoScope },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+    include: { repository: { select: { fullName: true } }, _count: { select: { comments: true } } },
+  });
+
+  const groups = new Map<string, ServiceReviewGroup>();
+  for (const r of reviews) {
+    const repo = r.repository.fullName;
+    let group = groups.get(repo);
+    if (!group) {
+      group = { repositoryFullName: repo, worstRisk: "low", reviews: [] };
+      groups.set(repo, group);
+    }
+    group.reviews.push({
+      id: r.id,
+      prNumber: r.prNumber,
+      riskLevel: r.riskLevel,
+      createdAt: r.createdAt.toISOString(),
+      findingCount: r._count.comments,
+    });
+    if ((RISK_RANK[r.riskLevel.toLowerCase()] ?? 0) > (RISK_RANK[group.worstRisk] ?? 0)) {
+      group.worstRisk = r.riskLevel.toLowerCase();
+    }
+  }
+
+  return [...groups.values()];
 }
 
 /** 50 free reviews per installation before payment is required — mirrors
@@ -459,6 +579,15 @@ export type DashboardsViewModel =
       byRepo: RepoActivity[];
       latestReviews: ReviewSummary[];
       telemetry: TelemetryGridSnapshot[];
+      /** Providers the tenant has actually connected. A telemetry snapshot whose
+       *  provider is NOT here was detected (seen in a review) but is not a live
+       *  connection — the grid surfaces a Connect CTA for it, never "live". */
+      connectedProviders: string[];
+      /** Full names of the tenant's connected repositories — the staging state
+       *  the dashboard shows even before any review runs (Account-State Contract). */
+      repos: string[];
+      /** Whether an AI model connection exists for the tenant. */
+      modelConnected: boolean;
     };
 
 // Stable display order for severity bars (most→least severe).
@@ -497,6 +626,8 @@ export async function getDashboardsViewModel(
     repos,
     latestReviews,
     telemetryRows,
+    connectedProviders,
+    modelConnectionCount,
   ] = await Promise.all([
     db.review.count({ where: reviewScope }),
     db.reviewComment.count({ where: { severity: 'error', review: reviewScope } }),
@@ -530,6 +661,8 @@ export async function getDashboardsViewModel(
     db.repository.findMany({ where: repoScope, select: { id: true, fullName: true } }),
     db.review.findMany({ where: reviewScope, take: 5, orderBy: { createdAt: 'desc' }, include: { repository: true } }),
     db.telemetrySnapshotRecord.findMany({ where: { installationId: { in: installationIds } }, orderBy: { fetchedAt: 'desc' } }),
+    getConnectedTelemetryProviders(db, installationIds),
+    db.modelConnection.count({ where: { installationId: { in: installationIds } } }),
   ]);
 
   const repoName = new Map(repos.map((r) => [r.id, r.fullName]));
@@ -573,6 +706,9 @@ export async function getDashboardsViewModel(
       links: r.links as string[],
       fetchedAt: r.fetchedAt,
     })),
+    connectedProviders,
+    repos: repos.map((r) => r.fullName),
+    modelConnected: modelConnectionCount > 0,
   };
 }
 
@@ -603,14 +739,20 @@ export async function getAgentActivity(
 ): Promise<AgentActivityFinding[]> {
   if (installationIds.length === 0) return [];
 
+/* --- MERGED: PRESERVING UI (HEAD) --- */
   // Select only the columns we need (not `include`, which fetches every
   // scalar column). This both avoids over-fetching and is resilient to schema
   // drift — e.g. a database that predates ReviewComment.noiseState/escalateOn/
   // threshold still satisfies this query because those columns aren't selected.
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+*/
+/* --- END MERGE --- */
   const rows = await db.reviewComment.findMany({
     where: { review: { repository: { installationId: { in: installationIds } } } },
     orderBy: { createdAt: 'desc' },
     take: limit,
+/* --- MERGED: PRESERVING UI (HEAD) --- */
     select: {
       reviewId: true,
       path: true,
@@ -623,6 +765,11 @@ export async function getAgentActivity(
         select: { prNumber: true, repository: { select: { fullName: true } } },
       },
     },
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+    include: { review: { include: { repository: true } } },
+*/
+/* --- END MERGE --- */
   });
 
   return rows.map((c) => ({
@@ -637,3 +784,76 @@ export async function getAgentActivity(
     severity: c.severity,
   }));
 }
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+
+/**
+ * All currently-OPEN review findings for the caller's authorized installations,
+ * projected to just what the Sensorium *pain* sensor needs (path + severity +
+ * category). Scoped through the same `review.repository.installationId IN
+ * installationIds` choke point as every other query here, so a finding from an
+ * installation outside `installationIds` can never appear. Empty ids => `[]`.
+ * Capped at 2000 rows — the map is a live overview, not an exhaustive audit.
+ */
+export async function getFindingsByPath(
+  db: PrismaClient,
+  installationIds: string[],
+): Promise<FindingLike[]> {
+  if (installationIds.length === 0) return [];
+  return db.reviewComment.findMany({
+    where: {
+      review: { repository: { installationId: { in: installationIds } } },
+      noiseState: 'OPEN',
+    },
+    select: { path: true, line: true, severity: true, category: true, body: true },
+    take: 2000,
+  });
+}
+
+export interface AgentEventData {
+  minute: Date;
+  count: number;
+}
+
+/**
+ * Loads agent events per minute from the ClickHouse analytics backend.
+ * Uses the events_per_minute Materialized View fast-path.
+ */
+export async function getAgentEventsPerMinute(
+  installationIds: string[],
+  limitMinutes: number = 60
+): Promise<AgentEventData[]> {
+  if (installationIds.length === 0) return [];
+
+  // project_id maps to installationId in Areté's schema adaptation.
+  // Server-side bound parameters ({name: Type} + query_params) — never string
+  // interpolation: installation ids are caller-influenced and this read path
+  // becomes hot once the promoted collector writes otel_* (obs spec §3 Phase 0).
+  const result = await clickhouse.query({
+    query: `
+      SELECT
+        minute,
+        sum(c) as count
+      FROM superlog.events_per_minute
+      WHERE project_id IN ({installationIds: Array(String)})
+      GROUP BY minute
+      ORDER BY minute DESC
+      LIMIT {limitMinutes: UInt32}
+    `,
+    query_params: {
+      installationIds,
+      limitMinutes: Math.max(1, Math.floor(limitMinutes)),
+    },
+    format: 'JSONEachRow',
+  });
+
+  const rows = await jsonEachRow<{ minute: string; count: string }>(result);
+
+  return rows.map(r => ({
+    minute: new Date(r.minute),
+    count: Number(r.count),
+  })).reverse(); // chronological order
+}
+*/
+/* --- END MERGE --- */

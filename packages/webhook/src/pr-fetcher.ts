@@ -1,6 +1,9 @@
 import type { Octokit } from '@octokit/core'
 import type { FileChange, PRContext, TelemetryConnectorConfig } from './types.js'
 import yaml from 'yaml'
+import { logger } from './logger.js'
+
+const log = logger.child({ component: 'pr-fetcher' })
 
 const EXTENSION_MAP: Record<string, string> = {
   '.py': 'python', '.ts': 'typescript', '.tsx': 'typescript',
@@ -40,7 +43,7 @@ export async function fetchAreteYaml(octokit: Octokit, owner: string, repo: stri
       }
     } catch (err: any) {
       if (err.status !== 404) {
-        console.error(`Error fetching ${path}:`, err);
+        log.error({ err, path }, 'Error fetching file');
       }
     }
     return null;
@@ -64,7 +67,7 @@ export async function fetchAgentsDoc(octokit: Octokit, owner: string, repo: stri
       }
     } catch (err: any) {
       if (err.status !== 404) {
-        console.error(`Error fetching ${path}:`, err);
+        log.error({ err, path }, 'Error fetching file');
       }
     }
     return null;

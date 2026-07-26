@@ -15,6 +15,12 @@
  * `ReviewDetail`, dates already ISO) so this stays a pure, testable function.
  */
 
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+import { isReviewDimension, type SpecialistStatus } from "@arete/orchestration";
+*/
+/* --- END MERGE --- */
 import type { Finding, IssueContainer, Severity, SynthStep } from "./types";
 
 export interface ProjectedReviewFinding {
@@ -26,6 +32,20 @@ export interface ProjectedReviewFinding {
   category: string; // == agent id
 }
 
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+/** Persisted specialist status (Review.agentStatuses) — see queries.ReviewAgentStatus. */
+export interface ProjectedAgentStatus {
+  agent: string;
+  status: string;
+  summary: string;
+  confidence: number;
+  blockers?: string[];
+}
+
+*/
+/* --- END MERGE --- */
 export interface ProjectedReview {
   id: string;
   prNumber: number;
@@ -35,6 +55,48 @@ export interface ProjectedReview {
   createdAt: string; // ISO — caller converts Date -> ISO
   repositoryFullName: string;
   findings: ProjectedReviewFinding[];
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+  /** Optional for older callers/tests; drives the status-board `report` steps. */
+  agentStatuses?: ProjectedAgentStatus[];
+}
+
+const SPECIALIST_STATUSES = new Set<SpecialistStatus>([
+  "on_track",
+  "blocked",
+  "needs_input",
+  "escalating",
+  "done",
+]);
+
+/** Build the status-board `report` steps from persisted agent statuses. A row is
+ *  emitted ONLY when its agent maps to a real dimension and a known status — an
+ *  unmappable status is dropped, never coerced (anti-fabrication). */
+function statusReportSteps(statuses: ProjectedAgentStatus[] | undefined, at: string): SynthStep[] {
+  if (!statuses) return [];
+  const steps: SynthStep[] = [];
+  for (const s of statuses) {
+    if (!isReviewDimension(s.agent)) continue;
+    if (!SPECIALIST_STATUSES.has(s.status as SpecialistStatus)) continue;
+    steps.push({
+      kind: "report",
+      agentId: s.agent,
+      text: s.summary,
+      at,
+      report: {
+        agent: s.agent,
+        dimension: s.agent,
+        status: s.status as SpecialistStatus,
+        summary: s.summary,
+        confidence: s.confidence,
+        blockers: s.blockers ?? [],
+      },
+    });
+  }
+  return steps;
+*/
+/* --- END MERGE --- */
 }
 
 function toSeverity(riskLevel: string): Severity {
@@ -69,6 +131,14 @@ export function reviewToContainer(review: ProjectedReview, installationId: strin
   // entries (upstream drops aren't stored), so nothing is invented.
   const transcript: SynthStep[] = [
     { kind: "dispatch", text: "Six specialists reviewed this pull request", at },
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+    // Per-specialist status rows (the status board folds over these) — real
+    // persisted state only; empty when the review stored none.
+    ...statusReportSteps(review.agentStatuses, at),
+*/
+/* --- END MERGE --- */
     ...findings.flatMap((f): SynthStep[] => [
       { kind: "verify", findingId: f.id, agentId: f.agentId, text: `Verifying ${f.category} · ${f.file}:${f.line}`, at },
       { kind: "keep", findingId: f.id, agentId: f.agentId, text: "Kept — evidence in the diff", detail: `${f.file}:${f.line}`, at },

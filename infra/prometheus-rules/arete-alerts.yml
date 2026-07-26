@@ -1,0 +1,85 @@
+# Areté observability Phase 2 — Prometheus alerting rules.
+#
+# Series names are the collector's Prometheus-exporter-rewritten names, NOT
+# the OTel-side instrument names: dots become underscores and counters gain a
+# `_total` suffix, so `arete.review.runs` is scraped as
+# `arete_review_runs_total`. Verified live at http://localhost:8889/metrics.
+#
+# History worth keeping: these were originally written against
+# `arete_arete_review_runs_total`, because the collector's prometheus exporter
+# carried `namespace: arete` and prepended it to instruments whose names
+# already start with `arete.` (spec §5). That namespace has since been removed
+# — it also prefixed the semconv instruments, defeating §4's "dashboards built
+# on stable names." If a rule here ever stops matching, check the exporter
+# config before assuming the instrument was renamed.
+#
+# Both an error-rate rule and a p95 latency rule are required (spec §3):
+# error-driven alerting alone is blind to a pipeline that returns correct
+# results several times slower.
+#
+# Label sets are closed per Global Constraint 1 (spec §5): severity,
+# alertname, and `queue` (a small fixed set — review-pr / approval-exec /
+# fix-drive) only. No repo names, PR numbers, installation ids, or SHAs.
+
+groups:
+  - name: arete-alerts
+    rules:
+      # Ratio of failed PR review runs over a 15m window exceeds 10%,
+      # sustained for 10m. The 15m window intentionally exceeds the
+      # review-duration histogram's own 300s tail so a single slow (but
+      # eventually successful) review cannot itself trip this rule.
+      - alert: AreteReviewErrorRate
+        expr: >-
+          (
+            sum(rate(arete_review_runs_total{outcome="failure"}[15m]))
+            /
+            sum(rate(arete_review_runs_total[15m]))
+          ) > 0.1
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Arete review error rate above 10%'
+          description: >-
+            More than 10% of PR review runs have failed over the last 15
+            minutes. This can indicate a broken review pipeline, an LLM
+            provider outage, or a regression in the worker service.
+          runbook_url: 'https://github.com/arete/runbooks/blob/main/review-error-rate.md'
+
+      # p95 PR review duration exceeds 180s, sustained for 15m. Catches
+      # graceful-but-slow degradation that a correct-outcome, error-rate-only
+      # alert would never see.
+      - alert: AreteReviewLatencyP95
+        expr: >-
+          histogram_quantile(0.95, sum(rate(arete_review_duration_seconds_bucket[15m])) by (le)) > 180
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Arete review p95 latency above 180s'
+          description: >-
+            The 95th percentile PR review duration has exceeded 180 seconds
+            for 15 minutes. Reviews may still be succeeding but are
+            degrading — invisible to error-rate alerting alone.
+          runbook_url: 'https://github.com/arete/runbooks/blob/main/review-latency.md'
+
+      # Ratio of failed BullMQ jobs, per queue, over a 15m window exceeds
+      # 10%, sustained for 10m. Grouped by `queue` (closed set: review-pr,
+      # approval-exec, fix-drive) so the alert identifies which pipeline is
+      # degraded.
+      - alert: AreteQueueFailureRate
+        expr: >-
+          (
+            sum by (queue) (rate(arete_queue_jobs_total{outcome="failed"}[15m]))
+            /
+            sum by (queue) (rate(arete_queue_jobs_total[15m]))
+          ) > 0.1
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Arete queue job failure rate above 10% ({{ $labels.queue }})'
+          description: >-
+            More than 10% of jobs on the {{ $labels.queue }} queue have
+            failed over the last 15 minutes.
+          runbook_url: 'https://github.com/arete/runbooks/blob/main/queue-failure-rate.md'

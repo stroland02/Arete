@@ -1,7 +1,9 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { AGENTS, type Agent } from "./agent-catalog";
 import { cn } from "@/lib/utils";
+/* --- MERGED: PRESERVING UI (HEAD) --- */
 import { IconSettings } from "@tabler/icons-react";
 
 const TIER_LABEL = { opus: "Opus", sonnet: "Sonnet" } as const;
@@ -9,6 +11,13 @@ const TIER_CLASS = {
   opus: "border-accent-primary/25 bg-accent-primary/10 text-accent-primary",
   sonnet: "border-border-default bg-surface-2 text-content-secondary",
 } as const;
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+import { IconSettings, IconCpu } from "@tabler/icons-react";
+import type { ActiveModelConnection } from "@/lib/model-connections-map";
+import type { InboxView } from "@/lib/work-items";
+*/
+/* --- END MERGE --- */
 
 export interface AgentRailProps {
   agents?: Agent[];
@@ -18,6 +27,17 @@ export interface AgentRailProps {
   onSelect: (agentId: string) => void;
   /** Opens the AgentConfigDrawer for this agent. */
   onConfigure: (agentId: string) => void;
+  /** The connected model all agents run on — shown once in the footer, replacing
+      the old per-agent hardcoded Opus/Sonnet tier badges. */
+  activeModel?: ActiveModelConnection | null;
+  /**
+   * The live work-item inbox — what the agents are currently working on. Null on
+   * a fresh/unconnected account (nothing to scan yet), in which case the section
+   * is omitted rather than shown empty. Selecting an item deep-links to /services
+   * where the item can be acted on; the Agents page provides visibility, not a
+   * second copy of the action surface.
+   */
+  inbox?: InboxView | null;
 }
 
 /**
@@ -35,7 +55,10 @@ export function AgentRail({
   selectedAgentId,
   onSelect,
   onConfigure,
+  activeModel = null,
+  inbox = null,
 }: AgentRailProps) {
+  const router = useRouter();
   return (
     <section className="flex min-h-0 flex-1 flex-col" aria-label="Agents rail">
       <header className="flex h-10 shrink-0 items-center justify-between border-b border-border-subtle px-3">
@@ -47,7 +70,7 @@ export function AgentRail({
         </span>
       </header>
 
-      <ul className="min-h-0 flex-1 overflow-y-auto py-1">
+      <ul className="scrollbar-thin min-h-0 flex-1 overflow-y-auto py-1">
         {agents.map((agent) => {
           const Icon = agent.icon;
           const count = findingCountById[agent.id] ?? 0;
@@ -102,6 +125,7 @@ export function AgentRail({
                       >
                         {agent.label}
                       </span>
+/* --- MERGED: PRESERVING UI (HEAD) --- */
                       <span
                         className={cn(
                           "shrink-0 rounded-full border px-1.5 py-px text-[9px] font-medium",
@@ -110,6 +134,10 @@ export function AgentRail({
                       >
                         {TIER_LABEL[agent.tier]}
                       </span>
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+*/
+/* --- END MERGE --- */
                     </span>
                     <span className="mt-0.5 block truncate font-mono text-[11px] text-content-muted">
                       {status}
@@ -130,7 +158,34 @@ export function AgentRail({
         })}
       </ul>
 
-      <footer className="shrink-0 border-t border-border-subtle px-3 py-2">
+      {/* The work inbox used to render here too. It does not any more — Stage
+          2.1, resolved as SUBSUMED.
+
+          Services now owns the inbox AND the agents layer, and /agents is no
+          longer a nav destination, so a second copy here was the same list in
+          two places with different powers: this one could only hand off to
+          /services, while the one there can actually act on an item. Two lists
+          that drift is how a reader stops trusting either.
+
+          Recorded honestly: I marked 2.1 shipped claiming 2.2 had subsumed
+          this, and another lane checked and found both still rendering. This
+          commit is what that row was already claiming. */}
+
+      <footer className="shrink-0 space-y-1.5 border-t border-border-subtle px-3 py-2">
+        {activeModel ? (
+          <p
+            title={`Every agent runs on ${activeModel.provider} · ${activeModel.model}`}
+            className="flex items-center gap-1.5 text-[10px] text-content-secondary"
+          >
+            <IconCpu size={12} className="shrink-0 text-accent-primary" aria-hidden />
+            <span className="text-content-muted">Running on</span>
+            <span className="min-w-0 flex-1 truncate font-mono text-content-secondary">{activeModel.model}</span>
+          </p>
+        ) : (
+          <p className="font-mono text-[10px] leading-4 text-content-muted/80">
+            no model connected — agents can&apos;t run yet
+          </p>
+        )}
         <p className="font-mono text-[10px] leading-4 text-content-muted/80">
           {hasReviews
             ? "counts are verified findings from your reviews"

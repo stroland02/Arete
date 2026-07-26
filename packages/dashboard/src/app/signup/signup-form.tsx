@@ -5,7 +5,7 @@ import { useActionState } from 'react';
 import { googleSignIn } from '../login/actions';
 import { signup } from './actions';
 
-export function SignupForm() {
+export function SignupForm({ initialEmail = '' }: { initialEmail?: string }) {
   const [state, formAction, pending] = useActionState(signup, { error: null as string | null });
 
   return (
@@ -52,6 +52,7 @@ export function SignupForm() {
           name="email"
           type="email"
           required
+          defaultValue={initialEmail}
           autoComplete="email"
           className="w-full px-4 py-2.5 rounded-xl bg-surface-2 border border-border-default text-sm text-content-primary placeholder:text-content-muted focus:outline-none focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/30"
           placeholder="you@company.com"

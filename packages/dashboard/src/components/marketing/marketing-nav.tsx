@@ -24,6 +24,9 @@ export function MarketingNav() {
           <a href="#pricing" className="transition-colors hover:text-content-primary">
             Pricing
           </a>
+          <Link href="/docs" className="transition-colors hover:text-content-primary">
+            Docs
+          </Link>
           <a href="https://discord.gg/HyYVmVc6d" target="_blank" rel="noopener noreferrer" className="transition-colors hover:text-content-primary">
             Community
           </a>

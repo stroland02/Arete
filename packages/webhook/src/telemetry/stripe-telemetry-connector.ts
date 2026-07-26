@@ -1,6 +1,8 @@
 import type { ConnectorResult } from './connector-result.js'
 import { assertAllowedTelemetryHost } from './ssrf-guard.js'
 
+import { webhookFetch } from '@arete/net-guard'
+
 const STRIPE_BASE_URL = 'https://api.stripe.com'
 const FETCH_TIMEOUT_MS = 8_000
 const SEVEN_DAYS_SECONDS = 7 * 24 * 60 * 60
@@ -34,7 +36,7 @@ export async function fetchStripeSnapshot(credentials: StripeTelemetryCredential
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
 
   try {
-    const res = await fetch(url.toString(), {
+    const res = await webhookFetch(url.toString(), {
       headers: { Authorization: `Bearer ${credentials.secretKey}` },
       signal: controller.signal,
     })

@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { auth } from "../../lib/auth";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { SignOutButton } from "@/components/SignOutButton";
+import { GlassBoxDock } from "@/components/dashboard/glassbox/glassbox-dock";
+import { getActiveModelConnection } from "@/lib/model-connections-api";
 
 // This layout wraps every authenticated dashboard route. It reads the
 // session itself (in addition to proxy.ts) so it can render the signed-in
@@ -24,15 +26,24 @@ export default async function DashboardLayout({
   }
 
   const installations = session.installations ?? [];
-  const userName = session.user.name ?? session.user.email ?? "Signed in";
+  const userEmail = session.user.email ?? null;
+  const userName = session.user.name ?? userEmail ?? "Signed in";
+  const activeModel = await getActiveModelConnection();
 
   return (
-    <DashboardShell
-      installations={installations}
-      userName={userName}
-      signOutSlot={<SignOutButton />}
-    >
-      {children}
-    </DashboardShell>
+    <>
+      <DashboardShell
+        installations={installations}
+        userName={userName}
+        userEmail={userEmail}
+        activeModel={activeModel}
+        signOutSlot={<SignOutButton />}
+      >
+        {children}
+      </DashboardShell>
+      {/* Glass Box live cockpit — inert unless NEXT_PUBLIC_GLASSBOX_URL is set
+          (dev only). Additive, presentational; no server/Redis dependency. */}
+      <GlassBoxDock />
+    </>
   );
 }

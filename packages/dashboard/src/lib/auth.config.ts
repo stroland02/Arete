@@ -19,9 +19,13 @@ export const authConfig = {
       const { pathname } = request.nextUrl;
       const isPublic =
         pathname === '/' ||
+        pathname.startsWith('/docs') ||
         pathname.startsWith('/login') ||
         pathname.startsWith('/signup') ||
         pathname.startsWith('/api/auth') ||
+        // Liveness probe (spec §3 exit criteria): must be reachable without a
+        // session — a health check that requires login isn't a health check.
+        pathname === '/api/health' ||
         pathname.endsWith('.jpg') ||
         pathname.endsWith('.png') ||
         pathname.endsWith('.svg');

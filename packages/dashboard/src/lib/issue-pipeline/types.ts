@@ -7,6 +7,8 @@
  * separate, single-owner step (spec §6.1) and is intentionally not done here.
  */
 
+import type { StatusReport } from "@arete/orchestration";
+
 export type Severity = "critical" | "high" | "medium";
 
 export type ContainerState =
@@ -19,7 +21,10 @@ export type ContainerState =
   | "posted"
   | "changes_requested"
   | "merged"
-  | "dismissed";
+  | "dismissed"
+  // Terminal: a fix run authored no verified patch (healing-loop spec §4). The
+  // container is preserved (transcript viewable); its WorkItem returns to open.
+  | "fix_failed";
 
 export type Verdict = "candidate" | "kept" | "dropped";
 
@@ -57,6 +62,17 @@ export interface SynthStep {
   detail?: string;
   at: string; // ISO timestamp
   /**
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+   * Optional specialist StatusReport riding a `report` step (tiered comms §2).
+   * OPTIONAL + additive — no new SynthStep kind, so the console renderer is
+   * untouched. Absent (never fabricated) for a step with no real report.
+   */
+  report?: StatusReport;
+  /**
+*/
+/* --- END MERGE --- */
    * Set on a `keep` step the Critic flagged low-confidence (spec
    * synthesizer-component-and-critic §2, §4): gate-passed and kept, but "wants
    * a human look". Renders as the ⚑ variant and increments the ledger's

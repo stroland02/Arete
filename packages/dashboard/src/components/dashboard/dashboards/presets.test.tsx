@@ -8,7 +8,8 @@ type Model = Parameters<typeof ReviewActivityPreset>[0]['model'];
 
 const emptyModel: Model = {
   hasAccess: true, totalPrs: 0, criticalBugs: 0, recentReviews: 0, weeklyDelta: 0,
-  reviewDates: [], byCategory: [], bySeverity: [], byRisk: [], byRepo: [], latestReviews: [], telemetry: [],
+  reviewDates: [], byCategory: [], bySeverity: [], byRisk: [], byRepo: [], latestReviews: [], telemetry: [], connectedProviders: [],
+  repos: [], modelConnected: false,
 };
 
 const fullModel: Model = {
@@ -50,15 +51,36 @@ describe('FindingsPreset', () => {
 });
 
 describe('TelemetryPreset', () => {
-  it('renders skeleton cards when skeleton=true', () => {
+  it('renders the connect-a-service catalog when skeleton=true (no fabricated metrics)', () => {
     const html = renderToStaticMarkup(<TelemetryPreset model={emptyModel} days={30} skeleton />);
     expect(html).not.toContain('as of last review');
+    // real catalog connectors + actionable CTA
+    expect(html).toContain('PostHog');
+    expect(html).toContain('Connect PostHog');
+    // a planned connector is shown as not-yet-connectable, never a live control
+    expect(html).toContain('Planned');
+    expect(html).toContain('Not yet available');
   });
-  it('renders one panel per connected provider when skeleton=false', () => {
+  const seededSnapshot = { provider: 'sentry', sourceRef: 'acme/api', summaryText: '', metrics: { error_rate: 2 }, links: [], fetchedAt: new Date() };
+
+  it('surfaces a Connect CTA for a DETECTED-but-not-connected provider (the seeded case)', () => {
+    // A seeded Sentry snapshot with NO matching connection: detected in a review
+    // but not live — must offer to connect, never imply it's a live source.
     const html = renderToStaticMarkup(
-      <TelemetryPreset model={{ ...emptyModel, telemetry: [{ provider: 'sentry', sourceRef: 'acme/api', summaryText: '', metrics: { error_rate: 2 }, links: [], fetchedAt: new Date() }] }} days={30} skeleton={false} />
+      <TelemetryPreset model={{ ...emptyModel, telemetry: [seededSnapshot], connectedProviders: [] }} days={30} skeleton={false} />
+    );
+    expect(html).toContain('sentry');
+    expect(html).toContain('Detected · not connected');
+    expect(html).toContain('Connect this service');
+    expect(html.toLowerCase()).not.toContain('as of last review');
+  });
+
+  it('renders a live panel when the provider IS connected', () => {
+    const html = renderToStaticMarkup(
+      <TelemetryPreset model={{ ...emptyModel, telemetry: [seededSnapshot], connectedProviders: ['sentry'] }} days={30} skeleton={false} />
     );
     expect(html).toContain('sentry');
     expect(html.toLowerCase()).toContain('as of last review');
+    expect(html).not.toContain('Connect this service');
   });
 });

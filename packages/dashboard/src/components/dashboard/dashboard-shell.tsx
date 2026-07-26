@@ -5,16 +5,24 @@ import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { cn } from "@/lib/utils";
 import type { AuthorizedInstallation } from "@/lib/installations";
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+import type { ActiveModelConnection } from "@/lib/model-connections-map";
+*/
+/* --- END MERGE --- */
 import { LoadingProvider } from "@/lib/loading-context";
 
 interface DashboardShellProps {
   children: ReactNode;
   installations: AuthorizedInstallation[];
   userName: string;
+  userEmail: string | null;
+  activeModel: ActiveModelConnection | null;
   signOutSlot: ReactNode;
 }
 
-export function DashboardShell({ children, installations, userName, signOutSlot }: DashboardShellProps) {
+export function DashboardShell({ children, installations, userName, userEmail, activeModel, signOutSlot }: DashboardShellProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -24,6 +32,8 @@ export function DashboardShell({ children, installations, userName, signOutSlot 
         onToggleCollapsed={() => setCollapsed((c) => !c)}
         installations={installations}
         userName={userName}
+        userEmail={userEmail}
+        activeModel={activeModel}
         signOutSlot={signOutSlot}
       />
       <main

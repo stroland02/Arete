@@ -1,66 +1,49 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 
-def _tool_result(status: str | None):
-    block = MagicMock()
-    block.text = "not json" if status is None else f'{{"status": "{status}"}}'
-    result = MagicMock()
-    result.content = [block]
-    return result
-
-
-@patch(
-    "arete_agents.context_map.indexer._resolve_binary",
-    return_value="/usr/local/bin/codebase-memory-mcp",
-)
-@patch("arete_agents.context_map.indexer.mcp_client")
-def test_index_repository_returns_project_name_on_success(mock_client, _mock_binary, tmp_path):
+@patch("arete_agents.context_map.indexer.run_cli")
+def test_index_repository_returns_project_name_on_success(mock_run, tmp_path):
     from arete_agents.context_map.indexer import index_repository
 
-    mock_client.call_tool_sync.return_value = _tool_result("indexed")
+    # cli index_repository returns the binary-derived project name + status.
+    mock_run.return_value = {"project": "C-tmp-owner__repo", "status": "indexed", "nodes": 27}
 
     project = index_repository(installation_id=42, repo_dir=tmp_path)
 
-    assert project == "install-42"
-    mock_client.get_or_create_session.assert_called_once_with(
-        "context-map-42", "/usr/local/bin/codebase-memory-mcp"
-    )
+    assert project == "C-tmp-owner__repo"
+    mock_run.assert_called_once_with("index_repository", {"repo_path": str(tmp_path)})
 
 
-@patch(
-    "arete_agents.context_map.indexer._resolve_binary",
-    return_value="/usr/local/bin/codebase-memory-mcp",
-)
-@patch("arete_agents.context_map.indexer.mcp_client")
-def test_index_repository_raises_on_degraded_status(mock_client, _mock_binary, tmp_path):
+@patch("arete_agents.context_map.indexer.run_cli")
+def test_index_repository_raises_on_degraded_status(mock_run, tmp_path):
     from arete_agents.context_map.indexer import IndexerError, index_repository
 
-    mock_client.call_tool_sync.return_value = _tool_result("degraded")
+    mock_run.return_value = {"project": "p", "status": "degraded"}
 
     with pytest.raises(IndexerError):
         index_repository(installation_id=42, repo_dir=tmp_path)
 
 
-@patch(
-    "arete_agents.context_map.indexer._resolve_binary",
-    return_value="/usr/local/bin/codebase-memory-mcp",
-)
-@patch("arete_agents.context_map.indexer.mcp_client")
-def test_index_repository_raises_when_session_call_fails(mock_client, _mock_binary, tmp_path):
+@patch("arete_agents.context_map.indexer.run_cli")
+def test_index_repository_raises_when_cli_fails(mock_run, tmp_path):
+    """A missing binary / non-zero exit / timeout surfaces as CliError from
+    run_cli, which the indexer must translate into IndexerError (fail open)."""
+    from arete_agents.context_map.cli import CliError
     from arete_agents.context_map.indexer import IndexerError, index_repository
 
-    mock_client.get_or_create_session.side_effect = RuntimeError("subprocess failed to start")
+    mock_run.side_effect = CliError("codebase-memory-mcp binary not found on PATH")
 
     with pytest.raises(IndexerError):
         index_repository(installation_id=42, repo_dir=tmp_path)
 
 
-def test_index_repository_raises_when_binary_missing(tmp_path, monkeypatch):
+@patch("arete_agents.context_map.indexer.run_cli")
+def test_index_repository_raises_when_no_project_returned(mock_run, tmp_path):
     from arete_agents.context_map.indexer import IndexerError, index_repository
 
-    monkeypatch.delenv("CBM_BINARY_PATH", raising=False)
-    with patch("arete_agents.context_map.indexer.shutil.which", return_value=None):
-        with pytest.raises(IndexerError):
-            index_repository(installation_id=42, repo_dir=tmp_path)
+    mock_run.return_value = {"status": "indexed"}  # no project name
+
+    with pytest.raises(IndexerError):
+        index_repository(installation_id=42, repo_dir=tmp_path)

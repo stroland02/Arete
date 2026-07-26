@@ -64,20 +64,34 @@ export function getConfig(): Config {
 const StripeConfigSchema = z.object({
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  // Stripe price IDs per paid tier. Optional — when set, stripe-handler maps a
+  // completed checkout's price back to the tier name and records it on the
+  // Installation as `planTier`, which billing.ts then enforces. When unset,
+  // tier enforcement simply falls back to the free/grandfathered behavior.
+  STRIPE_PRICE_STARTER: z.string().optional(),
+  STRIPE_PRICE_PRO: z.string().optional(),
+  STRIPE_PRICE_ENTERPRISE: z.string().optional(),
 })
 
 export interface StripeConfig {
   secretKey?: string
   webhookSecret?: string
+  /** priceId -> tier name ("starter" | "pro" | "enterprise") for configured tiers. */
+  priceToTier: Record<string, 'starter' | 'pro' | 'enterprise'>
 }
 
 /** Stripe billing config. Optional — the /stripe-webhook route fails closed
  * (400/500, never crashes the process) when unset. */
 export function getStripeConfig(): StripeConfig {
   const result = StripeConfigSchema.parse(process.env)
+  const priceToTier: Record<string, 'starter' | 'pro' | 'enterprise'> = {}
+  if (result.STRIPE_PRICE_STARTER) priceToTier[result.STRIPE_PRICE_STARTER] = 'starter'
+  if (result.STRIPE_PRICE_PRO) priceToTier[result.STRIPE_PRICE_PRO] = 'pro'
+  if (result.STRIPE_PRICE_ENTERPRISE) priceToTier[result.STRIPE_PRICE_ENTERPRISE] = 'enterprise'
   return {
     secretKey: result.STRIPE_SECRET_KEY,
     webhookSecret: result.STRIPE_WEBHOOK_SECRET,
+    priceToTier,
   }
 }
 

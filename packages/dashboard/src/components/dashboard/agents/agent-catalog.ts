@@ -15,8 +15,6 @@ export type AgentIcon = ComponentType<{
   style?: CSSProperties;
 }>;
 
-export type AgentTier = "opus" | "sonnet";
-
 export interface Agent {
   /**
    * Exact `agent_name` string the matching specialist in
@@ -32,12 +30,6 @@ export interface Agent {
   longDescription: string;
   /** What this agent actually looks at — shown as a list in the drawer. */
   inspects: string[];
-  /**
-   * Model tier from packages/agents/src/arete_agents/config.py defaults
-   * (opus = claude-opus-4-8, sonnet = claude-sonnet-5). Server config today —
-   * displayed honestly, not per-tenant editable yet.
-   */
-  tier: AgentTier;
   icon: AgentIcon;
 }
 
@@ -59,7 +51,6 @@ export const AGENTS: Agent[] = [
       "Secrets & credential exposure",
       "Crypto & dependency usage",
     ],
-    tier: "opus",
     icon: IconShieldCheck,
   },
   {
@@ -74,7 +65,6 @@ export const AGENTS: Agent[] = [
       "Memory & allocation pressure",
       "Hot-path code changes",
     ],
-    tier: "sonnet",
     icon: IconGauge,
   },
   {
@@ -89,7 +79,6 @@ export const AGENTS: Agent[] = [
       "Dead or unreachable code",
       "API surface clarity",
     ],
-    tier: "sonnet",
     icon: IconSparkles,
   },
   {
@@ -104,7 +93,6 @@ export const AGENTS: Agent[] = [
       "Edge & error paths",
       "Test-to-diff mapping",
     ],
-    tier: "sonnet",
     icon: IconTestPipe,
   },
   {
@@ -119,7 +107,6 @@ export const AGENTS: Agent[] = [
       "Rollout / rollback ordering",
       "Feature-flag wiring",
     ],
-    tier: "opus",
     icon: IconRocket,
   },
   {
@@ -135,7 +122,6 @@ export const AGENTS: Agent[] = [
       "Revenue-critical paths",
       "Contract & invariant drift",
     ],
-    tier: "opus",
     icon: IconBriefcase,
   },
 ];

@@ -5,26 +5,38 @@ import { pathToFileURL } from 'node:url'
 // under "moduleResolution": "nodenext", ioredis's default export can't be
 // used as both a value and a type, but its named `Redis` export can.
 import { Redis as IORedis } from 'ioredis'
+import { BullMQOtel } from 'bullmq-otel'
 import type { Octokit } from '@octokit/core'
-import type { PRContext } from './types.js'
+import type { PRContext, ReviewResult } from './types.js'
 import { createApp, getInstallationOctokit, getInstallationToken } from './github-auth.js'
 import { fetchPRContext } from './pr-fetcher.js'
 import { fetchTelemetryContext } from './telemetry/fetch-telemetry-context.js'
 import { fetchGitLabMRContext } from './gitlab-fetcher.js'
 import { runReviewPipeline } from './review-bridge.js'
+import { startApprovalWorker } from './approval-worker.js'
+import { startFixWorker } from './fix/queue-consumer.js'
+import { startOutboundRetryWorker } from './outbound/retry-worker.js'
 import { postReview } from './comment-poster.js'
+import { filterResultForPosting, guidanceRules, loadAgentConfigs } from './agent-config.js'
 import { postGitLabReview, type DiffRefs } from './gitlab-comment-poster.js'
-import { persistReview, persistTelemetrySnapshots } from './persistence.js'
+import { persistReview, persistTelemetrySnapshots, fetchProjectMemories } from './persistence.js'
 import { ARETE_CHECK_RUN_NAME } from './constants.js'
 import { reviewConclusion } from './verdict-conclusion.js'
+import { runWithReviewSpan, withChildSpan, recordQueueJob } from './observability.js'
 import {
   REVIEW_QUEUE_NAME,
   REVIEW_QUEUE_CONCURRENCY,
+  REVIEW_QUEUE_HEAVY_NAME,
+  REVIEW_QUEUE_HEAVY_CONCURRENCY,
+  FIX_QUEUE_CONCURRENCY,
   type ReviewJobData,
   type GitHubPullRequestJobData,
   type GitHubCheckRunJobData,
   type GitLabMergeRequestJobData,
 } from './queue.js'
+import { logger } from './logger.js'
+
+const log = logger.child({ component: 'worker' })
 
 /**
  * Pure helper so the clone-URL construction is unit-testable without
@@ -52,23 +64,89 @@ export function buildCloneContext(
  * resolve the check run, and persist. This is where the heavy lifting that
  * used to happen synchronously inside the webhook handler now lives.
  */
+/**
+ * Annotates a check run with a degraded outcome, without ever changing the
+ * retry decision that has already been made.
+ *
+ * Both call sites reach here having established two things: the pipeline
+ * produced a usable result, and this job must therefore NOT be retried. The
+ * annotation is the last step, and it is the one most likely to fail — the
+ * reason publishing just failed is overwhelmingly a transient GitHub outage,
+ * which is exactly when this call fails too.
+ *
+ * Unguarded, that throw escapes the catch, the job re-throws, and BullMQ redoes
+ * the entire files x agents review to retry a GitHub API call: the precise
+ * double-retry the two-block split exists to prevent, arriving one call later.
+ *
+ * The failure is logged, not swallowed. If this call fails the check run is
+ * left `in_progress` on the PR, which is a real and visible degradation — but
+ * it is a strictly smaller harm than re-running a completed review, and the log
+ * line is what makes it diagnosable rather than silent.
+ */
+async function reportDegradedOutcome(
+  octokit: Octokit,
+  params: {
+    owner: string
+    repo: string
+    checkRunId: number
+    title: string
+    summary: string
+    /** Defaults to `failure`; the success path passes the review's real verdict. */
+    conclusion?: string
+    /**
+     * Why this job must not be retried, for the log line. The callers have
+     * genuinely different reasons — one produced a result it could not publish,
+     * the other published one — and a single message would be false for one of
+     * them.
+     */
+    whyNotRetrying: string
+  },
+): Promise<void> {
+  try {
+    await (octokit as any).rest.checks.update({
+      owner: params.owner,
+      repo: params.repo,
+      check_run_id: params.checkRunId,
+      status: 'completed',
+      conclusion: params.conclusion ?? 'failure',
+      output: { title: params.title, summary: params.summary },
+    })
+  } catch (err) {
+    log.error(
+      { err, owner: params.owner, repo: params.repo, checkRunId: params.checkRunId },
+      `Failed to update the check run; it may be left in_progress. Not retrying — ${params.whyNotRetrying}`,
+    )
+  }
+}
+
 async function processGitHubPullRequest(octokit: Octokit, installationToken: string, data: GitHubPullRequestJobData): Promise<void> {
   const { owner, repo, prNumber, headSha, installationId, repositoryExternalId, fullName } = data
 
-  const prContext = await fetchPRContext(octokit, owner, repo, prNumber)
-  // `installationId` here is the GitHub App's numeric installation id
-  // (Installation.externalId), not the internal Installation UUID —
-  // fetchTelemetryContext resolves the UUID itself, like persistReview.
-  prContext.telemetry = await fetchTelemetryContext(
-    octokit,
-    'github',
-    installationId,
-    owner,
-    repo,
-    prContext.telemetryConnectors ?? []
-  )
+  const prContext = await withChildSpan('review.context.build', async () => {
+    // `installationId` here is the GitHub App's numeric installation id
+    // (Installation.externalId), not the internal Installation UUID —
+    // fetchTelemetryContext resolves the UUID itself, like persistReview.
+    const ctx = await fetchPRContext(octokit, owner, repo, prNumber)
+    ctx.telemetry = await fetchTelemetryContext(
+      octokit,
+      'github',
+      installationId,
+      owner,
+      repo,
+      ctx.telemetryConnectors ?? []
+    )
+    ctx.projectMemories = await fetchProjectMemories('github', repositoryExternalId)
+    Object.assign(ctx, buildCloneContext(fullName, installationId, installationToken))
+    return ctx
+  })
 
-  Object.assign(prContext, buildCloneContext(fullName, installationId, installationToken))
+  // Per-agent config (enabled / severity threshold / guidance). Loaded once
+  // per review; an unreadable config enforces nothing rather than failing or
+  // quietly reshaping the review. Guidance rides the existing customRules
+  // channel, so it reaches real prompts with no contract change.
+  const agentConfigs = await loadAgentConfigs(installationId)
+  const guidance = guidanceRules(agentConfigs)
+  if (guidance.length > 0) prContext.customRules = [...(prContext.customRules ?? []), ...guidance]
 
   const checkRun = await (octokit as any).rest.checks.create({
     owner,
@@ -80,13 +158,17 @@ async function processGitHubPullRequest(octokit: Octokit, installationToken: str
   })
   const checkRunId = checkRun.data.id
 
-  let result
+  let result: ReviewResult
   try {
     result = await runReviewPipeline(prContext)
-    await postReview(octokit, owner, repo, prNumber, result)
   } catch (err) {
-    // Without this, a failure here (Python pipeline error, GitHub API error, etc.)
-    // leaves the check run stuck "in_progress" forever on the PR.
+    // No usable result at all: Python pipeline error, network failure, or
+    // timeout (see review-bridge.ts — it either resolves a ReviewResult or
+    // throws, there is no partial-result-then-throw case). Without this
+    // check-run update, a failure here leaves the check run stuck
+    // "in_progress" forever on the PR. Re-throwing is correct here: BullMQ's
+    // attempts:3 (queue.ts) exists precisely to retry a genuine infra crash
+    // that produced nothing.
     await (octokit as any).rest.checks.update({
       owner,
       repo,
@@ -101,13 +183,48 @@ async function processGitHubPullRequest(octokit: Octokit, installationToken: str
     throw err
   }
 
-  await (octokit as any).rest.checks.update({
+  try {
+    // What the tenant asked to see on the PR. persistReview below stores the
+    // UNFILTERED result — the same posted/persisted split noise_state uses.
+    const { result: postable, suppressed } = filterResultForPosting(result, agentConfigs)
+    if (suppressed > 0) log.info({ suppressed, owner, repo, prNumber }, 'agent config suppressed findings from the GitHub post (still persisted internally)')
+    await withChildSpan('review.publish', () => postReview(octokit, owner, repo, prNumber, postable))
+  } catch (err) {
+    // The pipeline DID produce a usable result here (findings/summary exist
+    // -- runReviewPipeline resolved) — only publishing it to GitHub failed.
+    // Re-throwing would make BullMQ redo the ENTIRE files x agents review
+    // (on top of the per-agent retry already inside the Python service) just
+    // to retry a GitHub API call: the double-retry this task removes.
+    // Record the degraded outcome on the check run and return normally
+    // (not throw) so this job is NOT retried. attempts:3 stays reserved for
+    // the no-result crash above — this is not a silent failure, the check
+    // run still surfaces "failure" to the PR author.
+    log.error({ err }, 'Failed to post review (pipeline produced a usable result)')
+    await reportDegradedOutcome(octokit, {
+      owner,
+      repo,
+      checkRunId,
+      title: 'Review Post Failed',
+      summary: `Areté completed the review but failed to post it to GitHub: ${err instanceof Error ? err.message : String(err)}`,
+      whyNotRetrying: 'the review itself succeeded.',
+    })
+    return
+  }
+
+  // Guarded for the same reason as the publish-failure path, and the stakes
+  // here are higher: the review has ALREADY been posted to the PR by this
+  // point. An unguarded throw would send BullMQ round the entire files x
+  // agents pipeline again and post the whole review a second time, so the PR
+  // author gets duplicate comments. A check run left `in_progress` is a
+  // visible degradation; a duplicated review is worse and harder to undo.
+  await reportDegradedOutcome(octokit, {
     owner,
     repo,
-    check_run_id: checkRunId,
-    status: 'completed',
+    checkRunId,
     conclusion: reviewConclusion(result),
-    output: { title: 'Review Complete', summary: result.overall_summary },
+    title: 'Review Complete',
+    summary: result.overall_summary,
+    whyNotRetrying: 'the review was already produced AND posted; retrying would post it twice.',
   })
 
   try {
@@ -123,7 +240,7 @@ async function processGitHubPullRequest(octokit: Octokit, installationToken: str
       result,
     })
   } catch (err) {
-    console.error('[worker] Failed to persist review (review was still posted):', err)
+    log.error({ err }, 'Failed to persist review (review was still posted)')
   }
 
   try {
@@ -133,10 +250,10 @@ async function processGitHubPullRequest(octokit: Octokit, installationToken: str
       snapshots: prContext.telemetry ?? [],
     })
   } catch (err) {
-    console.error('[worker] Failed to persist telemetry snapshots (review was still posted):', err)
+    log.error({ err }, 'Failed to persist telemetry snapshots (review was still posted)')
   }
 
-  console.log(`[worker] Posted review — risk: ${result.risk_level}, comments: ${result.total_comments}`)
+  log.info({ riskLevel: result.risk_level, comments: result.total_comments }, 'Posted review')
 }
 
 /**
@@ -148,7 +265,11 @@ async function processGitHubCheckRun(octokit: Octokit, installationToken: string
   const { owner, repo, prNumber, headSha, installationId, repositoryExternalId, fullName, ciLogs } = data
 
   const prContext = await fetchPRContext(octokit, owner, repo, prNumber)
+  const agentConfigs = await loadAgentConfigs(installationId)
+  const guidance = guidanceRules(agentConfigs)
+  if (guidance.length > 0) prContext.customRules = [...(prContext.customRules ?? []), ...guidance]
   prContext.ciLogs = ciLogs
+  prContext.projectMemories = await fetchProjectMemories('github', repositoryExternalId)
   Object.assign(prContext, buildCloneContext(fullName, installationId, installationToken))
 
   const checkRun = await (octokit as any).rest.checks.create({
@@ -164,8 +285,9 @@ async function processGitHubCheckRun(octokit: Octokit, installationToken: string
   let result
   try {
     result = await runReviewPipeline(prContext)
-    await postReview(octokit, owner, repo, prNumber, result)
   } catch (err) {
+    // No usable result: genuine infra crash. Re-throwing is correct — BullMQ's
+    // attempts:3 (queue.ts) is meant to retry a crash that produced nothing.
     await (octokit as any).rest.checks.update({
       owner,
       repo,
@@ -180,13 +302,40 @@ async function processGitHubCheckRun(octokit: Octokit, installationToken: string
     throw err
   }
 
-  await (octokit as any).rest.checks.update({
+  try {
+    const { result: postable, suppressed } = filterResultForPosting(result, agentConfigs)
+    if (suppressed > 0) log.info({ suppressed, owner, repo, prNumber }, 'agent config suppressed findings from the GitHub post (still persisted internally)')
+    await postReview(octokit, owner, repo, prNumber, postable)
+  } catch (err) {
+    // The pipeline DID produce a usable result — only publishing to GitHub
+    // failed. Re-throwing would make BullMQ redo the entire CI-diagnosis
+    // review (on top of the per-agent retry in the Python service) just to
+    // retry a GitHub API call. Record the degraded outcome and return (not
+    // throw) so this job is NOT retried; attempts:3 stays reserved for the
+    // no-result crash above.
+    log.error({ err }, 'Failed to post CI diagnosis (pipeline produced a usable result)')
+    await reportDegradedOutcome(octokit, {
+      owner,
+      repo,
+      checkRunId,
+      title: 'Review Post Failed',
+      summary: `Areté completed the CI diagnosis but failed to post it to GitHub: ${err instanceof Error ? err.message : String(err)}`,
+      whyNotRetrying: 'the CI diagnosis itself succeeded.',
+    })
+    return
+  }
+
+  // Same guard, same reason as the review path: the CI diagnosis has already
+  // been posted to the PR, so a throw here would re-run the whole pipeline and
+  // post it a second time.
+  await reportDegradedOutcome(octokit, {
     owner,
     repo,
-    check_run_id: checkRunId,
-    status: 'completed',
+    checkRunId,
     conclusion: reviewConclusion(result),
-    output: { title: 'Review Complete', summary: result.overall_summary },
+    title: 'Review Complete',
+    summary: result.overall_summary,
+    whyNotRetrying: 'the CI diagnosis was already produced AND posted; retrying would post it twice.',
   })
 
   try {
@@ -202,10 +351,10 @@ async function processGitHubCheckRun(octokit: Octokit, installationToken: string
       result,
     })
   } catch (err) {
-    console.error('[worker] Failed to persist review (review was still posted):', err)
+    log.error({ err }, 'Failed to persist review (review was still posted)')
   }
 
-  console.log(`[worker] Posted CI diagnosis — risk: ${result.risk_level}, comments: ${result.total_comments}`)
+  log.info({ riskLevel: result.risk_level, comments: result.total_comments }, 'Posted CI diagnosis')
 }
 
 async function processGitLabMergeRequest(data: GitLabMergeRequestJobData): Promise<void> {
@@ -221,7 +370,7 @@ async function processGitLabMergeRequest(data: GitLabMergeRequestJobData): Promi
 
   const prContext = await fetchGitLabMRContext(projectId, mrIid, payload)
   const result = await runReviewPipeline(prContext)
-  await postGitLabReview(projectId, mrIid, result, diffRefs)
+  await withChildSpan('review.publish', () => postGitLabReview(projectId, mrIid, result, diffRefs))
 
   const fullName: string = payload.project?.path_with_namespace || `project-${projectId}`
   const owner = fullName.split('/')[0]
@@ -240,11 +389,12 @@ async function processGitLabMergeRequest(data: GitLabMergeRequestJobData): Promi
       result,
     })
   } catch (err) {
-    console.error('[worker] Failed to persist review (review was still posted):', err)
+    log.error({ err }, 'Failed to persist review (review was still posted)')
   }
 
-  console.log(
-    `[worker] Posted review for ${fullName}!${mrIid} — risk: ${result.risk_level}, comments: ${result.total_comments}`
+  log.info(
+    { fullName, mrIid, riskLevel: result.risk_level, comments: result.total_comments },
+    'Posted review'
   )
 }
 
@@ -265,51 +415,90 @@ export async function processReviewJob(data: ReviewJobData): Promise<void> {
     throw new UnrecoverableError('PoisonMessage: GitHub job missing critical identifier fields')
   }
 
-  if (data.provider === 'github') {
-    const app = createApp()
-    const octokit = await getInstallationOctokit(app, data.installationId)
-    const installationToken = await getInstallationToken(app, data.installationId)
-    if (data.kind === 'pull_request') {
-      await processGitHubPullRequest(octokit, installationToken, data)
-    } else {
-      await processGitHubCheckRun(octokit, installationToken, data)
-    }
-    return
-  }
+  const attrs =
+    data.provider === 'github'
+      ? { provider: 'github' as const, trigger: data.kind, repoFullName: data.fullName, prNumber: data.prNumber }
+      : { provider: 'gitlab' as const, trigger: 'merge_request' as const, repoFullName: String(data.projectId), prNumber: data.mrIid }
 
-  await processGitLabMergeRequest(data)
+  return runWithReviewSpan(attrs, async () => {
+    if (data.provider === 'github') {
+      const app = createApp()
+      const octokit = await getInstallationOctokit(app, data.installationId)
+      const installationToken = await getInstallationToken(app, data.installationId)
+      if (data.kind === 'pull_request') {
+        await processGitHubPullRequest(octokit, installationToken, data)
+      } else {
+        await processGitHubCheckRun(octokit, installationToken, data)
+      }
+      return
+    }
+    await processGitLabMergeRequest(data)
+  })
 }
 
 /**
- * Starts the BullMQ worker that consumes the `review-pr` queue. Runs in its
+ * Starts a BullMQ worker that consumes the given review queue. Runs in its
  * own process (see the `worker` pnpm script) so a burst of PRs or a slow LLM
- * call never blocks webhook delivery acknowledgement. Concurrency is capped
- * so a burst of PRs can't fan out into unbounded LLM calls against the
- * Python review service.
+ * call never blocks webhook delivery acknowledgement. `concurrency` is
+ * capped so a burst of PRs can't fan out into unbounded LLM calls against
+ * the Python review service. Parameterized by queue name/concurrency (rather
+ * than hardcoded to REVIEW_QUEUE_NAME) so the same function can start a
+ * separate consumer per lane — see startReviewWorkers below, which is the
+ * fix for the heavy lane having had no consumer at all.
  */
-export function startReviewWorker(): Worker<ReviewJobData> {
+export function startReviewWorker(
+  queueName: string = REVIEW_QUEUE_NAME,
+  concurrency: number = REVIEW_QUEUE_CONCURRENCY
+): Worker<ReviewJobData> {
   const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379'
   const connection = new IORedis(redisUrl, { maxRetriesPerRequest: null })
 
   const worker = new Worker<ReviewJobData>(
-    REVIEW_QUEUE_NAME,
+    queueName,
     async (job: Job<ReviewJobData>) => {
       await processReviewJob(job.data)
     },
     {
       connection,
-      concurrency: REVIEW_QUEUE_CONCURRENCY,
+      concurrency,
+      // See the deviation note in queue.ts: bullmq-otel@2.0.0's BullMQOtel
+      // constructor takes a BullMQOtelOptions object, not a bare string.
+      telemetry: new BullMQOtel({ tracerName: 'arete-worker' }),
     }
   )
 
   worker.on('completed', (job) => {
-    console.log(`[worker] Job ${job.id} completed`)
+    recordQueueJob(queueName, 'completed')
+    log.info({ jobId: job.id, queue: queueName }, 'Job completed')
   })
   worker.on('failed', (job, err) => {
-    console.error(`[worker] Job ${job?.id} failed:`, err)
+    recordQueueJob(queueName, 'failed')
+    log.error({ err, jobId: job?.id, queue: queueName }, 'Job failed')
   })
 
   return worker
+}
+
+/**
+ * Starts consumers for BOTH review lanes: the fast queue (`review-pr`) and
+ * the heavy queue (`review-pr-heavy`, PRs >50 changed files — see
+ * webhook-handler.ts's routing at the `changedFiles > 50` check). Both run
+ * the exact same `processReviewJob`; only the concurrency differs.
+ *
+ * This closes the defect this function was added for: webhook-handler.ts
+ * has always routed oversized PRs to the heavy queue, but until now nothing
+ * ever started a Worker on it, so those jobs sat enqueued in Redis forever
+ * with no consumer — the largest PRs were silently never reviewed. A
+ * separate (lower-concurrency) consumer, rather than routing heavy PRs onto
+ * the fast queue, was chosen so a burst of huge PRs still can't delay/starve
+ * the fast lane's throughput, which is the whole reason the dual-lane split
+ * (webhook-handler.ts's "Dual-Lane Ingestion Queuing" comment) exists.
+ */
+export function startReviewWorkers(): { fast: Worker<ReviewJobData>; heavy: Worker<ReviewJobData> } {
+  return {
+    fast: startReviewWorker(REVIEW_QUEUE_NAME, REVIEW_QUEUE_CONCURRENCY),
+    heavy: startReviewWorker(REVIEW_QUEUE_HEAVY_NAME, REVIEW_QUEUE_HEAVY_CONCURRENCY),
+  }
 }
 
 // Only start the worker when this file is run directly (e.g. `pnpm worker`),
@@ -318,6 +507,24 @@ export function startReviewWorker(): Worker<ReviewJobData> {
 // moduleResolution "nodenext") — this is the standard ESM equivalent,
 // comparing this module's URL to the URL of the process's entry script.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  console.log(`Areté review worker starting (concurrency: ${REVIEW_QUEUE_CONCURRENCY})...`)
-  startReviewWorker()
+  log.info(
+    { fastConcurrency: REVIEW_QUEUE_CONCURRENCY, heavyConcurrency: REVIEW_QUEUE_HEAVY_CONCURRENCY },
+    'Areté review workers starting (fast + heavy lanes)'
+  )
+  startReviewWorkers()
+  // Also consume the approval-exec queue (human-approved infra commands →
+  // agents /approvals/apply). Same process, separate queue/isolation.
+  log.info('Areté approval-exec worker starting')
+  startApprovalWorker()
+  // Also consume the fix-drive queue (healing loop, POST /fix/trigger). Same
+  // process, separate queue/isolation — a backlog of fix drives can never
+  // delay a review or an operator-approved remediation, and vice-versa.
+  log.info({ concurrency: FIX_QUEUE_CONCURRENCY }, 'Areté fix-drive worker starting')
+  startFixWorker()
+  // Also drive outbound-webhook retries. Unlike the others this is a Postgres
+  // polling loop, not a BullMQ consumer — the schedule lives in
+  // WebhookDelivery.nextAttempt. Without it a failed delivery records its next
+  // attempt and is never retried again, which is silent data loss rather than a
+  // visible outage.
+  startOutboundRetryWorker()
 }

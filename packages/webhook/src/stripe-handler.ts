@@ -2,6 +2,9 @@ import Stripe from 'stripe';
 import { Request, Response } from 'express';
 import { prisma } from './db.js';
 import { getStripeConfig } from './config.js';
+import { logger } from './logger.js';
+
+const log = logger.child({ component: 'stripe-handler' });
 
 const stripeKey = getStripeConfig().secretKey
 if (!stripeKey) throw new Error('STRIPE_SECRET_KEY env var is required')
@@ -23,7 +26,7 @@ export async function handleStripeWebhook(req: Request, res: Response) {
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
   } catch (err: any) {
-    console.error(`⚠️ Webhook signature verification failed.`, err.message);
+    log.error({ err }, 'Webhook signature verification failed');
     res.status(400).send(`Webhook Error: ${err.message}`);
     return;
   }
@@ -46,29 +49,44 @@ export async function handleStripeWebhook(req: Request, res: Response) {
               subscriptionStatus: 'active',
             },
           });
-          console.log(`Updated installation ${githubInstallationId} with Stripe details.`);
+          log.info({ installationId: githubInstallationId }, 'Updated installation with Stripe details');
         }
         break;
       }
+      case 'customer.subscription.created':
       case 'customer.subscription.updated':
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription;
-        
+
+        // Resolve the purchased tier from the subscription's price so billing.ts
+        // can enforce the tier's monthly review limit. The subscription object
+        // on these events carries its line items inline (no extra API call).
+        // If the price isn't a configured tier (or no price env is set), leave
+        // planTier untouched rather than overwriting it with a wrong value.
+        const priceId = subscription.items?.data?.[0]?.price?.id;
+        const tier = priceId ? getStripeConfig().priceToTier[priceId] : undefined;
+
+        const data: { subscriptionStatus: string; planTier?: string } = {
+          subscriptionStatus: subscription.status,
+        };
+        if (tier) data.planTier = tier;
+
         await prisma.installation.updateMany({
           where: { stripeSubscriptionId: subscription.id },
-          data: {
-            subscriptionStatus: subscription.status,
-          },
+          data,
         });
-        console.log(`Updated subscription status for ${subscription.id} to ${subscription.status}.`);
+        log.info(
+          { subscriptionId: subscription.id, status: subscription.status, tier },
+          'Updated subscription'
+        );
         break;
       }
       default:
-        console.log(`Unhandled event type ${event.type}`);
+        log.info({ eventType: event.type }, 'Unhandled event type');
     }
     res.json({ received: true });
   } catch (error) {
-    console.error('Error processing webhook:', error);
+    log.error({ err: error }, 'Error processing webhook');
     res.status(500).send('Internal Server Error');
   }
 }

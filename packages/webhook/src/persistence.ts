@@ -1,6 +1,15 @@
 import type { ScmProvider } from '@arete/db'
 import { prisma } from './db.js'
+import { emitReviewCreated } from './outbound/emit.js'
+import { PrismaWebhookStore, type WebhookPrismaClient } from './outbound/prisma-store.js'
 import type { ReviewResult, TelemetrySnapshot } from './types.js'
+import { logger } from './logger.js'
+
+const log = logger.child({ component: 'persistence' })
+
+// Exported: memory-write.ts (Phase 2 Task 8) reuses this as its write-side
+// row cap so the read cap (below) and the write cap can never drift apart.
+export const MAX_PROJECT_MEMORIES = 20
 
 export interface ReviewExistsParams {
   provider: ScmProvider
@@ -130,13 +139,67 @@ export async function persistReview(params: PersistReviewParams): Promise<void> 
     },
   })
   if (existing) {
-    console.log(
-      `[persistence] Review for ${fullName}#${prNumber} @ ${headSha} already exists — skipping duplicate`
+    log.info(
+      { fullName, prNumber, headSha },
+      'Review already exists — skipping duplicate'
     )
     return
   }
 
-  await prisma.review.create({
+  const commentsToCreate = result.file_reviews.flatMap((fr) =>
+    fr.comments.map((c) => ({
+      path: fr.path,
+      line: c.line,
+      body: c.body,
+      severity: c.severity,
+      category: c.category,
+      noiseState: c.noise_state ?? 'OPEN',
+      escalateOn: c.escalate_on ?? null,
+      threshold: c.threshold ?? null,
+    }))
+  )
+
+  // Noise Classification escalation (SP6): before creating this review's own
+  // comments, check whether any newly-observed issue recurs against a PRIOR
+  // review's still-UNDER_OBSERVATION comment on this same repo. Matching key
+  // is deliberately simple -- (repository, path, category) -- no semantic
+  // similarity. This runs inline here (not in a standalone worker) because
+  // "a new review just completed" is the only real trigger point this
+  // product has for recurrence, and this repo has no deployment/cron
+  // infrastructure for a separate scheduled process.
+  for (const c of commentsToCreate) {
+    if (c.noiseState !== 'UNDER_OBSERVATION') continue
+
+    const priorObserved = await prisma.reviewComment.findFirst({
+      where: {
+        noiseState: 'UNDER_OBSERVATION',
+        path: c.path,
+        category: c.category,
+        review: { repositoryId: repository.id },
+      },
+      // Each review ALSO persists its own UNDER_OBSERVATION comment as a new
+      // row (createMany below), so several rows can exist for the same
+      // (repo, path, category). Always accumulate onto the OLDEST row so the
+      // escalation counter stays monotonic and deterministic instead of
+      // splitting across rows.
+      orderBy: { createdAt: 'asc' },
+    })
+    if (!priorObserved) continue
+
+    const newCount = priorObserved.occurrenceCount + 1
+    const crossedThreshold =
+      priorObserved.threshold !== null && newCount >= priorObserved.threshold
+
+    await prisma.reviewComment.update({
+      where: { id: priorObserved.id },
+      data: {
+        occurrenceCount: newCount,
+        noiseState: crossedThreshold ? 'ESCALATED' : 'UNDER_OBSERVATION',
+      },
+    })
+  }
+
+  const review = await prisma.review.create({
     data: {
       prNumber,
       repositoryId: repository.id,
@@ -144,18 +207,13 @@ export async function persistReview(params: PersistReviewParams): Promise<void> 
       overallSummary: result.overall_summary,
       headSha,
       analysisStatus: result.analysis_status ?? 'complete',
+      // Persist the specialists' tiered-comms status verbatim (the status
+      // board reads it). Empty/absent stays empty — never synthesized. Cast to
+      // Prisma's JSON input: an object array is valid JSON but doesn't match the
+      // generated InputJsonObject index signature.
+      agentStatuses: (result.agent_statuses ?? []) as unknown as object[],
       comments: {
-        createMany: {
-          data: result.file_reviews.flatMap((fr) =>
-            fr.comments.map((c) => ({
-              path: fr.path,
-              line: c.line,
-              body: c.body,
-              severity: c.severity,
-              category: c.category,
-            }))
-          ),
-        },
+        createMany: { data: commentsToCreate },
       },
     },
   })
@@ -164,6 +222,40 @@ export async function persistReview(params: PersistReviewParams): Promise<void> 
     where: { id: installation.id },
     data: { usageCount: { increment: 1 } },
   })
+
+  // Work-item inbox sync: substantive review findings (error/warning) become
+  // pr_finding WorkItems. Non-fatal by the same contract as everything after
+  // the review row exists — a sync failure must never fail persistence.
+  try {
+    const { syncReviewFindings } = await import('./scan/review-sync.js')
+    await syncReviewFindings(installation.id, review.id, commentsToCreate)
+  } catch (err) {
+    log.error(
+      { err, fullName, prNumber },
+      'work-item sync failed (non-fatal)'
+    )
+  }
+
+  // Fire the outbound review.created webhook to any endpoints the installation
+  // has registered. Deliberately non-fatal and last: the review is already
+  // persisted and posted to the SCM, so a webhook delivery problem (or the
+  // absence of the webhook tables before the migration is applied) must never
+  // fail persistence. Same contract as the rest of this function.
+  try {
+    const store = new PrismaWebhookStore(prisma as unknown as WebhookPrismaClient)
+    await emitReviewCreated(store, {
+      installationId: installation.id,
+      reviewId: review.id,
+      prNumber,
+      repositoryFullName: fullName,
+      riskLevel: result.risk_level,
+    })
+  } catch (err) {
+    log.error(
+      { err, fullName, prNumber },
+      'outbound review.created webhook emit failed (non-fatal)'
+    )
+  }
 }
 
 export interface PersistTelemetrySnapshotsParams {
@@ -222,4 +314,30 @@ export async function persistTelemetrySnapshots(params: PersistTelemetrySnapshot
       })
     )
   )
+}
+
+/**
+ * Fetches up to MAX_PROJECT_MEMORIES active AgentMemory bodies for a repo,
+ * most recently created first. Returns [] if no Repository row exists yet
+ * for this (provider, externalId) pair — a repo with no prior review can't
+ * have any AgentMemory rows (the FK requires a repositoryId) — or if the
+ * repo simply has no active memories saved. Never throws for either case;
+ * callers attach the result directly to PRContext.projectMemories, which
+ * agents/base.py already treats as optional.
+ */
+export async function fetchProjectMemories(
+  provider: ScmProvider,
+  repositoryExternalId: number
+): Promise<string[]> {
+  const repository = await prisma.repository.findUnique({
+    where: { provider_externalId: { provider, externalId: repositoryExternalId } },
+  })
+  if (!repository) return []
+
+  const memories = await prisma.agentMemory.findMany({
+    where: { repositoryId: repository.id, status: 'active' },
+    orderBy: { createdAt: 'desc' },
+    take: MAX_PROJECT_MEMORIES,
+  })
+  return memories.map((m: { body: string }) => m.body)
 }

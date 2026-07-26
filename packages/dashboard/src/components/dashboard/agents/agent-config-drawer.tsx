@@ -1,34 +1,35 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { IconCheck, IconChevronDown, IconX } from "@tabler/icons-react";
+import { IconCpu, IconX } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
+import { ReadinessBadge } from "@/components/ui/readiness-badge";
 import type { Agent } from "./agent-catalog";
-
-// The Claude models a user can assign to an agent. Ordered most → least
-// capable. `tier` from the catalog (opus/sonnet) is the server default and
-// seeds the initial selection.
-const MODELS = [
-  { id: "opus", label: "Opus 4.8", blurb: "Most capable" },
-  { id: "sonnet", label: "Sonnet 5", blurb: "Balanced speed & depth" },
-  { id: "haiku", label: "Haiku 4.5", blurb: "Fastest, lightest" },
-  { id: "fable", label: "Fable 5", blurb: "Creative reasoning" },
-] as const;
+import type { ActiveModelConnection } from "@/lib/model-connections-map";
 
 export interface AgentConfigDrawerProps {
   agent: Agent | null;
   findingCount: number;
+  /** The connected model this agent runs on (dynamic; replaces the old hardcoded
+      Claude model list — providers are now user-selectable under AI Models). */
+  activeModel?: ActiveModelConnection | null;
   onClose: () => void;
 }
 
 /**
  * Right-side slide-in drawer with the agent's real details (role, model, what
  * it inspects, recent finding count) plus configuration controls. The controls
- * are locally interactive but deliberately NOT persisted yet — the Save button
- * stays disabled and the note says so. No fake saves, including the model pick.
+ * persist per installation through `/api/agents/[id]/config` (AgentConfig).
+ *
+ * Still no fake saves: the panel renders the config the server returns rather
+ * than what it sent, and every failed save says so and changes nothing. The
+ * model pick remains read-only — it is chosen once under AI Models and applies
+ * to every agent, so a per-agent control there would be the fake this drawer
+ * has always refused.
  */
-export function AgentConfigDrawer({ agent, findingCount, onClose }: AgentConfigDrawerProps) {
+export function AgentConfigDrawer({ agent, findingCount, activeModel = null, onClose }: AgentConfigDrawerProps) {
   useEffect(() => {
     if (!agent) return;
     const onKey = (event: KeyboardEvent) => {
@@ -53,7 +54,7 @@ export function AgentConfigDrawer({ agent, findingCount, onClose }: AgentConfigD
           />
           {/* Keyed by agent id so the local (unsaved) controls reset cleanly
               when a different agent is opened. */}
-          <DrawerPanel key={agent.id} agent={agent} findingCount={findingCount} onClose={onClose} />
+          <DrawerPanel key={agent.id} agent={agent} findingCount={findingCount} activeModel={activeModel} onClose={onClose} />
         </>
       )}
     </AnimatePresence>
@@ -63,25 +64,80 @@ export function AgentConfigDrawer({ agent, findingCount, onClose }: AgentConfigD
 function DrawerPanel({
   agent,
   findingCount,
+  activeModel,
   onClose,
 }: {
   agent: Agent;
   findingCount: number;
+  activeModel: ActiveModelConnection | null;
   onClose: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [enabled, setEnabled] = useState(true);
-  const [severity, setSeverity] = useState("warning");
+  const [severity, setSeverity] = useState("info");
   const [guidance, setGuidance] = useState("");
-  const [model, setModel] = useState<string>(agent.tier);
-  const [modelOpen, setModelOpen] = useState(false);
+  // "loading" until the saved config arrives, so the controls never briefly
+  // show defaults that are not what is stored — a flash of the wrong value is
+  // indistinguishable from a setting that did not save.
+  const [status, setStatus] = useState<"loading" | "ready" | "saving">("loading");
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
 
   useEffect(() => {
     panelRef.current?.focus();
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/agents/${agent.id}/config`);
+        if (!res.ok) throw new Error(String(res.status));
+        const { config } = await res.json();
+        if (cancelled) return;
+        setEnabled(config.enabled);
+        setSeverity(config.severityThreshold);
+        setGuidance(config.guidance);
+      } catch {
+        // Leave the defaults in place. They are what the agent actually runs on
+        // when nothing is saved, so this is accurate rather than a fallback.
+      } finally {
+        if (!cancelled) setStatus("ready");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [agent.id]);
+
+  async function save() {
+    setStatus("saving");
+    setSaveError(null);
+    try {
+      const res = await fetch(`/api/agents/${agent.id}/config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled, severityThreshold: severity, guidance }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSaveError(data.error ?? `Could not save (${res.status}). Nothing was changed.`);
+        return;
+      }
+      // Render what came back, not what was sent: if the server stored anything
+      // different, the panel must show the stored value.
+      setEnabled(data.config.enabled);
+      setSeverity(data.config.severityThreshold);
+      setGuidance(data.config.guidance);
+      setSavedAt(new Date().toLocaleTimeString());
+    } catch {
+      setSaveError("Could not reach the server. Nothing was changed.");
+    } finally {
+      setStatus("ready");
+    }
+  }
+
   const Icon = agent.icon;
-  const currentModel = MODELS.find((m) => m.id === model) ?? MODELS[0];
 
   return (
     <motion.aside
@@ -103,7 +159,9 @@ function DrawerPanel({
         </span>
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-base font-semibold text-content-primary">{agent.label}</h3>
-          <p className="text-xs text-content-muted">Specialist review agent · {currentModel.label}</p>
+          <p className="truncate text-xs text-content-muted">
+            Specialist review agent{activeModel ? ` · ${activeModel.model}` : ""}
+          </p>
         </div>
         <Button variant="icon" size="icon" onClick={onClose} aria-label="Close agent settings">
           <IconX size={18} stroke={1.75} />
@@ -143,74 +201,54 @@ function DrawerPanel({
         )}
       </section>
 
-      {/* Configuration — interactive, honestly unsaved */}
+      {/* Configuration — persisted per installation via /api/agents/[id]/config */}
       <section className="space-y-4 border-t border-border-subtle pt-5">
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-content-muted">
-          Configuration
-        </h4>
+        <div className="flex items-center gap-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-content-muted">
+            Configuration
+          </h4>
+          {/* The badge said "Not saved yet" and was accurate until these
+              controls were backed by AgentConfig. It reflects the model pick
+              only now, which genuinely is still read-only. */}
+          <ReadinessBadge level="partial" label="Model is read-only" />
+        </div>
 
-        {/* Model — the interactive bubble */}
+        {/* Model — the connected model this agent runs on. Read-only and dynamic:
+            the provider/model is chosen once under AI Models, and every agent
+            runs on it. Per-agent overrides are the "coming soon" below. */}
         <div className="space-y-1.5">
           <p className="text-sm font-medium text-content-primary">Model</p>
-          <p className="text-xs text-content-muted">Which Claude model runs this agent.</p>
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setModelOpen((v) => !v)}
-              aria-haspopup="listbox"
-              aria-expanded={modelOpen}
-              className="inline-flex items-center gap-2 rounded-full border border-border-default bg-surface-2 py-1.5 pl-2.5 pr-2 text-sm font-medium text-content-primary transition-colors hover:border-border-strong focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
+          <p className="text-xs text-content-muted">The connected model this agent runs on.</p>
+          {activeModel ? (
+            <Link
+              href="/connections/ai-models"
+              title={`Running on ${activeModel.provider} · ${activeModel.model}`}
+              className="inline-flex items-center gap-2 rounded-full border border-border-default bg-surface-2 py-1.5 pl-2.5 pr-3 text-sm font-medium text-content-primary transition-colors hover:border-border-strong"
             >
-              <span className="h-2 w-2 rounded-full bg-accent-primary" aria-hidden />
-              {currentModel.label}
-              <IconChevronDown
-                size={15}
-                stroke={1.75}
-                className={`text-content-muted transition-transform ${modelOpen ? "rotate-180" : ""}`}
-                aria-hidden
-              />
-            </button>
-
-            {modelOpen && (
-              <ul
-                role="listbox"
-                aria-label="Select a model"
-                className="absolute left-0 top-full z-10 mt-1.5 w-64 overflow-hidden rounded-xl border border-border-default bg-surface-2 py-1 shadow-[0_12px_40px_-12px_rgba(26,27,24,0.35)]"
-              >
-                {MODELS.map((m) => {
-                  const active = m.id === model;
-                  return (
-                    <li key={m.id} role="option" aria-selected={active}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setModel(m.id);
-                          setModelOpen(false);
-                        }}
-                        className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors ${
-                          active ? "bg-accent-primary/[0.06]" : "hover:bg-content-primary/[0.04]"
-                        }`}
-                      >
-                        <span className="min-w-0">
-                          <span className="block text-sm font-medium text-content-primary">{m.label}</span>
-                          <span className="block text-xs text-content-muted">{m.blurb}</span>
-                        </span>
-                        {active && (
-                          <IconCheck size={16} stroke={2} className="shrink-0 text-accent-primary" aria-hidden />
-                        )}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
+              <IconCpu size={15} stroke={1.75} className="shrink-0 text-accent-primary" aria-hidden />
+              <span className="max-w-[16rem] truncate font-mono text-[13px]">{activeModel.model}</span>
+              <span className="text-xs font-normal text-content-muted">· {activeModel.provider}</span>
+            </Link>
+          ) : (
+            <Link
+              href="/connections/ai-models"
+              className="inline-flex items-center gap-2 rounded-full border border-dashed border-border-default bg-surface-2 py-1.5 pl-2.5 pr-3 text-sm font-medium text-content-muted transition-colors hover:border-border-strong"
+            >
+              <IconCpu size={15} stroke={1.75} className="shrink-0" aria-hidden />
+              Connect a model
+            </Link>
+          )}
         </div>
 
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-medium text-content-primary">Enabled</p>
-            <p className="text-xs text-content-muted">Run this agent on every pull request.</p>
+            {/* Post, not run: enforcement filters what reaches the PR. The
+                agent still runs and its findings persist internally — saying
+                "run" here would promise a spend saving that does not happen. */}
+            <p className="text-xs text-content-muted">
+              Post this agent&apos;s findings to pull requests. Off keeps them internal only.
+            </p>
           </div>
           <button
             type="button"
@@ -273,12 +311,22 @@ function DrawerPanel({
         </div>
 
         <div className="space-y-2 pt-1">
-          <Button disabled className="w-full">
-            Save changes
+          <Button
+            onClick={save}
+            disabled={status !== "ready"}
+            className="w-full"
+          >
+            {status === "saving" ? "Saving…" : "Save changes"}
           </Button>
-          <p className="text-xs text-content-muted">
-            Agent settings aren&apos;t saved yet — per-repository configuration is coming soon.
-          </p>
+          {saveError ? (
+            <p className="text-xs text-accent-danger">{saveError}</p>
+          ) : savedAt ? (
+            <p className="text-xs text-content-muted">Saved at {savedAt}.</p>
+          ) : (
+            <p className="text-xs text-content-muted">
+              Saved per installation and applied to this agent&apos;s next run.
+            </p>
+          )}
         </div>
       </section>
     </motion.aside>

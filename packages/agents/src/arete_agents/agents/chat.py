@@ -31,7 +31,8 @@ class ChatAgent:
         # title/comment/reply (e.g. containing "</user_reply>") from breaking
         # out of its delimiter and injecting fake instructions. diff_hunk is
         # left as-is: it is source code the assistant must read verbatim.
-        user_prompt = f"""<pr_metadata>
+        user_prompt = (
+            f"""<pr_metadata>
 PR: {escape_for_prompt(pr_title)}
 Description: {escape_for_prompt(pr_description)}
 File: {escape_for_prompt(file_path)}
@@ -50,7 +51,10 @@ File: {escape_for_prompt(file_path)}
 </user_reply>
 
 Please provide a helpful and conversational response to the user's reply.
-If the user provides a repository-specific rule or correction that should be remembered for future PRs, you must include an action to save memory. If you need a human to clarify something before you can proceed with a review, you must include an ask_human action.
+"""
+            "If the user provides a repository-specific rule or correction that should be remembered for future PRs, "
+            "you must include an action to save memory. If you need a human to clarify something before you can "
+            f"""proceed with a review, you must include an ask_human action.
 Return your response ONLY as valid JSON matching this schema:
 {{
   "reply": "<your markdown conversational response>",
@@ -61,15 +65,31 @@ Return your response ONLY as valid JSON matching this schema:
 }}
 Only include the 'actions' array if you actually need to perform an action.
 """
+        )
 
         messages = [
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_prompt),
         ]
-        
-        llm_with_retry = self._llm.with_retry(stop_after_attempt=2)
-        response = llm_with_retry.invoke(messages)
-        
+
+        # Invoke with an HONEST error path: a provider failure (out of credits,
+        # bad key, model not found) is classified and returned as a structured
+        # error the UI can show — never swallowed into a silent non-response.
+        # Only retryable failures (rate limit / timeout / transient 5xx) get a
+        # single retry; a 400 fails fast instead of tripling the wait.
+        from arete_agents.llm.errors import classify_provider_error
+
+        response = None
+        for attempt in range(2):
+            try:
+                response = self._llm.invoke(messages)
+                break
+            except Exception as exc:  # noqa: BLE001 — classified below
+                err = classify_provider_error(exc)
+                if err.retryable and attempt == 0:
+                    continue
+                return {"reply": None, "actions": [], "error": {"kind": err.kind, "message": err.message}}
+
         import json
         import re
         raw_str = response.content if isinstance(response.content, str) else ""

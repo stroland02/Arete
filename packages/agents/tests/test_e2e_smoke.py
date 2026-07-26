@@ -2,9 +2,17 @@ import os
 
 import pytest
 
+_GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# conftest.py sets GEMINI_API_KEY="test-key-not-real" via setdefault so the
+# rest of the suite can run keyless (mirrors CI's provider env). That
+# sentinel must NOT count as "a real key" here -- this smoke test is
+# unmocked and makes a real network call, so it must only run when a
+# developer has exported a genuine key.
 pytestmark = pytest.mark.skipif(
-    not os.getenv("GEMINI_API_KEY") or os.getenv("CI") == "true",
-    reason="Skipped: GEMINI_API_KEY not set or running in CI",
+    not _GEMINI_API_KEY
+    or _GEMINI_API_KEY == "test-key-not-real"
+    or os.getenv("CI") == "true",
+    reason="Skipped: GEMINI_API_KEY not set (or is the conftest test sentinel) or running in CI",
 )
 
 

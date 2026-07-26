@@ -1,11 +1,46 @@
 "use client";
 
+/* --- MERGED: PRESERVING UI (HEAD) --- */
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import Link from "next/link";
 import { SynthesizerConsole } from "../agents/synthesizer-console";
 import { motion, AnimatePresence, useInView } from "framer-motion";
 import { IconArrowRight, IconChevronDown, IconCopy, IconGitBranch, IconGitPullRequest, IconHourglassHigh, IconPlus, IconLoader2, IconCheck } from "@tabler/icons-react";
 import { KumaLogo } from "@/components/ui/kuma-logo";
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+import { useState, useEffect, useRef, useSyncExternalStore } from "react";
+import Link from "next/link";
+import { SynthesizerConsole } from "../agents/synthesizer-console";
+import { StatusBoardLive } from "./status-board";
+import { useInView } from "framer-motion";
+import { IconBrandGithub, IconChevronDown, IconPlus } from "@tabler/icons-react";
+import type { ServiceReviewGroup, ServiceReviewRow } from "@/lib/queries";
+import { TriageBar } from "./triage-bar";
+import { deriveTriage, workItemTriageStatus, type TriageStatus } from "./triage";
+import type { Issue, Service, Severity } from "./types";
+import { SEV_DOT, SEV_PILL, riskDot } from "./presentation";
+import { IssueSynthesizerConsole } from "./issue-synthesizer-console";
+import { ReviewPanel } from "./review-panel";
+import { IssuePanel } from "./issue-panel";
+import { WorkItemInboxSection } from "./work-item-inbox";
+import { WorkItemPanel } from "./work-item-panel";
+import type { InboxView, WorkItemView } from "@/lib/work-items";
+import type { PendingApprovalView } from "@/lib/approvals";
+import { ApprovalsSection } from "./approvals-section";
+// Stage 2.2 — the Agents surface becomes a LAYER of Services rather than a
+// second destination. These are imported, not moved: /agents still renders the
+// same components, so this commit adds a way in without breaking the old one.
+// Retiring /agents as a nav entry is Stage 2.3, and doing that before this
+// existed would have removed the only route to agent chat.
+import { AGENTS } from "../agents/agent-catalog";
+import { AgentConversation } from "../agents/agent-conversation";
+import { AgentConfigDrawer } from "../agents/agent-config-drawer";
+import { AgentsSection } from "./agents-section";
+import type { AgentActivityFinding } from "@/lib/queries";
+import type { ActiveModelConnection } from "@/lib/model-connections-map";
+*/
+/* --- END MERGE --- */
 
 /**
  * Services "Triage Inbox" workspace. Production signals from CONNECTED
@@ -25,10 +60,13 @@ import { KumaLogo } from "@/components/ui/kuma-logo";
  *
  * Data comes in as props (the real Service/Issue contract). The authenticated
  * /services page renders it EMPTY by default — no fabricated services or
- * incidents. The SAMPLE_* exports below drive the illustrative marketing
- * preview only.
+ * incidents. The illustrative SAMPLE_* data that drives the marketing preview
+ * lives in the marketing layer beside its only consumer
+ * (components/marketing/services-preview-fixtures.ts) — deliberately NOT in
+ * this file, so fabricated telemetry cannot reach a real account screen.
  */
 
+/* --- MERGED: PRESERVING UI (HEAD) --- */
 export type Severity = "critical" | "high" | "medium";
 
 export interface DiffRow {
@@ -226,6 +264,17 @@ function markerForTone(tone: Issue["timeline"][number]["tone"]): string {
   if (tone === "accent") return "◈";
   return "●"; // critical/high/medium — the telemetry source's own detection
 }
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+// Back-compat public surface. The data contract and the work-item panel were
+// split into their own modules, but both were imported FROM this path before
+// the split (`diff-view.tsx`, `diff-stat.ts` and their tests take `DiffRow`
+// from here; the test file takes `WorkItemPanel` from here). Re-exporting keeps
+// every one of those import paths resolving, so the split touched no importer.
+export type { Severity, DiffRow, Issue, Service } from "./types";
+export { WorkItemPanel } from "./work-item-panel";
+*/
+/* --- END MERGE --- */
 
 export interface ServicesWorkspaceProps {
   services?: Service[];
@@ -245,6 +294,72 @@ export interface ServicesWorkspaceProps {
    * Synthesizer shows its onboarding state.
    */
   containerId?: string | null;
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+  /**
+   * The tenant's connected repositories (full names). Listed in the rail even
+   * before any review runs — a connected repo is a populated state (the Git
+   * service), never an empty one. Account-State Contract three-state rule.
+   */
+  repositories?: string[];
+  /**
+   * The connected repo's REAL reviews, grouped by repository (the authenticated
+   * /services inbox). When provided, the rail lists these real PRs and
+   * selecting one streams its real Synthesizer transcript in the center; the
+   * sample `services`/`issues` above drive the marketing preview ONLY. Its
+   * mere presence (even []) switches the workspace into real mode.
+   */
+  reviewGroups?: ServiceReviewGroup[];
+  /**
+   * Infrastructure commands a paused agent is waiting on a human to authorize.
+   * Empty (the default) renders no section at all — see `ApprovalsSection`:
+   * an empty queue header would imply there is something to watch.
+   */
+  approvals?: PendingApprovalView[];
+  /**
+   * The work-item inbox (scans + review findings + telemetry errors) for the
+   * tenant's connected repos, plus the latest ScanRun for the honest scan
+   * status line. Null/undefined hides the section (marketing preview or a
+   * disconnected account).
+   */
+  inbox?: InboxView | null;
+  /**
+   * Stage 2.2 — what the agents layer needs. All optional: the marketing
+   * preview renders without them, and their absence degrades to an agents
+   * section with no counts rather than to a broken pane.
+   */
+  activity?: AgentActivityFinding[];
+  /** Findings per agent id, computed once by the page so the rail and the
+   *  conversation cannot disagree about a count. */
+  findingCountById?: Record<string, number>;
+  /** The model every agent actually runs on. Null = none connected. */
+  activeModel?: ActiveModelConnection | null;
+  /** The agents' real dependency — a repo alone cannot produce a review. */
+  modelConnected?: boolean;
+}
+
+// No-op store for useHasMounted below: the "store" never changes, we only
+// care that useSyncExternalStore re-renders once client and server snapshots
+// diverge (i.e. once hydration completes).
+function subscribeNever() {
+  return () => {};
+}
+
+/**
+ * True once hydration has completed, false during SSR and the first client
+ * render. Implemented with useSyncExternalStore (not a state+effect pair) so
+ * the flip to `true` happens without an extra synchronous setState call
+ * inside an effect body — see https://react.dev/reference/react/useSyncExternalStore.
+ */
+function useHasMounted(): boolean {
+  return useSyncExternalStore(
+    subscribeNever,
+    () => true,
+    () => false,
+  );
+*/
+/* --- END MERGE --- */
 }
 
 /**
@@ -253,13 +368,67 @@ export interface ServicesWorkspaceProps {
  * fabricated rows. The marketing preview passes SAMPLE_* + variant="framed"
  * to show the populated UI inside a card.
  */
+/* --- MERGED: PRESERVING UI (HEAD) --- */
 export function ServicesWorkspace({ services = [], issues = [], variant = "embedded", connected = false, containerId = null }: ServicesWorkspaceProps) {
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+export function ServicesWorkspace({ services = [], issues = [], variant = "embedded", connected = false, containerId = null, reviewGroups, repositories = [], inbox = null, approvals = [], activity = [], findingCountById = {}, activeModel = null, modelConnected = false }: ServicesWorkspaceProps) {
+*/
+/* --- END MERGE --- */
   const containerRef = useRef<HTMLDivElement>(null);
   const isInView = useInView(containerRef, { margin: "-100px 0px -100px 0px" });
 
   // Guard against hydration: defer observer logic until after first client render
+/* --- MERGED: PRESERVING UI (HEAD) --- */
   const [hasMounted, setHasMounted] = useState(false);
   useEffect(() => { setHasMounted(true); }, []);
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+  const hasMounted = useHasMounted();
+
+  // Real mode: the authenticated /services page passes reviewGroups (even []),
+  // switching the rail + center + right panel to real reviews. The marketing
+  // preview passes no reviewGroups and keeps the scripted sample path below.
+  const realMode = reviewGroups !== undefined;
+  // Connected repos with no reviews yet — still listed in the rail as the Git
+  // service ("awaiting first PR"), so a connected account never reads as empty.
+  const idleRepos = realMode
+    ? repositories.filter((r) => !(reviewGroups ?? []).some((g) => g.repositoryFullName === r))
+    : [];
+  const [activeContainerId, setActiveContainerId] = useState<string | null>(containerId);
+  const [openRepo, setOpenRepo] = useState<string | null>(reviewGroups?.[0]?.repositoryFullName ?? null);
+  const selectedReview: ServiceReviewRow | null =
+    reviewGroups?.flatMap((g) => g.reviews).find((r) => r.id === activeContainerId) ?? null;
+
+  // Work-item inbox selection: selecting an item shows its detail+evidence in
+  // the right pane; a fixing/staged item also points the center Kuma console
+  // at its container stream.
+  const [activeItemId, setActiveItemId] = useState<string | null>(null);
+  const selectedItem: WorkItemView | null =
+    inbox?.items.find((i) => i.id === activeItemId) ?? null;
+
+  // Stage 2.2 — the agents layer. `activeAgentId` is a MODE for the centre
+  // pane: an open agent replaces the Synthesizer transcript with that agent's
+  // own conversation. Selecting a work item or a review clears it, and opening
+  // an agent clears those, because two things cannot own one pane. Making them
+  // mutually exclusive is what keeps "what am I looking at" answerable.
+  const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
+  const [configAgentId, setConfigAgentId] = useState<string | null>(null);
+  const selectedAgent = AGENTS.find((a) => a.id === activeAgentId) ?? null;
+  const configAgent = AGENTS.find((a) => a.id === configAgentId) ?? null;
+
+  function handleSelectAgent(agentId: string) {
+    setActiveAgentId(agentId);
+    setActiveItemId(null);
+  }
+  function handleSelectItem(it: WorkItemView) {
+    setActiveItemId((cur) => (cur === it.id ? null : it.id));
+    if (it.containerId) setActiveContainerId(it.containerId);
+    // Leaving agent mode: the centre pane returns to this item's transcript.
+    setActiveAgentId(null);
+  }
+*/
+/* --- END MERGE --- */
 
   const [serviceId, setServiceId] = useState<string | null>(services[0]?.id ?? null);
   const [issueId, setIssueId] = useState<string | null>(
@@ -300,7 +469,9 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
 
   useEffect(() => {
     if (isReplaying && selected) {
-      setReplayStep(0);
+      // replayStep is already 0 here: both places that flip isReplaying to
+      // true (handleSelectIssue below, and the scroll-into-view effect above)
+      // reset it in the same synchronous batch before this effect runs.
       const totalSteps = selected.timeline.length;
       const timers = selected.timeline.map((_, idx) => 
         setTimeout(() => setReplayStep(idx + 1), (idx + 1) * 700)
@@ -316,21 +487,162 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
 
   // Same column widths as /agents (260px rail / flexible center / 320px
   // right) so the two pages read as one consistent system.
+  // Full-bleed (-m-8) lives on the WRAPPER so the triage bar and the 3-pane
+  // grid share one bleed column — putting it on the grid alone pulls the grid
+  // up underneath the bar (the header-collision bug). The grid then fills the
+  // remaining height as a flex child instead of claiming the full viewport.
+  const wrapperClass =
+    variant === "embedded"
+      ? "-m-8 flex min-h-0 flex-col border-t border-border-subtle bg-surface-1/20 lg:h-[calc(100vh-4.5rem)]"
+      : "flex min-h-0 flex-col";
   const outerClass =
     variant === "embedded"
-      ? "-m-8 grid min-h-[540px] grid-cols-1 divide-y divide-border-subtle border-t border-border-subtle bg-surface-1/20 overflow-hidden lg:grid lg:h-[calc(100vh-4.5rem)] lg:min-h-0 lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:divide-x lg:divide-y-0"
+      ? "grid min-h-[540px] grid-cols-1 divide-y divide-border-subtle overflow-hidden lg:min-h-0 lg:flex-1 lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:divide-x lg:divide-y-0"
       : "grid min-h-[560px] grid-cols-1 divide-y divide-border-subtle overflow-hidden lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:divide-x lg:divide-y-0";
 
+  // Sample Issue.status → TriageStatus (marketing preview only).
+  const sampleStatus = (s: string): TriageStatus =>
+    s === "Fix proposed" ? "awaiting" : s === "Agent fixing" || s === "Triaging" ? "in_flight" : "clear";
+  const triageCounts = realMode
+    // Real reviews still carry no lifecycle field → each open review is
+    // in-flight. Work items DO carry their container's state now, so awaiting
+    // and blocked are real: they are derived by the same rule the panel uses to
+    // pick a gate, which is what keeps this bar from reading "Awaiting
+    // approval 0" while an Approve button is visible beside it.
+    ? deriveTriage([
+        ...(reviewGroups ?? []).flatMap((g) => g.reviews).map(() => ({ status: "in_flight" as TriageStatus })),
+        ...(inbox?.items ?? []).map((i) => ({ status: workItemTriageStatus(i) })),
+        // A paused agent waiting on a command decision is the most literal
+        // "awaiting approval" the product has.
+        ...approvals.map(() => ({ status: "awaiting" as TriageStatus })),
+      ])
+    : deriveTriage(issues.map((i) => ({ status: sampleStatus(i.status) })));
+
   return (
+/* --- MERGED: PRESERVING UI (HEAD) --- */
     <div ref={containerRef} className={outerClass}>
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+    <div ref={containerRef} className={wrapperClass}>
+      <TriageBar counts={triageCounts} />
+      <div className={outerClass}>
+*/
+/* --- END MERGE --- */
       {/* Rail: services (each expandable to its issues) + connect catalog */}
       <section className="flex min-h-0 flex-1 flex-col" aria-label="Services">
         <header className="flex h-10 shrink-0 items-center justify-between border-b border-border-subtle px-3">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">Services</h2>
-          <span className="font-mono text-[10px] tabular-nums text-content-muted">{services.length}</span>
+          <span className="font-mono text-[10px] tabular-nums text-content-muted">
+            {realMode ? (reviewGroups?.length ?? 0) + idleRepos.length : services.length}
+          </span>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {hasServices && (
+          {/* Real mode: the connected repo's reviews, grouped by repository.
+              Selecting a PR sets the active container id, which the center
+              Synthesizer streams from /api/containers/[id]/stream. */}
+          {/* Connected repos with no reviews yet: the Git service rows. Always
+              visible when a repo is connected — awaiting activity, not absent. */}
+          {realMode && idleRepos.length > 0 && (
+            <ul className="border-b border-border-subtle py-1">
+              {idleRepos.map((fullName) => (
+                <li key={fullName}>
+                  <div className="flex w-full items-center gap-2 py-2.5 pl-3 pr-3">
+                    <IconBrandGithub size={13} stroke={1.75} className="shrink-0 text-content-muted" aria-hidden />
+                    <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-content-primary">
+                      {fullName}
+                    </span>
+                    <span className="shrink-0 rounded-full border border-accent-success/25 bg-accent-success/10 px-1.5 py-0.5 text-[10px] font-medium text-accent-success">
+                      Connected
+                    </span>
+                  </div>
+                  <p className="pb-2 pl-8 pr-3 text-[11px] leading-4 text-content-muted">
+                    Awaiting its first pull request — reviews will appear here.
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+          {realMode &&
+            ((reviewGroups?.length ?? 0) > 0 ? (
+              <ul className="border-b border-border-subtle py-1">
+                {reviewGroups!.map((g) => {
+                  const expanded = g.repositoryFullName === openRepo;
+                  return (
+                    <li key={g.repositoryFullName} className="relative">
+                      {expanded && (
+                        <span className="absolute inset-y-1 left-0 z-10 w-0.5 rounded-r bg-accent-primary" aria-hidden />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOpenRepo((cur) => (cur === g.repositoryFullName ? null : g.repositoryFullName))
+                        }
+                        aria-expanded={expanded}
+                        className={`flex w-full items-center gap-2 py-2.5 pl-3 pr-3 text-left transition-colors ${
+                          expanded ? "bg-accent-primary/[0.06]" : "hover:bg-content-primary/[0.04]"
+                        } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-primary/40`}
+                      >
+                        <IconChevronDown
+                          size={12}
+                          stroke={2}
+                          className={`shrink-0 text-content-muted transition-transform ${expanded ? "" : "-rotate-90"}`}
+                          aria-hidden
+                        />
+                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${riskDot(g.worstRisk)}`} />
+                        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-content-primary">
+                          {g.repositoryFullName}
+                        </span>
+                        <span className="shrink-0 font-mono text-[10px] tabular-nums text-content-muted">
+                          {g.reviews.length}
+                        </span>
+                      </button>
+                      {expanded && (
+                        <ul className="pb-1">
+                          {g.reviews.map((r) => {
+                            const on = r.id === activeContainerId;
+                            return (
+                              <li key={r.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveContainerId(r.id)}
+                                  aria-current={on ? "true" : undefined}
+                                  className={`flex w-full items-center gap-2 py-1.5 pl-9 pr-3 text-left transition-colors ${
+                                    on
+                                      ? "bg-accent-primary/[0.1] text-content-primary"
+                                      : "text-content-secondary hover:bg-content-primary/[0.04]"
+                                  } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-primary/40`}
+                                >
+                                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${riskDot(r.riskLevel)}`} />
+                                  <span className="min-w-0 flex-1 truncate font-mono text-[11.5px]">
+                                    PR #{r.prNumber}
+                                  </span>
+                                  <span
+                                    className="shrink-0 font-mono text-[10px] tabular-nums text-content-muted"
+                                    title={`${r.findingCount} verified finding${r.findingCount === 1 ? "" : "s"}`}
+                                  >
+                                    {r.findingCount}
+                                  </span>
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : idleRepos.length === 0 ? (
+              <div className="px-3 py-8 text-center">
+                <p className="text-[12px] text-content-secondary">No reviews yet.</p>
+                <p className="mt-1 text-[11px] leading-5 text-content-muted">
+                  {connected
+                    ? "Open a pull request on your connected repository — its review appears here."
+                    : "Connect a repository to start reviewing pull requests."}
+                </p>
+              </div>
+            ) : null)}
+          {!realMode && hasServices && (
             <ul className="border-b border-border-subtle py-1">
               {services.map((s) => {
                 const expanded = s.id === activeService;
@@ -346,7 +658,7 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
                       aria-expanded={expanded}
                       className={`flex w-full items-center gap-2 py-2.5 pl-3 pr-3 text-left transition-colors ${
                         expanded ? "bg-accent-primary/[0.06]" : "hover:bg-content-primary/[0.04]"
-                      }`}
+                      } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-primary/40`}
                     >
                       <IconChevronDown
                         size={12}
@@ -377,7 +689,7 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
                                   aria-current={on ? "true" : undefined}
                                   className={`flex w-full items-center gap-2 py-1.5 pl-9 pr-3 text-left transition-colors ${
                                     on ? "bg-accent-primary/[0.1] text-content-primary" : "text-content-secondary hover:bg-content-primary/[0.04]"
-                                  }`}
+                                  } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-primary/40`}
                                 >
                                   <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${SEV_DOT[iss.severity]}`} />
                                   <span className="min-w-0 flex-1 truncate text-[11.5px]">{iss.title}</span>
@@ -394,17 +706,61 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
             </ul>
           )}
 
+          {/* Work-item inbox: what Kuma discovered in the connected repos —
+              scans, review findings, telemetry errors. Under the repo rows,
+              like unread counts on a mailbox. */}
+          {realMode && inbox && (
+            <WorkItemInboxSection
+              inbox={inbox}
+              activeItemId={activeItemId}
+              onSelect={handleSelectItem}
+            />
+          )}
+
+          {/* A paused agent blocks on this, so it sits above the connect
+              affordance: it is the most urgent thing the rail can hold.
+              Renders nothing when the queue is empty. */}
+          {realMode && <ApprovalsSection approvals={approvals} />}
+
+          {/* Stage 2.2 — the specialists themselves, below the work they
+              produced. Real mode only: the marketing preview has no agent
+              activity to open, and a rail of agents that answer nothing would
+              be exactly the live-looking-but-inert control the honesty rules
+              forbid. */}
+          {realMode && (
+            <AgentsSection
+              findingCountById={findingCountById}
+              activeAgentId={activeAgentId}
+              onSelect={handleSelectAgent}
+              onConfigure={setConfigAgentId}
+            />
+          )}
+
           <div className="px-3 py-3">
             <Link
               href="/connections"
               className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border-default bg-surface-2 px-3 py-2 text-[12px] font-medium text-content-secondary transition-colors hover:border-border-strong hover:bg-content-primary/5"
             >
               <IconPlus size={14} stroke={2} aria-hidden />
+/* --- MERGED: PRESERVING UI (HEAD) --- */
               {hasServices
                 ? "Connect more services"
                 : connected
                   ? "Connect a telemetry source"
                   : "Connect your services"}
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+              {realMode
+                ? connected
+                  ? "Add connections"
+                  : "Connect a repository"
+                : hasServices
+                  ? "Connect more services"
+                  : connected
+                    ? "Connect a telemetry source"
+                    : "Connect your services"}
+*/
+/* --- END MERGE --- */
             </Link>
           </div>
         </div>
@@ -417,6 +773,7 @@ export function ServicesWorkspace({ services = [], issues = [], variant = "embed
           illustrative sample data). */}
       <section className="flex min-h-0 flex-1 flex-col" aria-label="Synthesizer">
         {variant === "embedded" ? (
+/* --- MERGED: PRESERVING UI (HEAD) --- */
           // Streams the deep-linked review (container id = review id) via the
           // existing /api/containers/[id]/stream SSE; null → onboarding state.
           <SynthesizerConsole containerId={containerId} connected={connected} />
@@ -514,9 +871,61 @@ function IssueSynthesizerConsole({ issue, isReplaying, replayStep }: { issue: Is
               <IconArrowRight size={15} stroke={2} />
             </Link>
           </div>
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+          // Streams the selected review (container id = review id) via the
+          // existing /api/containers/[id]/stream SSE; null → onboarding state.
+          // Real mode drives it from the rail selection; otherwise the
+          // deep-linked ?container= id. The situational-awareness board
+          // (tiered comms §4) rides the same stream above the console; it
+          // renders nothing until specialists report.
+          selectedAgent ? (
+            // Agent mode: this specialist's own reasoning, in the pane the
+            // Synthesizer transcript normally occupies. Keyed by agent so
+            // switching specialists starts a fresh conversation rather than
+            // showing the previous one's history under a new name.
+            <AgentConversation
+              key={selectedAgent.id}
+              agent={selectedAgent}
+              findings={activity.filter((f) => f.category === selectedAgent.id)}
+              findingCount={findingCountById[selectedAgent.id] ?? 0}
+              hasReviews={(reviewGroups?.length ?? 0) > 0}
+              repoConnected={connected}
+              modelConnected={modelConnected}
+              activeModel={activeModel}
+              containerId={activeContainerId}
+              onConfigure={setConfigAgentId}
+            />
+          ) : (
+          <>
+            <StatusBoardLive containerId={realMode ? activeContainerId : containerId} />
+            <SynthesizerConsole containerId={realMode ? activeContainerId : containerId} connected={connected} />
+          </>
+          )
+        ) : (
+          <IssueSynthesizerConsole issue={selected} isReplaying={isReplaying} replayStep={replayStep} />
+*/
+/* --- END MERGE --- */
         )}
+      </section>
+
+      {/* Right: the selected item's detail — a selected work item wins, then
+          real review facts in real mode, then the scripted sample issue in the
+          marketing preview. */}
+      <section className="flex min-h-0 flex-1 flex-col" aria-label="Issue panel">
+        {realMode ? (
+          selectedItem ? (
+            <WorkItemPanel item={selectedItem} />
+          ) : (
+            <ReviewPanel review={selectedReview} />
+          )
+        ) : (
+          <IssuePanel issue={selected} isReplaying={isReplaying} containerId={realMode ? activeContainerId : null} />
+        )}
+      </section>
       </div>
 
+/* --- MERGED: PRESERVING UI (HEAD) --- */
       {/* Pinned input strip — deliberately disabled: no live model yet, same
           honesty pattern as the /agents Synthesizer console. */}
       <footer className="shrink-0 border-t border-border-subtle px-3 py-2.5">
@@ -711,6 +1120,22 @@ function PanelSection({ title, children }: { title: string; children: ReactNode 
         {title}
       </button>
       {open && <div className="px-2 pb-3">{children}</div>}
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+      {/* Parameters open over the workspace rather than navigating away — that
+          is the "config controls in place" half of Stage 2.2. The drawer is
+          unchanged from /agents, including its honestly-disabled Save: making
+          it persist needs an AgentConfig model that does not exist yet
+          (roadmap 2.4), and a Save that appeared to work would be worse than
+          one that says it does not. */}
+      <AgentConfigDrawer
+        agent={configAgent}
+        findingCount={configAgent ? (findingCountById[configAgent.id] ?? 0) : 0}
+        activeModel={activeModel}
+        onClose={() => setConfigAgentId(null)}
+      />
+*/
+/* --- END MERGE --- */
     </div>
   );
 }

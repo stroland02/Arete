@@ -12,34 +12,78 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Anthropic is the standard provider for all AI-driven decisions. The
-    # gemini path remains dormant (selectable via LLM_PROVIDER=gemini) but is
-    # not used by the production pipeline, which builds Anthropic clients
-    # per role via get_llms_by_role().
-    llm_provider: Literal["gemini", "anthropic"] = "anthropic"
+    # Provider for all AI-driven decisions. Each is built per role via
+    # get_llms_by_role(): "anthropic"/"gemini" tier their roles across
+    # opus/sonnet models; "ollama" is a single local model shared by every
+    # role (no tiering). A per-request BYO config can override this per /review
+    # call (see get_llms_by_role_from_config).
+    llm_provider: Literal["gemini", "anthropic", "ollama"] = "anthropic"
     gemini_api_key: str = ""
     anthropic_api_key: str = ""
+
+    # Ollama (local, no API key). Used when llm_provider="ollama". The default
+    # model is code-specialised and must be pulled locally
+    # ("ollama pull qwen2.5-coder"); an un-pulled model / unreachable server
+    # yields an honest empty review, never fabricated findings.
+    ollama_model: str = "qwen2.5-coder"
+    ollama_base_url: str = "http://127.0.0.1:11434"
+
+    # Deployment tier. "local" can reach a localhost Ollama; "saas" (hosted)
+    # cannot, so an Ollama-backed review pointed at localhost is refused with an
+    # honest message rather than a fabricated/empty result.
+    deployment_tier: Literal["local", "saas"] = "local"
 
     database_url: str = "postgresql://arete:arete@localhost:5432/arete"
     redis_url: str = "redis://localhost:6379"
 
-    # Per-role Claude model tier. "opus" (claude-opus-4-8) for nuanced-
-    # judgment roles; "sonnet" (claude-sonnet-5) for more mechanical/
-    # pattern-based roles. Each is individually overridable via env
-    # (e.g. SECURITY_TIER=sonnet).
-    security_tier: Literal["opus", "sonnet"] = "opus"
-    business_logic_tier: Literal["opus", "sonnet"] = "opus"
-    deployment_safety_tier: Literal["opus", "sonnet"] = "opus"
-    ci_tier: Literal["opus", "sonnet"] = "opus"
-    synthesizer_tier: Literal["opus", "sonnet"] = "opus"
-    performance_tier: Literal["opus", "sonnet"] = "sonnet"
-    quality_tier: Literal["opus", "sonnet"] = "sonnet"
-    test_coverage_tier: Literal["opus", "sonnet"] = "sonnet"
-    chat_tier: Literal["opus", "sonnet"] = "sonnet"
+    # Per-role Claude model tier. "opus" (claude-opus-4-8) = strongest/slowest,
+    # "sonnet" (claude-sonnet-5) = balanced, "haiku" (claude-haiku-4-5) =
+    # fast/low-latency. Defaults favour SPEED: judgment roles run on sonnet,
+    # mechanical/interactive roles on haiku; opus is opt-in per role. Each is
+    # individually overridable via env (e.g. SECURITY_TIER=opus).
+    security_tier: Literal["opus", "sonnet", "haiku"] = "sonnet"
+    business_logic_tier: Literal["opus", "sonnet", "haiku"] = "sonnet"
+    deployment_safety_tier: Literal["opus", "sonnet", "haiku"] = "sonnet"
+    synthesizer_tier: Literal["opus", "sonnet", "haiku"] = "sonnet"
+    ci_tier: Literal["opus", "sonnet", "haiku"] = "haiku"
+    performance_tier: Literal["opus", "sonnet", "haiku"] = "haiku"
+    quality_tier: Literal["opus", "sonnet", "haiku"] = "haiku"
+    test_coverage_tier: Literal["opus", "sonnet", "haiku"] = "haiku"
+    chat_tier: Literal["opus", "sonnet", "haiku"] = "haiku"
 
-    eval_finder_tier: Literal["opus", "sonnet"] = "opus"
-    eval_judge_tier: Literal["opus", "sonnet"] = "sonnet"
+    eval_finder_tier: Literal["opus", "sonnet", "haiku"] = "opus"
+    eval_judge_tier: Literal["opus", "sonnet", "haiku"] = "sonnet"
     eval_f1_threshold: float = 0.05
+
+    # Bounds the review LangGraph's fan-out (orchestrator.py's
+    # ReviewOrchestrator.run(), Send() per file x agent -- up to 6 agents per
+    # file, so an unbounded 20-file PR is ~120 concurrent provider calls).
+    # Passed as config={"max_concurrency": ...} to graph.invoke(), the same
+    # mechanism remediation.py:126 already uses. 8 is a sane starting default,
+    # not a tuned value -- tuning needs a real large PR against a real
+    # Anthropic key, which is out of scope here.
+    review_max_concurrency: int = 8
+
+    # Base URL of the packages/webhook Node/Express service, reached FROM this
+    # process only for the internal, token-guarded write-back surface
+    # (POST /internal/memory -- Phase 2 Task 8, see tools/memory.py). Mirrors
+    # the .env.example default the webhook side already documents for the
+    # reverse direction (WEBHOOK_SERVICE_URL, e.g.
+    # packages/dashboard/src/app/api/scan/route.ts).
+    webhook_service_url: str = "http://localhost:3000"
+    # Signed short-lived internal-token keyset (arete_agents/internal_token.py,
+    # obs Phase 3 Task 4) guarding this service's own `/internal/*`-shaped
+    # surface AND minted here to call the webhook's own guarded
+    # `/internal/memory` (see tools/memory.py). Replaces the old single
+    # static INTERNAL_API_TOKEN shared secret -- a keyset addressed by kid
+    # can drop one compromised/rotated key without touching every other
+    # caller's credential. `internal_token_signing_keys` is a JSON object
+    # mapping kid -> secret; empty by default -- a memory write or an
+    # internal request attempted with no keyset configured is rejected
+    # fail-closed (503), which add_project_memory reports as an honest
+    # failure string (never invents success).
+    internal_token_signing_keys: str = ""
+    internal_token_active_kid: str = ""
 
     @field_validator("gemini_api_key")
     @classmethod

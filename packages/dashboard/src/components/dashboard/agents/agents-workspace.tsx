@@ -7,6 +7,13 @@ import { AgentConversation } from "./agent-conversation";
 import { PrPanel } from "./pr-panel";
 import { AgentConfigDrawer } from "./agent-config-drawer";
 import type { AgentActivityFinding } from "@/lib/queries";
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+import type { ActiveModelConnection } from "@/lib/model-connections-map";
+import type { InboxView } from "@/lib/work-items";
+*/
+/* --- END MERGE --- */
 
 export interface AgentsWorkspaceProps {
   findingCountById: Record<string, number>;
@@ -29,6 +36,19 @@ export interface AgentsWorkspaceProps {
   containerId?: string | null;
   /** Whether a repository is connected (installations present). */
   connected?: boolean;
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+  /** Whether an AI model is connected — the agents' real dependency. */
+  modelConnected?: boolean;
+  /** The connected model every agent runs on (dynamic; replaces the old
+      hardcoded Opus/Sonnet tier). Null when no model is connected. */
+  activeModel?: ActiveModelConnection | null;
+  /** The live work-item inbox surfaced in the rail — what the agents are
+      working on right now. Null on a fresh/unconnected account. */
+  inbox?: InboxView | null;
+*/
+/* --- END MERGE --- */
 }
 
 /**
@@ -43,6 +63,11 @@ export function AgentsWorkspace({
   hasReviews,
   activity = [],
   latestReview = null,
+  containerId = null,
+  connected = false,
+  modelConnected = false,
+  activeModel = null,
+  inbox = null,
 }: AgentsWorkspaceProps) {
   const [selectedAgentId, setSelectedAgentId] = useState<string>(AGENTS[0].id);
   const [configAgentId, setConfigAgentId] = useState<string | null>(null);
@@ -64,24 +89,43 @@ export function AgentsWorkspace({
           selectedAgentId={selectedAgentId}
           onSelect={setSelectedAgentId}
           onConfigure={setConfigAgentId}
+          activeModel={activeModel}
+          inbox={inbox}
         />
         <AgentConversation
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+          key={`${selectedAgent.id}:${containerId ?? "general"}`}
+*/
+/* --- END MERGE --- */
           agent={selectedAgent}
           findings={selectedAgentFindings}
           findingCount={findingCountById[selectedAgent.id] ?? 0}
           hasReviews={hasReviews}
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+          repoConnected={connected}
+          modelConnected={modelConnected}
+          activeModel={activeModel}
+          containerId={containerId}
+*/
+/* --- END MERGE --- */
           onConfigure={setConfigAgentId}
         />
         <PrPanel
           hasReviews={hasReviews}
           latestReview={latestReview}
           totalFindings={totalFindings}
+          containerId={containerId}
         />
       </div>
 
       <AgentConfigDrawer
         agent={configAgent}
         findingCount={configAgent ? (findingCountById[configAgent.id] ?? 0) : 0}
+        activeModel={activeModel}
         onClose={() => setConfigAgentId(null)}
       />
     </>

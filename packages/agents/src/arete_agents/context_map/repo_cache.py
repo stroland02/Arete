@@ -48,7 +48,11 @@ def ensure_repo_checked_out(
     any git failure — never returns a partially-checked-out directory
     silently."""
     repo_dir = _repo_dir(root, installation_id, repo_slug)
-    authed_url = _with_token(clone_url, installation_token)
+    # A public repo indexes without a token — GitHub actually REJECTS an empty
+    # x-access-token basic-auth password, so only inject credentials when a
+    # token is present and clone the plain URL otherwise.
+    tokenless = not installation_token
+    authed_url = clone_url if tokenless else _with_token(clone_url, installation_token)
     is_fresh_clone = not (repo_dir / ".git").exists()
 
     try:
@@ -69,14 +73,15 @@ def ensure_repo_checked_out(
             f"git operation failed for {repo_slug}: {_redact(result.stderr)}"
         )
 
-    if is_fresh_clone:
+    if is_fresh_clone and not tokenless:
         # `git clone <authed_url>` persists the credential-embedded URL
         # into .git/config's remote.origin.url. Strip it back to the
         # plain clone_url immediately after a successful clone so the
         # token never lives on disk beyond the single clone invocation
         # that needed it. `git pull <url>` (the branch above, once the
         # repo already exists) does NOT rewrite the stored remote config,
-        # so no equivalent cleanup is needed on that path.
+        # so no equivalent cleanup is needed on that path. A tokenless clone
+        # never embedded a credential, so there is nothing to strip.
         _strip_token_from_remote(repo_dir, clone_url, repo_slug)
 
     return repo_dir

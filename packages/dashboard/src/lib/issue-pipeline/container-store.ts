@@ -30,6 +30,12 @@ const TERMINAL_STATES = new Set([
   "changes_requested",
   "merged",
   "dismissed",
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+  "fix_failed",
+*/
+/* --- END MERGE --- */
 ]);
 
 export class InMemoryContainerStore implements ContainerStore {

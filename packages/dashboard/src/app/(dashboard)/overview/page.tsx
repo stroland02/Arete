@@ -1,17 +1,25 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import {
-  IconArrowRight,
-  IconCircleCheck,
-  IconCircleDashed,
-  IconShieldCheck,
-} from "@tabler/icons-react";
+import { IconArrowRight } from "@tabler/icons-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { getDashboardViewModel, resolveSelectedInstallationIds } from "@/lib/queries";
+import { getDashboardsViewModel, resolveSelectedInstallationIds } from "@/lib/queries";
+import { getSensoriumViewModel } from "@/lib/sensorium";
+import { getAccountState } from "@/lib/account-state";
+import { deriveOverviewSetup } from "@/lib/overview-setup";
+import { bucketByDay } from "@/lib/trends";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
+/* --- MERGED: PRESERVING UI (HEAD) --- */
 import { ActivityList } from "@/components/dashboard/activity-list";
 import { AgentsAtWorkStrip } from "@/components/dashboard/agents-at-work-strip";
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+import { SensoriumMap } from "@/components/dashboard/sensorium-map";
+import { OverviewSetupCard } from "@/components/dashboard/overview-setup-card";
+import { OverviewStatTile } from "@/components/dashboard/overview-stat-tile";
+import { DashboardsWorkspace } from "@/components/dashboard/dashboards/dashboards-workspace";
+*/
+/* --- END MERGE --- */
 
 // This page reads the session and queries Prisma scoped to it on every
 // request — it must never be statically prerendered (that would either fail
@@ -35,8 +43,18 @@ export default async function DashboardOverview({
     installation
   );
 
-  const viewModel = await getDashboardViewModel(db, installationIds);
+  // One tenant-scoped aggregate powers both the stat tiles and the dashboards
+  // presets (Review Activity / Findings / Telemetry) — Overview is the single
+  // home, and this is its single activity view-model.
+  const dashboardsModel = await getDashboardsViewModel(db, installationIds);
+  // The Sensorium code graph is keyed by the GitHub external installation id,
+  // not the DB uuid — resolve the primary selected installation's externalId.
+  const graphExternalId = (session.installations ?? []).find(
+    (i) => i.id === installationIds[0]
+  )?.externalId;
+  const sensorium = await getSensoriumViewModel(db, installationIds, graphExternalId);
 
+/* --- MERGED: PRESERVING UI (HEAD) --- */
   const connected = viewModel.hasAccess;
   const { totalPrs, criticalBugs, recentReviews, latestReviews, commentsByCategory } = viewModel.hasAccess
     ? viewModel
@@ -45,10 +63,22 @@ export default async function DashboardOverview({
   const findingCountById = Object.fromEntries(
     commentsByCategory.map((c) => [c.category, c.count])
   );
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+  // Account-State Contract: connection facts + onboarding derive from the single
+  // resolver, never ad-hoc hasAccess/totalPrs checks. The userId lets a pending
+  // (pre-repo) model connection count as setup step 1 honestly.
+  const accountState = await getAccountState(db, installationIds, session.user.id);
 
-  const hasReviews = connected && totalPrs > 0;
+  const { totalPrs, criticalBugs, recentReviews, reviewDates } = dashboardsModel.hasAccess
+    ? dashboardsModel
+    : { totalPrs: 0, criticalBugs: 0, recentReviews: 0, reviewDates: [] as Date[] };
+*/
+/* --- END MERGE --- */
+
   const firstName = (session.user.name ?? "").trim().split(" ")[0];
 
+/* --- MERGED: PRESERVING UI (HEAD) --- */
   // Onboarding progress — honest, derived from real state. The setup card
   // disappears once reviews are actually flowing.
   const steps = [
@@ -60,6 +90,13 @@ export default async function DashboardOverview({
   const doneCount = steps.filter((s) => s.done).length;
   const setupComplete = hasReviews;
   const nextStep = steps.find((s) => !s.done);
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+  // Onboarding progress — derived from the Account-State resolver (single source
+  // of truth), honest across all stages; the card evolves once reviews flow.
+  const setup = deriveOverviewSetup(accountState);
+*/
+/* --- END MERGE --- */
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -74,6 +111,7 @@ export default async function DashboardOverview({
           </p>
         </RevealItem>
 
+/* --- MERGED: PRESERVING UI (HEAD) --- */
         {/* Setup card (SuperLog-style onboarding) — only while not fully set up */}
         {!setupComplete && (
           <RevealItem>
@@ -134,18 +172,60 @@ export default async function DashboardOverview({
                 ))}
               </ul>
             </section>
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+        {/* Sensorium — a live map of your codebase (real nodes from the code
+            graph, with pain/activity sensor overlays). Honest empty state until
+            a review has indexed the repo; never a fabricated graph. */}
+        {sensorium.hasAccess && (
+          <RevealItem className="space-y-3">
+            <div className="flex items-center justify-between">
+              <SectionLabel>Code map</SectionLabel>
+              <Link
+                href="/map"
+                className="inline-flex items-center gap-1 text-xs text-accent-primary hover:text-accent-primary/80"
+              >
+                Open map <IconArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
+            {sensorium.available ? (
+              <SensoriumMap topology={sensorium.topology!} sensors={sensorium.sensors!} />
+            ) : (
+              <StatePanel>
+                {sensorium.reason ?? "Kuma is building your code map from your connected repository."}
+              </StatePanel>
+            )}
+*/
+/* --- END MERGE --- */
           </RevealItem>
         )}
 
-        {/* Metric tiles */}
+        {/* Onboarding → next-action card. It never disappears: once setup is
+            done it evolves into the "act on what Kuma found" step of the
+            workflow, so the user always has a clear next move. */}
+        <RevealItem>
+          <OverviewSetupCard setup={setup} criticalBugs={criticalBugs} />
+        </RevealItem>
+
+        {/* Metric tiles — real counts, real daily buckets (no trend when the
+            series doesn't exist yet). */}
         <RevealItem>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <StatTile label="Pull requests reviewed" value={totalPrs} />
-            <StatTile label="Critical issues caught" value={criticalBugs} />
-            <StatTile label="Reviews this week" value={recentReviews} />
+            <OverviewStatTile
+              label="Pull requests reviewed"
+              value={totalPrs}
+              trend={reviewDates.length > 0 ? bucketByDay(reviewDates, 30) : undefined}
+            />
+            <OverviewStatTile label="Critical issues caught" value={criticalBugs} />
+            <OverviewStatTile
+              label="Reviews this week"
+              value={recentReviews}
+              trend={reviewDates.length > 0 ? bucketByDay(reviewDates, 7) : undefined}
+            />
           </div>
         </RevealItem>
 
+/* --- MERGED: PRESERVING UI (HEAD) --- */
         {/* Agents at work — the six specialists and what each has caught */}
         <RevealItem className="space-y-3">
           <SectionLabel>Agents at work</SectionLabel>
@@ -153,57 +233,15 @@ export default async function DashboardOverview({
         </RevealItem>
 
         {/* Critical findings */}
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+        {/* Dashboards — the review-pipeline + telemetry charts, folded in from
+            the former standalone /dashboards page (one home, not two tabs). */}
+*/
+/* --- END MERGE --- */
         <RevealItem className="space-y-3">
-          <SectionLabel>Critical findings</SectionLabel>
-          {criticalBugs > 0 ? (
-            <div className="flex items-center gap-3 rounded-2xl border border-accent-danger/30 bg-accent-danger/5 p-5">
-              <IconShieldCheck className="h-5 w-5 shrink-0 text-accent-danger" stroke={1.75} />
-              <p className="text-sm text-content-secondary">
-                <span className="font-semibold text-content-primary">{criticalBugs}</span> critical
-                {criticalBugs === 1 ? " issue" : " issues"} caught across your recent reviews.
-              </p>
-            </div>
-          ) : (
-            <StatePanel
-              icon={<IconShieldCheck className="h-5 w-5 text-accent-success" stroke={1.75} />}
-            >
-              All clear — no critical findings in your recent reviews.
-            </StatePanel>
-          )}
-        </RevealItem>
-
-        {/* Recent reviews */}
-        <RevealItem className="space-y-3">
-          <SectionLabel>Recent reviews</SectionLabel>
-          {latestReviews.length > 0 ? (
-            <div className="overflow-hidden rounded-2xl border border-border-default bg-surface-1">
-              <ActivityList
-                reviews={latestReviews.map((review) => ({
-                  id: review.id,
-                  repositoryName: review.repositoryFullName,
-                  prNumber: review.prNumber,
-                  createdAt: review.createdAt.toISOString(),
-                  riskLevel: review.riskLevel,
-                }))}
-              />
-            </div>
-          ) : (
-            <StatePanel>
-              {connected ? (
-                <>Open a pull request on a connected repository and its review appears here.</>
-              ) : (
-                <span className="inline-flex flex-wrap items-center gap-x-1.5">
-                  No reviews yet — connect a repository to get started.
-                  <Link
-                    href="/connections"
-                    className="inline-flex items-center gap-1 font-medium text-accent-primary hover:underline"
-                  >
-                    Connect a repository <IconArrowRight className="h-3.5 w-3.5" />
-                  </Link>
-                </span>
-              )}
-            </StatePanel>
-          )}
+          <SectionLabel>Dashboards</SectionLabel>
+          <DashboardsWorkspace model={dashboardsModel} accountState={accountState} />
         </RevealItem>
       </PageReveal>
     </div>
@@ -218,25 +256,9 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function StatTile({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-2xl border border-border-default bg-surface-1 p-5">
-      <p className="font-mono text-3xl font-semibold tabular-nums text-content-primary">{value}</p>
-      <p className="mt-1 text-xs text-content-muted">{label}</p>
-    </div>
-  );
-}
-
-function StatePanel({
-  children,
-  icon,
-}: {
-  children: React.ReactNode;
-  icon?: React.ReactNode;
-}) {
+function StatePanel({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-border-default bg-surface-1 p-5">
-      {icon && <span className="shrink-0">{icon}</span>}
       <p className="text-sm text-content-secondary">{children}</p>
     </div>
   );

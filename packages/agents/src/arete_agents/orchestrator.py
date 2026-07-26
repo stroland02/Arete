@@ -2,6 +2,7 @@ import json
 import logging
 import operator
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Annotated, Literal, TypedDict
 
@@ -9,6 +10,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
+from pydantic import BaseModel
 
 from arete_agents.agents.business_logic import BusinessLogicAgent
 from arete_agents.agents.ci_agent import CIAgent
@@ -17,13 +19,26 @@ from arete_agents.agents.performance import PerformanceAgent
 from arete_agents.agents.quality import QualityAgent
 from arete_agents.agents.security import SecurityAgent
 from arete_agents.agents.test_coverage import TestCoverageAgent
+from arete_agents.config import get_settings
 from arete_agents.context_map import ensure_indexed
 from arete_agents.critic import CriticAgent
 from arete_agents.grounding import has_quoted_evidence, valid_lines_for_patch
 from arete_agents.llm.base import ROLE_KEYS
 from arete_agents.models.pr import FileChange, PRContext
-from arete_agents.models.review import FileReview, ReviewResult
+from arete_agents.models.review import AgentStatus, FileReview, NoiseDecision, ReviewResult
+from arete_agents.observability import get_meter
 from arete_agents.verdict import decide_verdict
+
+# §5 arete.agent.duration — per-agent single-file review latency. A View already
+# registers its boundaries (observability._histogram_views) but nothing recorded
+# it until now. Module-scope create is safe: get_meter returns a ProxyMeter that
+# binds when the provider is installed. Dimensions are the closed low-cardinality
+# sets agent.role + outcome only (never pr_number/file_path — span attrs only).
+_AGENT_DURATION = get_meter(__name__).create_histogram(
+    "arete.agent.duration",
+    unit="s",
+    description="Per-agent single-file review duration",
+)
 
 _SEVERITY_WEIGHT = {"error": 3, "warning": 2, "info": 1}
 
@@ -85,14 +100,35 @@ def _merge_reviews(reviews_per_file: list[list[FileReview]]) -> list[FileReview]
     ]
 
 
+class AgentRunEvent(BaseModel):
+    """Internal per-(file, agent) execution outcome from the fan-out —
+    orchestrator-private raw data that _build_agent_statuses aggregates into
+    one AgentStatus per dispatched role. Not part of the public API (unlike
+    AgentStatus in models/review.py)."""
+    agent: str
+    ok: bool
+    error: str | None = None
+    comment_count: int = 0
+    summary: str = ""
+
+
 class GraphState(TypedDict):
     pr: PRContext
     raw_reviews: Annotated[list[FileReview], operator.add]
+    # Tool calls recorded across every agent's review_file() run this PR
+    # (see agents/base.py). Applied to the synthesized result in
+    # _synthesize_reviews, after the critic/grounding gates.
+    noise_decisions: Annotated[list[NoiseDecision], operator.add]
     # Explicit success/failure tallies from the fan-out, so "all agents
     # errored" can be detected deterministically instead of pattern-matching
     # error text in FileReview summaries after the fact.
     agent_successes: Annotated[int, operator.add]
     agent_failures: Annotated[int, operator.add]
+    # Per-(file, agent) outcomes, aggregated into AgentStatus per role in
+    # _synthesize_reviews (see _build_agent_statuses). Never populated for the
+    # "unknown agent" branch -- there is no real role to attribute it to
+    # (anti-fabrication rule: omit, don't invent).
+    agent_events: Annotated[list[AgentRunEvent], operator.add]
     final_result: ReviewResult
 
 
@@ -119,11 +155,21 @@ class SynthesizerAgent:
 Your task is to merge raw code reviews from multiple specialist agents into one verified, high-signal review.
 1. Read the raw comments provided.
 2. Remove duplicates and resolve contradictions.
-3. VERIFY every remaining comment against the diff content quoted inside it and the other raw reviews. A comment is well-grounded only if it references an actual line, symbol, or pattern visible in the review material. DROP any comment that is low-confidence, speculative, vague, or hallucinated (e.g. it names a variable or function that does not appear anywhere in the reviewed diff content) — do NOT include dropped comments in the output. Count how many you dropped and report it as "dropped_count".
-4. NEVER include a ```suggestion code block unless you can verify the suggested replacement actually addresses the diff shown: it must reference real variable/function names that appear in the diff content and match the surrounding code's indentation. If a suggestion cannot be verified, strip the ```suggestion block and keep only the prose explanation (or drop the whole comment if nothing verifiable remains).
+3. VERIFY every remaining comment against the diff content quoted inside it and the other raw \
+reviews. A comment is well-grounded only if it references an actual line, symbol, or pattern visible \
+in the review material. DROP any comment that is low-confidence, speculative, vague, or hallucinated \
+(e.g. it names a variable or function that does not appear anywhere in the reviewed diff content) — \
+do NOT include dropped comments in the output. Count how many you dropped and report it as "dropped_count".
+4. NEVER include a ```suggestion code block unless you can verify the suggested replacement actually \
+addresses the diff shown: it must reference real variable/function names that appear in the diff \
+content and match the surrounding code's indentation. If a suggestion cannot be verified, strip the \
+```suggestion block and keep only the prose explanation (or drop the whole comment if nothing \
+verifiable remains).
 5. Group the finalized comments by file.
 6. Provide a summarized string for each file.
-7. Provide an overall summary. You may optionally include a ```mermaid diagram in it, but ONLY if this PR's changes are complex enough (multi-component data/control flow) that a diagram genuinely aids understanding — for simple or small PRs, omit it.
+7. Provide an overall summary. You may optionally include a ```mermaid diagram in it, but ONLY if \
+this PR's changes are complex enough (multi-component data/control flow) that a diagram genuinely \
+aids understanding — for simple or small PRs, omit it.
 8. Calculate risk level ("low", "medium", "high", "critical") based on severity.
 
 Return ONLY valid JSON with this exact structure:
@@ -149,13 +195,19 @@ Return ONLY valid JSON with this exact structure:
 }"""
 
         if pr.custom_rules:
-            system_prompt += "\n\nCRITICAL: The user has defined custom Standard Operating Procedures (SOP) rules for this repository in .arete.yml. You MUST ensure the final output strictly obeys these rules:\n"
+            system_prompt += (
+                "\n\nCRITICAL: The user has defined custom Standard Operating Procedures (SOP) rules "
+                "for this repository in .arete.yml. You MUST ensure the final output strictly obeys these rules:\n"
+            )
             system_prompt += "\n".join(f"- {rule}" for rule in pr.custom_rules)
 
         from arete_agents.skills.loader import load_installed_skills
         installed_skills = load_installed_skills()
         if installed_skills:
-            system_prompt += "\n\nYou are also equipped with the following skills and global instructions. Adhere to them strictly when synthesizing reviews:\n"
+            system_prompt += (
+                "\n\nYou are also equipped with the following skills and global instructions. "
+                "Adhere to them strictly when synthesizing reviews:\n"
+            )
             system_prompt += "\n\n---\n\n".join(installed_skills)
 
         raw_reviews_json = [fr.model_dump() for fr in raw_reviews]
@@ -236,6 +288,55 @@ def _fallback_synthesize(pr: PRContext, flat_results: list[FileReview]) -> Revie
     )
 
 
+def _build_agent_statuses(
+    events: list[AgentRunEvent], final_result: ReviewResult
+) -> list[AgentStatus]:
+    """One AgentStatus per role actually dispatched (present in `events`),
+    built entirely from real run state:
+      - any failed (file, agent) execution for a role -> "blocked", the real
+        error string(s) as blockers, confidence 0.0
+      - otherwise -> "done"; confidence is the fraction of that role's own
+        proposed comments that survived synthesis/critic/grounding into
+        final_result (1.0 if it proposed none) -- a real, verifiable number,
+        never an invented one
+    A role that never ran has no event and is simply absent from the
+    result -- never fabricated (anti-fabrication rule)."""
+    by_agent: dict[str, list[AgentRunEvent]] = {}
+    for e in events:
+        by_agent.setdefault(e.agent, []).append(e)
+
+    survived_by_category: dict[str, int] = {}
+    for fr in final_result.file_reviews:
+        for c in fr.comments:
+            survived_by_category[c.category] = survived_by_category.get(c.category, 0) + 1
+
+    statuses: list[AgentStatus] = []
+    for agent, agent_events in by_agent.items():
+        failures = [e for e in agent_events if not e.ok]
+        if failures:
+            statuses.append(AgentStatus(
+                agent=agent,
+                status="blocked",
+                summary=f"{agent} failed",
+                confidence=0.0,
+                blockers=[e.error for e in failures if e.error],
+            ))
+            continue
+
+        raised = sum(e.comment_count for e in agent_events)
+        survived = survived_by_category.get(agent, 0)
+        confidence = 1.0 if raised == 0 else max(0.0, min(1.0, survived / raised))
+        summary = next((e.summary for e in agent_events if e.summary), f"{agent} completed.")
+        statuses.append(AgentStatus(
+            agent=agent,
+            status="done",
+            summary=summary,
+            confidence=confidence,
+            blockers=[],
+        ))
+    return statuses
+
+
 class ReviewOrchestrator:
     def __init__(
         self,
@@ -281,7 +382,12 @@ class ReviewOrchestrator:
             else:
                 for file in pr.files:
                     for agent in self._agents:
-                        sends.append(Send("execute_agent_review", ReviewTaskState(pr=pr, file=file, agent_name=agent.agent_name)))
+                        sends.append(
+                            Send(
+                                "execute_agent_review",
+                                ReviewTaskState(pr=pr, file=file, agent_name=agent.agent_name),
+                            )
+                        )
             return sends
 
         workflow.add_conditional_edges(START, route, ["execute_agent_review", "synthesize_reviews"])
@@ -291,86 +397,143 @@ class ReviewOrchestrator:
         return workflow.compile()
 
     def _execute_agent_review(self, state: ReviewTaskState) -> dict:
+        from opentelemetry import trace
+        tracer = trace.get_tracer(__name__)
+        
         pr = state["pr"]
         file = state["file"]
         agent_name = state["agent_name"]
 
-        agent = None
-        if agent_name == "CIAgent":
-            agent = CIAgent(self._llms["ci_diagnostics"])
-        else:
-            for a in self._agents:
-                if a.agent_name == agent_name:
-                    agent = a
-                    break
-
-        if not agent:
-            return {
-                "raw_reviews": [FileReview(
-                    path=file.path,
-                    comments=[],
-                    summary=f"Unknown agent: {agent_name}",
-                )],
-                "agent_failures": 1,
+        with tracer.start_as_current_span(
+            "agent.review",
+            attributes={
+                "pr_number": pr.pr_number,
+                "file_path": file.path,
+                "agent.role": agent_name,
             }
+        ) as span:
+            agent = None
+            if agent_name == "CIAgent":
+                agent = CIAgent(self._llms["ci_diagnostics"])
+            else:
+                for a in self._agents:
+                    if a.agent_name == agent_name:
+                        agent = a
+                        break
 
-        try:
-            result = agent.review_file(file, pr)
-            return {"raw_reviews": [result], "agent_successes": 1}
-        except Exception as exc:
-            return {
-                "raw_reviews": [FileReview(
-                    path=file.path,
-                    comments=[],
-                    summary=f"{agent.agent_name} error: {exc}",
-                )],
-                "agent_failures": 1,
-            }
+            if not agent:
+                span.record_exception(ValueError(f"Unknown agent: {agent_name}"))
+                return {
+                    "raw_reviews": [FileReview(
+                        path=file.path,
+                        comments=[],
+                        summary=f"Unknown agent: {agent_name}",
+                    )],
+                    "agent_failures": 1,
+                }
+
+            start = time.perf_counter()
+            try:
+                result = agent.review_file(file, pr)
+                span.set_attribute("comment_count", len(result.comments))
+                _AGENT_DURATION.record(
+                    time.perf_counter() - start,
+                    {"agent.role": agent_name, "outcome": "ok"},
+                )
+                return {
+                    "raw_reviews": [result],
+                    "noise_decisions": result.noise_decisions,
+                    "agent_successes": 1,
+                    "agent_events": [AgentRunEvent(
+                        agent=agent.agent_name,
+                        ok=True,
+                        comment_count=len(result.comments),
+                        summary=result.summary,
+                    )],
+                }
+            except Exception as exc:
+                span.record_exception(exc)
+                _AGENT_DURATION.record(
+                    time.perf_counter() - start,
+                    {"agent.role": agent_name, "outcome": "error"},
+                )
+                return {
+                    "raw_reviews": [FileReview(
+                        path=file.path,
+                        comments=[],
+                        summary=f"{agent.agent_name} error: {exc}",
+                    )],
+                    "agent_failures": 1,
+                    "agent_events": [AgentRunEvent(
+                        agent=agent.agent_name, ok=False, error=str(exc),
+                    )],
+                }
 
     def _synthesize_reviews(self, state: GraphState) -> dict:
+        from opentelemetry import trace
+        tracer = trace.get_tracer(__name__)
+        
         pr = state["pr"]
         raw_reviews = state.get("raw_reviews", [])
         
-        if not raw_reviews:
-            empty_result = ReviewResult(
-                pr_context=pr,
-                file_reviews=[],
-                overall_summary="No files changed.",
-                risk_level="low",
+        with tracer.start_as_current_span(
+            "review.synthesize",
+            attributes={
+                "pr_number": pr.pr_number,
+                "raw_review_count": len(raw_reviews)
+            }
+        ) as span:
+            if not raw_reviews:
+                empty_result = ReviewResult(
+                    pr_context=pr,
+                    file_reviews=[],
+                    overall_summary="No files changed.",
+                    risk_level="low",
+                )
+                empty_result.verdict, empty_result.verdict_reason = decide_verdict(empty_result)
+                return {"final_result": empty_result}
+
+            try:
+                final_result = self.synthesizer.synthesize(pr, raw_reviews)
+            except Exception as exc:
+                # Catch synthesis failures (e.g. the LLM returned invalid JSON)
+                # here, rather than letting them bubble up to run()'s outer
+                # except. That outer handler re-runs every specialist agent from
+                # scratch, doubling LLM cost/latency for a failure that has
+                # nothing to do with the agents themselves. We already have all
+                # the raw per-agent reviews in hand, so fall back to a blind
+                # merge of them directly.
+                logging.warning(
+                    f"Synthesizer failed: {exc}. Falling back to blind merge of "
+                    "already-gathered agent reviews (no agent LLM calls re-issued)."
+                )
+                span.record_exception(exc)
+                final_result = _fallback_synthesize(pr, raw_reviews)
+
+            final_result = self._apply_critic(pr, final_result)
+            final_result = self._apply_grounding(pr, final_result)
+            final_result = self._apply_noise_decisions(final_result, state.get("noise_decisions", []))
+            span.set_attribute("final_risk_level", final_result.risk_level)
+            span.set_attribute("critic_dropped_count", final_result.critic_dropped_count)
+
+            # "failed" only when every agent errored (total outage) — partial
+            # failures still produced a real (if incomplete) review.
+            if state.get("agent_failures", 0) > 0 and state.get("agent_successes", 0) == 0:
+                final_result.analysis_status = "failed"
+
+            # Deterministic risk-tiered verdict — computed LAST, after grounding
+            # (which can drop comments) and after the failed-status assignment
+            # above, so it reflects the final analysis_status and risk_level.
+            final_result.verdict, final_result.verdict_reason = decide_verdict(final_result)
+
+            # Per-specialist tiered-comms status, built from real fan-out
+            # events against the FINAL (post-critic/grounding) result so
+            # confidence reflects what actually survived.
+            final_result.agent_statuses = _build_agent_statuses(
+                state.get("agent_events", []), final_result
             )
-            empty_result.verdict, empty_result.verdict_reason = decide_verdict(empty_result)
-            return {"final_result": empty_result}
 
-        try:
-            final_result = self.synthesizer.synthesize(pr, raw_reviews)
-        except Exception as exc:
-            # Catch synthesis failures (e.g. the LLM returned invalid JSON)
-            # here, rather than letting them bubble up to run()'s outer
-            # except. That outer handler re-runs every specialist agent from
-            # scratch, doubling LLM cost/latency for a failure that has
-            # nothing to do with the agents themselves. We already have all
-            # the raw per-agent reviews in hand, so fall back to a blind
-            # merge of them directly.
-            logging.warning(
-                f"Synthesizer failed: {exc}. Falling back to blind merge of "
-                "already-gathered agent reviews (no agent LLM calls re-issued)."
-            )
-            final_result = _fallback_synthesize(pr, raw_reviews)
-
-        final_result = self._apply_critic(pr, final_result)
-        final_result = self._apply_grounding(pr, final_result)
-
-        # "failed" only when every agent errored (total outage) — partial
-        # failures still produced a real (if incomplete) review.
-        if state.get("agent_failures", 0) > 0 and state.get("agent_successes", 0) == 0:
-            final_result.analysis_status = "failed"
-
-        # Deterministic risk-tiered verdict — computed LAST, after grounding
-        # (which can drop comments) and after the failed-status assignment
-        # above, so it reflects the final analysis_status and risk_level.
-        final_result.verdict, final_result.verdict_reason = decide_verdict(final_result)
-
-        return {"final_result": final_result}
+            return {"final_result": final_result}
 
     def _apply_critic(self, pr: PRContext, result: ReviewResult) -> ReviewResult:
         """Independent second gate on the Synthesizer's output. Every
@@ -462,6 +625,33 @@ class ReviewOrchestrator:
         result.security_evidence_dropped_count = security_evidence_dropped
         return result
 
+    def _apply_noise_decisions(
+        self, result: ReviewResult, decisions: list[NoiseDecision]
+    ) -> ReviewResult:
+        """Deterministic post-synthesis stamp: for every recorded
+        silence_as_noise/place_under_observation tool call (see
+        agents/base.py's review_file()), find the surviving comment at the
+        same (path, line) and set its noise_state accordingly. A decision
+        with no matching surviving comment (e.g. the finding was dropped by
+        the critic or grounding gates) is silently a no-op -- same posture as
+        dropped_count/critic_dropped_count for comments that don't survive."""
+        if not decisions:
+            return result
+
+        by_key = {(d.path, d.line): d for d in decisions}
+        for fr in result.file_reviews:
+            for c in fr.comments:
+                decision = by_key.get((c.path, c.line))
+                if decision is None:
+                    continue
+                if decision.action == "silence":
+                    c.noise_state = "SILENCED"
+                else:
+                    c.noise_state = "UNDER_OBSERVATION"
+                    c.escalate_on = decision.escalate_on
+                    c.threshold = decision.threshold
+        return result
+
     def run(self, pr: PRContext) -> ReviewResult:
         if not pr.files:
             empty_result = ReviewResult(
@@ -485,7 +675,16 @@ class ReviewOrchestrator:
             )
 
         try:
-            state = self.graph.invoke({"pr": pr})
+            # Bounds simultaneous provider calls across the (files x agents)
+            # Send() fan-out in _build_graph -- unbounded, a 20-file PR is
+            # ~120 concurrent calls. Same mechanism remediation.py:126 uses;
+            # value is a sane default (Task 9), not yet tuned against a real
+            # large PR + real Anthropic key.
+            settings = get_settings()
+            state = self.graph.invoke(
+                {"pr": pr},
+                config={"max_concurrency": settings.review_max_concurrency},
+            )
             return state["final_result"]
         except Exception as exc:
             logging.warning(f"LangGraph orchestration failed: {exc}. Falling back to blind merge.")
@@ -504,6 +703,7 @@ class ReviewOrchestrator:
             # provider), so run this last-resort path in parallel too —
             # otherwise a genuine graph-level failure degrades into a
             # sequential, num_files * num_agents round-trip pileup.
+            events: list[AgentRunEvent] = []
             with ThreadPoolExecutor(max_workers=min(len(tasks), 12)) as pool:
                 futures = {
                     pool.submit(agent.review_file, file, pr): (file, agent)
@@ -512,8 +712,15 @@ class ReviewOrchestrator:
                 for future in as_completed(futures):
                     file, agent = futures[future]
                     try:
-                        flat_results.append(future.result())
+                        fr = future.result()
+                        flat_results.append(fr)
                         successes += 1
+                        events.append(AgentRunEvent(
+                            agent=agent.agent_name,
+                            ok=True,
+                            comment_count=len(fr.comments),
+                            summary=fr.summary,
+                        ))
                     except Exception as e:
                         failures += 1
                         flat_results.append(
@@ -523,9 +730,13 @@ class ReviewOrchestrator:
                                 summary=f"{agent.agent_name} error: {e}",
                             )
                         )
+                        events.append(AgentRunEvent(
+                            agent=agent.agent_name, ok=False, error=str(e),
+                        ))
 
             result = _fallback_synthesize(pr, flat_results)
             if failures > 0 and successes == 0:
                 result.analysis_status = "failed"
             result.verdict, result.verdict_reason = decide_verdict(result)
+            result.agent_statuses = _build_agent_statuses(events, result)
             return result

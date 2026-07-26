@@ -67,4 +67,56 @@ describe('queue configuration', () => {
     await import('./queue.js')
     expect(QueueMock).not.toHaveBeenCalled()
   })
+
+  // Fix drives ran inline (`void driveFix(...)`) on the webhook HTTP process
+  // with no concurrency cap at all — this is the bounded queue that replaces
+  // that. Lower than review's 5: a fix drive does a full repo checkout.
+  it('exposes a bounded concurrency limit for the fix-drive queue, lower than review', async () => {
+    const { FIX_QUEUE_CONCURRENCY, FIX_QUEUE_NAME, REVIEW_QUEUE_CONCURRENCY } = await import('./queue.js')
+
+    expect(FIX_QUEUE_NAME).toBe('fix-drive')
+    expect(FIX_QUEUE_CONCURRENCY).toBeGreaterThan(0)
+    expect(FIX_QUEUE_CONCURRENCY).toBeLessThan(REVIEW_QUEUE_CONCURRENCY)
+  })
+
+  it('enqueueFixDrive adds a job to the fix-drive queue with the given workItemId', async () => {
+    const { enqueueFixDrive, FIX_QUEUE_NAME } = await import('./queue.js')
+
+    await enqueueFixDrive({ workItemId: 'wi-1' })
+
+    expect(addMock).toHaveBeenCalledWith(FIX_QUEUE_NAME, { workItemId: 'wi-1' }, expect.any(Object))
+  })
+})
+
+describe('queue telemetry (bullmq-otel)', () => {
+  it('constructs every Queue with a BullMQOtel telemetry instance', async () => {
+    vi.resetModules()
+    const queueCtorOpts: any[] = []
+    vi.doMock('bullmq', () => ({
+      Queue: class {
+        constructor(_name: string, opts: unknown) {
+          queueCtorOpts.push(opts)
+        }
+        async add() { return { id: 'job-1' } }
+        async close() {}
+      },
+    }))
+    vi.doMock('ioredis', () => ({ Redis: class { quit = async () => {} } }))
+
+    const { getReviewQueue, getApprovalQueue, getFixQueue } = await import('./queue.js')
+    getReviewQueue('fast')
+    getReviewQueue('heavy')
+    getApprovalQueue()
+    getFixQueue()
+
+    expect(queueCtorOpts).toHaveLength(4)
+    for (const opts of queueCtorOpts) {
+      expect(opts.telemetry).toBeDefined()
+      expect(opts.telemetry.constructor.name).toBe('BullMQOtel')
+    }
+
+    vi.doUnmock('bullmq')
+    vi.doUnmock('ioredis')
+    vi.resetModules()
+  })
 })

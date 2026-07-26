@@ -23,6 +23,56 @@ class FileChange(BaseModel):
         return _EXTENSION_MAP.get(suffix, "other")
 
 
+class LLMConfig(BaseModel):
+    """Per-request BYO model config (see POST /review). When present, the
+    review builds its LLM clients from THIS config instead of the server's
+    global Settings — this is how a user connects their own model. Accepts the
+    TS/JS webhook camelCase (apiKey/baseUrl) and Python snake_case alike."""
+    model_config = ConfigDict(populate_by_name=True, protected_namespaces=())
+
+    provider: str
+    model: str | None = None
+    api_key: str | None = Field(None, alias="apiKey")
+    base_url: str | None = Field(None, alias="baseUrl")
+
+
+class ScanRequest(BaseModel):
+    """POST /scan request (work-item inbox). The webhook scan trigger sends the
+    tenant's numeric installation id, the repo slug, and the same per-request
+    BYO `llm` block as /review — a scan runs on the tenant's own model."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    installation_id: int = Field(alias="installationId")
+    repo_slug: str = Field(alias="repoSlug")
+    llm: LLMConfig | None = None
+    # "sync" (default) answers with the findings in this response, exactly as
+    # before — every existing caller is unchanged. "async" acks with a run id
+    # and the caller polls GET /scan/runs/{id}, so no HTTP connection has to
+    # stay open for the scan's whole duration. That shape exists because
+    # something unidentified severs long-lived connections to this service
+    # (observed at 307 s), and an ack removes the dependency on it.
+    mode: str = "sync"
+
+
+class ScanFinding(BaseModel):
+    """One discovered issue/opportunity, in WorkItem shape. Evidence is REAL
+    {path, line} refs validated against the actual checkout — a finding that
+    fails that check is dropped before it ever reaches this model."""
+
+    kind: str  # "issue" | "opportunity"
+    title: str
+    detail: str
+    evidence: list[dict]  # [{"path": str, "line": int, "excerpt": str|None}]
+    dimension: str  # one of the six review dimensions
+    confidence: float = Field(ge=0, le=1)  # from agent+critic — never synthesized
+
+
+class ScanResponse(BaseModel):
+    status: str  # "complete" | "no_findings"
+    findings: list[ScanFinding]
+
+
 class PRContext(BaseModel):
     # Accept both the TS/JS webhook convention (ciLogs, customRules) and the
     # Python/CLI convention (ci_logs, custom_rules). Without populate_by_name,
@@ -50,3 +100,16 @@ class PRContext(BaseModel):
     installation_token: str | None = Field(None, alias="installationToken")
     installation_id: int | None = Field(None, alias="installationId")
     repo_conventions: str | None = Field(None, alias="repoConventions")
+    # Optional per-request BYO model config. When present, this review builds
+    # its LLM clients from it (get_llms_by_role_from_config) instead of the
+    # server's global Settings. Omitted by webhook/CLI callers that rely on the
+    # server default provider.
+    llm: LLMConfig | None = None
+    # "sync" (default) returns the ReviewResult in this response, exactly as
+    # every existing caller expects. "async" acks with a run id and the caller
+    # polls GET /review/runs/{id} — so no HTTP connection has to stay open for
+    # the review's duration. Mirrors ScanRequest.mode; both exist because
+    # something unidentified severs long-lived connections to this service
+    # (observed at ~307s on both the scan and review paths), and an ack removes
+    # the dependency on it.
+    mode: str = "sync"

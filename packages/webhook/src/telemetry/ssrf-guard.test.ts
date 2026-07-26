@@ -46,3 +46,4 @@ describe('assertAllowedTelemetryHost', () => {
     expect(() => assertAllowedTelemetryHost('sentry', 'https://api.vercel.com/v6/deployments')).toThrow(/not an allowed host/)
   })
 })
+

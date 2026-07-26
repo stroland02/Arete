@@ -32,10 +32,41 @@ model Installation {
   subscriptionStatus   String       @default("trialing")
   planTier             String       @default("trialing")
   usageCount           Int          @default(0)
+  /// Marks the ONE dedicated, platform-owned Installation that Kuma's
+  /// self-observability surfaces are filed against and gated to: incidents
+  /// created by the Alertmanager receiver, Kuma's own ErrorGroup triage rows,
+  /// and every read of Kuma's own self-telemetry (the Errors surface, the
+  /// self-telemetry queries filtered by `superlog.project_id`).
+  ///
+  /// MUST NEVER be set on a customer installation. Everything above is Kuma's
+  /// INTERNAL data; flagging a customer's row makes that customer's dashboard
+  /// show Kuma's internals. Exactly zero or one row may carry this flag — more
+  /// than one is a misconfiguration and the resolver fails CLOSED (returns no
+  /// platform installation and logs) rather than picking one arbitrarily.
+  ///
+  /// This column exists to replace the `ARETE_PLATFORM_INSTALLATION_ID` /
+  /// `ARETE_SELF_PROJECT_ID` string coincidence with a database fact: two
+  /// unreconciled env vars decided this before, and divergence between them
+  /// leaks Kuma's internals into a tenant's surface. The env var remains a
+  /// fallback ONLY while no row is flagged, so existing deployments keep
+  /// working; flag the row and drop the env var.
+  isPlatform           Boolean      @default(false)
   createdAt            DateTime     @default(now())
+  /// Per-tenant BYO model config ("connect your model"), or null to use the
+  /// service default / Ollama safety fallback. Non-secret fields
+  /// (provider, model, baseUrl) are plaintext; the API key is stored as
+  /// `apiKeyEncrypted` (AES-256-GCM, same scheme as TelemetryConnection
+  /// credentials — see telemetry-credentials.ts), never in plaintext.
+  /// Shape: { provider, model?, baseUrl?, apiKeyEncrypted? }.
   repositories         Repository[]
   telemetryConnections TelemetryConnection[]
   telemetrySnapshots   TelemetrySnapshotRecord[]
+  webhookEndpoints     WebhookEndpoint[]
+  modelConnections     ModelConnection[]
+  issueContainers      IssueContainer[]
+  accessGrants         InstallationAccess[]
+  incidents            Incident[]
+  errorGroups          ErrorGroup[]
 
   @@unique([provider, externalId])
 }
@@ -64,6 +95,273 @@ model TelemetryConnection {
   @@unique([installationId, provider])
 }
 
+/// A customer's Bring-Your-Own AI model connection, scoped to an Installation
+/// (tenant). Resolved at review time so live reviews run on the customer's own
+/// model/key instead of a shared default. One row per (installation, provider).
+///
+/// A row may instead be PENDING: connected before any GitHub App installation
+/// exists (model is setup step 1). Invariant: installationId set (adopted /
+/// normal) OR userId set (pending). userId survives adoption as provenance.
+model ModelConnection {
+  id             String       @id @default(uuid())
+  /// Null while pending (no installation yet); set on adoption.
+  installationId String?
+  /// Owner (User.id) of a pending connection. Plain scoping column — no
+  /// relation — mirroring WorkItem/ScanRun precedent.
+  userId         String?
+  /// AI model provider name, e.g. "openai", "anthropic", "ollama". A plain
+  /// string (not an enum) — the set of supported model providers grows
+  /// independently of source-control providers.
+  provider       String
+  /// The API key, encrypted with the same AES-256-GCM scheme as
+  /// TelemetryConnection.credentials (see packages/webhook telemetry/
+  /// credentials.ts, TELEMETRY_ENCRYPTION_KEY). Nullable: a local/self-hosted
+  /// connection (e.g. an Ollama endpoint) authenticates by baseUrl alone and
+  /// carries no key. Never returned by the API and never logged.
+  apiKeyEncrypted String?
+  /// Model identifier passed through to the provider, e.g. "gpt-4o" or
+  /// "claude-opus-4".
+  model          String
+  /// Optional custom base URL for self-hosted / proxied / Azure-style
+  /// deployments. When null the provider's default endpoint is used.
+  baseUrl        String?
+  createdAt      DateTime     @default(now())
+  installation   Installation? @relation(fields: [installationId], references: [id])
+
+  @@unique([installationId, provider])
+  @@unique([userId, provider])
+  @@index([userId])
+}
+
+/// A persistent Issue Container: the server-side unit the Fix workflow advances
+/// through its lifecycle (open -> solution proposed -> approved -> staged). It is
+/// tenant-scoped and gate-enforced — POST /staging/send only opens a PR once
+/// gates.solutionApprovedAt is set. The dashboard/driver populate it (create /
+/// advance / approve); the webhook lane reads it (loadApprovedContainer), always
+/// scoped by installationId. Eng1 owns the definition.
+model IssueContainer {
+  id             String       @id @default(uuid())
+  installationId String
+  /// Lifecycle state, e.g. "open" | "solution_proposed" | "approved" | "staged".
+  state          String       @default("open")
+  /// Server-side gates. Shape: { "solutionApprovedAt": ISO8601 | null }. The
+  /// technical sign-off that unlocks PR staging.
+  gates          Json
+  /// PR target repository. Shape: { "owner": "...", "repo": "..." }.
+  target         Json
+  /// PR metadata. Shape: { "base": "main", "title": "...", "body": "..." }.
+  pr             Json
+  /// The staged patch files (StagedPatchFile[]) the PR renders — the diff.
+  patch          Json
+  /// The review findings this container was opened from (informational source
+  /// of the proposed fix). Shape: provider-specific finding objects.
+  findings       Json
+  /// The live fix-drive transcript (SynthStep[]) — real per-stage steps the
+  /// console replays for a fix-born container. Null until a fix run writes it;
+  /// never synthesized for display (healing-loop spec §4).
+  transcript     Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  installation   Installation @relation(fields: [installationId], references: [id])
+
+  @@index([installationId])
+}
+
+/// One unit of discovered work — the "email" in the Services inbox.
+/// kind: "issue" | "opportunity" | "error" | "pr_finding" (later: "campaign")
+/// source: "scan" | "review" | "telemetry" (later: "catalog")
+/// state: "open" | "fixing" | "staged" | "posted" | "dismissed"
+model WorkItem {
+  id             String   @id @default(uuid())
+  installationId String
+  kind           String
+  source         String
+  title          String
+  detail         String
+  /// [{ "path": "src/x.ts", "line": 12, "excerpt": "..." }] — REAL refs only.
+  evidence       Json
+  /// One of the six review dimensions (security, performance, quality,
+  /// test_coverage, deployment_safety, business_logic).
+  dimension      String
+  confidence     Float
+  state          String   @default("open")
+  /// Dedup key: sha256 of installationId + dimension + sorted evidence paths.
+  fingerprint    String
+  containerId    String?
+  scanRunId      String?
+  /// Consecutive fix_failed count for this item's healing runs (Phase 2 Task 6
+  /// cooldown). Incremented atomically alongside the `state: "open"` write in
+  /// driveFix's fail() path; reset to 0 by a successful drive. Added rather
+  /// than derived: each "Fix it" click creates a BRAND NEW IssueContainer
+  /// (work-items/[id]/fix route) and IssueContainer carries no back-reference
+  /// to the WorkItem that spawned it, so once a retry overwrites
+  /// WorkItem.containerId the prior (possibly failed) container becomes
+  /// unreachable from here — there is no query that reconstructs "how many
+  /// times in a row has this item failed" from existing rows.
+  fixFailureCount Int      @default(0)
+  /// Timestamp of the most recent fix_failed outcome. Deliberately NOT derived
+  /// from `updatedAt`: scan/trigger.ts and review-sync.ts both refresh an
+  /// open WorkItem's title/detail/confidence/scanRunId on every re-scan pass
+  /// that still matches its fingerprint, which would reset `updatedAt` and
+  /// silently corrupt the cooldown clock if that were the timestamp used.
+  fixFailureAt   DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([installationId, fingerprint])
+  @@index([installationId, state])
+}
+
+/// An alert-born incident. Created by the Alertmanager receiver, resolved when
+/// the alert clears. One row per (installationId, fingerprint) — Alertmanager
+/// re-sends the same firing alert on its repeat interval, and every resend must
+/// land on the same row rather than opening a new incident.
+model Incident {
+  id             String       @id @default(uuid())
+  installationId String
+  /// Alertmanager's own fingerprint for the alert instance. The idempotency key.
+  fingerprint    String
+  alertName      String
+  severity       String       /// "critical" | "warning"
+  /// "firing" | "resolved"
+  status         String       @default("firing")
+  summary        String
+  /// Alert labels + annotations as received. Scrubbed before write (Task 3).
+  payload        Json
+  startsAt       DateTime
+  resolvedAt     DateTime?
+  /// A human triaged this incident as noise (non-actionable). Null = not noise.
+  /// Orthogonal to status: Alertmanager owns firing/resolved and never touches
+  /// this; a human owns noise via the dashboard, so a re-fire can't undo it.
+  noisedAt       DateTime?
+  /// How the incident was opened: "alert" (the Alertmanager receiver) or
+  /// "manual" (a New investigation a user opened by hand).
+  source         String       @default("alert")
+  /// Set when this incident opened a fix run. Null if it never did.
+  workItemId     String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  installation   Installation @relation(fields: [installationId], references: [id])
+  /// Error groups a human attached to this incident — the "resolve these
+  /// together" set. Correlation by time window is derived at read time and is
+  /// NOT stored; only a confirmed attachment lands here.
+  errorGroups    ErrorGroup[]
+
+  @@unique([installationId, fingerprint])
+  @@index([installationId, status])
+}
+
+/// Human triage state for a runtime error group.
+///
+/// THE EVENTS ARE NOT HERE. Individual error events live in ClickHouse
+/// (superlog.otel_traces exception spans + superlog.otel_logs, 30-day TTL) and
+/// remain the only source of truth for counts, first/last seen, and traces. This
+/// table stores solely what a human decided, keyed by the deterministic
+/// fingerprint of the normalized error message. A group with no row here is
+/// implicitly "open" — absence is a valid state, so nothing is written until a
+/// person acts.
+///
+/// Scoped by installation like every other tenant surface. Today's error events
+/// are Kuma's own self-telemetry (platform-scoped, exactly like alert-born
+/// Incidents); when tenant OTLP ingest lands (Phase 3) the fingerprints become
+/// tenant-scoped and this table needs no change.
+model ErrorGroup {
+  id             String       @id @default(uuid())
+  installationId String
+  /// 16-char sha256 of the normalized (service, error message) pair — see
+  /// packages/dashboard/src/lib/error-fingerprint.ts.
+  fingerprint    String
+  /// "open" | "observing" | "resolved" | "silenced". Default open mirrors the
+  /// implicit state of a group that has no row yet.
+  status         String       @default("open")
+  /// Set when a human attaches this error to an incident, so resolving the
+  /// incident can resolve its errors together.
+  incidentId     String?
+  attachedAt     DateTime?
+  resolvedAt     DateTime?
+  silencedAt     DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  installation   Installation @relation(fields: [installationId], references: [id])
+  incident       Incident?    @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+
+  @@unique([installationId, fingerprint])
+  @@index([installationId, status])
+  @@index([incidentId])
+}
+
+/// One scan execution — honest status, always recorded.
+/// status: "running" | "complete" | "failed" | "no_findings"
+model ScanRun {
+  id             String    @id @default(uuid())
+  installationId String
+  repositoryId   String
+  status         String    @default("running")
+  error          String?
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+
+  @@index([installationId, startedAt])
+}
+
+/// One turn (user message or agent reply) in a specialist agent's chat
+/// (packages/dashboard /api/agents/[id]/chat). Solution-scoped: containerId
+/// ties a thread to the specific IssueContainer/problem it was opened for —
+/// switching to a different work item starts a fresh thread for the same
+/// agent. containerId is null for the "general" thread (no work item open).
+/// A plain scoping column (installationId, containerId — no @relation),
+/// mirroring WorkItem/ScanRun: high-volume, append-only, no need to traverse
+/// from Installation/IssueContainer.
+/// Per-installation settings for one specialist review agent.
+///
+/// The config drawer's controls were local React state marked "deliberately NOT
+/// persisted", so every one of them reset on close — a parameter control that
+/// cannot outlive the panel it lives in is decoration. This is where they live.
+///
+/// Tenant-scoped on purpose: `installationId` is not optional, because tenancy
+/// is a security boundary and an unscoped config row is one installation reading
+/// another's settings. Keyed on `(installationId, agentId)` so a save is an
+/// upsert and two rows can never disagree about one agent.
+///
+/// Absence is meaningful and is NOT an error: an agent with no row runs on the
+/// defaults below. That keeps every existing installation working unchanged
+/// after this migration, with no backfill.
+model AgentConfig {
+  id                String   @id @default(uuid())
+  installationId    String
+  /// Matches an Agent.id from the dashboard's agent catalog, e.g. "security" —
+  /// same convention as AgentChatTurn.agentId. Deliberately not a foreign key:
+  /// the catalog is code, not a table.
+  agentId           String
+  /// Whether this agent runs on every pull request.
+  enabled           Boolean  @default(true)
+  /// "info" | "warning" | "error" — only post findings at or above this.
+  severityThreshold String   @default("warning")
+  /// Free-text steer appended to the agent's brief. Empty means no steer.
+  guidance          String   @default("")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([installationId, agentId])
+  @@index([installationId])
+}
+
+model AgentChatTurn {
+  id             String   @id @default(uuid())
+  installationId String
+  /// Matches an Agent.id from the dashboard's agent catalog, e.g. "security".
+  agentId        String
+  containerId    String?
+  /// "user" | "agent"
+  role           String
+  text           String
+  createdAt      DateTime @default(now())
+
+  @@index([installationId, agentId, containerId, createdAt])
+}
+
 model Repository {
   id             String       @id @default(uuid())
   provider       ScmProvider
@@ -90,6 +388,10 @@ model Review {
   headSha        String
   /// "complete" | "failed" — mirrors ReviewResult.analysis_status.
   analysisStatus String          @default("complete")
+  /// Per-specialist tiered-comms status (ReviewResult.agent_statuses):
+  /// AgentStatus[] { agent, status, summary, confidence, blockers[] }. Real run
+  /// state only — empty/absent when the agents emitted none (never synthesized).
+  agentStatuses  Json?
   createdAt      DateTime        @default(now())
   repository     Repository      @relation(fields: [repositoryId], references: [id])
   comments       ReviewComment[]
@@ -109,23 +411,40 @@ model ReviewComment {
   category         String
   
   // Noise Classification Fields
-  noiseState       String   @default("OPEN") // "OPEN", "SILENCED", "UNDER_OBSERVATION"
+  noiseState       String   @default("OPEN") // "OPEN", "SILENCED", "UNDER_OBSERVATION", "ESCALATED"
   escalateOn       String?  // "events_per_minute", "additional_events"
   threshold        Int?     // Threshold value for escalation
-  
+  occurrenceCount  Int      @default(1) // Times a matching (repo, path, category) issue has recurred while UNDER_OBSERVATION
+
   createdAt        DateTime @default(now())
   review           Review   @relation(fields: [reviewId], references: [id])
+
+  /// Added Phase 2 Task 12 (measured): this table carried ONLY its primary
+  /// key -- no index on the FK every dashboard read joins through (queries.ts
+  /// getDashboardViewModel/getDashboardsViewModel/getAgentActivity/
+  /// getFindingsByPath all join Review->ReviewComment on reviewId). At a
+  /// synthetic 75k-row seed, EXPLAIN ANALYZE showed Postgres sequential-
+  /// scanning the whole table for every one of those reads (33-72ms each;
+  /// see docs/roadmap/2026-07-21-phase-2-efficiency-review.md Task 12 for the
+  /// full before/after). A single index on the join column is the smallest
+  /// change that removes the seq scan from all of them at once.
+  @@index([reviewId])
 }
 
 model ApprovalPrompt {
-  id        String   @id @default(uuid())
-  reviewId  String
-  command   String   // The AWS CLI or bash command to execute
-  reason    String   // Explanation presented to the human
-  status    String   @default("PENDING") // PENDING, APPROVED, REJECTED
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  review    Review   @relation(fields: [reviewId], references: [id])
+  id         String    @id @default(uuid())
+  reviewId   String
+  command    String    // The AWS CLI or bash command to execute
+  reason     String    // Explanation presented to the human
+  status     String    @default("PENDING") // PENDING, APPROVED, REJECTED, EXECUTED
+  /// Set the moment the human-approved command is durably accepted for
+  /// execution (POST /api/approvals/:id/execute). Distinct from updatedAt
+  /// (which changes on any write): a non-null executedAt is the authoritative
+  /// "this approval has been actioned" marker and the endpoint's idempotency key.
+  executedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  review     Review    @relation(fields: [reviewId], references: [id])
 }
 
 model AgentMemory {
@@ -180,6 +499,26 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   accounts      Account[]
+  installationAccess InstallationAccess[]
+}
+
+/// Durable ownership link: this User is authorized for this Installation.
+/// Written at connect time (the GitHub-link callback) and write-through on a
+/// successful live derivation, so login can prefer the stored row instead of
+/// re-deriving the mapping from the GitHub API on every refresh (that live
+/// derivation is kept only as a fallback). Fixes the connection-reset incident,
+/// where a transient GitHub API failure dropped a tenant's installations.
+model InstallationAccess {
+  id             String       @id @default(uuid())
+  userId         String
+  installationId String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, installationId])
+  @@index([userId])
 }
 
 model Account {
@@ -194,4 +533,53 @@ model Account {
   user              User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+}
+
+/// A customer-registered outbound webhook destination, scoped to an
+/// Installation (tenant). Areté POSTs signed `review.*` events here. The
+/// `secret` is a `whsec_`-prefixed random string shown once at creation and
+/// used to HMAC-sign every delivery (see packages/webhook/src/outbound/
+/// signature.ts) — it is never returned by list/get endpoints and never logged.
+model WebhookEndpoint {
+  id             String            @id @default(uuid())
+  installationId String
+  /// Destination URL. Must be http(s) and is validated against the SSRF guard
+  /// (packages/net-guard) at create time and again before every delivery.
+  url            String
+  /// `whsec_`-prefixed HMAC secret. Write-once semantics at the API layer.
+  secret         String
+  /// Subscribed events, a subset of ["review.created", "review.updated"].
+  events         String[]
+  enabled        Boolean           @default(true)
+  createdAt      DateTime          @default(now())
+  installation   Installation      @relation(fields: [installationId], references: [id])
+  deliveries     WebhookDelivery[]
+
+  @@index([installationId])
+}
+
+/// One delivery attempt-set for a single event to a single endpoint. `id` is
+/// the value sent in the `Arete-Delivery` header and is stable across retries,
+/// so the receiver can use it as an idempotency key. `attempts`/`nextAttempt`
+/// drive the retry curve in packages/webhook/src/outbound/backoff.ts.
+model WebhookDelivery {
+  id          String          @id @default(uuid())
+  endpointId  String
+  event       String
+  payload     Json
+  /// "pending" | "delivered" | "failed"
+  status      String          @default("pending")
+  attempts    Int             @default(0)
+  /// HTTP status of the last attempt (null if the request never got a response).
+  lastCode    Int?
+  /// Short error string of the last failed attempt (never contains the secret).
+  lastError   String?
+  /// When the next retry is due; null once delivered or permanently failed.
+  nextAttempt DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  endpoint    WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@index([endpointId, status])
+  @@index([status, nextAttempt])
 }

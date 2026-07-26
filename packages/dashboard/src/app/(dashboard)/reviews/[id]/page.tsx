@@ -6,6 +6,13 @@ import { getReviewDetail, resolveSelectedInstallationIds } from "@/lib/queries";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 import { CopyAgentPrompt } from "@/components/dashboard/copy-agent-prompt";
 import { IconArrowLeft, IconSparkles } from "@tabler/icons-react";
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+import { AgentRunExplorer } from "@/components/dashboard/agent-run-explorer";
+import { FindingNoiseControl } from "@/components/dashboard/finding-noise-control";
+*/
+/* --- END MERGE --- */
 
 export const dynamic = "force-dynamic";
 
@@ -79,11 +86,29 @@ export default async function ReviewDetailPage({
     );
   }
 
+/* --- MERGED: PRESERVING UI (HEAD) --- */
   // Paste-ready prompt for a coding agent, from the real verified findings.
   const agentPrompt = [
     `Fix the following ${review.findings.length} code review ${review.findings.length === 1 ? "finding" : "findings"} on ${review.repositoryFullName} (PR #${review.prNumber}):`,
     "",
     ...review.findings.map(
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+  // Silencing has to MEAN something, or the control is decoration: a finding a
+  // human called noise stops driving the agent prompt below, exactly as it
+  // already stops driving the code map (getFindingsByPath filters to OPEN).
+  // The silenced rows are still rendered — hidden findings would be a different
+  // and worse lie — just marked and de-emphasised.
+  const actionable = review.findings.filter((f) => f.noiseState !== "SILENCED");
+  const silencedCount = review.findings.length - actionable.length;
+
+  // Paste-ready prompt for a coding agent, from the real verified findings.
+  const agentPrompt = [
+    `Fix the following ${actionable.length} code review ${actionable.length === 1 ? "finding" : "findings"} on ${review.repositoryFullName} (PR #${review.prNumber}):`,
+    "",
+    ...actionable.map(
+*/
+/* --- END MERGE --- */
       (f, i) => `${i + 1}. [${formatCategory(f.category)} · ${f.severity}] ${f.path}:${f.line}\n   ${f.body}`,
     ),
   ].join("\n");
@@ -91,8 +116,11 @@ export default async function ReviewDetailPage({
   return (
     <PageReveal className="max-w-5xl space-y-6">
       <RevealItem>
+        {/* /overview, not / — the root is the marketing page, and a link
+            labelled "Back to Overview" that leaves the product is a lie about
+            where it goes. The not-found branch above already pointed here. */}
         <Link
-          href="/"
+          href="/overview"
           className="inline-flex items-center gap-1.5 text-sm text-content-muted hover:text-content-secondary transition-colors mb-4"
         >
           <IconArrowLeft className="w-4 h-4" />
@@ -114,7 +142,13 @@ export default async function ReviewDetailPage({
               <IconSparkles size={14} stroke={1.75} aria-hidden />
               View in Synthesizer
             </Link>
+/* --- MERGED: PRESERVING UI (HEAD) --- */
             {review.findings.length > 0 && <CopyAgentPrompt prompt={agentPrompt} />}
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+            {actionable.length > 0 && <CopyAgentPrompt prompt={agentPrompt} />}
+*/
+/* --- END MERGE --- */
             <span
               className={`px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wide border shrink-0 ${riskBadgeClasses(review.riskLevel)}`}
             >
@@ -130,7 +164,14 @@ export default async function ReviewDetailPage({
           <MetaRow label="Status" value={review.analysisStatus} />
           <MetaRow label="Repository" value={review.repositoryFullName} mono />
           <MetaRow label="Pull request" value={`#${review.prNumber}`} mono />
-          <MetaRow label="Findings" value={review.findings.length.toString()} />
+          <MetaRow
+            label="Findings"
+            value={
+              silencedCount > 0
+                ? `${actionable.length} open · ${silencedCount} silenced`
+                : review.findings.length.toString()
+            }
+          />
           <MetaRow
             label="Reviewed"
             value={new Date(review.createdAt).toLocaleString(undefined, {
@@ -149,37 +190,65 @@ export default async function ReviewDetailPage({
             </p>
           </div>
 
+          <div className="glass-panel p-5 overflow-hidden">
+            <h2 className="text-sm font-semibold text-content-primary mb-4">Agent Run Explorer</h2>
+            <AgentRunExplorer findings={review.findings} />
+          </div>
+
           <div className="glass-panel p-5">
             <h2 className="text-sm font-semibold text-content-primary mb-4">
-              Findings <span className="text-content-muted font-normal">({review.findings.length})</span>
+              Findings{" "}
+              <span className="text-content-muted font-normal">
+                ({review.findings.length}
+                {silencedCount > 0 ? `, ${silencedCount} silenced` : ""})
+              </span>
             </h2>
             {review.findings.length === 0 ? (
               <p className="text-sm text-content-muted">No findings on this review.</p>
             ) : (
               <div className="space-y-3">
-                {review.findings.map((finding) => (
-                  <div
-                    key={finding.id}
-                    className="border border-border-subtle rounded-xl p-4 flex flex-col gap-2"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-mono text-content-secondary truncate">
-                        {finding.path}:{finding.line}
-                      </span>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-[10px] font-medium text-content-muted border border-border-subtle rounded-full px-2 py-0.5">
-                          {formatCategory(finding.category)}
+                {review.findings.map((finding) => {
+                  const silenced = finding.noiseState === "SILENCED";
+                  return (
+                    <div
+                      key={finding.id}
+                      className={`border border-border-subtle rounded-xl p-4 flex flex-col gap-2 ${
+                        silenced ? "opacity-55" : ""
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-mono text-content-secondary truncate">
+                          {finding.path}:{finding.line}
                         </span>
-                        <span
-                          className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border ${severityBadgeClasses(finding.severity)}`}
-                        >
-                          {finding.severity}
-                        </span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[10px] font-medium text-content-muted border border-border-subtle rounded-full px-2 py-0.5">
+                            {formatCategory(finding.category)}
+                          </span>
+                          <span
+                            className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border ${severityBadgeClasses(finding.severity)}`}
+                          >
+                            {finding.severity}
+                          </span>
+                        </div>
+                      </div>
+                      <p className="text-sm text-content-secondary">{finding.body}</p>
+                      <div className="flex items-end justify-between gap-3 pt-1">
+                        {/* Says plainly what silencing does and does not reach.
+                            A comment already posted to GitHub stays posted —
+                            the poster's noiseState filter ran before this. */}
+                        <p className="text-[10px] leading-4 text-content-muted">
+                          {silenced
+                            ? "Silenced — excluded from the code map and the agent prompt. Any comment already posted to GitHub stays posted."
+                            : ""}
+                        </p>
+                        <FindingNoiseControl
+                          findingId={finding.id}
+                          noiseState={finding.noiseState}
+                        />
                       </div>
                     </div>
-                    <p className="text-sm text-content-secondary">{finding.body}</p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

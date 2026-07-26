@@ -1,0 +1,221 @@
+# promtool rule tests for infra/prometheus-rules/arete-alerts.yml
+#
+# Series names verified live against the running collector's Prometheus
+# exporter (http://localhost:8889/metrics), NOT guessed from the OTel-side
+# instrument names. The exporter lowercases dots to underscores and suffixes
+# counters with `_total`:
+#   arete.review.runs       -> arete_review_runs_total
+#   arete.review.duration   -> arete_review_duration_seconds_{bucket,sum,count}
+#   arete.queue.jobs        -> arete_queue_jobs_total
+#
+# Each rule below gets three scenarios: a clear fire, a clear non-fire, and a
+# boundary case just under the threshold that must stay silent (the mutation
+# test for this gate — Global Constraint 10).
+
+rule_files:
+  - arete-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ---------------------------------------------------------------------
+  # AreteReviewErrorRate — ratio of failed review runs > 10% for 10m
+  # ---------------------------------------------------------------------
+
+  # Clearly fires: 20% failure ratio, sustained.
+  - interval: 1m
+    input_series:
+      - series: 'arete_review_runs_total{outcome="failure",trigger="pull_request"}'
+        values: '0+20x45'
+      - series: 'arete_review_runs_total{outcome="success",trigger="pull_request"}'
+        values: '0+80x45'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: AreteReviewErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: 'Arete review error rate above 10%'
+              description: >-
+                More than 10% of PR review runs have failed over the last 15
+                minutes. This can indicate a broken review pipeline, an LLM
+                provider outage, or a regression in the worker service.
+              runbook_url: 'https://github.com/arete/runbooks/blob/main/review-error-rate.md'
+
+  # Clearly does not fire: 2% failure ratio.
+  - interval: 1m
+    input_series:
+      - series: 'arete_review_runs_total{outcome="failure",trigger="pull_request"}'
+        values: '0+2x45'
+      - series: 'arete_review_runs_total{outcome="success",trigger="pull_request"}'
+        values: '0+98x45'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: AreteReviewErrorRate
+        exp_alerts: []
+
+  # Boundary (mutation test): 9.9% failure ratio — just under the 10%
+  # threshold. Must stay silent for the entire run.
+  - interval: 1m
+    input_series:
+      - series: 'arete_review_runs_total{outcome="failure",trigger="pull_request"}'
+        values: '0+99x45'
+      - series: 'arete_review_runs_total{outcome="success",trigger="pull_request"}'
+        values: '0+901x45'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: AreteReviewErrorRate
+        exp_alerts: []
+
+  # ---------------------------------------------------------------------
+  # AreteReviewLatencyP95 — p95 review duration > 180s for 15m
+  # ---------------------------------------------------------------------
+
+  # Clearly fires: almost all reviews land in the (180,300] bucket ->
+  # p95 ~= 293s.
+  - interval: 1m
+    input_series:
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="1"}'
+        values: '0+0x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="2"}'
+        values: '0+0x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="5"}'
+        values: '0+0x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="10"}'
+        values: '0+0x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="30"}'
+        values: '0+0x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="60"}'
+        values: '0+0x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="120"}'
+        values: '0+0x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="180"}'
+        values: '0+10x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="300"}'
+        values: '0+100x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="+Inf"}'
+        values: '0+100x45'
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: AreteReviewLatencyP95
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: 'Arete review p95 latency above 180s'
+              description: >-
+                The 95th percentile PR review duration has exceeded 180
+                seconds for 15 minutes. Reviews may still be succeeding but
+                are degrading — invisible to error-rate alerting alone.
+              runbook_url: 'https://github.com/arete/runbooks/blob/main/review-latency.md'
+
+  # Clearly does not fire: all reviews land in the first (<=1s) bucket.
+  - interval: 1m
+    input_series:
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="1"}'
+        values: '0+100x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="2"}'
+        values: '0+100x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="5"}'
+        values: '0+100x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="10"}'
+        values: '0+100x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="30"}'
+        values: '0+100x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="60"}'
+        values: '0+100x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="120"}'
+        values: '0+100x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="180"}'
+        values: '0+100x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="300"}'
+        values: '0+100x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="+Inf"}'
+        values: '0+100x45'
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: AreteReviewLatencyP95
+        exp_alerts: []
+
+  # Boundary (mutation test): bucket shape engineered so
+  # histogram_quantile(0.95, ...) lands at ~178.8s — just under the 180s
+  # threshold. Must stay silent for the entire run.
+  # rank = 0.95 * 1000 = 950; segment (120,180] has c(120)=900, c(180)=951
+  # -> value = 120 + (950-900)/(951-900) * (180-120) = 120 + 58.82 = 178.82
+  - interval: 1m
+    input_series:
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="1"}'
+        values: '0+0x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="2"}'
+        values: '0+0x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="5"}'
+        values: '0+0x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="10"}'
+        values: '0+0x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="30"}'
+        values: '0+0x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="60"}'
+        values: '0+0x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="120"}'
+        values: '0+900x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="180"}'
+        values: '0+951x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="300"}'
+        values: '0+1000x45'
+      - series: 'arete_review_duration_seconds_bucket{outcome="success",trigger="pull_request",le="+Inf"}'
+        values: '0+1000x45'
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: AreteReviewLatencyP95
+        exp_alerts: []
+
+  # ---------------------------------------------------------------------
+  # AreteQueueFailureRate — ratio of failed queue jobs > 10% for 10m, per queue
+  # ---------------------------------------------------------------------
+
+  # Clearly fires: 30% failure ratio on fix-drive.
+  - interval: 1m
+    input_series:
+      - series: 'arete_queue_jobs_total{queue="fix-drive",outcome="failed"}'
+        values: '0+30x45'
+      - series: 'arete_queue_jobs_total{queue="fix-drive",outcome="completed"}'
+        values: '0+70x45'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: AreteQueueFailureRate
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              queue: fix-drive
+            exp_annotations:
+              summary: 'Arete queue job failure rate above 10% (fix-drive)'
+              description: >-
+                More than 10% of jobs on the fix-drive queue have failed
+                over the last 15 minutes.
+              runbook_url: 'https://github.com/arete/runbooks/blob/main/queue-failure-rate.md'
+
+  # Clearly does not fire: 1% failure ratio on review-pr.
+  - interval: 1m
+    input_series:
+      - series: 'arete_queue_jobs_total{queue="review-pr",outcome="failed"}'
+        values: '0+1x45'
+      - series: 'arete_queue_jobs_total{queue="review-pr",outcome="completed"}'
+        values: '0+99x45'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: AreteQueueFailureRate
+        exp_alerts: []
+
+  # Boundary (mutation test): 9.9% failure ratio on review-pr — must stay
+  # silent for the entire run.
+  - interval: 1m
+    input_series:
+      - series: 'arete_queue_jobs_total{queue="review-pr",outcome="failed"}'
+        values: '0+99x45'
+      - series: 'arete_queue_jobs_total{queue="review-pr",outcome="completed"}'
+        values: '0+901x45'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: AreteQueueFailureRate
+        exp_alerts: []

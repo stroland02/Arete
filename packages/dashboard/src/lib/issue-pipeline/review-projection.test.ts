@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { reviewToContainer, type ProjectedReview } from "./review-projection";
 import { assertPrIntegrity } from "./pipeline";
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+import { projectStatusBoard } from "./status-board";
+*/
+/* --- END MERGE --- */
 
 function review(over: Partial<ProjectedReview> = {}): ProjectedReview {
   return {
@@ -37,6 +43,36 @@ describe("reviewToContainer", () => {
     expect(c.findings.map((f) => f.agentId)).toEqual(["security", "performance"]); // category == agent id
   });
 
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+  it("emits status-board report steps from persisted agentStatuses (real state only)", () => {
+    const c = reviewToContainer(
+      review({
+        agentStatuses: [
+          { agent: "security", status: "done", summary: "No injection paths.", confidence: 0.9, blockers: [] },
+          { agent: "performance", status: "blocked", summary: "Needs a query plan.", confidence: 0.4, blockers: ["missing index"] },
+          // Unmappable agent/status is DROPPED, never coerced (anti-fabrication).
+          { agent: "not-a-dimension", status: "done", summary: "x", confidence: 1 },
+        ],
+      }),
+      "inst-1",
+    );
+    const board = projectStatusBoard(c.transcript);
+    expect(board.map((r) => r.agentId).sort()).toEqual(["performance", "security"]);
+    const perf = board.find((r) => r.agentId === "performance")!;
+    expect(perf.status).toBe("blocked");
+    expect(perf.confidence).toBe(0.4);
+    expect(perf.topBlocker).toBe("missing index");
+  });
+
+  it("produces an empty status board when the review stored no agent statuses", () => {
+    const c = reviewToContainer(review(), "inst-1");
+    expect(projectStatusBoard(c.transcript)).toHaveLength(0);
+  });
+
+*/
+/* --- END MERGE --- */
   it("reconstructs a dispatch → (verify,keep)* → compose → posted transcript, no dropped", () => {
     const c = reviewToContainer(review(), "inst-1");
     const kinds = c.transcript.map((s) => s.kind);

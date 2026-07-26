@@ -1,0 +1,23 @@
+{
+  "_comment": "TEST DATA — a synthetic PRContext for the Beancount sandbox customer, matching packages/agents PRContext. Fed to POST /review by run-review.mjs. The diff introduces the catalogued defects so a real review has something to find.",
+  "repo": "kuma-sandbox/beancount",
+  "pr_number": 7,
+  "title": "Add expense search + paginated listing and a category report",
+  "description": "Adds GET /expenses (paginated), GET /expenses/search, and GET /reports/summary for the new dashboard. First pass — feedback welcome.",
+  "files": [
+    {
+      "path": "app/api/expenses.ts",
+      "additions": 18,
+      "deletions": 0,
+      "patch": "@@ -0,0 +1,18 @@\n+import { EXPENSES, rawQuery, type Expense } from \"../data/db.ts\";\n+\n+export function listExpenses(page = 1, limit = 10) {\n+  const offset = page * limit;\n+  const items = EXPENSES.slice(offset, offset + limit);\n+  return { page, limit, total: EXPENSES.length, items };\n+}\n+\n+export function searchExpenses(term: string): Expense[] {\n+  const sql = `SELECT * FROM expenses WHERE description LIKE '%${term}%'`;\n+  return rawQuery(sql);\n+}\n"
+    },
+    {
+      "path": "app/api/reports.ts",
+      "additions": 12,
+      "deletions": 0,
+      "patch": "@@ -0,0 +1,12 @@\n+import { CATEGORIES, EXPENSES } from \"../data/db.ts\";\n+\n+export function summarize(expenses = EXPENSES, categories = CATEGORIES) {\n+  return categories.map((category) => {\n+    const forCategory = expenses.filter((e) => e.categoryId === category.id);\n+    const totalCents = forCategory.reduce((sum, e) => sum + e.amountCents, 0);\n+    return { category: category.name, totalCents, count: forCategory.length };\n+  });\n+}\n"
+    }
+  ],
+  "custom_rules": [],
+  "ci_logs": "FLAKY: app/api/__tests__/reports.test.ts > 'this month's expenses roll up under the current month bucket' failed on CI run #482 (passed on re-run). AssertionError: 5 !== 6"
+}

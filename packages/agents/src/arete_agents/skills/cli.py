@@ -4,6 +4,7 @@ from typing import List
 
 from .manager import SkillManager
 
+
 def handle_skills_cli(args: List[str]) -> None:
     parser = argparse.ArgumentParser(prog="arete-agents skills", description="Manage Areté skills")
     subparsers = parser.add_subparsers(dest="command", required=True)

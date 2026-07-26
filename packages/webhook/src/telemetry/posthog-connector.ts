@@ -1,6 +1,8 @@
 import type { ConnectorResult } from './connector-result.js'
 import { assertAllowedTelemetryHost } from './ssrf-guard.js'
 
+import { webhookFetch } from '@arete/net-guard'
+
 const POSTHOG_QUERY_URL = 'https://app.posthog.com/api/query'
 const FETCH_TIMEOUT_MS = 8_000
 
@@ -25,7 +27,7 @@ export async function fetchPostHogSnapshot(
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
 
   try {
-    const res = await fetch(POSTHOG_QUERY_URL, {
+    const res = await webhookFetch(POSTHOG_QUERY_URL, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${credentials.apiKey}`,

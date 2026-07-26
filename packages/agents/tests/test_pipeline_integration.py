@@ -12,7 +12,6 @@ without any network access.
 
 import json
 import re
-
 from unittest.mock import MagicMock
 
 from langchain_core.messages import AIMessage

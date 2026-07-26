@@ -13,6 +13,12 @@ const ALL_STATES: ContainerState[] = [
   "changes_requested",
   "merged",
   "dismissed",
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+  "fix_failed",
+*/
+/* --- END MERGE --- */
 ];
 
 describe("phaseOf", () => {
@@ -28,6 +34,12 @@ describe("phaseOf", () => {
       changes_requested: "done",
       merged: "done",
       dismissed: "dismissed",
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+      fix_failed: "dismissed",
+*/
+/* --- END MERGE --- */
     };
     for (const s of ALL_STATES) expect(phaseOf(s)).toBe(expected[s]);
   });

@@ -19,7 +19,14 @@ export async function postReview(
 ): Promise<void> {
   const allComments = result.file_reviews.flatMap((fr) => fr.comments)
 
-  const validComments = allComments
+  // Noise Classification (SP6): silenced/observed findings are excluded from
+  // the GitHub post but still persisted (see persistence.ts's persistReview)
+  // -- this is what makes silence_as_noise/place_under_observation's own
+  // documented promise ("never posted to GitHub" / "stays quiet until the
+  // escalation trigger trips") literally true.
+  const openComments = allComments.filter((c) => (c.noise_state ?? 'OPEN') === 'OPEN')
+
+  const validComments = openComments
     .filter((c) => c.line >= 1 && c.line <= MAX_VALID_LINE)
 
   // Superlog-inspired Fingerprinting: Group identical semantic comments in the same file

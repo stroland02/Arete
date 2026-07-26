@@ -1,5 +1,6 @@
 "use client";
 
+/* --- MERGED: PRESERVING UI (HEAD) --- */
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { IconSettings, IconSend, IconArrowRight } from "@tabler/icons-react";
@@ -9,6 +10,18 @@ import { cn } from "@/lib/utils";
 
 const TIER_LABEL = { opus: "Opus", sonnet: "Sonnet" } as const;
 
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import Link from "next/link";
+import { IconSettings, IconSend, IconArrowRight, IconCpu } from "@tabler/icons-react";
+import type { Agent } from "./agent-catalog";
+import type { AgentActivityFinding } from "@/lib/queries";
+import type { ActiveModelConnection } from "@/lib/model-connections-map";
+import { cn } from "@/lib/utils";
+
+*/
+/* --- END MERGE --- */
 const SEV_PILL: Record<string, string> = {
   error: "text-accent-danger border-accent-danger/30 bg-accent-danger/10",
   warning: "text-accent-warning border-accent-warning/30 bg-accent-warning/10",
@@ -25,6 +38,23 @@ export interface AgentConversationProps {
   findings: AgentActivityFinding[];
   findingCount: number;
   hasReviews: boolean;
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+  /** Whether a repository is connected. */
+  repoConnected?: boolean;
+  /** Whether an AI model is connected — what the agent actually needs to run. */
+  modelConnected?: boolean;
+  /** The model this agent runs on. Replaces the old hardcoded Opus/Sonnet tier —
+   *  every agent runs on the tenant's connected model today, so it's shown live. */
+  activeModel?: ActiveModelConnection | null;
+  /** The work item/problem this chat is scoped to (Services deep-link), or
+   *  null for the agent's "general" thread. A different containerId is a
+   *  different, fresh conversation — the parent remounts this component (key)
+   *  when it changes, and history is (re)loaded for the new scope. */
+  containerId?: string | null;
+*/
+/* --- END MERGE --- */
   onConfigure: (agentId: string) => void;
 }
 
@@ -36,11 +66,48 @@ export interface AgentConversationProps {
  * service is unreachable the composer surfaces a truthful notice instead of a
  * canned reply.
  */
+/* --- MERGED: PRESERVING UI (HEAD) --- */
 export function AgentConversation({ agent, findings, findingCount, hasReviews, onConfigure }: AgentConversationProps) {
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+export function AgentConversation({ agent, findings, findingCount, hasReviews, repoConnected = false, modelConnected = false, activeModel = null, containerId = null, onConfigure }: AgentConversationProps) {
+*/
+/* --- END MERGE --- */
   const [message, setMessage] = useState("");
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [sending, setSending] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+  // Keep the newest message in view: the scroll region should follow the
+  // conversation to the bottom as turns are appended (and while a reply is
+  // pending), so replies never get cut off below the fold.
+  const bottomRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [turns, sending]);
+
+  // Load this thread's saved history on mount. The parent keys this component
+  // by (agent, containerId), so a fresh mount always means a genuinely
+  // different thread — one effect run per mount is correct, no deps needed.
+  useEffect(() => {
+    let cancelled = false;
+    const qs = containerId ? `?containerId=${encodeURIComponent(containerId)}` : "";
+    fetch(`/api/agents/${agent.id}/chat${qs}`)
+      .then((r) => (r.ok ? r.json() : { turns: [] }))
+      .then((d: { turns?: ChatTurn[] }) => {
+        if (cancelled) return;
+        if (Array.isArray(d.turns) && d.turns.length > 0) setTurns(d.turns);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+*/
+/* --- END MERGE --- */
 
   async function handleSend(e: FormEvent) {
     e.preventDefault();
@@ -54,9 +121,26 @@ export function AgentConversation({ agent, findings, findingCount, hasReviews, o
       const res = await fetch(`/api/agents/${agent.id}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+/* --- MERGED: PRESERVING UI (HEAD) --- */
         body: JSON.stringify({ message: text }),
       });
       if (!res.ok) {
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+        body: JSON.stringify({ message: text, containerId }),
+      });
+      if (!res.ok) {
+        // A classified provider error (402) carries an actionable reason (out
+        // of credits, bad key, …) — surface it as a notice instead of the
+        // generic "service unavailable", so the user knows what to fix.
+        if (res.status === 402) {
+          const data = await res.json().catch(() => ({}));
+          const msg = typeof data.error === "string" ? data.error : "The AI model call failed.";
+          setTurns((t) => [...t, { role: "agent", text: msg }]);
+          return;
+        }
+*/
+/* --- END MERGE --- */
         setUnavailable(true);
         return;
       }
@@ -82,9 +166,23 @@ export function AgentConversation({ agent, findings, findingCount, hasReviews, o
           aria-hidden
         />
         <h2 className="text-xs font-semibold uppercase tracking-wider text-content-secondary">{agent.label}</h2>
+/* --- MERGED: PRESERVING UI (HEAD) --- */
         <span className="rounded-full border border-accent-primary/25 bg-accent-primary/10 px-1.5 py-px text-[10px] font-medium text-accent-primary">
           {TIER_LABEL[agent.tier]}
         </span>
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+        {activeModel && (
+          <span
+            title={`Running on ${activeModel.provider} · ${activeModel.model}`}
+            className="inline-flex max-w-[12rem] items-center gap-1 rounded-full border border-accent-primary/25 bg-accent-primary/10 px-1.5 py-px text-[10px] font-medium text-accent-primary"
+          >
+            <IconCpu size={11} aria-hidden />
+            <span className="truncate font-mono">{activeModel.model}</span>
+          </span>
+        )}
+*/
+/* --- END MERGE --- */
         <span className="ml-auto truncate font-mono text-[11px] text-content-muted">{status}</span>
         <button
           type="button"
@@ -96,7 +194,13 @@ export function AgentConversation({ agent, findings, findingCount, hasReviews, o
         </button>
       </header>
 
+/* --- MERGED: PRESERVING UI (HEAD) --- */
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+      <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-3 py-3">
+*/
+/* --- END MERGE --- */
         {findings.length > 0 ? (
           <ol className="space-y-2">
             <li className="pb-1 text-[10px] uppercase tracking-wider text-content-muted">
@@ -125,12 +229,31 @@ export function AgentConversation({ agent, findings, findingCount, hasReviews, o
               </li>
             ))}
           </ol>
+/* --- MERGED: PRESERVING UI (HEAD) --- */
         ) : (
           /* No findings in view: preview the agent from real catalog metadata
              (description + what it inspects) rather than a bare empty message,
              so each specialist reads as intentional and complete before any
              repo is connected. Nothing here is fabricated. */
           <div className="flex h-full flex-col gap-4 px-1 py-1">
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+        ) : turns.length > 0 ? (
+          /* A conversation is already running: collapse the full profile/CTA
+             block to one compact line right above the chat instead of the
+             h-full filler below — that filler used to push every turn well
+             below the fold with a dead gap in between. */
+          <p className="border-b border-border-subtle px-1 pb-3 text-[12px] leading-relaxed text-content-muted">
+            {agent.description}
+          </p>
+        ) : (
+          /* No findings, no conversation yet: preview the agent from real
+             catalog metadata (description + what it inspects) rather than a
+             bare empty message, so each specialist reads as intentional and
+             complete before any repo is connected. Nothing here is fabricated. */
+          <div className="flex flex-col gap-4 px-1 py-1">
+*/
+/* --- END MERGE --- */
             {findingCount > 0 && (
               <p className="rounded-lg border border-border-subtle bg-surface-2/40 px-3 py-2 text-[11px] leading-4 text-content-muted">
                 {agent.label} · {findingCount} finding{findingCount === 1 ? "" : "s"} on record — none in the most
@@ -154,6 +277,7 @@ export function AgentConversation({ agent, findings, findingCount, hasReviews, o
               </ul>
             </div>
 
+/* --- MERGED: PRESERVING UI (HEAD) --- */
             <Link
               href="/connections"
               className="inline-flex items-center gap-2 self-start rounded-xl border border-accent-primary/30 bg-accent-primary/20 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/30"
@@ -165,11 +289,54 @@ export function AgentConversation({ agent, findings, findingCount, hasReviews, o
             <p className="text-[11px] leading-4 text-content-muted">
               {agent.label} runs automatically on your pull requests — findings appear here once a connected repo has an open PR.
             </p>
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+            {!repoConnected ? (
+              <>
+                <Link
+                  href="/connections"
+                  className="inline-flex items-center gap-2 self-start rounded-xl border border-accent-primary/30 bg-accent-primary/20 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/30"
+                >
+                  Connect a repository
+                  <IconArrowRight size={15} stroke={2} />
+                </Link>
+                <p className="text-[11px] leading-4 text-content-muted">
+                  {agent.label} runs automatically on your pull requests — findings appear here once a connected repo has an open PR.
+                </p>
+              </>
+            ) : !modelConnected ? (
+              <>
+                <Link
+                  href="/connections/ai-models"
+                  className="inline-flex items-center gap-2 self-start rounded-xl border border-accent-primary/30 bg-accent-primary/20 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/30"
+                >
+                  Connect an AI model
+                  <IconArrowRight size={15} stroke={2} />
+                </Link>
+                <p className="text-[11px] leading-4 text-content-muted">
+                  Your repository is connected — {agent.label} just needs a model to run on. Connect one under
+                  AI Models (Local · Ollama is free) and it will start reviewing your pull requests.
+                </p>
+              </>
+            ) : (
+              <p className="text-[11px] leading-4 text-content-muted">
+                {agent.label} is ready and runs automatically on your pull requests — findings appear here once one
+                of your connected repositories has an open PR.
+              </p>
+            )}
+*/
+/* --- END MERGE --- */
           </div>
         )}
 
         {turns.length > 0 && (
+/* --- MERGED: PRESERVING UI (HEAD) --- */
           <div className="mt-4 space-y-2 border-t border-border-subtle pt-3">
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+          <div className="mt-3 space-y-2">
+*/
+/* --- END MERGE --- */
             {turns.map((t, i) => (
               <div
                 key={i}
@@ -183,6 +350,13 @@ export function AgentConversation({ agent, findings, findingCount, hasReviews, o
             ))}
           </div>
         )}
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+        {/* Scroll anchor: the effect keeps this in view so new turns pin to the bottom. */}
+        <div ref={bottomRef} aria-hidden />
+*/
+/* --- END MERGE --- */
       </div>
 
       <footer className="shrink-0 border-t border-border-subtle px-3 py-2.5">
@@ -192,6 +366,13 @@ export function AgentConversation({ agent, findings, findingCount, hasReviews, o
         >
           <input
             type="text"
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+            id="agent-chat-message"
+            name="message"
+*/
+/* --- END MERGE --- */
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             disabled={sending}

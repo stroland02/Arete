@@ -122,16 +122,18 @@ export function assertNoFabrication(findings: ReadonlyArray<Finding>, diff: Diff
 // ── State machine + gates (spec §4, §5) ─────────────────────────────────────
 
 const TRANSITIONS: Record<ContainerState, ReadonlyArray<ContainerState>> = {
-  detecting: ["fanning_out", "dismissed"],
-  fanning_out: ["verifying", "dismissed"],
-  verifying: ["composing", "dismissed"],
-  composing: ["ready", "dismissed"],
+  // A fix drive can fail at any pre-ready stage → fix_failed (terminal).
+  detecting: ["fanning_out", "fix_failed", "dismissed"],
+  fanning_out: ["verifying", "fix_failed", "dismissed"],
+  verifying: ["composing", "fix_failed", "dismissed"],
+  composing: ["ready", "fix_failed", "dismissed"],
   ready: ["solution_approved", "dismissed"],
   solution_approved: ["posted", "changes_requested", "dismissed"],
   changes_requested: ["fanning_out", "dismissed"],
   posted: ["merged", "dismissed"],
   merged: [],
   dismissed: [],
+  fix_failed: [],
 };
 
 export function canTransition(from: ContainerState, to: ContainerState): boolean {
@@ -144,6 +146,31 @@ export function transition(container: IssueContainer, to: ContainerState, now: (
     throw new Error(`illegal transition: ${container.state} -> ${to}`);
   }
   return { ...container, state: to, updatedAt: now() };
+}
+
+/**
+ * The solution gate (spec §1, §4.7): the FIRST of two human gates. A container may
+ * be approved only from `ready` — the driver leaves it there and never crosses
+ * this line itself. This is the HITL moat: `solution_approved` is reached only by
+ * a deliberate human action against this check, never auto-advanced. Enforced
+ * server-side (the approve route calls this), not just disabled in the UI.
+ */
+export function canApprove(container: IssueContainer): boolean {
+  return container.state === "ready";
+}
+
+/**
+ * Cross the solution gate: `ready -> solution_approved`, stamping who approved and
+ * when. Rejects any container not in `ready` (canApprove) — the transition and the
+ * gate stamp move together, so an approved container always carries its provenance.
+ */
+export function approveSolution(container: IssueContainer, approver: string, now: () => string = isoNow): IssueContainer {
+  if (!canApprove(container)) {
+    throw new Error(`cannot approve solution from state ${container.state}`);
+  }
+  const at = now();
+  const approved = transition(container, "solution_approved", () => at);
+  return { ...approved, gates: { ...approved.gates, solutionApprovedAt: at, solutionApprovedBy: approver } };
 }
 
 /**

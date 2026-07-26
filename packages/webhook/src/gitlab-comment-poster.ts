@@ -1,6 +1,9 @@
 import type { ReviewComment, ReviewResult } from './types.js'
 import { gitlabBaseUrl } from './gitlab-fetcher.js'
 import { getGitLabConfig } from './config.js'
+import { logger } from './logger.js'
+
+const log = logger.child({ component: 'gitlab-poster' })
 
 export interface DiffRefs {
   baseSha: string
@@ -47,8 +50,9 @@ export async function postGitLabReview(
     if (!res.ok) {
       if (res.status >= 400 && res.status < 500) {
         // Line likely outside the diff — skip this comment and keep going
-        console.warn(
-          `[gitlab-poster] Skipping comment on ${comment.path}:${comment.line} (status ${res.status})`
+        log.warn(
+          { path: comment.path, line: comment.line, status: res.status },
+          'Skipping comment'
         )
         continue
       }

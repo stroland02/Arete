@@ -7,7 +7,12 @@ import { db } from './db';
 import { verifyCredentials, upsertGoogleUser } from './users';
 import { decryptGithubToken } from './github-credentials';
 import { fetchAuthorizedGithubLogins } from './github';
-import { getAuthorizedInstallations } from './installations';
+import {
+  getAuthorizedInstallations,
+  getStoredInstallations,
+  persistInstallationAccess,
+} from './installations';
+import { adoptPendingModelConnections } from './model-connection-adoption';
 import { shouldRefreshInstallations } from './installation-cache';
 
 // Extracted (behavior-preserving) from the inline NextAuth() callbacks so
@@ -26,23 +31,42 @@ export async function authJwtCallback({
   const now = Date.now();
   if (token.sub && shouldRefreshInstallations(token.installationsFetchedAt, now)) {
     try {
-      const link = await db.account.findFirst({
-        where: { userId: token.sub, provider: 'github' },
-        select: { githubAccessTokenEncrypted: true },
-      });
-      if (link?.githubAccessTokenEncrypted) {
-        const accessToken = decryptGithubToken(link.githubAccessTokenEncrypted);
-        const logins = await fetchAuthorizedGithubLogins(accessToken);
-        token.installations = await getAuthorizedInstallations(db, logins);
+      // Prefer the DURABLE stored rows (written at connect time / write-through)
+      // so a login no longer depends on the GitHub API round-trip that the
+      // connection-reset incident showed to be fragile. Only when a user has no
+      // stored rows yet (not backfilled) do we fall back to live derivation —
+      // and then we write-through so future logins read the durable rows.
+      const stored = await getStoredInstallations(db, token.sub);
+      if (stored.length > 0) {
+        token.installations = stored;
       } else {
-        token.installations = [];
+        const link = await db.account.findFirst({
+          where: { userId: token.sub, provider: 'github' },
+          select: { githubAccessTokenEncrypted: true },
+        });
+        if (link?.githubAccessTokenEncrypted) {
+          const accessToken = decryptGithubToken(link.githubAccessTokenEncrypted);
+          const logins = await fetchAuthorizedGithubLogins(accessToken);
+          const live = await getAuthorizedInstallations(db, logins);
+          token.installations = live;
+          // Backfill the durable mapping (reconciles: adds current, prunes stale).
+          await persistInstallationAccess(db, token.sub, live);
+        } else {
+          token.installations = [];
+        }
+      }
+      // A model connected BEFORE any installation (pending user-scoped rows) is
+      // adopted by the first installation the moment one resolves — inside this
+      // try so a failure never breaks login (next refresh retries).
+      const firstInstallation = token.installations?.[0];
+      if (firstInstallation) {
+        await adoptPendingModelConnections(db, token.sub, firstInstallation.id);
       }
       token.installationsFetchedAt = now;
     } catch (error) {
-      // Transient GitHub API failure or a revoked/expired token: keep
-      // serving the last-known-good mapping (or [] on first attempt)
-      // rather than failing the whole session — never fail open to
-      // "show everything."
+      // Transient failure (GitHub API, a revoked/expired token, or a DB hiccup):
+      // keep serving the last-known-good mapping (or [] on first attempt) rather
+      // than failing the whole session — never fail open to "show everything."
       console.error('[auth] failed to refresh authorized installations', error);
       token.installations = token.installations ?? [];
       token.installationsFetchedAt = token.installationsFetchedAt ?? now;

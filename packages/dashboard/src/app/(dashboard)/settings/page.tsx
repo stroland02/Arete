@@ -2,12 +2,26 @@ import { redirect } from "next/navigation";
 import { IconBrandGithub, IconCircleCheck, IconAlertTriangle } from "@tabler/icons-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { getInstallationBilling, resolveSelectedInstallationIds, FREE_TIER_REVIEW_LIMIT } from "@/lib/queries";
+import {
+  getConnectedRepositories,
+  getConnectedTelemetryProviders,
+  getInstallationBilling,
+  resolveSelectedInstallationIds,
+  FREE_TIER_REVIEW_LIMIT,
+} from "@/lib/queries";
+import { getAccountState } from "@/lib/account-state";
+import { getActiveModelConnection } from "@/lib/model-connections-api";
+import { listEndpointsForSession } from "@/lib/webhook-endpoints-api";
+import { isPlatformInstallation } from "@/lib/platform-installation";
+import { deriveConnectionsSummary } from "@/lib/settings-connections";
 import { isGithubLinked } from "@/lib/github-link";
 import { connectGithub } from "./github-link-actions";
 import { PageReveal, RevealItem } from "@/components/dashboard/page-reveal";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { ConnectionsCard } from "@/components/settings/connections-card";
+import { WebhooksCard } from "@/components/settings/webhooks-card";
+import { SettingRow, SettingLink } from "@/components/settings/setting-row";
 
 export const dynamic = "force-dynamic";
 
@@ -70,9 +84,29 @@ export default async function SettingsPage({
 
   const { installation, connected, error } = await searchParams;
   const installationIds = resolveSelectedInstallationIds(session.installations ?? [], installation);
-  const billing = await getInstallationBilling(db, installationIds);
-  const githubLinked = await isGithubLinked(db, session.user.id);
+  // All independent, all tenancy-scoped by the same resolved installationIds
+  // (getActiveModelConnection derives its own scope from the session).
+  const [billing, githubLinked, accountState, repositories, telemetryProviders, activeModel, webhooksResult] =
+    await Promise.all([
+      getInstallationBilling(db, installationIds),
+      isGithubLinked(db, session.user.id),
+      getAccountState(db, installationIds, session.user.id),
+      getConnectedRepositories(db, installationIds),
+      getConnectedTelemetryProviders(db, installationIds),
+      getActiveModelConnection(),
+      listEndpointsForSession(),
+    ]);
+  const webhooks = webhooksResult.ok ? webhooksResult.data : [];
+  const connectionsSummary = deriveConnectionsSummary({
+    accountState,
+    repositories,
+    telemetryProviders,
+    activeModel,
+  });
   const banner = githubBanner(connected, error);
+
+  const platformChecks = await Promise.all((session.installations ?? []).map(i => isPlatformInstallation(db, [i.id])));
+  const platformInstalls = (session.installations ?? []).filter((_, idx) => platformChecks[idx]);
 
   const userName = session.user.name ?? session.user.email ?? "Signed in";
   const userEmail = session.user.email ?? "";
@@ -110,6 +144,39 @@ export default async function SettingsPage({
             <SettingRow label="Name" value={userName} />
             {userEmail && <SettingRow label="Email" value={userEmail} mono />}
             {billing && <SettingRow label="Organization" value={billing.owner} mono />}
+          </div>
+        </Card>
+      </RevealItem>
+
+      <RevealItem>
+        <ConnectionsCard summary={connectionsSummary} />
+      </RevealItem>
+
+      {platformInstalls.length > 0 && (
+        <RevealItem>
+          <WebhooksCard endpoints={webhooks} installations={platformInstalls.map(i => ({ id: i.id, owner: i.owner, isPlatformInstallation: true }))} />
+        </RevealItem>
+      )}
+
+      <RevealItem>
+        <Card>
+          <CardHeader>
+            <CardTitle>Workspace</CardTitle>
+          </CardHeader>
+          <div className="divide-y divide-border-subtle">
+            {/* Connections / AI Models used to be listed here too; they now live
+                in the Connections card above, WITH their real state, so Settings
+                never shows two competing links to the same surface. */}
+            <SettingLink
+              href="/history"
+              label="Review History"
+              detail="Every review Kuma has run"
+            />
+            <SettingLink
+              href="/build-status"
+              label="Build Status"
+              detail="What's working, what's partly wired, what isn't built yet"
+            />
           </div>
         </Card>
       </RevealItem>
@@ -218,14 +285,5 @@ export default async function SettingsPage({
         </Card>
       </RevealItem>
     </PageReveal>
-  );
-}
-
-function SettingRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-sm text-content-muted">{label}</span>
-      <span className={`text-sm text-content-secondary ${mono ? "font-mono" : ""}`}>{value}</span>
-    </div>
   );
 }

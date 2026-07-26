@@ -1,6 +1,8 @@
 import type { ConnectorResult } from './connector-result.js'
 import { assertAllowedTelemetryHost } from './ssrf-guard.js'
 
+import { webhookFetch } from '@arete/net-guard'
+
 const SENTRY_BASE_URL = 'https://sentry.io/api/0'
 const FETCH_TIMEOUT_MS = 8_000
 const MAX_ISSUES_IN_SUMMARY = 5
@@ -17,10 +19,9 @@ interface SentryIssue {
 }
 
 /**
- * Fetches recent unresolved issues for a Sentry project over the last 7
- * days. Never throws — a project with zero recent issues resolves to
- * 'no-data', any real failure (auth error, timeout, network error)
- * resolves to 'error'. Matches the posthog-connector.ts contract exactly.
+ * Queries Sentry for recent issue groups for the configured project.
+ * Never throws — if the Sentry API returns an error or times out, resolves
+ * to 'error' which trips the circuit breaker for this provider.
  */
 export async function fetchSentrySnapshot(
   credentials: SentryCredentials,
@@ -37,7 +38,7 @@ export async function fetchSentrySnapshot(
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
 
   try {
-    const res = await fetch(url.toString(), {
+    const res = await webhookFetch(url.toString(), {
       headers: { Authorization: `Bearer ${credentials.token}` },
       signal: controller.signal,
     })

@@ -1,0 +1,43 @@
+{
+  "_comment": "TEST DATA — synthetic Sentry-style issues for the Beancount sandbox customer. No real Sentry call is ever made. Loaded by sandbox-customer/seed/seed-sandbox.mjs into a TelemetrySnapshotRecord (provider='sentry').",
+  "provider": "sentry",
+  "sourceRef": "kuma-sandbox/beancount",
+  "fetchedAt": "2026-07-14T18:30:00.000Z",
+  "summaryText": "3 unresolved issues in the last 24h; 1 new regression in the reports endpoint.",
+  "metrics": {
+    "issuesUnresolved": 3,
+    "eventsLast24h": 412,
+    "newRegressions": 1,
+    "usersAffected": 27
+  },
+  "issues": [
+    {
+      "id": "BEAN-1042",
+      "title": "RangeError: pagination offset out of bounds",
+      "culprit": "api/expenses.ts in listExpenses",
+      "level": "error",
+      "events24h": 118,
+      "firstSeen": "2026-07-14T02:11:00.000Z"
+    },
+    {
+      "id": "BEAN-1043",
+      "title": "Slow response: GET /reports/summary p95 > 1200ms",
+      "culprit": "api/reports.ts in summarize",
+      "level": "warning",
+      "events24h": 240,
+      "firstSeen": "2026-07-13T22:04:00.000Z"
+    },
+    {
+      "id": "BEAN-1044",
+      "title": "Suspicious query pattern on /expenses/search",
+      "culprit": "data/db.ts in rawQuery",
+      "level": "error",
+      "events24h": 54,
+      "firstSeen": "2026-07-14T09:47:00.000Z"
+    }
+  ],
+  "links": {
+    "dashboard": "https://sentry.example.test/kuma-sandbox/beancount",
+    "issues": "https://sentry.example.test/kuma-sandbox/beancount/issues"
+  }
+}

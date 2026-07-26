@@ -1,0 +1,11 @@
+{
+  // `tsconfig.json` is what `lint` typechecks — it deliberately INCLUDES the
+  // test files so a broken test is a type error, not a surprise at run time.
+  // This config is what `build` emits from, and it drops them: `dist/` is the
+  // public surface both @arete/dashboard and @arete/webhook compile against,
+  // and a `platform-installation.test.d.ts` sitting next to `index.d.ts` is
+  // noise those consumers would have to ignore. Same split, same reason, as
+  // packages/internal-token.
+  "extends": "./tsconfig.json",
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts"]
+}

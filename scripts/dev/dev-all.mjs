@@ -1,0 +1,138 @@
+#!/usr/bin/env node
+/**
+ * dev-all — one command to bring up the local dogfooding stack.
+ * Design: docs/superpowers/specs/2026-07-15-glass-box-cockpit-design.md §6, §10.
+ *
+ * This is the reusable BOOTSTRAP that the future "Live Preview" service (design
+ * §10) productizes. Flow, fully automatic — no manual steps:
+ *   1. ensure Docker daemon (auto-start Docker Desktop on Windows if down)
+ *   2. infra:up (postgres/redis/clickhouse) + wait for postgres healthy
+ *   3. apply DB migrations (prisma migrate deploy)
+ *   4. run dashboard dev server + Glass Box sidecar (prefixed logs)
+ *   5. auto-open http://localhost:3000
+ *
+ * Node builtins only. Ctrl-C tears down the child dev processes (not infra).
+ */
+import { spawn, execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { setTimeout as sleep } from "node:timers/promises";
+import os from "node:os";
+
+const execFileP = promisify(execFile);
+const ROOT = new URL("../..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+const COMPOSE = ["compose", "-f", "infra/docker-compose.yml"];
+
+async function dockerUp() {
+  try {
+    await execFileP("docker", ["info"]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureDocker() {
+  if (await dockerUp()) return log("docker", "daemon already running");
+  if (os.platform() !== "win32") {
+    throw new Error("Docker daemon not running — start it and re-run (auto-start only implemented for Windows).");
+  }
+  log("docker", "daemon down — launching Docker Desktop…");
+  const exe = "C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe";
+  spawn(exe, [], { detached: true, stdio: "ignore" }).unref();
+  for (let i = 0; i < 120; i++) {
+    if (await dockerUp()) return log("docker", `ready after ${i * 2}s`);
+    await sleep(2000);
+  }
+  throw new Error("Docker Desktop did not become ready in time.");
+}
+
+async function run(cmd, args, opts = {}) {
+  // shell:true so Windows resolves the pnpm.cmd shim — execFile cannot launch a
+  // .cmd without a shell (it throws ENOENT). Harmless for docker.exe elsewhere.
+  await execFileP(cmd, args, { cwd: ROOT, shell: true, ...opts });
+}
+
+async function waitPostgres() {
+  for (let i = 0; i < 60; i++) {
+    try {
+      const { stdout } = await execFileP("docker", [...COMPOSE, "ps", "-q", "postgres"], { cwd: ROOT });
+      const id = stdout.trim();
+      if (id) {
+        const { stdout: h } = await execFileP("docker", ["inspect", "--format", "{{.State.Health.Status}}", id]);
+        if (h.trim() === "healthy") return log("infra", "postgres healthy");
+      }
+    } catch { /* keep polling */ }
+    await sleep(2000);
+  }
+  log("infra", "postgres health not confirmed — continuing anyway");
+}
+
+function log(tag, msg) {
+  console.log(`\x1b[36m[${tag}]\x1b[0m ${msg}`);
+}
+
+function spawnPrefixed(tag, cmd, args) {
+  const child = spawn(cmd, args, { cwd: ROOT, shell: true });
+  const pipe = (stream) =>
+    stream.on("data", (d) =>
+      d.toString().split("\n").filter(Boolean).forEach((l) => console.log(`\x1b[35m[${tag}]\x1b[0m ${l}`)));
+  pipe(child.stdout);
+  pipe(child.stderr);
+  return child;
+}
+
+async function openBrowser(url) {
+  const cmd = os.platform() === "win32" ? ["cmd", ["/c", "start", "", url]]
+    : os.platform() === "darwin" ? ["open", [url]]
+    : ["xdg-open", [url]];
+  try { spawn(cmd[0], cmd[1], { detached: true, stdio: "ignore" }).unref(); } catch { /* non-fatal */ }
+}
+
+async function main() {
+  await ensureDocker();
+  // Alertmanager's compose secret requires ALERTMANAGER_INGEST_TOKEN; without it
+  // `docker compose up` aborts the whole stack. Default a dev-only value when
+  // unset so `pnpm dev:all` works out of the box — a real deployment supplies
+  // its own. This is never a production secret.
+  if (!process.env.ALERTMANAGER_INGEST_TOKEN) {
+    process.env.ALERTMANAGER_INGEST_TOKEN = "dev-local-alertmanager-token-not-prod";
+    log("infra", "ALERTMANAGER_INGEST_TOKEN unset — using a dev-only default (not for production)");
+  }
+  // Self-dogfooding: tag Areté's own telemetry with the dev installation's
+  // project_id so the dashboard (which scopes reads to that installation) can
+  // see our own services' spans/logs — e.g. the Incident Signals panel. The
+  // child services inherit this env. Dev-only; a real deployment leaves it
+  // unset (internal telemetry stays untenanted) unless it deliberately routes
+  // self-telemetry to a dedicated internal tenant.
+  if (!process.env.ARETE_SELF_PROJECT_ID) {
+    process.env.ARETE_SELF_PROJECT_ID = "11111111-1111-4111-8111-111111111111";
+    log("infra", "ARETE_SELF_PROJECT_ID unset — tagging self-telemetry with the dev installation id");
+  }
+  log("infra", "bringing up postgres/redis/clickhouse…");
+  await run("docker", [...COMPOSE, "up", "-d"]);
+  await waitPostgres();
+  log("db", "applying migrations (prisma migrate deploy)…");
+  // Was `db push --accept-data-loss`, which is unsafe here: every checkout
+  // shares one Postgres, so pushing an older schema silently DROPS columns the
+  // other worktrees need (this cost us `ModelConnection.userId` on 2026-07-22
+  // and 500'd a sibling checkout). The migration history is complete now, so
+  // deploy is both safe and forward-only.
+  await run("pnpm", ["--filter", "@arete/db", "exec", "prisma", "migrate", "deploy"]);
+
+  log("run", "starting dashboard + Glass Box sidecar…");
+  const dash = spawnPrefixed("dashboard", "pnpm", ["--filter", "@arete/dashboard", "dev"]);
+  const glass = spawnPrefixed("glassbox", "node", ["scripts/dev/glassbox-watch.mjs"]);
+
+  await sleep(4000);
+  await openBrowser("http://localhost:3000");
+  log("run", "stack up → http://localhost:3000  (Ctrl-C to stop dev servers)");
+
+  const stop = () => { dash.kill(); glass.kill(); process.exit(0); };
+  process.on("SIGINT", stop);
+  process.on("SIGTERM", stop);
+}
+
+main().catch((err) => {
+  console.error(`\x1b[31m[dev-all] ${err.message}\x1b[0m`);
+  process.exit(1);
+});

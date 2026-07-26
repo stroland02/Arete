@@ -1,15 +1,16 @@
 import asyncio
 import threading
-from typing import List, Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+
 from langchain_core.tools import tool
 
-from .manager import MCPManager
+from .manager import MCPManager, MCPTokenRefreshError
 
 # We use lazy imports to ensure we don't break the CLI if mcp is missing
 try:
     from mcp import ClientSession, StdioServerParameters
-    from mcp.client.stdio import stdio_client
     from mcp.client.sse import sse_client
+    from mcp.client.stdio import stdio_client
     HAS_MCP = True
 except ImportError:
     HAS_MCP = False
@@ -123,7 +124,26 @@ def get_mcp_tools_for_agent(agent_name: str, workspace_root: str = None) -> List
                     future = asyncio.run_coroutine_threadsafe(_connect_stdio(server_name, details["target"]), loop)
                     future.result(timeout=10)
                 elif details["transport"] == "http":
-                    future = asyncio.run_coroutine_threadsafe(_connect_http(server_name, details["target"], details.get("token")), loop)
+                    # Materialize the Bearer via get_valid_token so a near-expiry
+                    # token is refreshed first, and an unrefreshable expired token
+                    # fails closed (MCPTokenRefreshError -> caught below -> server
+                    # skipped) instead of being presented stale.
+                    token = manager.get_valid_token(server_name)
+                    if token is None:
+                        # Fail closed: the outer loop already gated on
+                        # status == "Authenticated", so a None token here
+                        # means a corrupted/raced config, not "no auth
+                        # needed". Never connect without an Authorization
+                        # header for a server we believe is authenticated --
+                        # raise so the existing except below skips it.
+                        raise MCPTokenRefreshError(
+                            f"MCP server '{server_name}' is marked Authenticated but "
+                            "get_valid_token returned no token; refusing to connect "
+                            "without a Bearer token."
+                        )
+                    future = asyncio.run_coroutine_threadsafe(
+                        _connect_http(server_name, details["target"], token), loop
+                    )
                     future.result(timeout=10)
             except Exception as e:
                 print(f"Failed to connect to MCP server {server_name}: {e}")
