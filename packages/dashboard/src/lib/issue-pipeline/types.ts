@@ -62,12 +62,17 @@ export interface SynthStep {
   detail?: string;
   at: string; // ISO timestamp
   /**
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
    * Optional specialist StatusReport riding a `report` step (tiered comms §2).
    * OPTIONAL + additive — no new SynthStep kind, so the console renderer is
    * untouched. Absent (never fabricated) for a step with no real report.
    */
   report?: StatusReport;
   /**
+*/
+/* --- END MERGE --- */
    * Set on a `keep` step the Critic flagged low-confidence (spec
    * synthesizer-component-and-critic §2, §4): gate-passed and kept, but "wants
    * a human look". Renders as the ⚑ variant and increments the ledger's

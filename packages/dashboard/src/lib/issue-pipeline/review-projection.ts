@@ -15,7 +15,12 @@
  * `ReviewDetail`, dates already ISO) so this stays a pure, testable function.
  */
 
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
 import { isReviewDimension, type SpecialistStatus } from "@arete/orchestration";
+*/
+/* --- END MERGE --- */
 import type { Finding, IssueContainer, Severity, SynthStep } from "./types";
 
 export interface ProjectedReviewFinding {
@@ -27,6 +32,9 @@ export interface ProjectedReviewFinding {
   category: string; // == agent id
 }
 
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
 /** Persisted specialist status (Review.agentStatuses) — see queries.ReviewAgentStatus. */
 export interface ProjectedAgentStatus {
   agent: string;
@@ -36,6 +44,8 @@ export interface ProjectedAgentStatus {
   blockers?: string[];
 }
 
+*/
+/* --- END MERGE --- */
 export interface ProjectedReview {
   id: string;
   prNumber: number;
@@ -45,6 +55,9 @@ export interface ProjectedReview {
   createdAt: string; // ISO — caller converts Date -> ISO
   repositoryFullName: string;
   findings: ProjectedReviewFinding[];
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
   /** Optional for older callers/tests; drives the status-board `report` steps. */
   agentStatuses?: ProjectedAgentStatus[];
 }
@@ -82,6 +95,8 @@ function statusReportSteps(statuses: ProjectedAgentStatus[] | undefined, at: str
     });
   }
   return steps;
+*/
+/* --- END MERGE --- */
 }
 
 function toSeverity(riskLevel: string): Severity {
@@ -116,9 +131,14 @@ export function reviewToContainer(review: ProjectedReview, installationId: strin
   // entries (upstream drops aren't stored), so nothing is invented.
   const transcript: SynthStep[] = [
     { kind: "dispatch", text: "Six specialists reviewed this pull request", at },
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
     // Per-specialist status rows (the status board folds over these) — real
     // persisted state only; empty when the review stored none.
     ...statusReportSteps(review.agentStatuses, at),
+*/
+/* --- END MERGE --- */
     ...findings.flatMap((f): SynthStep[] => [
       { kind: "verify", findingId: f.id, agentId: f.agentId, text: `Verifying ${f.category} · ${f.file}:${f.line}`, at },
       { kind: "keep", findingId: f.id, agentId: f.agentId, text: "Kept — evidence in the diff", detail: `${f.file}:${f.line}`, at },

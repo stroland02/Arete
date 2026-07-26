@@ -1,8 +1,13 @@
 import type { Octokit } from '@octokit/core'
 import { enqueueReviewJob } from './queue.js'
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
 import { logger } from './logger.js'
 
 const log = logger.child({ component: 'backfill' })
+*/
+/* --- END MERGE --- */
 
 /**
  * Minimal shape Kuma needs out of a GitHub `repository` object as delivered
@@ -71,12 +76,24 @@ export async function backfillInstallationPRs(
     try {
       prs = await listOpenPullRequests(octokit, owner, name)
     } catch (err) {
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+      console.error(`[backfill] Failed to list open PRs for ${repo.full_name} — skipping repo:`, err)
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
       log.error({ err, repo: repo.full_name }, 'Failed to list open PRs — skipping repo')
+*/
+/* --- END MERGE --- */
       continue
     }
 
     if (prs.length === 0) {
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+      console.log(`[backfill] No open PRs to backfill for ${repo.full_name}`)
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
       log.info({ repo: repo.full_name }, 'No open PRs to backfill')
+*/
+/* --- END MERGE --- */
       continue
     }
 
@@ -97,9 +114,17 @@ export async function backfillInstallationPRs(
           headSha: pr.head.sha,
         }, lane)
 
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+        console.log(`[backfill] Enqueued review-pr job for ${repo.full_name}#${pr.number} on '${lane}' lane (backfill)`)
+      } catch (err) {
+        console.error(`[backfill] Failed to enqueue backfill job for ${repo.full_name}#${pr.number}:`, err)
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
         log.info({ repo: repo.full_name, prNumber: pr.number, lane }, 'Enqueued review-pr job (backfill)')
       } catch (err) {
         log.error({ err, repo: repo.full_name, prNumber: pr.number }, 'Failed to enqueue backfill job')
+*/
+/* --- END MERGE --- */
       }
     }
   }

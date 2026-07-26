@@ -17,12 +17,23 @@ import { ServicesWorkspace } from "@/components/dashboard/services/services-work
 // Session-scoped like every dashboard page; never statically prerendered.
 export const dynamic = "force-dynamic";
 
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+// Services "Triage Inbox" — production signals from connected telemetry,
+// compiled per service, with the agent's proposed fix and a human-approve
+// flow. Renders with NO services/issues today (no connector ingestion wired
+// yet) — ServicesWorkspace shows its honest empty state and routes to
+// /connections. Real data will be passed in here once the backend ingestion
+// pipeline (Sentry etc.) populates the Service/Issue contract.
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
 // Services "Triage Inbox" — the connected repo's real reviews, grouped per
 // repository (the "service"). Each review is a selectable PR; selecting one
 // streams its real Synthesizer transcript via /api/containers/[id]/stream (the
 // container id IS the review id). No sample data and no fabricated fixes —
 // only reviews that actually ran. An account with no reviews yet gets the
 // honest empty state, which routes to /connections.
+*/
+/* --- END MERGE --- */
 export default async function ServicesPage({
   searchParams,
 }: {
@@ -34,6 +45,11 @@ export default async function ServicesPage({
   }
 
   const { container } = await searchParams;
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+  const connected = (session.installations ?? []).length > 0;
+  return <ServicesWorkspace connected={connected} containerId={container ?? null} />;
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
   const installationIds = resolveSelectedInstallationIds(session.installations ?? [], undefined);
   const connected = installationIds.length > 0;
   // Stage 2.2 adds the agents layer, so this page now also loads what a
@@ -77,4 +93,6 @@ export default async function ServicesPage({
       modelConnected={account?.modelConnected ?? false}
     />
   );
+*/
+/* --- END MERGE --- */
 }

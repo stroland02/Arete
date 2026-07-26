@@ -1,6 +1,12 @@
 "use client";
 
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+import { useState, useEffect, useRef } from "react";
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
 import { useState, useEffect, useRef, useSyncExternalStore } from "react";
+*/
+/* --- END MERGE --- */
 import { motion, AnimatePresence, useInView } from "framer-motion";
 import {
   IconBriefcase,
@@ -78,6 +84,13 @@ const AGENT_PROFILES = [
   },
 ];
 
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+export function SpecialistRoster() {
+  const [activeId, setActiveId] = useState(AGENT_PROFILES[0].id);
+  const [isAutoPlaying, setIsAutoPlaying] = useState(true);
+  
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
 // No-op store for useHasMounted below: the "store" never changes, we only
 // care that useSyncExternalStore re-renders once client and server snapshots
 // diverge (i.e. once hydration completes).
@@ -103,11 +116,20 @@ export function SpecialistRoster() {
   const [activeId, setActiveId] = useState(AGENT_PROFILES[0].id);
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
 
+*/
+/* --- END MERGE --- */
   const containerRef = useRef<HTMLDivElement>(null);
   const isInView = useInView(containerRef, { margin: "-100px 0px -100px 0px" });
 
   // Guard against hydration: defer observer logic until after first client render
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+  const [hasMounted, setHasMounted] = useState(false);
+  useEffect(() => { setHasMounted(true); }, []);
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
   const hasMounted = useHasMounted();
+*/
+/* --- END MERGE --- */
 
   useEffect(() => {
     if (!hasMounted || !isInView || !isAutoPlaying) return;
@@ -252,7 +274,13 @@ export function SpecialistRoster() {
                 <div className="rounded-lg border border-border-default bg-surface-0 p-4 shadow-sm relative overflow-hidden">
                   <div className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: activeAgent.color }} />
                   <p className="text-sm font-mono text-content-primary leading-relaxed pl-2">
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+                    "{activeAgent.example}"
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
                     &quot;{activeAgent.example}&quot;
+*/
+/* --- END MERGE --- */
                   </p>
                 </div>
               </div>

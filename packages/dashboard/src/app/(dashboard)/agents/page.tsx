@@ -2,9 +2,14 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getDashboardViewModel, resolveSelectedInstallationIds, getAgentActivity } from "@/lib/queries";
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
 import { getAccountState } from "@/lib/account-state";
 import { getActiveModelConnection } from "@/lib/model-connections-api";
 import { getWorkItemInbox } from "@/lib/work-items";
+*/
+/* --- END MERGE --- */
 import { AgentsWorkspace } from "@/components/dashboard/agents/agents-workspace";
 
 // Same rationale as the overview: this page reads the session and queries
@@ -45,6 +50,9 @@ export default async function AgentsPage({
     ? await getAgentActivity(db, installationIds)
     : [];
 
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
   // The agents' real dependency is a connected model — the repo alone can't
   // produce a review. Drives the honest empty-state CTA (connect a model, not
   // a repo, once the repo is already connected).
@@ -67,6 +75,8 @@ export default async function AgentsPage({
   // Same tenant scoping as every other query on this page.
   const inbox = viewModel.hasAccess ? await getWorkItemInbox(db, installationIds) : null;
 
+*/
+/* --- END MERGE --- */
   return (
     <AgentsWorkspace
       findingCountById={Object.fromEntries(
@@ -76,9 +86,14 @@ export default async function AgentsPage({
       hasReviews={hasReviews}
       activity={activity}
       connected={viewModel.hasAccess}
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
       modelConnected={modelConnected}
       activeModel={activeModel}
       inbox={inbox}
+*/
+/* --- END MERGE --- */
       containerId={container ?? null}
       latestReview={
         latest

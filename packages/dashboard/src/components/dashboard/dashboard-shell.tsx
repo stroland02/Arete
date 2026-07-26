@@ -5,7 +5,12 @@ import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { cn } from "@/lib/utils";
 import type { AuthorizedInstallation } from "@/lib/installations";
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
 import type { ActiveModelConnection } from "@/lib/model-connections-map";
+*/
+/* --- END MERGE --- */
 import { LoadingProvider } from "@/lib/loading-context";
 
 interface DashboardShellProps {

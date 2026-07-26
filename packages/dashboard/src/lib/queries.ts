@@ -739,11 +739,37 @@ export async function getAgentActivity(
 ): Promise<AgentActivityFinding[]> {
   if (installationIds.length === 0) return [];
 
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+  // Select only the columns we need (not `include`, which fetches every
+  // scalar column). This both avoids over-fetching and is resilient to schema
+  // drift — e.g. a database that predates ReviewComment.noiseState/escalateOn/
+  // threshold still satisfies this query because those columns aren't selected.
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+*/
+/* --- END MERGE --- */
   const rows = await db.reviewComment.findMany({
     where: { review: { repository: { installationId: { in: installationIds } } } },
     orderBy: { createdAt: 'desc' },
     take: limit,
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+    select: {
+      reviewId: true,
+      path: true,
+      line: true,
+      body: true,
+      severity: true,
+      category: true,
+      createdAt: true,
+      review: {
+        select: { prNumber: true, repository: { select: { fullName: true } } },
+      },
+    },
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
     include: { review: { include: { repository: true } } },
+*/
+/* --- END MERGE --- */
   });
 
   return rows.map((c) => ({
@@ -758,6 +784,9 @@ export async function getAgentActivity(
     severity: c.severity,
   }));
 }
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
 
 /**
  * All currently-OPEN review findings for the caller's authorized installations,
@@ -826,3 +855,5 @@ export async function getAgentEventsPerMinute(
     count: Number(r.count),
   })).reverse(); // chronological order
 }
+*/
+/* --- END MERGE --- */

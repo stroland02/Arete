@@ -24,8 +24,13 @@ const PHASE_BY_STATE: Record<ContainerState, SynthPhase> = {
   changes_requested: "done",
   merged: "done",
   dismissed: "dismissed",
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
   // A failed fix run is terminal and non-success — render its final state, no motion.
   fix_failed: "dismissed",
+*/
+/* --- END MERGE --- */
 };
 
 /** Progress toward a composed, ready PR — 0 at detection, 1 once ready or later. */
@@ -40,7 +45,12 @@ const PROGRESS_BY_STATE: Record<ContainerState, number> = {
   changes_requested: 1,
   merged: 1,
   dismissed: 0,
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
   fix_failed: 0,
+*/
+/* --- END MERGE --- */
 };
 
 export function phaseOf(state: ContainerState): SynthPhase {

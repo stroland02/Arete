@@ -3,9 +3,21 @@
 import { useRouter } from "next/navigation";
 import { AGENTS, type Agent } from "./agent-catalog";
 import { cn } from "@/lib/utils";
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+import { IconSettings } from "@tabler/icons-react";
+
+const TIER_LABEL = { opus: "Opus", sonnet: "Sonnet" } as const;
+const TIER_CLASS = {
+  opus: "border-accent-primary/25 bg-accent-primary/10 text-accent-primary",
+  sonnet: "border-border-default bg-surface-2 text-content-secondary",
+} as const;
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
 import { IconSettings, IconCpu } from "@tabler/icons-react";
 import type { ActiveModelConnection } from "@/lib/model-connections-map";
 import type { InboxView } from "@/lib/work-items";
+*/
+/* --- END MERGE --- */
 
 export interface AgentRailProps {
   agents?: Agent[];
@@ -113,6 +125,19 @@ export function AgentRail({
                       >
                         {agent.label}
                       </span>
+/* --- MERGED: PRESERVING UI (HEAD) --- */
+                      <span
+                        className={cn(
+                          "shrink-0 rounded-full border px-1.5 py-px text-[9px] font-medium",
+                          TIER_CLASS[agent.tier]
+                        )}
+                      >
+                        {TIER_LABEL[agent.tier]}
+                      </span>
+/* --- MERGED: NEW LOGIC FROM MAIN (COMMENTED OUT FOR REVIEW) --- */
+/*
+*/
+/* --- END MERGE --- */
                     </span>
                     <span className="mt-0.5 block truncate font-mono text-[11px] text-content-muted">
                       {status}
