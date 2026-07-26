@@ -12,7 +12,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)]()
 [![pnpm](https://img.shields.io/badge/pnpm-workspace-orange)]()
 
-<video src="docs/assets/demo-1.mp4" autoplay loop muted playsinline width="100%"></video>
+<video src="https://github.com/stroland02/Arete/raw/main/docs/assets/demo-1.mp4" autoplay loop muted playsinline width="100%"></video>
 
 </div>
 
@@ -37,6 +37,6 @@ The ecosystem is consumed in multiple ways:
 * **Prisma & PostgreSQL:** Scalable persistence layer managing schemas, migrations, and strongly-typed queries across the monorepo.
 
 <div align="center">
-  <video src="docs/assets/demo-2.mp4" autoplay loop muted playsinline width="100%"></video>
+  <video src="https://github.com/stroland02/Arete/raw/main/docs/assets/demo-2.mp4" autoplay loop muted playsinline width="100%"></video>
   <p><em>The Areté Dashboard — Real-time Agent Auditing and Logs</em></p>
 </div>
